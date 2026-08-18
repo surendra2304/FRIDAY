@@ -436,7 +436,7 @@ FRIDAY/
   * `2ff4db3`: `feat(agent): integrate persistent conversation memory (v0.4.1)`
   * `6b142d4`: `feat(memory): add persistent conversation management (v0.4.2)`
   * `54d3238`: `feat(memory): add searchable historical conversation retrieval (v0.4.3)`
-  * *(Pending Commit)*: `security(memory): harden persistent memory privacy and retention (v0.4.4)`
+  * `f23695b`: `security(memory): harden persistent memory privacy and retention (v0.4.4)`
 * **Remote Repository**: `https://github.com/surendra2304/FRIDAY`
 * **Push Status**: Verified and in sync with `origin/main`
 
