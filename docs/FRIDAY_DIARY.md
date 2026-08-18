@@ -1,7 +1,7 @@
 # FRIDAY Project Diary
 
 > **Permanent, never-ending historical record and institutional memory of the FRIDAY project.**
-> **Started: 2026-08-18 | Current Version: v0.3.10 | Milestone: V0.3 Tool System Expansion & Interactive Confirmation**
+> **Started: 2026-08-18 | Current Version: v0.3.11 | Milestone: V0.3 Tool System Expansion & Interactive Confirmation**
 
 ---
 
@@ -346,6 +346,7 @@ FRIDAY/
   * `b5914d1`: `feat(agent): support coordinated multi-tool execution (v0.3.8)`
   * `5519b4d`: `feat(core): improve agent reliability and execution observability (v0.3.9)`
   * `4f49bc5`: `security(core): harden FRIDAY Phase 1 execution boundaries (v0.3.10)`
+  * *(Pending Commit)*: `feat(phase1): complete FRIDAY core intelligence foundation (v0.3.11)`
 * **Remote Repository**: `https://github.com/surendra2304/FRIDAY`
 * **Push Status**: Verified and in sync with `origin/main`
 
@@ -390,10 +391,10 @@ FRIDAY/
 
 ### Next planned work
 
-* **Milestone V0.3 — Tool System Expansion & Interactive Confirmation**:
-  * File reader/writer tools (`SAFE` read, `SENSITIVE` write).
-  * Web search integration.
-  * Interactive CLI approval prompt for sensitive/dangerous tool calls.
+* **Milestone V0.4 — Persistent SQLite & Vector Memory**:
+  * Implement SQLite-based conversation history persistence.
+  * Integrate simple local vector storage for semantic retrieval and long-term context retention.
+  * Local CLI history caching.
 
 ---
 
