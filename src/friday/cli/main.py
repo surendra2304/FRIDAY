@@ -176,6 +176,30 @@ def main() -> None:
         authorizer=CLIAuthorizer(),
     )
 
+    # Voice interface initialization (optional)
+    if getattr(settings, "voice_enabled", False):
+        from friday.voice.session import VoiceSession
+        if settings.voice_provider == "gemini":
+            try:
+                from friday.voice.gemini_provider import GeminiVoiceProvider
+                provider = GeminiVoiceProvider()
+            except Exception as e:
+                logger.error(f"Failed to initialize GeminiVoiceProvider: {e}")
+                provider = None
+        else:
+            from friday.voice.mock_provider import MockVoiceProvider
+            # Example mock transcripts; replace with real data as needed
+            provider = MockVoiceProvider([
+                "Hello, FRIDAY.",
+                "Remember my favorite editor is VS Code.",
+                "What editor did I just tell you about?",
+            ])
+        if provider:
+            voice_session = VoiceSession(provider, agent)
+            logger.info("Starting voice session (blocking until finished)")
+            voice_session.start()
+            logger.info("Voice session ended")
+
     print(BANNER)
     print(f"FRIDAY initialized. Provider: [{agent.llm.provider_name}], Model: [{agent.llm.model}].\n")
 
