@@ -1,7 +1,7 @@
 # FRIDAY Project Diary
 
 > **Permanent, never-ending historical record and institutional memory of the FRIDAY project.**
-> **Started: 2026-08-18 | Current Version: v0.3.12 | Milestone: Phase 2 Persistent Memory Architecture Design**
+> **Started: 2026-08-18 | Current Version: v0.4.0 | Milestone: V0.4 Persistent SQLite & Vector Memory**
 
 ---
 
@@ -163,6 +163,16 @@
   * **Memory Interface & Configuration**: Formulated the `SQLiteConversationMemory` class extending `BaseMemory` while preserving full compatibility with `InMemoryConversationMemory`. Outlined configuration settings (`FRIDAY_MEMORY_BACKEND`, `FRIDAY_MEMORY_DB_PATH`, `FRIDAY_MEMORY_AUTO_PERSIST`).
   * **Documented ADR-007**: Added architectural decision record defining storage selection, decoupling strategy, and semantic memory integration roadmap.
 
+#### Session 14 — Phase 2: Implementation of SQLite Persistent Conversation Memory
+* Implemented `SQLiteConversationMemory` in `src/friday/memory/sqlite.py` implementing `BaseMemory`:
+  * **Database & Schema Initialization**: Automatically initializes parent directories and creates `conversations` and `messages` tables with indexed foreign key relationships and WAL journaling for maximum crash resilience and fast concurrency.
+  * **Session Isolation & Multi-Conversation CRUD**: Full CRUD support for creating, listing, loading, and deleting conversations with cascading message deletions. Fresh conversation sessions are initialized on instantiation if no `conversation_id` is supplied.
+  * **Explicit JSON Serialization**: Tool calls (`ToolCall` objects) and extra metadata are serialized to JSON strings and accurately reconstructed without losing types, IDs, or timestamps.
+  * **Thread Safety & Transaction Isolation**: Guarded all SQLite operations with threading locks and transaction context managers, ensuring thread safety during multi-tool asynchronous runs.
+  * **Zero-Coupling Integration**: `FridayAgent` dynamically attaches to `SQLiteConversationMemory` via `Settings.memory_backend = "sqlite"`, keeping agent reasoning decoupled from storage mechanics.
+* Expanded test suite from 82 to **91 tests** in `tests/test_sqlite_memory.py` covering database auto-creation, schema integrity, conversation lifecycle, message CRUD, tool metadata preservation, sliding context window, multi-conversation isolation, persistence across re-instantiation, and multi-thread concurrency.
+* Confirmed 100% test pass rate (91/91 passed in 12.53s).
+
 ---
 
 ### Architecture / structure changes
@@ -209,7 +219,8 @@ FRIDAY/
 │       ├── memory/
 │       │   ├── __init__.py
 │       │   ├── base.py              # BaseMemory ABC
-│       │   └── in_memory.py         # Sliding window conversation memory buffer
+│       │   ├── in_memory.py         # Sliding window conversation memory buffer
+│       │   └── sqlite.py            # Persistent SQLite conversation memory
 │       ├── agent/
 │       │   ├── __init__.py
 │       │   ├── agent.py             # FridayAgent with multi-step sequential reasoning loop
@@ -229,6 +240,7 @@ FRIDAY/
     ├── test_memory.py               # Memory buffer & sliding window tests
     ├── test_multi_tool.py           # Coordinated parallel and sequential execution tests
     ├── test_reliability.py          # LLM retries, network errors, tool timeouts, and diagnostics tests
+    ├── test_sqlite_memory.py        # Persistent SQLite storage, lifecycle & isolation tests
     └── test_tools.py                # Tool registry, schema validation & safety tier tests
 ```
 
@@ -365,6 +377,7 @@ FRIDAY/
   * `4f49bc5`: `security(core): harden FRIDAY Phase 1 execution boundaries (v0.3.10)`
   * `dd4b253`: `feat(phase1): complete FRIDAY core intelligence foundation (v0.3.11)`
   * `f42a653`: `docs(memory): design persistent FRIDAY memory architecture (v0.3.12)`
+  * *(Pending Commit)*: `feat(memory): add persistent SQLite conversation storage (v0.4.0)`
 * **Remote Repository**: `https://github.com/surendra2304/FRIDAY`
 * **Push Status**: Verified and in sync with `origin/main`
 
@@ -372,7 +385,7 @@ FRIDAY/
 
 ### Current project state
 
-* **Status**: Complete, fully functional, and stabilized **Milestone V0.3 Tool System Expansion & Interactive Confirmation**.
+* **Status**: Complete, fully functional, and stabilized **Milestone V0.4 Persistent SQLite Memory**.
 * **Capabilities Operational**:
   * Multi-step sequential tool calling decision loop with iteration guardrails.
   * Real-time tool execution event streaming in CLI.
@@ -393,10 +406,11 @@ FRIDAY/
   * User-friendly exceptions translation and secret-safe diagnostics response metadata.
   * Secure SanitizedFormatter blocking all credentials and token leaks from exceptions and traceback logs.
   * Explicit absolute and drive-anchored paths rejection in sandboxed file tools.
+  * Persistent conversation memory backend (`SQLiteConversationMemory`) with automatic database creation, session isolation, and ACID guarantees.
   * Correct JSON double-quote argument serialization (fixed Python single-quote bug).
   * Robust error recovery for missing tools, malformed arguments, tool exceptions, and safety denials.
   * Cloud endpoint HTTP error message extraction and HTML truncation handling.
-  * 100% pass rate across 82 automated tests.
+  * 100% pass rate across 91 automated tests.
 
 ---
 

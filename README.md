@@ -6,7 +6,7 @@ FRIDAY is a modular, extensible, autonomous personal AI assistant built with a s
 
 ---
 
-## 🌟 Features (v0.3.10)
+## 🌟 Features (v0.4.0)
 
 - **Modular Architecture**: Clean interfaces for LLM providers (`BaseLLMProvider`), tools (`BaseTool`), memory (`BaseMemory`), and authorization (`BaseAuthorizer`).
 - **Pluggable LLM Backends**:
@@ -21,7 +21,7 @@ FRIDAY is a modular, extensible, autonomous personal AI assistant built with a s
   - `calculator` — AST-parsed arithmetic expression evaluator with DoS/length limitations.
   - `read_file` — Sandboxed read-only text file reader (rejects absolute paths and binary formats).
   - `list_dir` — Sandboxed directory lister (rejects absolute paths and limits output to 100 items).
-- **Contextual Memory**: Sliding window conversation buffer with token/message bounds.
+- **Persistent Conversation Memory**: Durable SQLite database storage (`SQLiteConversationMemory`) surviving process restarts with session isolation, atomic transactions, and sliding context window support.
 - **Safe & Structured Logging**: Regex secret masking and custom `SanitizedFormatter` preventing credentials leakage in tracebacks.
 - **Interactive Terminal REPL**: Full CLI with commands (`/status`, `/history`, `/tools`, `/clear`, `/exit`).
 - **Comprehensive Project Diary**: Permanent source of truth at [`docs/FRIDAY_DIARY.md`](docs/FRIDAY_DIARY.md).
@@ -60,6 +60,10 @@ Edit `.env` to configure your preferred settings:
 ```ini
 # Use mock provider for instant offline use:
 FRIDAY_LLM_PROVIDER=mock
+
+# Memory backend (sqlite or in_memory):
+FRIDAY_MEMORY_BACKEND=sqlite
+FRIDAY_MEMORY_DB_PATH=data/friday.db
 
 # Or configure OpenAI/Ollama/Groq:
 # FRIDAY_LLM_PROVIDER=openai
@@ -116,8 +120,9 @@ FRIDAY maintains a permanent engineering diary, architectural decision records (
 
 - [x] **V0.1 — Core Architecture & Foundation**
 - [x] **V0.2 — Basic Agent Reasoning**
-- [x] **V0.3 — Tool System Expansion & Interactive Confirmation Gating** *(Current)*
-- [ ] **V0.4 — Persistent SQLite & Vector Memory** (Next milestone)
+- [x] **V0.3 — Tool System Expansion & Interactive Confirmation Gating**
+- [x] **V0.4 — Persistent SQLite Conversation Memory** *(Current)*
+- [ ] **V0.4.5 — Long-Term Semantic Vector Memory**
 - [ ] **V0.5 — Local Voice Interface (Whisper & Kokoro/EdgeTTS)**
 - [ ] **V0.6 — Safe Computer Control & Desktop Automation**
 - [ ] **V0.7 — Autonomous Workflows & Proactive Actions**

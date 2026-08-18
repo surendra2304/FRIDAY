@@ -26,6 +26,7 @@ def mock_settings() -> Settings:
         llm_provider="mock",
         llm_model="mock-gpt",
         llm_api_key="sk-test-secret-key-1234567890",
+        memory_backend="in_memory",
         memory_max_messages=10,
         agent_name="FRIDAY-TEST",
         user_name="Boss",

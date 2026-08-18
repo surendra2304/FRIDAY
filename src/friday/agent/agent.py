@@ -21,6 +21,7 @@ from friday.llm.base import BaseLLMProvider
 from friday.llm.factory import create_llm_provider
 from friday.memory.base import BaseMemory
 from friday.memory.in_memory import InMemoryConversationMemory
+from friday.memory.sqlite import SQLiteConversationMemory
 from friday.tools.builtin import (
     SystemInfoTool,
     TimeDateTool,
@@ -49,7 +50,15 @@ class FridayAgent:
     ) -> None:
         self.settings = settings or get_settings()
         self.llm = llm_provider or create_llm_provider(self.settings)
-        self.memory = memory or InMemoryConversationMemory(max_messages=self.settings.memory_max_messages)
+        if memory:
+            self.memory = memory
+        elif self.settings.memory_backend == "sqlite":
+            self.memory = SQLiteConversationMemory(
+                db_path=self.settings.memory_db_path,
+                max_messages=self.settings.memory_max_messages,
+            )
+        else:
+            self.memory = InMemoryConversationMemory(max_messages=self.settings.memory_max_messages)
         self.tools = tool_registry or self._create_default_registry()
         self.max_tool_iterations = max(1, max_tool_iterations)
         self.tool_callback = tool_callback

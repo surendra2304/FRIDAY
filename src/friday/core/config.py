@@ -32,7 +32,10 @@ class Settings(BaseSettings):
     llm_max_tokens: int = Field(default=2048, ge=1, le=32768, description="Max tokens per response")
 
     # Memory Settings
+    memory_backend: str = Field(default="sqlite", description="Memory backend: 'sqlite', 'in_memory'")
+    memory_db_path: str = Field(default="data/friday.db", description="Path to SQLite database file")
     memory_max_messages: int = Field(default=50, ge=2, description="Maximum messages stored in short-term buffer")
+    memory_auto_persist: bool = Field(default=True, description="Whether to persist conversations automatically")
 
     # Identity
     agent_name: str = Field(default="FRIDAY", description="Name of the AI assistant")
