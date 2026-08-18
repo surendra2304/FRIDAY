@@ -65,10 +65,14 @@ cp .env.example .env
 
 Edit `.env` to configure your preferred settings:
 ```ini
-# Cloud-first Google Gemini (Recommended):
+# Cloud-first Google Gemini (Free-First & Predictable):
 FRIDAY_LLM_PROVIDER=gemini
 FRIDAY_LLM_MODEL=gemini-2.5-flash
 FRIDAY_GEMINI_API_KEY=your-gemini-api-key-here
+FRIDAY_COST_MODE=free_first
+FRIDAY_GEMINI_TIMEOUT=60.0
+FRIDAY_GEMINI_MAX_RETRIES=3
+FRIDAY_GEMINI_BACKOFF_FACTOR=2.0
 
 # Or use mock provider for offline development & testing:
 # FRIDAY_LLM_PROVIDER=mock
@@ -86,6 +90,8 @@ FRIDAY_MEMORY_MAX_MESSAGES=50
 # FRIDAY_LLM_API_KEY=your-api-key-here
 # FRIDAY_LLM_BASE_URL=https://api.openai.com/v1
 ```
+
+> **Note on Free-First Operation**: `FRIDAY_COST_MODE=free_first` ensures FRIDAY runs within predictable limits without silently activating paid billing or third-party paid services. Note that cloud provider rate limits and daily quota limits still apply according to your API tier.
 
 ### 4. Running FRIDAY
 

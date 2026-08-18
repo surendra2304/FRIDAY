@@ -23,11 +23,19 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", description="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
     log_file: Optional[str] = Field(default="logs/friday.log", description="Path to log file")
 
-    # LLM Settings
+    # LLM Settings & Cost Controls
     llm_provider: str = Field(default="mock", description="LLM provider name: 'mock', 'openai', 'gemini'")
     llm_model: str = Field(default="gemini-2.5-flash", description="Model identifier")
     llm_api_key: Optional[str] = Field(default=None, description="API Key for the provider (OpenAI or general)")
     gemini_api_key: Optional[str] = Field(default=None, description="API Key specifically for Google Gemini")
+    gemini_model: Optional[str] = Field(default=None, description="Optional Gemini-specific model name override")
+    gemini_timeout: float = Field(default=60.0, ge=1.0, le=600.0, description="Request timeout in seconds for Gemini API")
+    gemini_max_retries: int = Field(default=3, ge=0, le=10, description="Max retry attempts for transient Gemini API errors")
+    gemini_backoff_factor: float = Field(default=2.0, ge=1.0, le=10.0, description="Exponential backoff factor for retries")
+    gemini_max_tokens: Optional[int] = Field(default=None, ge=1, le=32768, description="Max output tokens override for Gemini")
+    gemini_temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0, description="Temperature override for Gemini")
+    cost_mode: str = Field(default="free_first", description="Operating cost policy: 'free_first', 'custom'")
+    max_daily_requests: Optional[int] = Field(default=None, ge=1, description="Optional safety limit on total daily LLM requests")
     llm_base_url: str = Field(default="https://api.openai.com/v1", description="Base URL for provider API")
     llm_temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="Sampling temperature")
     llm_max_tokens: int = Field(default=2048, ge=1, le=32768, description="Max tokens per response")
@@ -50,6 +58,7 @@ class Settings(BaseSettings):
         return (
             f"Settings(env={self.env!r}, log_level={self.log_level!r}, "
             f"llm_provider={self.llm_provider!r}, llm_model={self.llm_model!r}, "
+            f"cost_mode={self.cost_mode!r}, "
             f"llm_api_key={masked_key!r}, gemini_api_key={masked_gemini_key!r}, "
             f"memory_max_messages={self.memory_max_messages})"
         )

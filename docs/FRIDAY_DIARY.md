@@ -279,6 +279,24 @@
 * Added comprehensive integration test suite `tests/test_gemini_tools.py` (9 tests).
 * Expanded total test count from 132 to **141 tests**, maintaining a 100% pass rate in 25.18s.
 
+#### Session 22 — Gemini Model & Cost Controls (Free-First Operation & Observability)
+* Hardened FRIDAY's Gemini cloud usage controls for predictable, low-cost/free operation:
+  * **Free-First Cost Mode (`FRIDAY_COST_MODE=free_first`)**: Ensures FRIDAY operates with zero hidden or accidental cloud billings, relying on free-tier rate and quota parameters.
+  * **Granular Model & Request Controls**:
+    - `FRIDAY_GEMINI_MODEL`: Allows overriding the Gemini model independently from global defaults (`gemini-2.5-flash`, `gemini-1.5-pro`).
+    - `FRIDAY_GEMINI_TIMEOUT`: Configurable HTTP request timeout (default 60s).
+    - `FRIDAY_GEMINI_MAX_RETRIES` & `FRIDAY_GEMINI_BACKOFF_FACTOR`: Exponential backoff respecting provider `Retry-After` headers without endless loops on hard rate limits.
+    - `FRIDAY_GEMINI_MAX_TOKENS` & `FRIDAY_GEMINI_TEMPERATURE`: Granular generation parameter overrides.
+    - `FRIDAY_MAX_DAILY_REQUESTS`: Optional safety ceiling on total daily model queries.
+  * **Provider Isolation & Clean Failures**:
+    - Disallowed unconfigured silent fallbacks: a failed Gemini call fails with an informative, user-friendly exception rather than silently leaking data to another cloud provider.
+    - Mock provider remains fully decoupled and available for offline test and development environments.
+  * **Privacy-Preserving Usage Observability**:
+    - Added non-secret turn execution metadata: `duration_seconds`, `iterations`, `request_count`, `cost_mode`, `provider`, `model`, and `success`.
+    - Zero prompt/response dumping or API key logging.
+* Added dedicated test suite `tests/test_gemini_cost_and_controls.py` (8 tests).
+* Expanded total test count from 141 to **149 tests**, maintaining a 100% pass rate in 26.74s.
+
 ---
 
 ### Architecture / structure changes
@@ -427,6 +445,12 @@ FRIDAY/
   * *Alternatives Considered*: Local Ollama model execution (high CPU/RAM/battery drain on laptop), vendor-locked proprietary SDKs.
   * *Reason*: FRIDAY is designed to be cloud-first and lightweight on the user's laptop. The laptop handles agent orchestration, SQLite memory, tools, and UI, while heavy language inference is handled by Gemini (`gemini-2.5-flash`).
   * *Consequences*: Blazing fast inference, zero local GPU requirements, structured system instructions, and robust function calling.
+
+* **ADR-012: Free-First Cost Control, Rate-Limit Resiliency & Usage Observability**
+  * *Decision*: Structure FRIDAY's Gemini usage with an explicit `cost_mode="free_first"` policy, bounded retry counts with exponential backoff on transient errors, and privacy-preserving non-secret metadata observability.
+  * *Alternatives Considered*: Silent provider fallback (risks data leakage to unconfigured third parties), unconstrained retry loops (causes infinite stalls on 429 quota exhaustion).
+  * *Reason*: Users require total transparency and cost safety. Cloud usage must never silently trigger paid billing, and failed API calls must fail cleanly and predictably.
+  * *Consequences*: Predictable operation within free-tier quotas, zero accidental credit charges, clean user feedback on quota exhaustion, and full visibility into turn request counts and latencies.
 
 ---
 
@@ -596,6 +620,7 @@ END;
   * `118843b`: `feat(phase2): complete FRIDAY persistent memory foundation (v0.4.6)`
   * `3ed3430`: `feat(llm): add Gemini cloud provider`
   * `e9c1043`: `feat(llm): integrate Gemini function calling with FRIDAY tools`
+  * *(Pending Commit)*: `feat(config): add Gemini model and usage controls`
 * **Remote Repository**: `https://github.com/surendra2304/FRIDAY`
 * **Push Status**: Verified and in sync with `origin/main`
 
@@ -603,9 +628,14 @@ END;
 
 ### Current project state
 
-* **Status**: Complete, fully functional, and stabilized **Gemini Tool Calling & Safety Architecture**.
+* **Status**: Complete, fully functional, and stabilized **Gemini Model Controls, Cost Governance & Usage Observability**.
 * **Capabilities Operational**:
   * First-class Google Gemini Cloud Provider (`gemini-2.5-flash`, `gemini-1.5-pro`) with function calling, structured system instructions, and zero local laptop compute overhead.
+  * Free-first cost policy (`FRIDAY_COST_MODE=free_first`) ensuring operations stay within predictable free-tier limits without accidental paid service activations.
+  * Fine-grained model tuning controls: `FRIDAY_GEMINI_TIMEOUT`, `FRIDAY_GEMINI_MAX_RETRIES`, `FRIDAY_GEMINI_BACKOFF_FACTOR`, `FRIDAY_GEMINI_MAX_TOKENS`, `FRIDAY_GEMINI_TEMPERATURE`, and `FRIDAY_MAX_DAILY_REQUESTS`.
+  * Safe retry limits bounded by `max_retries` with exponential backoff on transient errors and rate limits (429/5xx).
+  * Strict provider isolation preventing unconfigured fallback leakage across third parties.
+  * Non-secret usage observability in `AgentResponse.metadata` (duration, iterations, request count, provider, model, cost mode).
   * Strict trust boundary enforcement: Gemini requests function calls $\rightarrow$ FRIDAY validates schemas $\rightarrow$ FRIDAY checks authorization $\rightarrow$ FRIDAY executes $\rightarrow$ returns structured result.
   * Support for direct responses, single tool call round-trips, concurrent parallel SAFE tools, and multi-step sequential reasoning.
   * Zero automated execution bypass for `SENSITIVE` and `DANGEROUS` tools.
@@ -638,7 +668,7 @@ END;
   * Correct JSON double-quote argument serialization (fixed Python single-quote bug).
   * Robust error recovery for missing tools, malformed arguments, tool exceptions, and safety denials.
   * Cloud endpoint HTTP error message extraction and HTML truncation handling.
-  * 100% pass rate across 141 automated tests.
+  * 100% pass rate across 149 automated tests.
 
 ---
 

@@ -25,12 +25,19 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
 
     if provider_type == "gemini":
         api_key = settings.gemini_api_key or settings.llm_api_key
-        logger.info(f"Initializing Google Gemini Provider (model: {settings.llm_model})")
+        model_name = settings.gemini_model or settings.llm_model
+        temperature = settings.gemini_temperature if settings.gemini_temperature is not None else settings.llm_temperature
+        max_tokens = settings.gemini_max_tokens if settings.gemini_max_tokens is not None else settings.llm_max_tokens
+        logger.info(f"Initializing Google Gemini Provider (model: {model_name}, cost_mode: {settings.cost_mode})")
         return GeminiLLMProvider(
             api_key=api_key,
-            model=settings.llm_model,
-            temperature=settings.llm_temperature,
-            max_tokens=settings.llm_max_tokens,
+            model=model_name,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=settings.gemini_timeout,
+            max_retries=settings.gemini_max_retries,
+            backoff_factor=settings.gemini_backoff_factor,
+            cost_mode=settings.cost_mode,
         )
 
     if provider_type in ("openai", "groq", "ollama", "openrouter"):

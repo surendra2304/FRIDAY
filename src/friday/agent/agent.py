@@ -445,10 +445,12 @@ class FridayAgent:
             metadata={
                 "duration_seconds": duration,
                 "iterations": iterations,
+                "request_count": iterations,
                 "tools_used": list(set(tc.name for tc in all_tool_calls)),
                 "success": all(not r.is_error for r in all_tool_results) if all_tool_results else True,
                 "provider": self.llm.provider_name,
                 "model": self.llm.model,
+                "cost_mode": getattr(self.settings, "cost_mode", "free_first"),
             },
         )
 

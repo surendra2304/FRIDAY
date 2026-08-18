@@ -23,11 +23,17 @@ class GeminiLLMProvider(BaseLLMProvider):
         temperature: float = 0.7,
         max_tokens: int = 2048,
         timeout: float = 60.0,
+        max_retries: int = 3,
+        backoff_factor: float = 2.0,
+        cost_mode: str = "free_first",
     ):
         super().__init__(model=model, temperature=temperature, max_tokens=max_tokens)
         self.api_key = api_key or ""
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self.max_retries = max_retries
+        self.backoff_factor = backoff_factor
+        self.cost_mode = cost_mode
 
     @property
     def provider_name(self) -> str:
@@ -150,8 +156,8 @@ class GeminiLLMProvider(BaseLLMProvider):
 
         payload = self._build_gemini_payload(messages, tools)
 
-        max_retries = 3
-        backoff_factor = 2.0
+        max_retries = self.max_retries
+        backoff_factor = self.backoff_factor
         initial_delay = 1.0
         data = None
 
