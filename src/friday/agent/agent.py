@@ -71,12 +71,93 @@ class FridayAgent:
         registry.register(FileListingTool())
         return registry
 
+    def _execute_single_tool_call(self, tc: ToolCall, allow_sensitive: bool) -> ToolResult:
+        """Validate, authorize, and execute a single tool call request."""
+        tool = self.tools.get(tc.name)
+        if not tool:
+            err_msg = f"Error: Tool '{tc.name}' is not registered or available in FRIDAY's tool registry."
+            logger.warning(err_msg)
+            return ToolResult(
+                tool_call_id=tc.id,
+                name=tc.name,
+                content=err_msg,
+                is_error=True,
+                safety_level=SafetyLevel.SAFE,
+            )
+
+        # 1. Validation happens BEFORE authorization request
+        is_valid, validation_err = tool.validate_arguments(tc.arguments)
+        if not is_valid:
+            err_msg = f"Invalid arguments for tool '{tc.name}': {validation_err}"
+            logger.warning(err_msg)
+            return ToolResult(
+                tool_call_id=tc.id,
+                name=tc.name,
+                content=err_msg,
+                is_error=True,
+                safety_level=tool.safety_level,
+            )
+
+        # 2. Extract affected resource (e.g. file paths) if present
+        affected_res = tc.arguments.get("path") or tc.arguments.get("file_path") or tc.arguments.get("directory")
+        if affected_res:
+            affected_res = str(affected_res)
+
+        auth_req = AuthorizationRequest(
+            tool_name=tc.name,
+            safety_level=tool.safety_level,
+            arguments=tc.arguments,
+            purpose=tool.description,
+            affected_resource=affected_res,
+        )
+
+        # 3. Handle authorization check (legacy allow_sensitive and SAFE tools auto-approve)
+        if tool.safety_level == SafetyLevel.SAFE:
+            auth_resp = AuthorizationResponse(
+                decision=AuthorizationDecision.APPROVED,
+                reason="Automatic execution approved for SAFE tools.",
+            )
+        elif allow_sensitive:
+            auth_resp = AuthorizationResponse(
+                decision=AuthorizationDecision.APPROVED,
+                reason="Bypassed authorization check via legacy allow_sensitive=True flag.",
+            )
+        else:
+            logger.info(f"Requesting authorization for tool '{tc.name}' [Safety: {tool.safety_level.value}]")
+            auth_resp = self.authorizer.authorize(auth_req)
+
+        logger.info(
+            f"Authorization outcome for tool '{tc.name}': {auth_resp.decision.value} "
+            f"(Reason: {auth_resp.reason})"
+        )
+
+        # 4. Execution happens ONLY after explicit authorization
+        if auth_resp.decision == AuthorizationDecision.APPROVED:
+            return self.tools.execute(
+                name=tc.name,
+                arguments=tc.arguments,
+                tool_call_id=tc.id,
+                allow_sensitive=True,
+            )
+        
+        err_msg = (
+            f"Authorization Block: Execution of tool '{tc.name}' was {auth_resp.decision.value}. "
+            f"Reason: {auth_resp.reason}"
+        )
+        return ToolResult(
+            tool_call_id=tc.id,
+            name=tc.name,
+            content=err_msg,
+            is_error=True,
+            safety_level=tool.safety_level,
+        )
+
     def process_message(
         self,
         user_input: str,
         allow_sensitive: bool = False,
     ) -> AgentResponse:
-        """Process a user message through reasoning, safety validation, and sequential tool execution."""
+        """Process a user message through reasoning, safety validation, and sequential/parallel tool execution."""
         start_time = time.perf_counter()
         clean_input = user_input.strip()
 
@@ -138,83 +219,42 @@ class FridayAgent:
             # Persist assistant's tool call intent message to memory
             self.memory.add_message(assistant_msg)
 
+            # Safety level classification check: determine if all tool calls are SAFE
+            all_safe = True
             for tc in assistant_msg.tool_calls:
-                all_tool_calls.append(tc)
-
                 tool = self.tools.get(tc.name)
-                if not tool:
-                    err_msg = f"Error: Tool '{tc.name}' is not registered or available in FRIDAY's tool registry."
-                    logger.warning(err_msg)
-                    result = ToolResult(
-                        tool_call_id=tc.id,
-                        name=tc.name,
-                        content=err_msg,
-                        is_error=True,
-                        safety_level=SafetyLevel.SAFE,
-                    )
-                else:
-                    # 1. Validation happens BEFORE authorization request
-                    is_valid, validation_err = tool.validate_arguments(tc.arguments)
-                    if not is_valid:
-                        err_msg = f"Invalid arguments for tool '{tc.name}': {validation_err}"
-                        logger.warning(err_msg)
-                        result = ToolResult(
-                            tool_call_id=tc.id,
-                            name=tc.name,
-                            content=err_msg,
-                            is_error=True,
-                            safety_level=tool.safety_level,
-                        )
-                    else:
-                        # 2. Extract affected resource (e.g. file paths) if present
-                        affected_res = tc.arguments.get("path") or tc.arguments.get("file_path") or tc.arguments.get("directory")
-                        if affected_res:
-                            affected_res = str(affected_res)
+                # If tool doesn't exist, we class as SAFE for routing (rejection happens early in execute method)
+                if tool and tool.safety_level != SafetyLevel.SAFE:
+                    all_safe = False
+                    break
 
-                        auth_req = AuthorizationRequest(
-                            tool_name=tc.name,
-                            safety_level=tool.safety_level,
-                            arguments=tc.arguments,
-                            purpose=tool.description,
-                            affected_resource=affected_res,
-                        )
+            batch_results: List[ToolResult] = []
+            batch_start = time.perf_counter()
 
-                        # 3. Handle authorization check (legacy allow_sensitive auto-approves for tests compatibility)
-                        if allow_sensitive:
-                            auth_resp = AuthorizationResponse(
-                                decision=AuthorizationDecision.APPROVED,
-                                reason="Bypassed authorization check via legacy allow_sensitive=True flag.",
-                            )
-                        else:
-                            logger.info(f"Requesting authorization for tool '{tc.name}' [Safety: {tool.safety_level.value}]")
-                            auth_resp = self.authorizer.authorize(auth_req)
+            if all_safe and len(assistant_msg.tool_calls) > 1:
+                # SAFE independent tools -> Parallel execution supported safely
+                logger.info(f"Coordinated execution: Executing {len(assistant_msg.tool_calls)} SAFE tools in parallel.")
+                from concurrent.futures import ThreadPoolExecutor
+                with ThreadPoolExecutor(max_workers=len(assistant_msg.tool_calls)) as executor:
+                    futures = [
+                        executor.submit(self._execute_single_tool_call, tc, allow_sensitive)
+                        for tc in assistant_msg.tool_calls
+                    ]
+                    batch_results = [f.result() for f in futures]
+                latency = time.perf_counter() - batch_start
+                logger.info(f"Coordinated parallel execution completed in {latency:.4f}s.")
+            else:
+                # Mixed or SENSITIVE/DANGEROUS tools -> Sequential ordering and auth semantics preserved
+                logger.info(f"Coordinated execution: Executing {len(assistant_msg.tool_calls)} tools sequentially.")
+                for tc in assistant_msg.tool_calls:
+                    res = self._execute_single_tool_call(tc, allow_sensitive)
+                    batch_results.append(res)
+                latency = time.perf_counter() - batch_start
+                logger.info(f"Coordinated sequential execution completed in {latency:.4f}s.")
 
-                        logger.info(
-                            f"Authorization outcome for tool '{tc.name}': {auth_resp.decision.value} "
-                            f"(Reason: {auth_resp.reason})"
-                        )
-
-                        # 4. Execution happens ONLY after explicit authorization
-                        if auth_resp.decision == AuthorizationDecision.APPROVED:
-                            result = self.tools.execute(
-                                name=tc.name,
-                                arguments=tc.arguments,
-                                tool_call_id=tc.id,
-                                allow_sensitive=True,
-                            )
-                        else:
-                            err_msg = (
-                                f"Authorization Block: Execution of tool '{tc.name}' was {auth_resp.decision.value}. "
-                                f"Reason: {auth_resp.reason}"
-                            )
-                            result = ToolResult(
-                                tool_call_id=tc.id,
-                                name=tc.name,
-                                content=err_msg,
-                                is_error=True,
-                                safety_level=tool.safety_level,
-                            )
-
+            # Process batch results in the exact requested order
+            for tc, result in zip(assistant_msg.tool_calls, batch_results):
+                all_tool_calls.append(tc)
                 all_tool_results.append(result)
 
                 # Notify callback if registered (e.g. for CLI status display)
