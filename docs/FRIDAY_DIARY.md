@@ -573,7 +573,7 @@ END;
   * `f23695b`: `security(memory): harden persistent memory privacy and retention (v0.4.4)`
   * `74b87e7`: `perf(memory): harden persistent memory storage and recovery (v0.4.5)`
   * `118843b`: `feat(phase2): complete FRIDAY persistent memory foundation (v0.4.6)`
-  * *(Pending Commit)*: `feat(llm): add Gemini cloud provider`
+  * `3ed3430`: `feat(llm): add Gemini cloud provider`
 * **Remote Repository**: `https://github.com/surendra2304/FRIDAY`
 * **Push Status**: Verified and in sync with `origin/main`
 
