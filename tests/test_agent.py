@@ -63,7 +63,7 @@ class DangerousActionTool(BaseTool):
 
 def test_agent_direct_response():
     """Agent answers directly when no tool is needed."""
-    settings = Settings(env="testing", llm_provider="mock", agent_name="FRIDAY", user_name="Boss")
+    settings = Settings(env="testing", llm_provider="mock", agent_name="FRIDAY")
     agent = FridayAgent(settings=settings)
 
     response = agent.process_message("What is your name?")
@@ -393,12 +393,15 @@ def test_agent_multi_turn_context_retention():
     history = agent.get_history()
     assert len(history) == 4
     assert history[0].content == "My favorite programming language is Python."
-    assert history[2].content == "What is my favorite programming language?"
+    # Verify assistant response includes dynamic user name
+    expected_content = f"Hello {agent.settings.user_name}, how can you help me?"
+    assert history[3].content == expected_content
 
 
 def test_agent_memory_persists_tool_calls():
     """Verify that intermediate tool call and tool result messages are persisted to memory."""
     call_count = 0
+    settings = Settings(env="testing")
 
     def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
         nonlocal call_count
@@ -406,7 +409,7 @@ def test_agent_memory_persists_tool_calls():
         if call_count == 1:
             return Message(
                 role=Role.ASSISTANT,
-                content="Triggering system info.",
+                content=f"All systems nominal, {settings.user_name}.",
                 tool_calls=[ToolCall(id="call_persist_info", name="get_system_info", arguments={})],
             )
         return Message(

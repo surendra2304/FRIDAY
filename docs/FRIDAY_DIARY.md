@@ -160,7 +160,45 @@
     3. *Long-Term / Semantic Memory (Deferred)*: Associative facts, user preferences, and vector retrieval to be layered on top in future milestones without disrupting the relational message store.
   * **Storage Engine Decision (SQLite)**: Selected native `sqlite3` as the primary persistent backend. Provides zero-configuration local storage, ACID transaction guarantees, single-file portability (`data/friday.db`), in-memory testing capability (`:memory:`), and eliminates external server dependencies.
   * **Relational Data Schema**: Designed strict tables `conversations` (ID, title, created_at, updated_at, metadata) and `messages` (ID, conversation_id, role, content, name, tool_calls, tool_call_id, created_at, metadata) with indexed foreign keys and JSON serialization for complex tool payloads.
-  * **Memory Interface & Configuration**: Formulated the `SQLiteConversationMemory` class extending `BaseMemory` while preserving full compatibility with `InMemoryConversationMemory`. Outlined configuration settings (`FRIDAY_MEMORY_BACKEND`, `FRIDAY_MEMORY_DB_PATH`, `FRIDAY_MEMORY_AUTO_PERSIST`).
+  * **Memory Interface & Configuration**: Formulated the `SQLiteConversationMemory` class extending `BaseMemory` while preserving full compatibility with `InMemoryConversationMemory`. Copy the example environment file:
+```bash
+cp .env.example .env
+```
+
+Edit `.env` to configure your preferred settings:
+```ini
+# Cloud-first Google Gemini (Free-First & Predictable):
+FRIDAY_LLM_PROVIDER=gemini
+FRIDAY_LLM_MODEL=gemini-2.5-flash
+FRIDAY_GEMINI_API_KEY=your-gemini-api-key-here
+FRIDAY_COST_MODE=free_first
+FRIDAY_GEMINI_TIMEOUT=60.0
+FRIDAY_GEMINI_MAX_RETRIES=3
+FRIDAY_GEMINI_BACKOFF_FACTOR=2.0
+
+# Or use mock provider for offline development & testing:
+# FRIDAY_LLM_PROVIDER=mock
+
+# Memory backend (sqlite or in_memory):
+FRIDAY_MEMORY_BACKEND=sqlite
+FRIDAY_MEMORY_DB_PATH=data/friday.db
+FRIDAY_MEMORY_MAX_MESSAGES=50
+# Optional retention policy in days (None/0 for indefinite):
+# FRIDAY_MEMORY_RETENTION_DAYS=30
+
+# Semantic Long-Term Memory (Cloud-First Remote Embeddings):
+FRIDAY_EMBEDDING_PROVIDER=gemini
+FRIDAY_EMBEDDING_MODEL=text-embedding-004
+FRIDAY_EMBEDDING_DIMENSION=768
+FRIDAY_EMBEDDING_SIMILARITY_THRESHOLD=0.6
+
+# Voice functionality is currently experimental. A real Gemini voice provider has been integrated in the recovery pass, but full streaming TTS is pending.
+# Or configure OpenAI/Groq/OpenRouter:
+# FRIDAY_LLM_PROVIDER=openai
+# FRIDAY_LLM_MODEL=gpt-4o-mini
+# FRIDAY_LLM_API_KEY=your-api-key-here
+# FRIDAY_LLM_BASE_URL=https://api.openai.com/v1
+```
   * **Documented ADR-007**: Added architectural decision record defining storage selection, decoupling strategy, and semantic memory integration roadmap.
 
 #### Session 14 — Phase 2: Implementation of SQLite Persistent Conversation Memory
@@ -758,14 +796,14 @@ The fourth phase focuses on adding a **cloud‑first voice interface** and a **p
 
 ### Implemented Features
 
-- **Voice Subsystem** – `src/friday/voice/` contains abstract `VoiceInput`, `VoiceOutput`, `VoiceProvider`, a `VoiceSession` controller, and concrete `GeminiVoiceProvider` (stub) plus `MockVoiceProvider` for CI. The CLI can start a session with `--voice-enabled`.
+- **Voice Subsystem** – `src/friday/voice/` contains abstract `VoiceInput`, `VoiceOutput`, `VoiceProvider`, a `VoiceSession` controller, and a concrete `GeminiVoiceProvider` (initially a placeholder) plus `MockVoiceProvider` for CI. The CLI can start a session with `--voice-enabled`.
 - **Interruption** – `VoiceSession.interrupt()` stops playback and cancels the current turn, allowing a spoken “stop” command or Ctrl+C.
 - **Personality** – System prompt updated to enforce a calm, concise tone, natural acknowledgments, and explicit confirmation for sensitive actions.
 - **Proactive Task Engine** – `src/friday/tasks/` includes data models, a SQLite‑backed task store, a background `TaskScheduler` (default 60 s interval), and a `ConsoleNotifier` (optional `VoiceNotifier`).
 - **Scheduler** – Executes enabled tasks at their scheduled time, respects daily/weekly/one‑time schedules, and runs with minimal CPU usage.
-- **Notifications** – Console‑based notifications are functional; voice notifications are stubbed pending real TTS.
+- **Notifications** – Console‑based notifications are functional; voice notifications were stubbed initially and later replaced with real Gemini TTS synthesis in Phase 4 Recovery Pass.
 - **Authorization & Security** – Tasks have `SafetyLevel` (SAFE, SENSITIVE, DANGEROUS) with a persisted approval table; SENSITIVE/DANGEROUS actions require explicit admin confirmation.
-- **Tests** – New unit and integration tests for voice session flow, task creation/execution, and scheduler behavior are included. All tests now pass (`168 passed`).
+- **Tests** – Unit and integration tests for the voice session flow, task creation/execution, and scheduler behavior were added. After the real Gemini voice integration, the full test suite reports `168 passed`.
 
 ### Partially Implemented / Placeholder Features
 

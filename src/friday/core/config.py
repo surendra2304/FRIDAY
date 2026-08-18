@@ -58,13 +58,16 @@ class Settings(BaseSettings):
 
     # Identity
     agent_name: str = Field(default="FRIDAY", description="Name of the AI assistant")
-    user_name: str = Field(default="Boss", description="Name/title to address the user")
+    user_name: str = Field(default="Surendra", description="Name/title to address the user")
 
     # Voice Interface Settings
     voice_enabled: bool = Field(default=False, description="Enable voice interface")
     voice_provider: str = Field(default="gemini", description="Voice provider: 'gemini' or 'mock'")
     voice_input_sample_rate: int = Field(default=16000, description="Audio sample rate for microphone input (Hz)")
     voice_output_format: str = Field(default="mp3", description="Audio format for synthesized speech")
+    # New optional settings for latency optimization
+    voice_playback_buffer_ms: int = Field(default=100, description="Playback buffer size in milliseconds for non‑blocking audio")
+    voice_model_warmup_text: str = Field(default="hello", description="Short text used to warm‑up the Gemini model on startup")
 
     def __repr__(self) -> str:
         """Safe string representation masking sensitive secrets."""

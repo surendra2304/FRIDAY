@@ -333,7 +333,7 @@ class FridayAgent:
 
         if not clean_input:
             return AgentResponse(
-                content="I'm listening. How can I assist you today, Boss?",
+                content=f"I'm listening. How can I assist you today, {self.settings.user_name}?",
                 is_done=True,
             )
 

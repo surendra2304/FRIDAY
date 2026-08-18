@@ -207,7 +207,7 @@ def main() -> None:
         try:
             user_input = input(f"{settings.user_name} > ").strip()
         except (KeyboardInterrupt, EOFError):
-            print("\nShutting down FRIDAY. Good day, Boss.")
+            print(f"\nShutting down FRIDAY. Good day, {settings.user_name}.")
             break
 
         if not user_input:

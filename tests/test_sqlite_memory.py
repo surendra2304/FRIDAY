@@ -65,7 +65,10 @@ def test_sqlite_memory_message_crud_and_ordering(tmp_path):
     mem = SQLiteConversationMemory(db_path=db_file)
 
     msg1 = Message(role=Role.USER, content="Hello Friday")
-    msg2 = Message(role=Role.ASSISTANT, content="Hello Boss, how can I help you?")
+    # Use dynamic user name from settings
+    settings = Settings()
+    user_name = settings.user_name
+    msg2 = Message(role=Role.ASSISTANT, content=f"Hello {user_name}, how can I help you?")
 
     mem.add_message(msg1)
     mem.add_message(msg2)

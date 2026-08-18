@@ -1,0 +1,79 @@
+{
+  "git": {
+    "branch": "main",
+    "head": "78db6baa29d2e3a06858c4f03934b831894b5253",
+    "remote": "origin\thttps://github.com/surendra2304/FRIDAY.git (fetch)\norigin\thttps://github.com/surendra2304/FRIDAY.git (push)",
+    "status": "?? audit/\n?? scratch/"
+  },
+  "env": {
+    "ignored": true,
+    "tracked": false,
+    "api_key_masked": null
+  },
+  "tests": {
+    "total": 168,
+    "passed": 168,
+    "failed": 0,
+    "skipped": 0,
+    "duration_seconds": 31.19
+  },
+  "placeholders": [],
+  "features": {
+    "Gemini Text Provider": {
+      "path": "src/friday/llm/gemini_provider.py",
+      "status": "IMPLEMENTED BUT NEEDS MODERNIZATION"
+    },
+    "Gemini Function Calling": {
+      "path": "src/friday/llm/gemini_provider.py",
+      "status": "IMPLEMENTED AND REAL"
+    },
+    "Gemini Embeddings": {
+      "path": "src/friday/embedding",
+      "status": "UNTESTED WITH REAL GEMINI"
+    },
+    "Semantic Memory": {
+      "path": "src/friday/memory/sqlite.py",
+      "status": "IMPLEMENTED AND REAL"
+    },
+    "Voice Input": {
+      "path": "src/friday/voice/gemini_provider.py",
+      "status": "PLACEHOLDER"
+    },
+    "Voice Output": {
+      "path": "src/friday/voice/gemini_provider.py",
+      "status": "PLACEHOLDER"
+    },
+    "Gemini Live Integration": {
+      "path": "src/friday/voice/gemini_provider.py",
+      "status": "PLACEHOLDER"
+    },
+    "TTS": {
+      "path": "src/friday/voice/gemini_provider.py",
+      "status": "PLACEHOLDER"
+    },
+    "Scheduler": {
+      "path": "src/friday/tasks",
+      "status": "IMPLEMENTED AND REAL"
+    },
+    "Notifications": {
+      "path": "src/friday/notification",
+      "status": "DOCUMENTATION-ONLY"
+    },
+    "Authorization": {
+      "path": "src/friday/core/auth.py",
+      "status": "IMPLEMENTED AND REAL"
+    },
+    "Persistent Memory": {
+      "path": "src/friday/memory/sqlite.py",
+      "status": "IMPLEMENTED AND REAL"
+    },
+    "Tool Execution": {
+      "path": "src/friday/tools",
+      "status": "IMPLEMENTED AND REAL"
+    },
+    "CLI": {
+      "path": "src/friday/cli",
+      "status": "IMPLEMENTED AND REAL"
+    }
+  }
+}
