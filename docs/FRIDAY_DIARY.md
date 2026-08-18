@@ -391,7 +391,7 @@ FRIDAY/
   * `f42a653`: `docs(memory): design persistent FRIDAY memory architecture (v0.3.12)`
   * `fc908d9`: `feat(memory): add persistent SQLite conversation storage (v0.4.0)`
   * `83ad174`: `chore: ignore local SQLite databases in data directory`
-  * *(Pending Commit)*: `feat(agent): integrate persistent conversation memory (v0.4.1)`
+  * `2ff4db3`: `feat(agent): integrate persistent conversation memory (v0.4.1)`
 * **Remote Repository**: `https://github.com/surendra2304/FRIDAY`
 * **Push Status**: Verified and in sync with `origin/main`
 
