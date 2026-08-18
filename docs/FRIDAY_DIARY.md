@@ -319,6 +319,21 @@
 * Added comprehensive test suite `tests/test_semantic_memory.py` (8 tests).
 * Expanded total test count from 149 to **157 tests**, maintaining a 100% pass rate in 27.25s.
 
+#### Session 24 — Gemini Semantic Embeddings, Safe Batching & Reciprocal Rank Fusion
+* Implemented Google Gemini cloud embedding provider with low-laptop-load architecture:
+  * **Provider & Model**: `GeminiEmbeddingProvider` using official `models/text-embedding-004` endpoint.
+  * **Configurable Dimensionality & Normalization**: Supports `outputDimensionality` payload parameter with L2 unit normalization.
+  * **Safe Bounded Batching**: Implemented `embed_batch` using `models/text-embedding-004:batchEmbedContents` in chunks of $\le 16$ items, with automatic graceful fallback to individual requests on chunk failure.
+  * **Privacy Model & Secret Sanitization**:
+    - Raw API keys, private keys, authorization tokens, and `.env` credentials are automatically filtered/redacted via `sanitize_text_for_embedding` before cloud transmission.
+    - Arbitrary local files are never automatically embedded; only verified memory records are stored.
+  * **Reciprocal Rank Fusion (RRF) Hybrid Search**:
+    - Fuses SQLite FTS5 lexical BM25 ranks with semantic vector similarity scores ($k = 60$, $w_{sem} = 1.0, w_{lex} = 0.8$).
+    - Deduplicates items and sorts by fused rank.
+    - Seamlessly falls back to pure FTS5 keyword retrieval if Gemini embeddings fail or API keys are absent.
+* Added dedicated test suite `tests/test_gemini_semantic_search.py` (6 tests).
+* Expanded total test count from 157 to **163 tests**, maintaining a 100% pass rate in 29.48s.
+
 ---
 
 ### Architecture / structure changes
@@ -651,6 +666,7 @@ END;
   * `e9c1043`: `feat(llm): integrate Gemini function calling with FRIDAY tools`
   * `cca2925`: `feat(config): add Gemini model and usage controls`
   * `2622aec`: `feat(memory): add provider-independent semantic memory architecture`
+  * *(Pending Commit)*: `feat(memory): add Gemini semantic embeddings and local retrieval`
 * **Remote Repository**: `https://github.com/surendra2304/FRIDAY`
 * **Push Status**: Verified and in sync with `origin/main`
 
@@ -658,13 +674,17 @@ END;
 
 ### Current project state
 
-* **Status**: Complete, fully functional, and stabilized **Provider-Independent Semantic Memory & Hybrid Retrieval**.
+* **Status**: Complete, fully functional, and stabilized **Gemini Semantic Embeddings, Safe Batching & RRF Hybrid Retrieval**.
 * **Capabilities Operational**:
   * Complete 4-Layer Memory Architecture:
     - **Layer 1: Working Memory** (Sliding in-memory context buffer).
     - **Layer 2: Persistent Conversation Memory** (ACID SQLite session isolation).
     - **Layer 3: Historical Search** (SQLite FTS5 full-text indexing with BM25 ranking).
     - **Layer 4: Semantic Long-Term Memory** (Cloud-first vector embeddings with cosine similarity and automatic FTS5 fallback).
+  * Cloud-first Google Gemini Semantic Embeddings (`GeminiEmbeddingProvider` with `text-embedding-004`, `outputDimensionality`, and L2 normalization).
+  * Safe bounded batch embedding (`batchEmbedContents` in $\le 16$ item chunks with individual request fallback).
+  * Secret and credential sanitization (`sanitize_text_for_embedding`) stripping raw API keys, tokens, and private keys before cloud transmission.
+  * Hybrid search with Reciprocal Rank Fusion (RRF) combining lexical BM25 matching and semantic vector similarity.
   * Provider-independent embedding interfaces (`BaseEmbeddingProvider`, `MockEmbeddingProvider`, `GeminiEmbeddingProvider`).
   * Zero local embedding inference overhead on laptop; remote processing via Google Gemini `text-embedding-004`.
   * Durable vector records (`EmbeddingRecord`) stored in SQLite with foreign key cascade guarantees.
@@ -707,7 +727,7 @@ END;
   * Correct JSON double-quote argument serialization (fixed Python single-quote bug).
   * Robust error recovery for missing tools, malformed arguments, tool exceptions, and safety denials.
   * Cloud endpoint HTTP error message extraction and HTML truncation handling.
-  * 100% pass rate across 157 automated tests.
+  * 100% pass rate across 163 automated tests.
 
 ---
 

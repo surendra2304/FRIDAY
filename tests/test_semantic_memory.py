@@ -52,7 +52,8 @@ def test_gemini_embedding_provider_remote_call_and_api_key_check():
         vec = provider.embed_text("Hello Gemini embeddings")
 
     assert len(vec) == 768
-    assert vec[0] == 0.123
+    norm = sum(x * x for x in vec) ** 0.5
+    assert pytest.approx(norm, rel=1e-3) == 1.0
     assert mock_post.called
     assert "models/text-embedding-004:embedContent" in mock_post.call_args[0][0]
 

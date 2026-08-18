@@ -680,32 +680,76 @@ class SQLiteConversationMemory(BaseMemory):
         conversation_id: Optional[str] = None,
         limit: int = 10,
     ) -> List[MemorySearchResult]:
-        """Search memory with semantic similarity if available, degrading gracefully to keyword search."""
+        """Perform hybrid search combining FTS5 lexical matching and semantic vector similarity using RRF."""
+        # 1. Gather lexical results from FTS5
+        lexical_results = self.search(query=query, conversation_id=conversation_id, limit=limit * 2)
+
+        # 2. Gather semantic results if embedding provider is available
+        semantic_results: List[SemanticSearchResult] = []
         if self.embedding_provider:
             try:
                 semantic_results = self.search_semantic(
                     query=query,
                     conversation_id=conversation_id,
-                    limit=limit,
+                    limit=limit * 2,
                     threshold=0.3,
                 )
-                if semantic_results:
-                    return [
-                        MemorySearchResult(
-                            conversation_id=sr.conversation_id,
-                            conversation_title=sr.metadata.get("conversation_title", "Semantic Match"),
-                            message_id=sr.message_id or sr.record_id,
-                            role=Role(sr.metadata.get("role", "assistant")),
-                            content=sr.source_text,
-                            timestamp=sr.created_at,
-                            score=sr.score,
-                        )
-                        for sr in semantic_results
-                    ]
             except Exception as e:
-                logger.warning(f"Semantic search failed; falling back to FTS5 keyword retrieval: {e}")
+                logger.warning(f"Semantic search failed; falling back to FTS5: {e}")
+                semantic_results = []
 
-        return self.search(query=query, conversation_id=conversation_id, limit=limit)
+        if not semantic_results:
+            return lexical_results[:limit]
+
+        if not lexical_results:
+            return [
+                MemorySearchResult(
+                    conversation_id=sr.conversation_id,
+                    conversation_title=sr.metadata.get("conversation_title", "Semantic Match"),
+                    message_id=sr.message_id or sr.record_id,
+                    role=Role(sr.metadata.get("role", "assistant")),
+                    content=sr.source_text,
+                    timestamp=sr.created_at,
+                    score=sr.score,
+                )
+                for sr in semantic_results[:limit]
+            ]
+
+        # 3. Reciprocal Rank Fusion (RRF)
+        k = 60.0
+        rrf_scores: Dict[str, float] = {}
+        merged_items: Dict[str, MemorySearchResult] = {}
+
+        # Score semantic items (weight = 1.0)
+        for rank, sr in enumerate(semantic_results, 1):
+            key = sr.message_id or sr.record_id
+            rrf_scores[key] = rrf_scores.get(key, 0.0) + (1.0 / (k + rank))
+            merged_items[key] = MemorySearchResult(
+                conversation_id=sr.conversation_id,
+                conversation_title=sr.metadata.get("conversation_title", "Semantic Match"),
+                message_id=key,
+                role=Role(sr.metadata.get("role", "assistant")),
+                content=sr.source_text,
+                timestamp=sr.created_at,
+                score=sr.score,
+            )
+
+        # Score lexical items (weight = 0.8)
+        for rank, lr in enumerate(lexical_results, 1):
+            key = lr.message_id
+            rrf_scores[key] = rrf_scores.get(key, 0.0) + (0.8 / (k + rank))
+            if key not in merged_items:
+                merged_items[key] = lr
+
+        # Sort by fused score
+        sorted_keys = sorted(rrf_scores.keys(), key=lambda x: rrf_scores[x], reverse=True)
+        final_results = []
+        for key in sorted_keys[:limit]:
+            item = merged_items[key]
+            item.score = round(rrf_scores[key], 4)
+            final_results.append(item)
+
+        return final_results
 
     @staticmethod
     def _cosine_similarity(u: List[float], v: List[float]) -> float:
