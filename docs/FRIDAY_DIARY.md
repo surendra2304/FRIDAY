@@ -341,7 +341,7 @@ FRIDAY/
   * `1c56676`: `feat(security): add explicit tool authorization and confirmation flow (v0.3.5)`
   * `b5914d1`: `feat(agent): support coordinated multi-tool execution (v0.3.8)`
   * `5519b4d`: `feat(core): improve agent reliability and execution observability (v0.3.9)`
-  * *(Pending Commit)*: `security(core): harden FRIDAY Phase 1 execution boundaries (v0.3.10)`
+  * `4f49bc5`: `security(core): harden FRIDAY Phase 1 execution boundaries (v0.3.10)`
 * **Remote Repository**: `https://github.com/surendra2304/FRIDAY`
 * **Push Status**: Verified and in sync with `origin/main`
 
