@@ -6,15 +6,23 @@ FRIDAY is a modular, extensible, autonomous personal AI assistant built with a s
 
 ---
 
-## 🌟 Features (v0.1.0)
+## 🌟 Features (v0.3.10)
 
-- **Modular Architecture**: Clean interfaces for LLM providers, tools, and memory.
-- **Safety-First Design**: Tools are strictly categorized as `SAFE`, `SENSITIVE`, or `DANGEROUS`.
+- **Modular Architecture**: Clean interfaces for LLM providers (`BaseLLMProvider`), tools (`BaseTool`), memory (`BaseMemory`), and authorization (`BaseAuthorizer`).
 - **Pluggable LLM Backends**:
-  - `Mock Provider`: Instant offline development & testing with zero API cost.
+  - `Mock Provider`: Instant offline development & testing with post-tool synthesis.
   - `OpenAI-Compatible Provider`: Works with OpenAI, Groq, Ollama, OpenRouter, and local LLMs.
+  - **Robust Retries**: Up to 3 retries with exponential backoff on transient network and rate limit errors (respects `Retry-After`).
+- **Reasoning Loop**: Sequential and parallel tool calling loop with maximum iteration safety guardrails.
+- **Safety-First Design**: Tools strictly categorized as `SAFE` (auto-executes), `SENSITIVE` (y/N prompt), or `DANGEROUS` (case-sensitive `CONFIRM` prompt).
+- **Built-in sandboxed tools**:
+  - `get_system_info` — Host OS, CPU, RAM and runtime diagnostics.
+  - `get_time_date` — Local system date, time, and day of week.
+  - `calculator` — AST-parsed arithmetic expression evaluator with DoS/length limitations.
+  - `read_file` — Sandboxed read-only text file reader (rejects absolute paths and binary formats).
+  - `list_dir` — Sandboxed directory lister (rejects absolute paths and limits output to 100 items).
 - **Contextual Memory**: Sliding window conversation buffer with token/message bounds.
-- **Safe Logging**: Structured logging with automated secret and API key masking.
+- **Safe & Structured Logging**: Regex secret masking and custom `SanitizedFormatter` preventing credentials leakage in tracebacks.
 - **Interactive Terminal REPL**: Full CLI with commands (`/status`, `/history`, `/tools`, `/clear`, `/exit`).
 - **Comprehensive Project Diary**: Permanent source of truth at [`docs/FRIDAY_DIARY.md`](docs/FRIDAY_DIARY.md).
 
@@ -106,10 +114,10 @@ FRIDAY maintains a permanent engineering diary, architectural decision records (
 
 ## 🗺️ Roadmap
 
-- [x] **V0.1 — Core Architecture & Foundation** *(Current)*
-- [ ] **V0.2 — Basic Agent & Streaming**
-- [ ] **V0.3 — Tool System Expansion & Confirmation Gating**
-- [ ] **V0.4 — Persistent SQLite & Vector Memory**
+- [x] **V0.1 — Core Architecture & Foundation**
+- [x] **V0.2 — Basic Agent Reasoning**
+- [x] **V0.3 — Tool System Expansion & Interactive Confirmation Gating** *(Current)*
+- [ ] **V0.4 — Persistent SQLite & Vector Memory** (Next milestone)
 - [ ] **V0.5 — Local Voice Interface (Whisper & Kokoro/EdgeTTS)**
 - [ ] **V0.6 — Safe Computer Control & Desktop Automation**
 - [ ] **V0.7 — Autonomous Workflows & Proactive Actions**

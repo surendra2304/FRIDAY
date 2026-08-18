@@ -190,7 +190,11 @@ FRIDAY/
 │       │   ├── registry.py          # ToolRegistry with schema validation & safety gating
 │       │   └── builtin/
 │       │       ├── __init__.py
-│       │       └── system_info.py   # Enriched System Diagnostics Tool (SAFE)
+│       │       ├── calculator.py    # Safe AST arithmetic expression evaluator (SAFE)
+│       │       ├── file_listing.py  # Sandboxed read-only workspace directory listing (SAFE)
+│       │       ├── file_reader.py   # Sandboxed read-only workspace file reader (SAFE)
+│       │       ├── system_info.py   # Enriched System Diagnostics Tool (SAFE)
+│       │       └── time_date.py     # Local host system date and time details (SAFE)
 │       ├── memory/
 │       │   ├── __init__.py
 │       │   ├── base.py              # BaseMemory ABC
