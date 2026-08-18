@@ -158,8 +158,18 @@ class FridayAgent:
         registry.register(MemorySearchTool(self.memory))
         return registry
 
-    def _execute_single_tool_call_internal(self, tc: ToolCall, allow_sensitive: bool) -> ToolResult:
+    def _execute_single_tool_call_internal(self, tc: ToolCall) -> ToolResult:
         """Validate, authorize, and execute a single tool call request internally."""
+        if tc.id in self._processed_tool_ids:
+            return ToolResult(
+                tool_call_id=tc.id,
+                name=tc.name,
+                content=f"Error: Duplicate tool call ID '{tc.id}' ignored.",
+                is_error=True,
+                safety_level=SafetyLevel.SAFE,
+            )
+        self._processed_tool_ids.add(tc.id)
+
         tool = self.tools.get(tc.name)
         if not tool:
             err_msg = f"Error: Tool '{tc.name}' is not registered or available in FRIDAY's tool registry."
@@ -198,20 +208,9 @@ class FridayAgent:
             affected_resource=affected_res,
         )
 
-        # 3. Handle authorization check (legacy allow_sensitive and SAFE tools auto-approve)
-        if tool.safety_level == SafetyLevel.SAFE:
-            auth_resp = AuthorizationResponse(
-                decision=AuthorizationDecision.APPROVED,
-                reason="Automatic execution approved for SAFE tools.",
-            )
-        elif allow_sensitive:
-            auth_resp = AuthorizationResponse(
-                decision=AuthorizationDecision.APPROVED,
-                reason="Bypassed authorization check via legacy allow_sensitive=True flag.",
-            )
-        else:
-            logger.info(f"Requesting authorization for tool '{tc.name}' [Safety: {tool.safety_level.value}]")
-            auth_resp = self.authorizer.authorize(auth_req)
+        # 3. Handle authorization check
+        logger.info(f"Requesting authorization for tool '{tc.name}' [Safety: {tool.safety_level.value}]")
+        auth_resp = self.authorizer.authorize(auth_req)
 
         logger.info(
             f"Authorization outcome for tool '{tc.name}': {auth_resp.decision.value} "
@@ -239,10 +238,10 @@ class FridayAgent:
             safety_level=tool.safety_level,
         )
 
-    def _execute_single_tool_call(self, tc: ToolCall, allow_sensitive: bool) -> ToolResult:
+    def _execute_single_tool_call(self, tc: ToolCall) -> ToolResult:
         """Validate, authorize, and execute a single tool call request with duration logging."""
         tool_start = time.perf_counter()
-        result = self._execute_single_tool_call_internal(tc, allow_sensitive)
+        result = self._execute_single_tool_call_internal(tc)
         tool_duration = time.perf_counter() - tool_start
         logger.info(
             f"Tool '{tc.name}' execution completed in {tool_duration:.4f}s "
@@ -251,12 +250,12 @@ class FridayAgent:
         return result
 
     def _execute_single_tool_call_with_timeout(
-        self, tc: ToolCall, allow_sensitive: bool, timeout: float = 30.0
+        self, tc: ToolCall, timeout: float = 30.0
     ) -> ToolResult:
         """Execute a single tool call wrapped inside a thread executor to enforce a strict timeout."""
         from concurrent.futures import ThreadPoolExecutor, TimeoutError
         with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(self._execute_single_tool_call, tc, allow_sensitive)
+            future = executor.submit(self._execute_single_tool_call, tc)
             try:
                 return future.result(timeout=timeout)
             except TimeoutError:
@@ -325,7 +324,6 @@ class FridayAgent:
     def process_message(
         self,
         user_input: str,
-        allow_sensitive: bool = False,
     ) -> AgentResponse:
         """Process a user message through reasoning, safety validation, and sequential/parallel tool execution."""
         start_time = time.perf_counter()
@@ -445,7 +443,7 @@ class FridayAgent:
                 from concurrent.futures import ThreadPoolExecutor, TimeoutError
                 with ThreadPoolExecutor(max_workers=len(assistant_msg.tool_calls)) as executor:
                     futures = [
-                        executor.submit(self._execute_single_tool_call, tc, allow_sensitive)
+                        executor.submit(self._execute_single_tool_call, tc)
                         for tc in assistant_msg.tool_calls
                     ]
                     for fut, tc in zip(futures, assistant_msg.tool_calls):
@@ -469,7 +467,7 @@ class FridayAgent:
                 # Mixed or SENSITIVE/DANGEROUS tools -> Sequential ordering and auth semantics preserved
                 logger.info(f"Coordinated execution: Executing {len(assistant_msg.tool_calls)} tools sequentially.")
                 for tc in assistant_msg.tool_calls:
-                    res = self._execute_single_tool_call_with_timeout(tc, allow_sensitive, timeout=tool_timeout)
+                    res = self._execute_single_tool_call_with_timeout(tc, timeout=tool_timeout)
                     batch_results.append(res)
                 latency = time.perf_counter() - batch_start
                 logger.info(f"Coordinated sequential execution completed in {latency:.4f}s.")

@@ -41,7 +41,7 @@ class MockLLMProvider(BaseLLMProvider):
                 content=(
                     f"Based on the system diagnostics, here is the report:\n\n"
                     f"{last_tool_msg.content}\n\n"
-                    f"All system metrics are within normal operational limits, Boss."
+                    f"All system metrics are within normal operational limits, Surendra."
                 ),
             )
 

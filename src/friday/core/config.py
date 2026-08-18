@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     # Identity
     agent_name: str = Field(default="FRIDAY", description="Name of the AI assistant")
     user_name: str = Field(default="Surendra", description="Name/title to address the user")
+    # Backup configuration
+    backup_dir: str = Field(default="data/backups", description="Directory for SQLite hot backups")
+
 
     # Voice Interface Settings
     voice_enabled: bool = Field(default=False, description="Enable voice interface")
@@ -68,6 +71,17 @@ class Settings(BaseSettings):
     # New optional settings for latency optimization
     voice_playback_buffer_ms: int = Field(default=100, description="Playback buffer size in milliseconds for non‑blocking audio")
     voice_model_warmup_text: str = Field(default="hello", description="Short text used to warm‑up the Gemini model on startup")
+    # Gemini Live voice settings
+    voice_live_model: str = Field(default="gemini-1.5-flash", description="Gemini Live voice model")
+    voice_live_sample_rate: int = Field(default=16000, description="Audio sample rate for microphone input (Hz) for live")
+    voice_live_output_format: str = Field(default="mp3", description="Audio format returned by Gemini Live")
+    voice_live_max_retries: int = Field(default=3, description="Max retries for live‑stream failures")
+    task_enabled: bool = Field(default=False, description="Enable proactive task automation")
+    # Task automation settings
+    task_max_calls: int = Field(default=100, description="Maximum allowed LLM calls per task")
+    task_retry_limit: int = Field(default=3, description="Maximum retry attempts for transient failures")
+    task_daily_cap: Optional[int] = Field(default=None, description="Optional cap on total daily task executions")
+    task_circuit_breaker_threshold: int = Field(default=5, description="Consecutive failure count before disabling a task")
 
     def __repr__(self) -> str:
         """Safe string representation masking sensitive secrets."""

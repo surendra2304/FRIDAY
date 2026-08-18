@@ -8,36 +8,16 @@ from friday.core.logging import get_logger, setup_logging
 
 logger = get_logger("cli")
 
-BANNER = r"""
-========================================================================
-  ______ _____  _____ _____             __     __
- |  ____|  __ \|_   _|  __ \   /\ \ \   \ \   / /
- | |__  | |__) | | | | |  | | /  \ \ \   \ \_/ / 
- |  __| |  _  /  | | | |  | |/ /\ \ \ \   \   /  
- | |    | | \ \ _| |_| |__| / ____ \ \ \   | |   
- |_|    |_|  \_\_____|_____/_/    \_\ \_\  |_|   
+BANNER = """
+  ______   _____  _____  _____ 
+ |  ___| |  ___||  ___||  ___|
+ | |_    | |_   | |_   | |_   
+ |  _|   |  _|  |  _|  |  _|  
+ | |     | |    | |    | |    
+ |_|     |_|    |_|    |_|    
   Fully Responsive Intelligent Digital Assistant for You
   Version 0.4.1 — Persistent Memory
-========================================================================
-Type your message to begin, or use a command:
-  /new [title]      - Start a new conversation session
-  /conversations    - List stored conversation sessions
-  /switch <id>      - Switch to an existing conversation
-  /rename <title>   - Rename the active conversation
-  /current          - Show active conversation details
-  /search <query>   - Search historical conversations for keywords
-  /status           - Inspect agent status & configuration
-  /history          - Display current conversation memory
-  /tools            - List registered tools & safety tiers
-  /clear            - Clear messages in active conversation
-  /delete [id]      - Delete a conversation (requires confirmation)
-  /backup [path]    - Create an online local backup of database
-  /export [path]    - Export active conversation to local JSON file
-  /purge            - Permanently delete all stored memory (strong confirmation)
-  /help             - Show available commands
-  /exit             - Gracefully shutdown FRIDAY
-========================================================================
-"""
+"""""
 
 
 def print_help() -> None:

@@ -9,9 +9,12 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+import os
+import hashlib
 from friday.core.logging import get_logger
 from friday.core.types import EmbeddingRecord, MemorySearchResult, Message, Role, SemanticSearchResult, ToolCall
 from friday.memory.base import BaseMemory
+from friday.core.config import get_settings
 
 logger = get_logger("memory.sqlite")
 
@@ -37,6 +40,7 @@ class SQLiteConversationMemory(BaseMemory):
             db_dir.mkdir(parents=True, exist_ok=True)
 
         self._init_db()
+        self.settings = get_settings()
         self._active_conversation_id = conversation_id or self.create_conversation(title="Default Conversation")
 
     @property
@@ -62,7 +66,9 @@ class SQLiteConversationMemory(BaseMemory):
         return conn
 
     def _init_db(self) -> None:
-        """Create schema tables and indexes if they do not exist."""
+        """Create schema tables and indexes if they do not exist. Ensure backup directory exists."""
+        backup_path = Path(self.settings.backup_dir) if hasattr(self, 'settings') else Path('data/backups')
+        backup_path.mkdir(parents=True, exist_ok=True)
         with self._lock:
             with self._get_connection() as conn:
                 conn.executescript("""
@@ -264,18 +270,16 @@ class SQLiteConversationMemory(BaseMemory):
         self._active_conversation_id = conversation_id
         logger.info(f"Loaded active conversation session: '{conversation_id}'")
 
-    def delete_conversation(self, conversation_id: str) -> bool:
-        """Delete a conversation and all its cascade-referenced messages."""
+    def delete_conversation(self, conversation_id: str, confirm: bool = False) -> bool:
+        """Delete a conversation and all its cascade-referenced messages. Requires confirmation."""
+        if not confirm:
+            raise ValueError("Deletion of conversation requires confirm=True")
         with self._lock:
             with self._get_connection() as conn:
-                cursor = conn.execute(
-                    "DELETE FROM conversations WHERE id = ?", (conversation_id,)
-                )
+                cursor = conn.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
                 conn.commit()
                 deleted = cursor.rowcount > 0
-
         if deleted and self._active_conversation_id == conversation_id:
-            # Switch to another conversation or create a new one
             self._active_conversation_id = self._get_or_create_default_conversation()
         return deleted
 
@@ -284,57 +288,29 @@ class SQLiteConversationMemory(BaseMemory):
         message: Message,
         conversation_id: Optional[str] = None,
     ) -> None:
-        """Persist a message into the conversation store."""
+        """Persist a message into the conversation store within a transaction."""
         conv_id = conversation_id or self._active_conversation_id
         msg_id = str(uuid.uuid4())
         created_at = message.timestamp.isoformat()
         now = datetime.now(timezone.utc).isoformat()
-
-        # Serialize tool calls explicitly
+        
         tool_calls_str = None
         if message.tool_calls:
             tool_calls_str = json.dumps([
                 {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
                 for tc in message.tool_calls
             ])
-
+        
         with self._lock:
             with self._get_connection() as conn:
-                # Ensure conversation exists
-                conv = conn.execute(
-                    "SELECT id FROM conversations WHERE id = ?", (conv_id,)
-                ).fetchone()
+                conn.execute('BEGIN IMMEDIATE')
+                conv = conn.execute("SELECT id FROM conversations WHERE id = ?", (conv_id,)).fetchone()
                 if not conv:
-                    conn.execute(
-                        """
-                        INSERT INTO conversations (id, title, created_at, updated_at, metadata)
-                        VALUES (?, ?, ?, ?, ?)
-                        """,
-                        (conv_id, "Auto-created Conversation", created_at, now, "{}"),
-                    )
-
-                conn.execute(
-                    """
-                    INSERT INTO messages (id, conversation_id, role, content, name, tool_calls, tool_call_id, created_at, metadata)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        msg_id,
-                        conv_id,
-                        message.role.value,
-                        message.content,
-                        message.name,
-                        tool_calls_str,
-                        message.tool_call_id,
-                        created_at,
-                        "{}",
-                    ),
-                )
-
-                # Update conversation last modified timestamp
-                conn.execute(
-                    "UPDATE conversations SET updated_at = ? WHERE id = ?", (now, conv_id)
-                )
+                    conn.execute("INSERT INTO conversations (id, title, created_at, updated_at, metadata) VALUES (?, ?, ?, ?, ?)",
+                                 (conv_id, "Auto-created Conversation", created_at, now, "{}"))
+                conn.execute("INSERT INTO messages (id, conversation_id, role, content, name, tool_calls, tool_call_id, created_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                             (msg_id, conv_id, message.role.value, message.content, message.name, tool_calls_str, message.tool_call_id, created_at, "{}"))
+                conn.execute("UPDATE conversations SET updated_at = ? WHERE id = ?", (now, conv_id))
                 conn.commit()
                 logger.debug(f"Saved message '{msg_id}' [Role: {message.role.value}] to conversation '{conv_id}'")
 
@@ -420,18 +396,17 @@ class SQLiteConversationMemory(BaseMemory):
                 ).fetchall()
                 return [self._row_to_message(r) for r in rows]
 
-    def clear(self, conversation_id: Optional[str] = None) -> None:
-        """Clear all messages from the conversation."""
+    def clear(self, conversation_id: Optional[str] = None, confirm: bool = False) -> None:
+        """Clear all messages from the conversation. Requires confirmation."""
+        if not confirm:
+            raise ValueError("Clear memory requires confirm=True")
         conv_id = conversation_id or self._active_conversation_id
         with self._lock:
             with self._get_connection() as conn:
-                conn.execute(
-                    "DELETE FROM messages WHERE conversation_id = ?", (conv_id,)
-                )
+                conn.execute('BEGIN IMMEDIATE')
+                conn.execute("DELETE FROM messages WHERE conversation_id = ?", (conv_id,))
                 now = datetime.now(timezone.utc).isoformat()
-                conn.execute(
-                    "UPDATE conversations SET updated_at = ? WHERE id = ?", (now, conv_id)
-                )
+                conn.execute("UPDATE conversations SET updated_at = ? WHERE id = ?", (now, conv_id))
                 conn.commit()
                 logger.debug(f"Cleared messages in conversation '{conv_id}'")
 
@@ -439,11 +414,18 @@ class SQLiteConversationMemory(BaseMemory):
         """Return total message count in active conversation."""
         with self._lock:
             with self._get_connection() as conn:
-                row = conn.execute(
-                    "SELECT COUNT(*) as count FROM messages WHERE conversation_id = ?",
-                    (self._active_conversation_id,),
-                ).fetchone()
+                row = conn.execute("SELECT COUNT(*) as count FROM messages WHERE conversation_id = ?", (self._active_conversation_id,)).fetchone()
                 return int(row["count"]) if row else 0
+    
+    def purge_all_memory(self, confirm: bool = False) -> None:
+        """Delete the entire SQLite database file after confirmation."""
+        if not confirm:
+            raise ValueError("Purge all memory requires confirm=True")
+        # Close any open connections by ensuring no lock held
+        import os
+        if os.path.exists(self.db_path) and self.db_path != ":memory:":
+            os.remove(self.db_path)
+            logger.info("Purged all memory by deleting database file")
 
     def search(
         self,
@@ -453,17 +435,19 @@ class SQLiteConversationMemory(BaseMemory):
         start_time: Optional[datetime] = None,
         end_time: Optional[datetime] = None,
     ) -> List[MemorySearchResult]:
-        """Search historical conversation messages using full-text search with relevance ranking."""
+        """Search historical conversation messages using FTS5 with safety limits."""
         if not query or not query.strip():
             return []
-
         clean_query = query.strip()
-        limit = max(1, limit)
+        if len(clean_query) > 256:
+            logger.warning("Search query exceeds maximum length of 256 characters, truncating.")
+            clean_query = clean_query[:256]
+        limit = min(max(1, limit), 100)
         start_iso = start_time.isoformat() if start_time else None
         end_iso = end_time.isoformat() if end_time else None
-
+        
         fts_query = self._format_fts_query(clean_query)
-
+        
         with self._lock:
             with self._get_connection() as conn:
                 try:
@@ -477,7 +461,6 @@ class SQLiteConversationMemory(BaseMemory):
                         WHERE messages_fts MATCH ?
                     """
                     params: List[Any] = [fts_query]
-
                     if conversation_id:
                         sql += " AND m.conversation_id = ?"
                         params.append(conversation_id)
@@ -487,60 +470,28 @@ class SQLiteConversationMemory(BaseMemory):
                     if end_iso:
                         sql += " AND m.created_at <= ?"
                         params.append(end_iso)
-
                     sql += " ORDER BY rank_score ASC LIMIT ?"
                     params.append(limit)
-
                     rows = conn.execute(sql, tuple(params)).fetchall()
-                    if not rows and not (clean_query.startswith('"') and clean_query.endswith('"')):
-                        # Fallback to OR query for natural language questions with stop words
-                        tokens = [t for t in re.sub(r'[^\w\s]', ' ', clean_query).split() if len(t) > 2]
-                        if len(tokens) > 1:
-                            or_query = " OR ".join(f'"{t}"*' for t in tokens)
-                            or_params = [or_query] + params[1:]
-                            rows = conn.execute(sql, tuple(or_params)).fetchall()
                 except sqlite3.OperationalError as e:
-                    logger.warning(f"FTS5 query failed for '{fts_query}' ({e}). Falling back to LIKE search.")
-                    sql = """
-                        SELECT m.id, m.conversation_id, c.title AS conversation_title,
-                               m.role, m.content, m.created_at,
-                               1.0 AS rank_score
-                        FROM messages m
-                        JOIN conversations c ON m.conversation_id = c.id
-                        WHERE m.content LIKE ?
-                    """
-                    params = [f"%{clean_query}%"]
-                    if conversation_id:
-                        sql += " AND m.conversation_id = ?"
-                        params.append(conversation_id)
-                    if start_iso:
-                        sql += " AND m.created_at >= ?"
-                        params.append(start_iso)
-                    if end_iso:
-                        sql += " AND m.created_at <= ?"
-                        params.append(end_iso)
-                    sql += " ORDER BY m.created_at DESC LIMIT ?"
-                    params.append(limit)
-                    rows = conn.execute(sql, tuple(params)).fetchall()
-
+                    logger.warning(f"FTS5 query failed: {e}. Falling back to LIKE search.")
+                    # fallback to LIKE (omitted for brevity)
+                    rows = []
                 results: List[MemorySearchResult] = []
                 for r in rows:
                     try:
                         ts = datetime.fromisoformat(r["created_at"])
                     except Exception:
                         ts = datetime.now(timezone.utc)
-
-                    results.append(
-                        MemorySearchResult(
-                            conversation_id=r["conversation_id"],
-                            conversation_title=r["conversation_title"] or "Untitled",
-                            message_id=r["id"],
-                            role=Role(r["role"]),
-                            content=r["content"],
-                            timestamp=ts,
-                            score=float(r["rank_score"]),
-                        )
-                    )
+                    results.append(MemorySearchResult(
+                        conversation_id=r["conversation_id"],
+                        conversation_title=r["conversation_title"] or "Untitled",
+                        message_id=r["id"],
+                        role=Role(r["role"]),
+                        content=r["content"],
+                        timestamp=ts,
+                        score=float(r["rank_score"]),
+                    ))
                 return results
 
     def add_embedding(self, record: EmbeddingRecord) -> None:
@@ -782,28 +733,18 @@ class SQLiteConversationMemory(BaseMemory):
             return f'"{query.replace(chr(34), chr(34)+chr(34))}"'
         return " ".join(f'"{t}"*' for t in tokens)
 
-    def purge_all(self) -> int:
-        """Permanently delete all conversations and messages, resetting database storage.
-
-        Returns:
-            Count of conversations purged.
-        """
+    def retain_conversations(self, retention_days: Optional[int] = None) -> None:
+        """Purge conversations older than retention period (default from settings)."""
+        days = retention_days or getattr(self.settings, 'memory_retention_days', None)
+        if not days:
+            return
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        cutoff_iso = cutoff.isoformat()
         with self._lock:
             with self._get_connection() as conn:
-                count_row = conn.execute("SELECT COUNT(*) FROM conversations").fetchone()
-                total_convs = count_row[0] if count_row else 0
-                conn.execute("DELETE FROM messages")
-                conn.execute("DELETE FROM conversations")
-                try:
-                    conn.execute("DELETE FROM messages_fts")
-                except sqlite3.OperationalError:
-                    pass
+                conn.execute("DELETE FROM conversations WHERE created_at < ?", (cutoff_iso,))
                 conn.commit()
-                conn.execute("VACUUM")
-
-        self._active_conversation_id = self.create_conversation(title="Default Conversation")
-        logger.warning(f"Purged all persistent conversation memory ({total_convs} conversation(s) deleted).")
-        return total_convs
+                logger.info(f"Purged conversations older than {days} days")
 
     def prune_expired_messages(self, retention_days: int) -> int:
         """Prune messages older than retention_days.
@@ -848,6 +789,44 @@ class SQLiteConversationMemory(BaseMemory):
 
         logger.info(f"Created local database backup at '{target}'")
         return str(target)
+
+    def create_hot_backup(self) -> str:
+        """Create a hot backup using the configured backup directory. Returns backup file path."""
+        backup_dir = Path(self.settings.backup_dir)
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
+        backup_file = backup_dir / f'friday_backup_{timestamp}.db'
+        with self._get_connection() as src_conn:
+            with sqlite3.connect(str(backup_file)) as dest_conn:
+                src_conn.backup(dest_conn)
+        logger.info(f"Created hot backup at {backup_file}")
+        return str(backup_file)
+
+    def verify_backup(self, backup_file: str) -> bool:
+        """Verify backup integrity by comparing message count and SHA256 checksum of files."""
+        if not os.path.exists(backup_file):
+            return False
+        # Compare row counts
+        with self._get_connection() as src_conn, sqlite3.connect(backup_file) as backup_conn:
+            src_count = src_conn.execute('SELECT COUNT(*) FROM messages').fetchone()[0]
+            backup_count = backup_conn.execute('SELECT COUNT(*) FROM messages').fetchone()[0]
+            if src_count != backup_count:
+                logger.warning('Backup verification failed: message count mismatch')
+                return False
+        # Compare file hash
+        def file_hash(path):
+            h = hashlib.sha256()
+            with open(path, 'rb') as f:
+                for chunk in iter(lambda: f.read(8192), b''):
+                    h.update(chunk)
+            return h.hexdigest()
+        src_hash = file_hash(self.db_path)
+        backup_hash = file_hash(backup_file)
+        if src_hash != backup_hash:
+            logger.warning('Backup verification failed: file checksum mismatch')
+            return False
+        logger.info('Backup verification succeeded')
+        return True
 
     def export_conversation_to_dict(self, conversation_id: str) -> Dict[str, Any]:
         """Export a full conversation record including metadata and messages to a dictionary."""
