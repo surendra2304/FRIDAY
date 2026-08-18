@@ -2,6 +2,7 @@
 
 import sys
 from friday.agent.agent import FridayAgent
+from friday.cli.auth import CLIAuthorizer
 from friday.core.config import get_settings
 from friday.core.logging import get_logger, setup_logging
 
@@ -103,7 +104,11 @@ def main() -> None:
     setup_logging(level=settings.log_level, log_file=settings.log_file)
     logger.info("Starting FRIDAY CLI session")
 
-    agent = FridayAgent(settings=settings, tool_callback=on_tool_event)
+    agent = FridayAgent(
+        settings=settings,
+        tool_callback=on_tool_event,
+        authorizer=CLIAuthorizer(),
+    )
 
     print(BANNER)
     print(f"FRIDAY initialized. Provider: [{agent.llm.provider_name}], Model: [{agent.llm.model}].\n")

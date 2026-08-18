@@ -86,3 +86,26 @@ class AgentResponse(BaseModel):
     tool_results: Optional[List[ToolResult]] = Field(default=None, description="Results of executed tools if any")
     is_done: bool = Field(default=True, description="Whether the agent turn is complete")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Execution metadata (timing, token count, etc.)")
+
+
+class AuthorizationDecision(str, Enum):
+    """Possible outcomes of an authorization request."""
+    APPROVED = "APPROVED"
+    DENIED = "DENIED"
+    EXPIRED = "EXPIRED"
+    CANCELLED = "CANCELLED"
+
+
+class AuthorizationRequest(BaseModel):
+    """A formal request to authorize a tool call execution."""
+    tool_name: str = Field(..., description="Name of the tool requested")
+    safety_level: SafetyLevel = Field(..., description="Safety level classification of the tool")
+    arguments: Dict[str, Any] = Field(default_factory=dict, description="Arguments passed to the tool")
+    purpose: Optional[str] = Field(default=None, description="Implicit or explicit purpose of the execution")
+    affected_resource: Optional[str] = Field(default=None, description="Identifier of the resource affected (e.g. file path)")
+
+
+class AuthorizationResponse(BaseModel):
+    """Decision outcome and reason for a tool call authorization request."""
+    decision: AuthorizationDecision = Field(..., description="The authorization decision")
+    reason: Optional[str] = Field(default=None, description="Detailed rationale for the decision")

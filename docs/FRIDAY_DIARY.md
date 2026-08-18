@@ -108,6 +108,22 @@
 * Expanded test suite from 42 to **54 tests** covering all new built-in tools (arithmetic evaluations, security injection blockages, traversal blocks, file system operations, binary rejections) and natural language agent queries using Mock responders.
 * Confirmed 100% test pass rate (54/54 passed in 0.84s).
 
+#### Session 9 — Phase 1.2: Explicit Tool Authorization and Confirmation Flow
+* Introduced a robust tool authorization and confirmation mechanism:
+  * **Permission Architecture**: Added strongly typed domain models `AuthorizationDecision` (APPROVED, DENIED, EXPIRED, CANCELLED), `AuthorizationRequest` (containing tool name, safety level, arguments, purpose, affected resource), and `AuthorizationResponse` in `src/friday/core/types.py`.
+  * **Authorization Abstraction (`BaseAuthorizer` ABC)**: Created a core authorization boundary in `src/friday/core/auth.py` that decouples the agent from interface-specific confirmation mechanisms.
+  * **Interactive CLI Confirmation (`CLIAuthorizer`)**: Implemented a terminal-based prompt in `src/friday/cli/auth.py`:
+    * `SAFE` tools are auto-approved for automatic execution.
+    * `SENSITIVE` tools show a detailed prompt of requested arguments and resources, requiring an explicit case-insensitive `[y/N]` confirmation.
+    * `DANGEROUS` tools require typing the exact word `CONFIRM` (case-sensitive) to prevent accidental destructive actions.
+    * Gracefully handles KeyboardInterrupt (Ctrl+C) or EOF by converting execution requests to `CANCELLED`.
+  * **Secure Defaults (`DefaultSecureAuthorizer` and `AutoDenyAuthorizer`)**: Prevents unsafe executions by defaulting to auto-deny policies when no interactive environment is attached.
+  * **Validation Gating**: Ensured validation (parameter schema compliance) happens before authorization requests, and execution happens only after authorization is APPROVED.
+  * **Audit logging**: Authorization requests, safety levels, and decisions are cleanly logged to the console/file logs.
+* Updated `FridayAgent` to accept `authorizer: Optional[BaseAuthorizer]` and inject `CLIAuthorizer` inside CLI main entry point.
+* Expanded test suite from 54 to **63 tests** covering SAFE auto-execution, SENSITIVE approved/denied execution, DANGEROUS approved/denied execution, cancelled/expired confirmations, validation priority, and execution gating.
+* Confirmed 100% test pass rate (63/63 passed in 0.86s).
+
 ---
 
 ### Architecture / structure changes
@@ -129,10 +145,11 @@ FRIDAY/
 │       ├── __main__.py              # Entrypoint for python -m friday
 │       ├── core/
 │       │   ├── __init__.py
+│       │   ├── auth.py              # BaseAuthorizer, DefaultSecureAuthorizer, and test mocks
 │       │   ├── config.py            # Pydantic Settings, env loading, secret masking
 │       │   ├── exceptions.py        # Domain exception hierarchy
 │       │   ├── logging.py           # Structured logging & secret sanitization filter
-│       │   └── types.py             # Role, SafetyLevel, Message, ToolCall, AgentResponse
+│       │   └── types.py             # Role, SafetyLevel, Message, ToolCall, AgentResponse, Authorization
 │       ├── llm/
 │       │   ├── __init__.py
 │       │   ├── base.py              # BaseLLMProvider ABC
@@ -156,11 +173,13 @@ FRIDAY/
 │       │   └── prompts.py           # Persona prompts & system messages
 │       └── cli/
 │           ├── __init__.py
+│           ├── auth.py              # Interactive CLIAuthorizer prompting y/N or CONFIRM
 │           └── main.py              # Interactive REPL with real-time tool progress feedback
 └── tests/
     ├── __init__.py
     ├── conftest.py                  # Pytest fixtures
     ├── test_agent.py                # Agent dialog, multi-step tool loops & error handling tests
+    ├── test_auth.py                 # Authorization gating, validation priority, and CLI tests
     ├── test_config.py               # Settings & masking tests
     ├── test_llm_providers.py        # Mock & OpenAI provider tests
     ├── test_logging.py              # Logging & secret filter tests

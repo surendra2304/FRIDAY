@@ -3,9 +3,20 @@
 import time
 from typing import Any, Callable, Dict, List, Optional
 from friday.agent.prompts import build_system_message
+from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer
 from friday.core.config import Settings, get_settings
 from friday.core.logging import get_logger
-from friday.core.types import AgentResponse, Message, Role, ToolCall, ToolResult
+from friday.core.types import (
+    AgentResponse,
+    Message,
+    Role,
+    ToolCall,
+    ToolResult,
+    AuthorizationRequest,
+    AuthorizationResponse,
+    AuthorizationDecision,
+    SafetyLevel,
+)
 from friday.llm.base import BaseLLMProvider
 from friday.llm.factory import create_llm_provider
 from friday.memory.base import BaseMemory
@@ -33,6 +44,7 @@ class FridayAgent:
         tool_registry: Optional[ToolRegistry] = None,
         max_tool_iterations: int = 5,
         tool_callback: Optional[Callable[[ToolCall, ToolResult], None]] = None,
+        authorizer: Optional[BaseAuthorizer] = None,
     ) -> None:
         self.settings = settings or get_settings()
         self.llm = llm_provider or create_llm_provider(self.settings)
@@ -40,6 +52,7 @@ class FridayAgent:
         self.tools = tool_registry or self._create_default_registry()
         self.max_tool_iterations = max(1, max_tool_iterations)
         self.tool_callback = tool_callback
+        self.authorizer = authorizer or DefaultSecureAuthorizer()
         self.system_message = build_system_message(self.settings)
 
         logger.info(
@@ -128,13 +141,80 @@ class FridayAgent:
             for tc in assistant_msg.tool_calls:
                 all_tool_calls.append(tc)
 
-                # Execute tool with safety & argument checks
-                result = self.tools.execute(
-                    name=tc.name,
-                    arguments=tc.arguments,
-                    tool_call_id=tc.id,
-                    allow_sensitive=allow_sensitive,
-                )
+                tool = self.tools.get(tc.name)
+                if not tool:
+                    err_msg = f"Error: Tool '{tc.name}' is not registered or available in FRIDAY's tool registry."
+                    logger.warning(err_msg)
+                    result = ToolResult(
+                        tool_call_id=tc.id,
+                        name=tc.name,
+                        content=err_msg,
+                        is_error=True,
+                        safety_level=SafetyLevel.SAFE,
+                    )
+                else:
+                    # 1. Validation happens BEFORE authorization request
+                    is_valid, validation_err = tool.validate_arguments(tc.arguments)
+                    if not is_valid:
+                        err_msg = f"Invalid arguments for tool '{tc.name}': {validation_err}"
+                        logger.warning(err_msg)
+                        result = ToolResult(
+                            tool_call_id=tc.id,
+                            name=tc.name,
+                            content=err_msg,
+                            is_error=True,
+                            safety_level=tool.safety_level,
+                        )
+                    else:
+                        # 2. Extract affected resource (e.g. file paths) if present
+                        affected_res = tc.arguments.get("path") or tc.arguments.get("file_path") or tc.arguments.get("directory")
+                        if affected_res:
+                            affected_res = str(affected_res)
+
+                        auth_req = AuthorizationRequest(
+                            tool_name=tc.name,
+                            safety_level=tool.safety_level,
+                            arguments=tc.arguments,
+                            purpose=tool.description,
+                            affected_resource=affected_res,
+                        )
+
+                        # 3. Handle authorization check (legacy allow_sensitive auto-approves for tests compatibility)
+                        if allow_sensitive:
+                            auth_resp = AuthorizationResponse(
+                                decision=AuthorizationDecision.APPROVED,
+                                reason="Bypassed authorization check via legacy allow_sensitive=True flag.",
+                            )
+                        else:
+                            logger.info(f"Requesting authorization for tool '{tc.name}' [Safety: {tool.safety_level.value}]")
+                            auth_resp = self.authorizer.authorize(auth_req)
+
+                        logger.info(
+                            f"Authorization outcome for tool '{tc.name}': {auth_resp.decision.value} "
+                            f"(Reason: {auth_resp.reason})"
+                        )
+
+                        # 4. Execution happens ONLY after explicit authorization
+                        if auth_resp.decision == AuthorizationDecision.APPROVED:
+                            result = self.tools.execute(
+                                name=tc.name,
+                                arguments=tc.arguments,
+                                tool_call_id=tc.id,
+                                allow_sensitive=True,
+                            )
+                        else:
+                            err_msg = (
+                                f"Authorization Block: Execution of tool '{tc.name}' was {auth_resp.decision.value}. "
+                                f"Reason: {auth_resp.reason}"
+                            )
+                            result = ToolResult(
+                                tool_call_id=tc.id,
+                                name=tc.name,
+                                content=err_msg,
+                                is_error=True,
+                                safety_level=tool.safety_level,
+                            )
+
                 all_tool_results.append(result)
 
                 # Notify callback if registered (e.g. for CLI status display)
