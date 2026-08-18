@@ -1,7 +1,7 @@
 # FRIDAY Project Diary
 
 > **Permanent, never-ending historical record and institutional memory of the FRIDAY project.**
-> **Started: 2026-08-18 | Current Version: v0.3.11 | Milestone: V0.3 Tool System Expansion & Interactive Confirmation**
+> **Started: 2026-08-18 | Current Version: v0.3.12 | Milestone: Phase 2 Persistent Memory Architecture Design**
 
 ---
 
@@ -152,6 +152,17 @@
 * Expanded test suite from 79 to **82 tests** in `tests/test_logging.py` and `tests/test_tools.py` verifying absolute path rejections (Unix/Windows format boundaries) and SanitizedFormatter traceback filtering.
 * Confirmed 100% test pass rate (82/82 passed in 13.30s).
 
+#### Session 13 — Phase 2: Memory Architecture Audit and Persistent Storage Design
+* Completed architectural audit and design for Phase 2 Persistent Memory:
+  * **Layered Memory Model**: Formally delineated three memory layers:
+    1. *Working Memory*: Active short-term conversational context window (system message + recent turns) held in memory for immediate agent decision iterations.
+    2. *Persistent Conversation Memory*: Durable local conversation and message store surviving application restarts, recording all turns, tool calls, and results chronologically.
+    3. *Long-Term / Semantic Memory (Deferred)*: Associative facts, user preferences, and vector retrieval to be layered on top in future milestones without disrupting the relational message store.
+  * **Storage Engine Decision (SQLite)**: Selected native `sqlite3` as the primary persistent backend. Provides zero-configuration local storage, ACID transaction guarantees, single-file portability (`data/friday.db`), in-memory testing capability (`:memory:`), and eliminates external server dependencies.
+  * **Relational Data Schema**: Designed strict tables `conversations` (ID, title, created_at, updated_at, metadata) and `messages` (ID, conversation_id, role, content, name, tool_calls, tool_call_id, created_at, metadata) with indexed foreign keys and JSON serialization for complex tool payloads.
+  * **Memory Interface & Configuration**: Formulated the `SQLiteConversationMemory` class extending `BaseMemory` while preserving full compatibility with `InMemoryConversationMemory`. Outlined configuration settings (`FRIDAY_MEMORY_BACKEND`, `FRIDAY_MEMORY_DB_PATH`, `FRIDAY_MEMORY_AUTO_PERSIST`).
+  * **Documented ADR-007**: Added architectural decision record defining storage selection, decoupling strategy, and semantic memory integration roadmap.
+
 ---
 
 ### Architecture / structure changes
@@ -261,6 +272,12 @@ FRIDAY/
   * *Reason*: Early schema validation produces consistent, structured error messages in `ToolResult` that allow LLMs to understand what parameter was missing or malformed and self-correct.
   * *Consequences*: Zero unhandled parameter crashes during tool execution.
 
+* **ADR-007: SQLite as the Embedded Persistent Memory Backend**
+  * *Decision*: Use standard library `sqlite3` for persistent conversation storage while keeping `BaseMemory` abstract and decoupled from the agent loop.
+  * *Alternatives Considered*: PostgreSQL/MySQL (requires external service daemon), JSON flat-files (lacks concurrency safety, slow indexing, corruption risk), Vector databases as primary store (unnecessary overhead for sequential conversation logs).
+  * *Reason*: SQLite is built-in, transactional, reliable, and requires zero external infrastructure. It stores conversation histories cleanly and allows future semantic/vector indices to reference message IDs directly.
+  * *Consequences*: Instant local persistence across CLI sessions with zero new runtime dependencies.
+
 ---
 
 ### Bugs encountered
@@ -347,6 +364,7 @@ FRIDAY/
   * `5519b4d`: `feat(core): improve agent reliability and execution observability (v0.3.9)`
   * `4f49bc5`: `security(core): harden FRIDAY Phase 1 execution boundaries (v0.3.10)`
   * `dd4b253`: `feat(phase1): complete FRIDAY core intelligence foundation (v0.3.11)`
+  * *(Pending Commit)*: `docs(memory): design persistent FRIDAY memory architecture (v0.3.12)`
 * **Remote Repository**: `https://github.com/surendra2304/FRIDAY`
 * **Push Status**: Verified and in sync with `origin/main`
 
