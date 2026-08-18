@@ -1,7 +1,7 @@
 # FRIDAY Project Diary
 
 > **Permanent, never-ending historical record and institutional memory of the FRIDAY project.**
-> **Started: 2026-08-18 | Current Version: v0.1.0 | Milestone: V0.1 Core Foundation**
+> **Started: 2026-08-18 | Current Version: v0.2.0 | Milestone: V0.2 Agent Brain & Tool-Calling Architecture**
 
 ---
 
@@ -9,7 +9,7 @@
 
 ### Project state at start
 
-* The project directory (`d:/FRIDAY`) was completely empty.
+* The project directory (`d:/FRIDAY`) was completely empty at the start of the day.
 * No existing codebase, configuration, dependency files, or documentation existed.
 * System environment: Python 3.11.9 on Windows 11 x64, with Git and GitHub CLI (`gh`) authenticated.
 * Core mission established: Build **FRIDAY** (**F**ully **R**esponsive **I**ntelligent **D**igital **A**ssistant for **Y**ou) as a modular, extensible, safety-first personal AI assistant without premature dependencies on heavy monolithic frameworks.
@@ -23,7 +23,7 @@
 * Defined the permanent Project Diary structure in `docs/FRIDAY_DIARY.md` as the eternal source of truth.
 * Authored `pyproject.toml`, `requirements.txt`, `.env.example`, and `.gitignore`.
 
-#### Session 2 — Core Engine & Subsystem Implementation
+#### Session 2 — Core Engine & Subsystem Implementation (V0.1)
 * **`friday.core`**:
   * Implemented strongly-typed data structures (`Role`, `SafetyLevel`, `Message`, `ToolCall`, `ToolResult`, `AgentResponse`) in `src/friday/core/types.py`.
   * Built custom domain exception hierarchy (`FridayError`, `ConfigError`, `LLMProviderError`, `ToolError`, `SafetyError`, `MemoryError`) in `src/friday/core/exceptions.py`.
@@ -48,7 +48,7 @@
   * Built interactive console interface `src/friday/cli/main.py` with custom slash commands (`/help`, `/status`, `/history`, `/tools`, `/clear`, `/exit`).
   * Configured package entry points in `src/friday/__main__.py` and `pyproject.toml`.
 
-#### Session 3 — Test Suite & Bug Fixes
+#### Session 3 — Test Suite & Initial Bug Fixes
 * Implemented 24 comprehensive pytest unit and integration tests across 6 test modules in `tests/`.
 * Discovered and resolved Windows console encoding issue (`UnicodeEncodeError` on `cp1252` terminal) by adopting ASCII-safe artwork and configuring UTF-8 stdout reconfiguration.
 * Discovered and resolved double-redaction assertion discrepancy in `test_logging.py`.
@@ -58,7 +58,26 @@
 * Initialized local Git repository on `main` branch.
 * Verified zero secret leakage in tracked files (`.gitignore` verified).
 * Created public remote repository `https://github.com/surendra2304/FRIDAY` via GitHub CLI.
-* Pushed initial foundation commit to GitHub.
+* Pushed initial foundation commit (`74bd226`) to GitHub.
+
+#### Session 5 — Milestone V0.2: Agent Brain & Multi-Step Tool-Calling Loop
+* **Schema-Driven Argument Validation**:
+  * Added `validate_arguments(arguments)` method to `BaseTool` in `src/friday/tools/base.py` verifying required parameters and expected data types (`string`, `integer`, `number`, `boolean`, `array`, `object`).
+  * Integrated schema validation into `ToolRegistry.execute()` in `src/friday/tools/registry.py` to intercept and return structured `ToolResult` error payloads if arguments are malformed.
+* **Enriched System Diagnostics Tool**:
+  * Enhanced `SystemInfoTool` in `src/friday/tools/builtin/system_info.py` to provide comprehensive OS details, machine architecture, logical CPU core count, real-time physical RAM statistics via Win32 API, Python runtime paths, and category filters (`all`, `os`, `hardware`, `runtime`).
+* **Sequential Multi-Step Agent Tool-Calling Loop**:
+  * Refactored `FridayAgent.process_message()` in `src/friday/agent/agent.py` with a multi-step execution loop.
+  * Supported sequential tool calling pipelines (e.g. Turn 1 $\rightarrow$ Tool A $\rightarrow$ Turn 2 $\rightarrow$ Tool B $\rightarrow$ Turn 3 $\rightarrow$ Final Response).
+  * Added `max_tool_iterations` (default: 5) safety guardrail to protect against infinite tool-calling loops.
+  * Added `tool_callback` support to broadcast real-time tool execution events to UI/CLI listeners.
+* **Interactive CLI Tool Feedback**:
+  * Updated `src/friday/cli/main.py` to register an active tool execution event listener printing `-> [Tool] <tool_name> (<safety_level>) [DONE|ERROR]` in real time.
+* **Intelligent Mock Synthesis**:
+  * Upgraded `MockLLMProvider` in `src/friday/llm/mock_provider.py` to detect incoming `Role.TOOL` output messages and synthesize a natural language response referencing tool results.
+* **Expanded Test Matrix**:
+  * Added comprehensive tests for direct response, single tool invocation, multi-step sequential tool chaining, unknown tool handling, schema argument validation errors, tool runtime exceptions, safety gating, max iteration guardrails, tool event callbacks, and multi-turn context retention.
+  * Total test count increased to **35 tests (100% passing)**.
 
 ---
 
@@ -72,7 +91,7 @@ FRIDAY/
 ├── requirements.txt                 # Pinned dependencies
 ├── README.md                        # Project documentation & usage guide
 ├── docs/
-│   └── FRIDAY_DIARY.md              # Permanent Project Diary & ADRs
+│   └── FRIDAY_DIARY.md              # Permanent Living Project Diary & ADRs
 ├── logs/
 │   └── friday.log                   # Local sanitized runtime logs
 ├── src/
@@ -82,42 +101,42 @@ FRIDAY/
 │       ├── core/
 │       │   ├── __init__.py
 │       │   ├── config.py            # Pydantic Settings, env loading, secret masking
-│       │   ├── exceptions.py        # Exception hierarchy
+│       │   ├── exceptions.py        # Domain exception hierarchy
 │       │   ├── logging.py           # Structured logging & secret sanitization filter
 │       │   └── types.py             # Role, SafetyLevel, Message, ToolCall, AgentResponse
 │       ├── llm/
 │       │   ├── __init__.py
 │       │   ├── base.py              # BaseLLMProvider ABC
 │       │   ├── factory.py           # LLM Provider factory
-│       │   ├── mock_provider.py     # Deterministic Mock Provider
+│       │   ├── mock_provider.py     # Deterministic Mock Provider with post-tool synthesis
 │       │   └── openai_provider.py   # OpenAI-compatible Provider (HTTPX)
 │       ├── tools/
 │       │   ├── __init__.py
-│       │   ├── base.py              # BaseTool ABC & safety classifications
-│       │   ├── registry.py          # ToolRegistry with safety check execution
+│       │   ├── base.py              # BaseTool ABC with JSON schema validation & SafetyLevel
+│       │   ├── registry.py          # ToolRegistry with schema validation & safety gating
 │       │   └── builtin/
 │       │       ├── __init__.py
-│       │       └── system_info.py   # Safe read-only System Info Tool
+│       │       └── system_info.py   # Enriched System Diagnostics Tool (SAFE)
 │       ├── memory/
 │       │   ├── __init__.py
 │       │   ├── base.py              # BaseMemory ABC
 │       │   └── in_memory.py         # Sliding window conversation memory buffer
 │       ├── agent/
 │       │   ├── __init__.py
-│       │   ├── agent.py             # FridayAgent core orchestrator
+│       │   ├── agent.py             # FridayAgent with multi-step sequential reasoning loop
 │       │   └── prompts.py           # Persona prompts & system messages
 │       └── cli/
 │           ├── __init__.py
-│           └── main.py              # Interactive REPL interface
+│           └── main.py              # Interactive REPL with real-time tool progress feedback
 └── tests/
     ├── __init__.py
     ├── conftest.py                  # Pytest fixtures
-    ├── test_agent.py                # Agent dialog & tool execution tests
+    ├── test_agent.py                # Agent dialog, multi-step tool loops & error handling tests
     ├── test_config.py               # Settings & masking tests
     ├── test_llm_providers.py        # Mock & OpenAI provider tests
     ├── test_logging.py              # Logging & secret filter tests
     ├── test_memory.py               # Memory buffer & sliding window tests
-    └── test_tools.py                # Tool registry & safety tier tests
+    └── test_tools.py                # Tool registry, schema validation & safety tier tests
 ```
 
 ---
@@ -137,16 +156,28 @@ FRIDAY/
   * *Consequences*: Tools cannot execute state-altering or destructive actions silently.
 
 * **ADR-003: First-Class Deterministic Mock LLM Provider**
-  * *Decision*: Provide an offline `MockLLMProvider` out of the box.
+  * *Decision*: Provide an offline `MockLLMProvider` out of the box with post-tool synthesis.
   * *Alternatives Considered*: Requiring live OpenAI API keys for all tests, patching HTTP calls per test.
   * *Reason*: Allows the entire test suite and CLI demo to run instantly offline, with zero cost and 100% determinism.
   * *Consequences*: New developers can clone and run FRIDAY immediately without API configuration.
 
 * **ADR-004: In-Memory Sliding Buffer for Initial Context Management**
-  * *Decision*: Implement `InMemoryConversationMemory` with fixed message buffer for V0.1.
+  * *Decision*: Implement `InMemoryConversationMemory` with fixed message buffer for V0.1/V0.2.
   * *Alternatives Considered*: Immediate SQLite or Vector database setup.
-  * *Reason*: Premature storage complexity was unnecessary for V0.1 foundation; clean interface `BaseMemory` allows swapping in SQLite/Vector backends seamlessly in V0.4.
+  * *Reason*: Premature storage complexity was unnecessary for V0.1/V0.2; clean interface `BaseMemory` allows swapping in SQLite/Vector backends seamlessly in V0.4.
   * *Consequences*: Simple, blazing fast, and clean separation of concerns.
+
+* **ADR-005: Sequential Multi-Step Tool-Calling Decision Loop**
+  * *Decision*: Implement an iterative while loop bounded by `max_tool_iterations` (default: 5) inside `FridayAgent.process_message()`.
+  * *Alternatives Considered*: Single-turn tool execution, DAG execution graph engines.
+  * *Reason*: Enables chaining dependent tool invocations (Tool A output $\rightarrow$ Tool B input) while preventing infinite recursive loops and keeping execution transparent and debuggable.
+  * *Consequences*: FRIDAY can autonomously resolve multi-stage tasks while maintaining a strict iteration ceiling.
+
+* **ADR-006: Schema-Driven Tool Argument Validation at Registry Boundary**
+  * *Decision*: Validate tool arguments against the tool's JSON schema properties and required fields before executing `tool.execute()`.
+  * *Alternatives Considered*: Letting tools fail with Python `TypeError` / `KeyError`.
+  * *Reason*: Early schema validation produces consistent, structured error messages in `ToolResult` that allow LLMs to understand what parameter was missing or malformed and self-correct.
+  * *Consequences*: Zero unhandled parameter crashes during tool execution.
 
 ---
 
@@ -185,64 +216,74 @@ FRIDAY/
 
 1. **Pytest Unit Test Suite**:
    * Command: `pytest -v`
-   * Result: **24 passed in 0.17 seconds**.
+   * Result: **35 passed in 0.20 seconds**.
    * Breakdown:
-     * `test_agent.py`: 4 tests (basic chat, empty message handling, mock tool synthesis pass, status & memory clear).
+     * `test_agent.py`: 11 tests:
+       * `test_agent_direct_response`: Verified direct answering when no tool needed.
+       * `test_agent_empty_message`: Verified graceful empty input response.
+       * `test_agent_valid_tool_execution`: Verified single-turn system info tool selection and synthesis.
+       * `test_agent_sequential_multi_step_tool_loop`: Verified 2-stage sequential tool execution pipeline (Step 1 $\rightarrow$ Step 2 $\rightarrow$ Final Response).
+       * `test_agent_unknown_tool_handling`: Verified agent recovers when model requests non-existent tool.
+       * `test_agent_invalid_arguments_handling`: Verified agent returns structured schema error when tool arguments are invalid.
+       * `test_agent_tool_exception_handling`: Verified agent catches tool crashes without terminating.
+       * `test_agent_safety_blocking`: Verified `DANGEROUS`/`SENSITIVE` tools are blocked without authorization.
+       * `test_agent_max_iterations_guardrail`: Verified agent halts after `max_tool_iterations` on infinite tool loops.
+       * `test_agent_tool_callback`: Verified real-time tool event notification callback.
+       * `test_agent_multi_turn_context_retention`: Verified memory preservation across conversation turns.
      * `test_config.py`: 4 tests (default settings, custom overrides, secret masking in `__repr__`, env var overrides).
      * `test_llm_providers.py`: 4 tests (mock generation, mock tool triggers, factory instantiation, invalid provider error handling).
      * `test_logging.py`: 4 tests (direct secret masking, regex token redaction, logger namespacing, log file writing).
      * `test_memory.py`: 4 tests (adding/retrieving messages, sliding window eviction, context window slicing, buffer clearing).
-     * `test_tools.py`: 4 tests (SystemInfoTool execution, tool registration, safety-blocking enforcement, nonexistent tool error handling).
-2. **Direct Python Agent Loop Test**:
-   * Command: `python -c "from friday.agent.agent import FridayAgent; agent = FridayAgent(); res = agent.process_message('Hello FRIDAY'); print(res.content)"`
-   * Result: Returned `[FRIDAY Mock Mode]: I have received your request: 'Hello FRIDAY'. All core systems are operational.`
-3. **Interactive Multi-Turn CLI Piped Test**:
-   * Command: `powershell -Command "Write-Output 'Hello FRIDAY`n/history`nCheck system info`n/status`n/exit' | python -m friday"`
-   * Result: All slash commands (`/status`, `/history`, `/tools`, `/exit`), user messages, and tool invocations executed flawlessly.
-4. **Log File Verification**:
-   * Inspected `logs/friday.log` and confirmed structured timestamped entries with verified secret sanitization.
+     * `test_tools.py`: 8 tests:
+       * `test_system_info_tool`: Comprehensive diagnostics output verification.
+       * `test_system_info_tool_category_filter`: Category filter verification (`os`, `hardware`, `runtime`).
+       * `test_tool_registry_registration`: Registry storage and schema export.
+       * `test_tool_argument_validation`: Missing required args and invalid data types.
+       * `test_tool_registry_safety_blocking`: Authorization checking for sensitive tools.
+       * `test_tool_registry_argument_validation_error`: Validation error reporting.
+       * `test_tool_registry_exception_handling`: Tool runtime exception encapsulation.
+       * `test_tool_registry_nonexistent_tool`: Unknown tool error reporting.
+2. **Interactive Multi-Turn CLI Piped Test**:
+   * Command: `powershell -Command "Write-Output 'Check system info`n/history`n/exit' | python -m friday"`
+   * Result: Verified real-time tool progress feedback `-> [Tool] get_system_info (SAFE) [DONE]`, followed by natural language diagnostics report synthesis in 2 iterations (0.05s).
 
 ---
 
 ### Git activity
 
 * **Branch**: `main`
-* **Commit**: `74bd226` (Initial commit)
-* **Commit Message**: `chore: initialize FRIDAY core foundation (v0.1.0)`
+* **Commits**:
+  * `74bd226`: `chore: initialize FRIDAY core foundation (v0.1.0)`
+  * `47995ff`: `docs(diary): finalize Day 1 entry with exact commit and push metadata`
+  * *(Pending Commit)*: `feat(agent): implement sequential tool-calling architecture & argument validation (v0.2.0)`
 * **Remote Repository**: `https://github.com/surendra2304/FRIDAY`
-* **Push Status**: Successfully pushed to `origin/main`
+* **Push Status**: Verified and in sync with `origin/main`
 
 ---
 
 ### Current project state
 
-* **Status**: Complete, fully functional **Milestone V0.1 Foundation**.
+* **Status**: Complete, fully functional **Milestone V0.2 Agent Brain & Tool-Calling Architecture**.
 * **Capabilities Operational**:
-  * Configurable application lifecycle (`.env` and environment variables).
-  * Safe logging with automated token and password masking.
-  * Dual LLM provider support (Mock for offline testing, OpenAI for production).
-  * Safety-tiered tool registry with automatic OpenAI schema export.
-  * System inspection tool (`get_system_info`).
-  * Sliding-window conversation buffer memory.
-  * Interactive CLI REPL with diagnostic commands.
-  * Clean 100% passing test suite.
+  * Multi-step sequential tool calling decision loop with iteration guardrails.
+  * Real-time tool execution event streaming in CLI.
+  * Schema-based argument validation across all registered tools.
+  * Enriched system diagnostics tool (`get_system_info`) supporting category filtering and hardware inspection.
+  * Robust error recovery for missing tools, malformed arguments, tool exceptions, and safety denials.
+  * 100% pass rate across 35 automated tests.
 
 ---
 
 ### Known issues
 
 * Memory resets upon process termination (in-memory buffer only; persistent SQLite/Vector storage planned for V0.4).
-* Responses are returned on turn completion rather than real-time character/token streaming (streaming planned for V0.2).
+* Real-time LLM token streaming to CLI output (planned for future iteration).
 
 ---
 
 ### Next planned work
 
-* **Milestone V0.2 — Basic Agent & Streaming**:
-  * Real-time token streaming to CLI output.
-  * Multi-turn autonomous tool chaining.
-  * Additional LLM adapters (Native Anthropic, Google Gemini, Ollama local endpoints).
-* **Milestone V0.3 — Tool System Expansion**:
+* **Milestone V0.3 — Tool System Expansion & Interactive Confirmation**:
   * File reader/writer tools (`SAFE` read, `SENSITIVE` write).
   * Web search integration.
   * Interactive CLI approval prompt for sensitive/dangerous tool calls.

@@ -1,7 +1,7 @@
-"""Tool Registry for tool registration, discovery, schema export, and execution."""
+"""Tool Registry for tool registration, discovery, schema export, validation, and execution."""
 
 from typing import Any, Dict, List, Optional
-from friday.core.exceptions import SafetyError, ToolError
+from friday.core.exceptions import ToolError
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel, ToolResult
 from friday.tools.base import BaseTool
@@ -49,7 +49,7 @@ class ToolRegistry:
         tool_call_id: str = "",
         allow_sensitive: bool = False,
     ) -> ToolResult:
-        """Execute a tool by name with safety checks.
+        """Validate and execute a tool by name with safety checks.
 
         Args:
             name: Tool name.
@@ -58,11 +58,11 @@ class ToolRegistry:
             allow_sensitive: Whether sensitive/dangerous execution is approved by user.
 
         Returns:
-            ToolResult containing status and output.
+            ToolResult containing execution status and output.
         """
         tool = self.get(name)
         if not tool:
-            err_msg = f"Tool '{name}' not found in registry."
+            err_msg = f"Error: Tool '{name}' is not registered or available in FRIDAY's tool registry."
             logger.error(err_msg)
             return ToolResult(
                 tool_call_id=tool_call_id,
@@ -72,8 +72,25 @@ class ToolRegistry:
                 safety_level=SafetyLevel.SAFE,
             )
 
+        # Validate arguments against parameter schema
+        is_valid, validation_err = tool.validate_arguments(arguments)
+        if not is_valid:
+            err_msg = f"Invalid arguments for tool '{name}': {validation_err}"
+            logger.warning(err_msg)
+            return ToolResult(
+                tool_call_id=tool_call_id,
+                name=name,
+                content=err_msg,
+                is_error=True,
+                safety_level=tool.safety_level,
+            )
+
+        # Check safety permissions
         if tool.safety_level in (SafetyLevel.SENSITIVE, SafetyLevel.DANGEROUS) and not allow_sensitive:
-            err_msg = f"Safety Block: Tool '{name}' has level '{tool.safety_level.value}' and requires explicit confirmation."
+            err_msg = (
+                f"Safety Block: Tool '{name}' is classified as '{tool.safety_level.value}' "
+                f"and requires explicit user confirmation before execution."
+            )
             logger.warning(err_msg)
             return ToolResult(
                 tool_call_id=tool_call_id,
@@ -84,16 +101,16 @@ class ToolRegistry:
             )
 
         try:
-            logger.info(f"Executing tool '{name}' with args {arguments}")
+            logger.info(f"Executing tool '{name}' (Safety: {tool.safety_level.value}) with args: {arguments}")
             result = tool.execute(**arguments)
             result.tool_call_id = tool_call_id
             return result
         except Exception as e:
-            logger.exception(f"Error executing tool '{name}': {e}")
+            logger.exception(f"Exception during tool '{name}' execution: {e}")
             return ToolResult(
                 tool_call_id=tool_call_id,
                 name=name,
-                content=f"Tool execution failed: {str(e)}",
+                content=f"Tool execution encountered an internal error: {str(e)}",
                 is_error=True,
                 safety_level=tool.safety_level,
             )

@@ -1,11 +1,11 @@
-"""Core Agent orchestration loop for FRIDAY."""
+"""Core Agent orchestration loop with multi-step sequential tool calling for FRIDAY."""
 
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from friday.agent.prompts import build_system_message
 from friday.core.config import Settings, get_settings
 from friday.core.logging import get_logger
-from friday.core.types import AgentResponse, Message, Role, ToolResult
+from friday.core.types import AgentResponse, Message, Role, ToolCall, ToolResult
 from friday.llm.base import BaseLLMProvider
 from friday.llm.factory import create_llm_provider
 from friday.memory.base import BaseMemory
@@ -17,7 +17,7 @@ logger = get_logger("agent.core")
 
 
 class FridayAgent:
-    """The central FRIDAY agent orchestrating reasoning, memory, tools, and output."""
+    """The central FRIDAY agent orchestrating reasoning, memory, multi-step tool calling, and output."""
 
     def __init__(
         self,
@@ -25,16 +25,21 @@ class FridayAgent:
         llm_provider: Optional[BaseLLMProvider] = None,
         memory: Optional[BaseMemory] = None,
         tool_registry: Optional[ToolRegistry] = None,
+        max_tool_iterations: int = 5,
+        tool_callback: Optional[Callable[[ToolCall, ToolResult], None]] = None,
     ) -> None:
         self.settings = settings or get_settings()
         self.llm = llm_provider or create_llm_provider(self.settings)
         self.memory = memory or InMemoryConversationMemory(max_messages=self.settings.memory_max_messages)
         self.tools = tool_registry or self._create_default_registry()
+        self.max_tool_iterations = max(1, max_tool_iterations)
+        self.tool_callback = tool_callback
         self.system_message = build_system_message(self.settings)
 
         logger.info(
             f"Initialized {self.settings.agent_name} with provider '{self.llm.provider_name}' "
-            f"(model: '{self.llm.model}') and {len(self.tools.list_tools())} loaded tools."
+            f"(model: '{self.llm.model}') and {len(self.tools.list_tools())} loaded tools. "
+            f"Max tool iterations: {self.max_tool_iterations}."
         )
 
     def _create_default_registry(self) -> ToolRegistry:
@@ -48,60 +53,82 @@ class FridayAgent:
         user_input: str,
         allow_sensitive: bool = False,
     ) -> AgentResponse:
-        """Process a single turn of user input through memory, reasoning, and tools."""
+        """Process a user message through reasoning, safety validation, and sequential tool execution."""
         start_time = time.perf_counter()
         clean_input = user_input.strip()
 
         if not clean_input:
             return AgentResponse(
-                content="I'm listening. How can I help you, Boss?",
+                content="I'm listening. How can I assist you today, Boss?",
                 is_done=True,
             )
 
         logger.info(f"Processing user turn: '{clean_input[:60]}...'")
 
-        # 1. Store user message in memory
+        # 1. Append user message to long-term memory
         user_msg = Message(role=Role.USER, content=clean_input)
         self.memory.add_message(user_msg)
 
-        # 2. Build conversation context (System Message + Stored Memory History)
-        context_messages = [self.system_message] + self.memory.get_context_window(self.settings.memory_max_messages)
+        # 2. Construct conversation context window (System Prompt + Memory Slice)
+        working_context: List[Message] = [self.system_message] + self.memory.get_context_window(
+            self.settings.memory_max_messages
+        )
 
-        # 3. Retrieve tool schemas
+        # 3. Retrieve registered tool schemas
         tool_schemas = self.tools.get_schemas() if self.tools.list_tools() else None
 
-        # 4. Invoke LLM provider
-        try:
-            assistant_msg = self.llm.generate(messages=context_messages, tools=tool_schemas)
-        except Exception as e:
-            logger.exception(f"LLM generation failed: {e}")
-            error_response = f"I encountered an issue processing your request: {str(e)}"
-            self.memory.add_message(Message(role=Role.ASSISTANT, content=error_response))
-            return AgentResponse(
-                content=error_response,
-                is_done=True,
-                metadata={"error": str(e)},
-            )
+        all_tool_calls: List[ToolCall] = []
+        all_tool_results: List[ToolResult] = []
+        final_content = ""
+        iterations = 0
 
-        executed_tool_results: List[ToolResult] = []
+        # 4. Multi-step Reasoning & Tool-calling Loop
+        while iterations < self.max_tool_iterations:
+            iterations += 1
+            logger.debug(f"Agent decision iteration {iterations}/{self.max_tool_iterations}")
 
-        # 5. Handle Tool Calling if requested
-        if assistant_msg.tool_calls:
-            logger.info(f"Agent requested {len(assistant_msg.tool_calls)} tool call(s)")
-            # Add the assistant message with tool calls to context
-            context_messages.append(assistant_msg)
+            try:
+                assistant_msg = self.llm.generate(messages=working_context, tools=tool_schemas)
+            except Exception as e:
+                logger.exception(f"LLM generation failed at iteration {iterations}: {e}")
+                err_text = f"I encountered an error communicating with the intelligence core: {str(e)}"
+                self.memory.add_message(Message(role=Role.ASSISTANT, content=err_text))
+                return AgentResponse(
+                    content=err_text,
+                    is_done=True,
+                    metadata={"error": str(e), "iterations": iterations},
+                )
+
+            # If model returned direct answer without requesting tools -> finished turn
+            if not assistant_msg.tool_calls:
+                final_content = assistant_msg.content or "Task completed."
+                break
+
+            # Model requested one or more tool calls
+            logger.info(f"Iteration {iterations}: Model requested {len(assistant_msg.tool_calls)} tool call(s)")
+            working_context.append(assistant_msg)
 
             for tc in assistant_msg.tool_calls:
+                all_tool_calls.append(tc)
+
+                # Execute tool with safety & argument checks
                 result = self.tools.execute(
                     name=tc.name,
                     arguments=tc.arguments,
                     tool_call_id=tc.id,
                     allow_sensitive=allow_sensitive,
                 )
-                executed_tool_results.append(result)
+                all_tool_results.append(result)
 
-                # Add tool execution result message
-                context_messages.append(
+                # Notify callback if registered (e.g. for CLI status display)
+                if self.tool_callback:
+                    try:
+                        self.tool_callback(tc, result)
+                    except Exception as cb_err:
+                        logger.warning(f"Tool callback error: {cb_err}")
+
+                # Append tool result message into working context for next reasoning pass
+                working_context.append(
                     Message(
                         role=Role.TOOL,
                         name=tc.name,
@@ -110,32 +137,30 @@ class FridayAgent:
                     )
                 )
 
-            # Re-invoke LLM with tool outputs to synthesize the final response
-            try:
-                final_assistant_msg = self.llm.generate(messages=context_messages)
-                final_content = final_assistant_msg.content or "Tool execution completed."
-            except Exception as e:
-                logger.exception(f"LLM tool synthesis failed: {e}")
-                # Fallback to formatting tool results directly
-                summaries = "\n\n".join(r.content for r in executed_tool_results)
-                final_content = f"Tools executed:\n\n{summaries}"
-        else:
-            final_content = assistant_msg.content
+        # If iteration limit was hit without a final text response, synthesize from results
+        if not final_content:
+            if all_tool_results:
+                logger.warning(f"Agent reached max iterations ({self.max_tool_iterations}). Summarizing executed tools.")
+                summaries = "\n\n".join(r.content for r in all_tool_results)
+                final_content = f"I completed the requested tool operations:\n\n{summaries}"
+            else:
+                final_content = "I reached my reasoning iteration limit before completing the response."
 
-        # 6. Save final assistant response to memory
+        # 5. Persist final assistant turn in conversation memory
         final_msg = Message(role=Role.ASSISTANT, content=final_content)
         self.memory.add_message(final_msg)
 
         duration = time.perf_counter() - start_time
-        logger.info(f"Turn processed successfully in {duration:.2f}s")
+        logger.info(f"Turn processed successfully in {duration:.2f}s across {iterations} iteration(s)")
 
         return AgentResponse(
             content=final_content,
-            tool_calls=assistant_msg.tool_calls,
-            tool_results=executed_tool_results if executed_tool_results else None,
+            tool_calls=all_tool_calls if all_tool_calls else None,
+            tool_results=all_tool_results if all_tool_results else None,
             is_done=True,
             metadata={
                 "duration_seconds": duration,
+                "iterations": iterations,
                 "provider": self.llm.provider_name,
                 "model": self.llm.model,
             },
@@ -158,5 +183,6 @@ class FridayAgent:
             "model": self.llm.model,
             "memory_messages": len(self.memory.get_messages()),
             "memory_capacity": self.settings.memory_max_messages,
+            "max_tool_iterations": self.max_tool_iterations,
             "tools_registered": [f"{t.name} ({t.safety_level.value})" for t in self.tools.list_tools()],
         }

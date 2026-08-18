@@ -79,6 +79,12 @@ def print_tools(agent: FridayAgent) -> None:
     print("---------------------------------------\n")
 
 
+def on_tool_event(tool_call, tool_result) -> None:
+    """Print clean indicator in console when a tool executes."""
+    status_tag = "[ERROR]" if tool_result.is_error else "[DONE]"
+    print(f"  -> [Tool] {tool_call.name} ({tool_result.safety_level.value}) {status_tag}")
+
+
 def main() -> None:
     """Main CLI entry point."""
     if hasattr(sys.stdout, "reconfigure"):
@@ -90,7 +96,7 @@ def main() -> None:
     setup_logging(level=settings.log_level, log_file=settings.log_file)
     logger.info("Starting FRIDAY CLI session")
 
-    agent = FridayAgent(settings=settings)
+    agent = FridayAgent(settings=settings, tool_callback=on_tool_event)
 
     print(BANNER)
     print(f"FRIDAY initialized. Provider: [{agent.llm.provider_name}], Model: [{agent.llm.model}].\n")

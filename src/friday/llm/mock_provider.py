@@ -33,16 +33,28 @@ class MockLLMProvider(BaseLLMProvider):
         if self.custom_responder:
             return self.custom_responder(messages, tools)
 
-        # Get latest user message content
+        # 1. If the previous message was a TOOL result, synthesize a natural language response
+        if messages and messages[-1].role == Role.TOOL:
+            last_tool_msg = messages[-1]
+            return Message(
+                role=Role.ASSISTANT,
+                content=(
+                    f"Based on the system diagnostics, here is the report:\n\n"
+                    f"{last_tool_msg.content}\n\n"
+                    f"All system metrics are within normal operational limits, Boss."
+                ),
+            )
+
+        # 2. Get latest user message content
         last_user_msg = next((m.content for m in reversed(messages) if m.role == Role.USER), "")
         last_user_lower = last_user_msg.lower().strip()
 
-        # Check for tool trigger keywords in mock mode for testing
-        if "system info" in last_user_lower or "check system" in last_user_lower:
-            if tools and any(t.get("function", {}).get("name") == "get_system_info" for t in tools):
+        # 3. Check for tool trigger keywords in mock mode for testing
+        if ("system info" in last_user_lower or "check system" in last_user_lower or "os" in last_user_lower) and tools:
+            if any(t.get("function", {}).get("name") == "get_system_info" for t in tools):
                 return Message(
                     role=Role.ASSISTANT,
-                    content="I'll inspect the current system information for you.",
+                    content="I'll inspect the current system diagnostics for you.",
                     tool_calls=[
                         ToolCall(id="call_mock_sysinfo_1", name="get_system_info", arguments={})
                     ],
