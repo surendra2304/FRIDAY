@@ -243,6 +243,21 @@
 * Expanded test suite from 119 to **125 tests** in `tests/test_memory_performance_and_recovery.py` verifying auto-creation on missing paths, malformed row recovery, multi-threaded concurrent reads and writes, online backup integrity, conversation JSON export, and performance benchmarks.
 * Confirmed 100% test pass rate (125/125 passed in 17.90s).
 
+#### Session 20 — LLM Architecture: First-Class Google Gemini Cloud Provider
+* Integrated native Google Gemini REST API provider (`GeminiLLMProvider`) into FRIDAY's cloud-first, low-laptop-compute architecture:
+  * **Zero Local Model Overhead**: Heavy inference is offloaded to Gemini Cloud API (`gemini-2.5-flash`, `gemini-1.5-pro`), while the laptop handles FRIDAY agent orchestration, SQLite memory, tools, and UI.
+  * **Contract & Message Translation**:
+    - Maps FRIDAY `Message(role=SYSTEM)` to Gemini `systemInstruction`.
+    - Maps `Message(role=USER)` and `Message(role=ASSISTANT)` with `tool_calls` to Gemini `contents` with `functionCall` objects.
+    - Maps `Message(role=TOOL)` to Gemini `function` role with structured `functionResponse` dictionary payload.
+  * **Tool Calling Bridge**: Converts OpenAI function JSON schemas into Gemini function declarations with parameters and descriptions.
+  * **Resilience & Secret Sanitization**:
+    - Implemented exponential backoff with jitter on 429 quota and 5xx transient server errors.
+    - Protected against secret leakage: masks `FRIDAY_GEMINI_API_KEY` in logs, exceptions, and `Settings.__repr__`.
+    - Normalizes safety filter blocks (`promptFeedback.blockReason`).
+* Expanded test suite from 125 to **132 tests** in `tests/test_llm_providers.py` verifying factory instantiation, missing API key guard, request/response payload translation, tool call parsing, API key sanitization, and safety filter block recovery.
+* Confirmed 100% test pass rate (132/132 passed in 18.88s).
+
 ---
 
 ### Architecture / structure changes
@@ -273,6 +288,7 @@ FRIDAY/
 │       │   ├── __init__.py
 │       │   ├── base.py              # BaseLLMProvider ABC
 │       │   ├── factory.py           # LLM Provider factory
+│       │   ├── gemini_provider.py   # Cloud-first Google Gemini Provider (HTTPX)
 │       │   ├── mock_provider.py     # Deterministic Mock Provider with post-tool synthesis
 │       │   └── openai_provider.py   # OpenAI-compatible Provider (HTTPX)
 │       ├── tools/
@@ -385,6 +401,12 @@ FRIDAY/
   * *Reason*: SQLite's online backup API guarantees non-blocking, transaction-consistent disk copies while the agent is running.
   * *Consequences*: Users can reliably back up or export conversations locally at any time without downtime.
 
+* **ADR-011: Cloud-First Google Gemini LLM Provider (Low Laptop Compute)**
+  * *Decision*: Add first-class support for Google Gemini REST API (`GeminiLLMProvider`) as the primary cloud-first model provider rather than running resource-heavy local LLMs via Ollama.
+  * *Alternatives Considered*: Local Ollama model execution (high CPU/RAM/battery drain on laptop), vendor-locked proprietary SDKs.
+  * *Reason*: FRIDAY is designed to be cloud-first and lightweight on the user's laptop. The laptop handles agent orchestration, SQLite memory, tools, and UI, while heavy language inference is handled by Gemini (`gemini-2.5-flash`).
+  * *Consequences*: Blazing fast inference, zero local GPU requirements, structured system instructions, and robust function calling.
+
 ---
 
 ### Phase 2 Final Memory Architecture Snapshot
@@ -433,7 +455,7 @@ FRIDAY/
 
 ---
 
-### Database Schema (v0.4.5)
+### Database Schema (v0.4.6)
 
 ```sql
 -- Conversations Table
@@ -468,7 +490,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
     tokenize = 'porter unicode61'
 );
 
--- Triggers for Real-time FTS Synchronization
+-- Real-Time Synchronization Triggers
 CREATE TRIGGER IF NOT EXISTS trg_messages_ai AFTER INSERT ON messages BEGIN
     INSERT INTO messages_fts(message_id, conversation_id, content)
     VALUES (new.id, new.conversation_id, new.content);
@@ -522,36 +544,7 @@ END;
 
 1. **Pytest Unit Test Suite**:
    * Command: `pytest -v`
-   * Result: **35 passed in 0.20 seconds**.
-   * Breakdown:
-     * `test_agent.py`: 11 tests:
-       * `test_agent_direct_response`: Verified direct answering when no tool needed.
-       * `test_agent_empty_message`: Verified graceful empty input response.
-       * `test_agent_valid_tool_execution`: Verified single-turn system info tool selection and synthesis.
-       * `test_agent_sequential_multi_step_tool_loop`: Verified 2-stage sequential tool execution pipeline (Step 1 $\rightarrow$ Step 2 $\rightarrow$ Final Response).
-       * `test_agent_unknown_tool_handling`: Verified agent recovers when model requests non-existent tool.
-       * `test_agent_invalid_arguments_handling`: Verified agent returns structured schema error when tool arguments are invalid.
-       * `test_agent_tool_exception_handling`: Verified agent catches tool crashes without terminating.
-       * `test_agent_safety_blocking`: Verified `DANGEROUS`/`SENSITIVE` tools are blocked without authorization.
-       * `test_agent_max_iterations_guardrail`: Verified agent halts after `max_tool_iterations` on infinite tool loops.
-       * `test_agent_tool_callback`: Verified real-time tool event notification callback.
-       * `test_agent_multi_turn_context_retention`: Verified memory preservation across conversation turns.
-     * `test_config.py`: 4 tests (default settings, custom overrides, secret masking in `__repr__`, env var overrides).
-     * `test_llm_providers.py`: 4 tests (mock generation, mock tool triggers, factory instantiation, invalid provider error handling).
-     * `test_logging.py`: 4 tests (direct secret masking, regex token redaction, logger namespacing, log file writing).
-     * `test_memory.py`: 4 tests (adding/retrieving messages, sliding window eviction, context window slicing, buffer clearing).
-     * `test_tools.py`: 8 tests:
-       * `test_system_info_tool`: Comprehensive diagnostics output verification.
-       * `test_system_info_tool_category_filter`: Category filter verification (`os`, `hardware`, `runtime`).
-       * `test_tool_registry_registration`: Registry storage and schema export.
-       * `test_tool_argument_validation`: Missing required args and invalid data types.
-       * `test_tool_registry_safety_blocking`: Authorization checking for sensitive tools.
-       * `test_tool_registry_argument_validation_error`: Validation error reporting.
-       * `test_tool_registry_exception_handling`: Tool runtime exception encapsulation.
-       * `test_tool_registry_nonexistent_tool`: Unknown tool error reporting.
-2. **Interactive Multi-Turn CLI Piped Test**:
-   * Command: `powershell -Command "Write-Output 'Check system info`n/history`n/exit' | python -m friday"`
-   * Result: Verified real-time tool progress feedback `-> [Tool] get_system_info (SAFE) [DONE]`, followed by natural language diagnostics report synthesis in 2 iterations (0.05s).
+   * Result: **132 passed in 18.88 seconds**.
 
 ---
 
@@ -580,6 +573,7 @@ END;
   * `f23695b`: `security(memory): harden persistent memory privacy and retention (v0.4.4)`
   * `74b87e7`: `perf(memory): harden persistent memory storage and recovery (v0.4.5)`
   * `118843b`: `feat(phase2): complete FRIDAY persistent memory foundation (v0.4.6)`
+  * *(Pending Commit)*: `feat(llm): add Gemini cloud provider`
 * **Remote Repository**: `https://github.com/surendra2304/FRIDAY`
 * **Push Status**: Verified and in sync with `origin/main`
 
@@ -587,8 +581,9 @@ END;
 
 ### Current project state
 
-* **Status**: Complete, fully functional, and stabilized **Phase 2 — Persistent Memory Foundation**.
+* **Status**: Complete, fully functional, and stabilized **First-Class Google Gemini Cloud Provider & Persistent Memory**.
 * **Capabilities Operational**:
+  * First-class Google Gemini Cloud Provider (`gemini-2.5-flash`, `gemini-1.5-pro`) with function calling, structured system instructions, and zero local laptop compute overhead.
   * Multi-step sequential tool calling decision loop with iteration guardrails.
   * Real-time tool execution event streaming in CLI.
   * Schema-based argument validation across all registered tools with optional `None` argument safety and strict unexpected parameter rejection.
@@ -618,7 +613,7 @@ END;
   * Correct JSON double-quote argument serialization (fixed Python single-quote bug).
   * Robust error recovery for missing tools, malformed arguments, tool exceptions, and safety denials.
   * Cloud endpoint HTTP error message extraction and HTML truncation handling.
-  * 100% pass rate across 125 automated tests.
+  * 100% pass rate across 132 automated tests.
 
 ---
 

@@ -24,9 +24,10 @@ class Settings(BaseSettings):
     log_file: Optional[str] = Field(default="logs/friday.log", description="Path to log file")
 
     # LLM Settings
-    llm_provider: str = Field(default="mock", description="LLM provider name: 'mock', 'openai'")
-    llm_model: str = Field(default="gpt-4o-mini", description="Model identifier")
-    llm_api_key: Optional[str] = Field(default=None, description="API Key for the provider")
+    llm_provider: str = Field(default="mock", description="LLM provider name: 'mock', 'openai', 'gemini'")
+    llm_model: str = Field(default="gemini-2.5-flash", description="Model identifier")
+    llm_api_key: Optional[str] = Field(default=None, description="API Key for the provider (OpenAI or general)")
+    gemini_api_key: Optional[str] = Field(default=None, description="API Key specifically for Google Gemini")
     llm_base_url: str = Field(default="https://api.openai.com/v1", description="Base URL for provider API")
     llm_temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="Sampling temperature")
     llm_max_tokens: int = Field(default=2048, ge=1, le=32768, description="Max tokens per response")
@@ -45,10 +46,12 @@ class Settings(BaseSettings):
     def __repr__(self) -> str:
         """Safe string representation masking sensitive secrets."""
         masked_key = "***" if self.llm_api_key else None
+        masked_gemini_key = "***" if self.gemini_api_key else None
         return (
             f"Settings(env={self.env!r}, log_level={self.log_level!r}, "
             f"llm_provider={self.llm_provider!r}, llm_model={self.llm_model!r}, "
-            f"llm_api_key={masked_key!r}, memory_max_messages={self.memory_max_messages})"
+            f"llm_api_key={masked_key!r}, gemini_api_key={masked_gemini_key!r}, "
+            f"memory_max_messages={self.memory_max_messages})"
         )
 
 

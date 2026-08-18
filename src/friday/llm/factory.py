@@ -4,6 +4,7 @@ from friday.core.config import Settings
 from friday.core.exceptions import ConfigError
 from friday.core.logging import get_logger
 from friday.llm.base import BaseLLMProvider
+from friday.llm.gemini_provider import GeminiLLMProvider
 from friday.llm.mock_provider import MockLLMProvider
 from friday.llm.openai_provider import OpenAILLMProvider
 
@@ -22,6 +23,16 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
             max_tokens=settings.llm_max_tokens,
         )
 
+    if provider_type == "gemini":
+        api_key = settings.gemini_api_key or settings.llm_api_key
+        logger.info(f"Initializing Google Gemini Provider (model: {settings.llm_model})")
+        return GeminiLLMProvider(
+            api_key=api_key,
+            model=settings.llm_model,
+            temperature=settings.llm_temperature,
+            max_tokens=settings.llm_max_tokens,
+        )
+
     if provider_type in ("openai", "groq", "ollama", "openrouter"):
         logger.info(f"Initializing OpenAI-compatible Provider (provider: {provider_type}, model: {settings.llm_model})")
         return OpenAILLMProvider(
@@ -32,4 +43,4 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
             max_tokens=settings.llm_max_tokens,
         )
 
-    raise ConfigError(f"Unsupported LLM provider: '{settings.llm_provider}'. Supported: 'mock', 'openai'")
+    raise ConfigError(f"Unsupported LLM provider: '{settings.llm_provider}'. Supported: 'mock', 'openai', 'gemini'")

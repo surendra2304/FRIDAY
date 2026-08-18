@@ -10,8 +10,9 @@ FRIDAY is a modular, extensible, autonomous personal AI assistant built with a s
 
 - **Modular Architecture**: Clean interfaces for LLM providers (`BaseLLMProvider`), tools (`BaseTool`), memory (`BaseMemory`), and authorization (`BaseAuthorizer`).
 - **Pluggable LLM Backends**:
+  - `Google Gemini Provider`: Cloud-first, high-intelligence inference via Google Gemini REST API (`gemini-2.5-flash`, `gemini-1.5-pro`) with function calling, structured system instructions, and zero local laptop compute overhead.
   - `Mock Provider`: Instant offline development & testing with post-tool synthesis.
-  - `OpenAI-Compatible Provider`: Works with OpenAI, Groq, Ollama, OpenRouter, and local LLMs.
+  - `OpenAI-Compatible Provider`: Works with OpenAI, Groq, OpenRouter, and local OpenAI-compatible endpoints.
   - **Robust Retries**: Up to 3 retries with exponential backoff on transient network and rate limit errors (respects `Retry-After`).
 - **Reasoning Loop**: Sequential and parallel tool calling loop with maximum iteration safety guardrails.
 - **Safety-First Design**: Tools strictly categorized as `SAFE` (auto-executes), `SENSITIVE` (y/N prompt), or `DANGEROUS` (case-sensitive `CONFIRM` prompt).
@@ -64,8 +65,13 @@ cp .env.example .env
 
 Edit `.env` to configure your preferred settings:
 ```ini
-# Use mock provider for instant offline use:
-FRIDAY_LLM_PROVIDER=mock
+# Cloud-first Google Gemini (Recommended):
+FRIDAY_LLM_PROVIDER=gemini
+FRIDAY_LLM_MODEL=gemini-2.5-flash
+FRIDAY_GEMINI_API_KEY=your-gemini-api-key-here
+
+# Or use mock provider for offline development & testing:
+# FRIDAY_LLM_PROVIDER=mock
 
 # Memory backend (sqlite or in_memory):
 FRIDAY_MEMORY_BACKEND=sqlite
@@ -74,7 +80,7 @@ FRIDAY_MEMORY_MAX_MESSAGES=50
 # Optional retention policy in days (None/0 for indefinite):
 # FRIDAY_MEMORY_RETENTION_DAYS=30
 
-# Or configure OpenAI/Ollama/Groq:
+# Or configure OpenAI/Groq/OpenRouter:
 # FRIDAY_LLM_PROVIDER=openai
 # FRIDAY_LLM_MODEL=gpt-4o-mini
 # FRIDAY_LLM_API_KEY=your-api-key-here
