@@ -17,27 +17,39 @@ BANNER = r"""
  | |    | | \ \ _| |_| |__| / ____ \ \ \   | |   
  |_|    |_|  \_\_____|_____/_/    \_\ \_\  |_|   
   Fully Responsive Intelligent Digital Assistant for You
-  Version 0.1.0 — Core Foundation
+  Version 0.4.1 — Persistent Memory
 ========================================================================
 Type your message to begin, or use a command:
-  /help    - Show available commands
-  /status  - Inspect agent status & configuration
-  /history - Display current conversation memory
-  /tools   - List registered tools & safety tiers
-  /clear   - Clear conversation history
-  /exit    - Gracefully shutdown FRIDAY
+  /new [title]      - Start a new conversation session
+  /conversations    - List stored conversation sessions
+  /switch <id>      - Switch to an existing conversation
+  /rename <title>   - Rename the active conversation
+  /current          - Show active conversation details
+  /status           - Inspect agent status & configuration
+  /history          - Display current conversation memory
+  /tools            - List registered tools & safety tiers
+  /clear            - Clear messages in active conversation
+  /delete [id]      - Delete a conversation (requires confirmation)
+  /help             - Show available commands
+  /exit             - Gracefully shutdown FRIDAY
 ========================================================================
 """
 
 
 def print_help() -> None:
     print("\n--- Available CLI Commands ---")
-    print("  /help    : Show this help menu")
-    print("  /status  : Display active model, memory stats, and tools")
-    print("  /history : View stored conversation turns")
-    print("  /tools   : View loaded tools and safety classifications")
-    print("  /clear   : Reset conversation memory buffer")
-    print("  /exit    : Exit FRIDAY assistant (or /quit)")
+    print("  /new [title]    : Start a new conversation session")
+    print("  /conversations  : List all stored conversation sessions (/list)")
+    print("  /switch <id>    : Switch to a conversation by ID or prefix")
+    print("  /rename <title> : Rename the current active conversation")
+    print("  /current        : Show metadata for the active conversation")
+    print("  /status         : Display active model, memory stats, and tools")
+    print("  /history        : View stored conversation turns")
+    print("  /tools          : View loaded tools and safety classifications")
+    print("  /clear          : Reset active conversation memory buffer")
+    print("  /delete [id]    : Delete a conversation (requires confirmation)")
+    print("  /help           : Show this help menu")
+    print("  /exit           : Exit FRIDAY assistant (or /quit)")
     print("------------------------------\n")
 
 
@@ -68,6 +80,36 @@ def print_history(agent: FridayAgent) -> None:
             time_str = msg.timestamp.strftime("%H:%M:%S")
             print(f"  [{idx}] [{time_str}] {msg.role.value.upper()}: {msg.content}")
     print("----------------------------------------------------\n")
+
+
+def print_conversations(agent: FridayAgent) -> None:
+    convs = agent.list_conversations()
+    print(f"\n--- Stored Conversations ({len(convs)}) ---")
+    if not convs:
+        print("  (No persistent conversations found)")
+    else:
+        active_id = agent.conversation_id
+        for c in convs:
+            marker = "*" if c["id"] == active_id else " "
+            print(f" {marker} [{c['id'][:8]}] {c['title']} ({c['message_count']} msgs) - Updated: {c['updated_at'][:19]}")
+            if c["id"] == active_id:
+                print(f"       -> Full ID: {c['id']}")
+    print("------------------------------------------\n")
+
+
+def print_current_conversation(agent: FridayAgent) -> None:
+    curr = agent.get_current_conversation()
+    print("\n--- Current Active Conversation ---")
+    if not curr:
+        print(f"  Session ID : {agent.conversation_id or 'In-Memory (Ephemeral)'}")
+        print(f"  Messages   : {len(agent.get_history())}")
+    else:
+        print(f"  ID           : {curr['id']}")
+        print(f"  Title        : {curr['title']}")
+        print(f"  Created At   : {curr['created_at']}")
+        print(f"  Updated At   : {curr['updated_at']}")
+        print(f"  Message Count: {curr['message_count']}")
+    print("------------------------------------\n")
 
 
 def print_tools(agent: FridayAgent) -> None:
@@ -142,9 +184,70 @@ def main() -> None:
         elif cmd == "/tools":
             print_tools(agent)
             continue
+        elif cmd.startswith("/new"):
+            parts = user_input.split(maxsplit=1)
+            title = parts[1].strip() if len(parts) > 1 else None
+            conv_id = agent.create_new_conversation(title=title)
+            print(f"\nStarted new conversation: '{title or 'Default Conversation'}' (ID: {conv_id})\n")
+            continue
+        elif cmd in ("/conversations", "/list"):
+            print_conversations(agent)
+            continue
+        elif cmd.startswith("/switch"):
+            parts = user_input.split(maxsplit=1)
+            if len(parts) < 2:
+                print("\n[Usage]: /switch <conversation_id>\n")
+                continue
+            target_id = parts[1].strip()
+            convs = agent.list_conversations()
+            matched = [c for c in convs if c["id"].startswith(target_id)]
+            if not matched:
+                print(f"\n[Error]: No conversation found matching '{target_id}'.\n")
+            elif len(matched) > 1:
+                print(f"\n[Error]: Multiple conversations match prefix '{target_id}'. Please provide full ID.\n")
+            else:
+                agent.switch_conversation(matched[0]["id"])
+                print(f"\nSwitched to conversation: '{matched[0]['title']}' (ID: {matched[0]['id']})\n")
+            continue
+        elif cmd.startswith("/rename"):
+            parts = user_input.split(maxsplit=1)
+            if len(parts) < 2:
+                print("\n[Usage]: /rename <new_title>\n")
+                continue
+            new_title = parts[1].strip()
+            ok = agent.rename_conversation(new_title)
+            if ok:
+                print(f"\nRenamed active conversation to: '{new_title}'\n")
+            else:
+                print("\n[Error]: Failed to rename conversation.\n")
+            continue
+        elif cmd == "/current":
+            print_current_conversation(agent)
+            continue
+        elif cmd.startswith("/delete"):
+            parts = user_input.split(maxsplit=1)
+            target_id = parts[1].strip() if len(parts) > 1 else agent.conversation_id
+            if not target_id:
+                print("\n[Error]: No conversation to delete.\n")
+                continue
+
+            convs = agent.list_conversations()
+            matched = [c for c in convs if c["id"].startswith(target_id)]
+            if not matched:
+                print(f"\n[Error]: No conversation found matching '{target_id}'.\n")
+                continue
+
+            target_conv = matched[0]
+            confirm = input(f"Are you sure you want to permanently delete conversation '{target_conv['title']}' ({target_conv['id']})? [y/N]: ").strip().lower()
+            if confirm in ("y", "yes"):
+                agent.delete_conversation(target_conv["id"])
+                print(f"\nDeleted conversation '{target_conv['title']}'.\n")
+            else:
+                print("\nDeletion cancelled.\n")
+            continue
         elif cmd == "/clear":
             agent.clear_memory()
-            print("Conversation memory cleared.")
+            print("Active conversation memory cleared.")
             continue
 
         # Process standard conversation turn

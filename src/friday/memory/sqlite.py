@@ -155,6 +155,52 @@ class SQLiteConversationMemory(BaseMemory):
                     })
                 return result
 
+    def get_conversation(self, conversation_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve details of a specific conversation session."""
+        with self._lock:
+            with self._get_connection() as conn:
+                row = conn.execute(
+                    """
+                    SELECT id, title, created_at, updated_at, metadata,
+                           (SELECT COUNT(*) FROM messages WHERE messages.conversation_id = conversations.id) AS message_count
+                    FROM conversations
+                    WHERE id = ?
+                    """,
+                    (conversation_id,),
+                ).fetchone()
+                if not row:
+                    return None
+
+                meta = {}
+                if row["metadata"]:
+                    try:
+                        meta = json.loads(row["metadata"])
+                    except Exception:
+                        pass
+                return {
+                    "id": row["id"],
+                    "title": row["title"],
+                    "created_at": row["created_at"],
+                    "updated_at": row["updated_at"],
+                    "message_count": row["message_count"],
+                    "metadata": meta,
+                }
+
+    def rename_conversation(self, conversation_id: str, new_title: str) -> bool:
+        """Rename an existing conversation."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            with self._get_connection() as conn:
+                cursor = conn.execute(
+                    "UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?",
+                    (new_title, now, conversation_id),
+                )
+                conn.commit()
+                renamed = cursor.rowcount > 0
+        if renamed:
+            logger.info(f"Renamed conversation '{conversation_id}' to '{new_title}'")
+        return renamed
+
     def load_conversation(self, conversation_id: str) -> None:
         """Set the active conversation ID after validating existence."""
         with self._lock:

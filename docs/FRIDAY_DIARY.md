@@ -1,7 +1,7 @@
 # FRIDAY Project Diary
 
 > **Permanent, never-ending historical record and institutional memory of the FRIDAY project.**
-> **Started: 2026-08-18 | Current Version: v0.4.1 | Milestone: V0.4 Persistent SQLite Memory Integration**
+> **Started: 2026-08-18 | Current Version: v0.4.2 | Milestone: V0.4 Persistent Multi-Conversation Management**
 
 ---
 
@@ -183,6 +183,20 @@
 * Expanded test suite from 91 to **98 tests** in `tests/test_agent_persistence.py` verifying agent operations with in-memory and SQLite backends, process restart simulation, tool call/result persistence, session switching, and context window slicing.
 * Confirmed 100% test pass rate (98/98 passed in 13.39s).
 
+#### Session 16 — Phase 2: Multi-Conversation Session Management & CLI Commands
+* Implemented multi-conversation session management across memory backends and the interactive CLI:
+  * **Core Lifecycle Abstractions**: Enhanced `BaseMemory`, `SQLiteConversationMemory`, and `FridayAgent` with session primitives: `create_conversation()`, `list_conversations()`, `get_conversation()`, `rename_conversation()`, `load_conversation()`, and `delete_conversation()`.
+  * **Destructive Deletion Safety**: Added safety confirmation prompt `[y/N]` for `/delete` commands to prevent accidental loss of conversation logs.
+  * **Interactive CLI Commands**:
+    - `/new [title]` — Create and immediately switch to a new conversation session.
+    - `/conversations` (or `/list`) — List all stored conversations with message counts and update timestamps.
+    - `/switch <id>` — Switch active context using full ID or unique ID prefixes.
+    - `/rename <title>` — Rename active conversation session.
+    - `/current` — Display metadata, ID, and message metrics for current active session.
+    - `/delete [id]` — Permanently delete a conversation session with explicit confirmation.
+* Expanded test suite from 98 to **105 tests** in `tests/test_conversation_management.py` verifying new conversation creation, conversation isolation, renaming, active metadata inspection, delete lifecycle, invalid switching, and multi-conversation restart persistence.
+* Confirmed 100% test pass rate (105/105 passed in 13.76s).
+
 ---
 
 ### Architecture / structure changes
@@ -247,6 +261,7 @@ FRIDAY/
     ├── test_agent_persistence.py    # Agent persistent memory integration & session tests
     ├── test_auth.py                 # Authorization gating, validation priority, and CLI tests
     ├── test_config.py               # Settings & masking tests
+    ├── test_conversation_management.py # Multi-conversation session management & CLI tests
     ├── test_llm_providers.py        # Mock & OpenAI provider tests
     ├── test_logging.py              # Logging & secret filter tests
     ├── test_memory.py               # Memory buffer & sliding window tests
@@ -392,6 +407,7 @@ FRIDAY/
   * `fc908d9`: `feat(memory): add persistent SQLite conversation storage (v0.4.0)`
   * `83ad174`: `chore: ignore local SQLite databases in data directory`
   * `2ff4db3`: `feat(agent): integrate persistent conversation memory (v0.4.1)`
+  * *(Pending Commit)*: `feat(memory): add persistent conversation management (v0.4.2)`
 * **Remote Repository**: `https://github.com/surendra2304/FRIDAY`
 * **Push Status**: Verified and in sync with `origin/main`
 
@@ -399,7 +415,7 @@ FRIDAY/
 
 ### Current project state
 
-* **Status**: Complete, fully functional, and stabilized **Milestone V0.4 Persistent SQLite Memory**.
+* **Status**: Complete, fully functional, and stabilized **Milestone V0.4 Persistent SQLite Memory & Multi-Conversation Management**.
 * **Capabilities Operational**:
   * Multi-step sequential tool calling decision loop with iteration guardrails.
   * Real-time tool execution event streaming in CLI.
@@ -421,11 +437,11 @@ FRIDAY/
   * Secure SanitizedFormatter blocking all credentials and token leaks from exceptions and traceback logs.
   * Explicit absolute and drive-anchored paths rejection in sandboxed file tools.
   * Persistent conversation memory backend (`SQLiteConversationMemory`) with automatic database creation, session isolation, and ACID guarantees.
-  * Active conversation session management and seamless restart context retention.
+  * Multi-conversation lifecycle management (creation, listing, switching, renaming, safe deletion with confirmation).
   * Correct JSON double-quote argument serialization (fixed Python single-quote bug).
   * Robust error recovery for missing tools, malformed arguments, tool exceptions, and safety denials.
   * Cloud endpoint HTTP error message extraction and HTML truncation handling.
-  * 100% pass rate across 98 automated tests.
+  * 100% pass rate across 105 automated tests.
 
 ---
 

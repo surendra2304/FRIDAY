@@ -74,17 +74,33 @@ class FridayAgent:
         return None
 
     def switch_conversation(self, conversation_id: str) -> None:
-        """Switch the active conversation session if supported by the memory backend."""
-        if hasattr(self.memory, "load_conversation"):
-            self.memory.load_conversation(conversation_id)
-        else:
-            logger.warning("Active memory backend does not support switching conversations.")
+        """Switch the active conversation session."""
+        self.memory.load_conversation(conversation_id)
 
     def create_new_conversation(self, title: Optional[str] = None) -> Optional[str]:
-        """Create and activate a new conversation session if supported by the memory backend."""
-        if hasattr(self.memory, "create_conversation"):
-            return self.memory.create_conversation(title=title)
+        """Create and activate a new conversation session."""
+        return self.memory.create_conversation(title=title)
+
+    def list_conversations(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """List available conversation sessions."""
+        return self.memory.list_conversations(limit=limit)
+
+    def get_current_conversation(self) -> Optional[Dict[str, Any]]:
+        """Retrieve metadata for the current active conversation."""
+        if self.conversation_id:
+            return self.memory.get_conversation(self.conversation_id)
         return None
+
+    def rename_conversation(self, new_title: str, conversation_id: Optional[str] = None) -> bool:
+        """Rename an existing conversation."""
+        target_id = conversation_id or self.conversation_id
+        if target_id:
+            return self.memory.rename_conversation(target_id, new_title)
+        return False
+
+    def delete_conversation(self, conversation_id: str) -> bool:
+        """Delete a conversation session and all its messages."""
+        return self.memory.delete_conversation(conversation_id)
 
     def _create_default_registry(self) -> ToolRegistry:
         """Instantiate default tool registry with built-in safe tools."""
