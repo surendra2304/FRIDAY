@@ -364,7 +364,7 @@ FRIDAY/
   * `5519b4d`: `feat(core): improve agent reliability and execution observability (v0.3.9)`
   * `4f49bc5`: `security(core): harden FRIDAY Phase 1 execution boundaries (v0.3.10)`
   * `dd4b253`: `feat(phase1): complete FRIDAY core intelligence foundation (v0.3.11)`
-  * *(Pending Commit)*: `docs(memory): design persistent FRIDAY memory architecture (v0.3.12)`
+  * `f42a653`: `docs(memory): design persistent FRIDAY memory architecture (v0.3.12)`
 * **Remote Repository**: `https://github.com/surendra2304/FRIDAY`
 * **Push Status**: Verified and in sync with `origin/main`
 
