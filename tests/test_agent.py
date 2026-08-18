@@ -436,3 +436,96 @@ def test_agent_memory_persists_tool_calls():
     assert history[3].role == Role.ASSISTANT
     assert history[3].content == "Diagnostics report processed."
 
+
+def test_agent_time_query():
+    call_count = 0
+    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return Message(
+                role=Role.ASSISTANT,
+                content="Checking time...",
+                tool_calls=[ToolCall(id="t1", name="get_time_date", arguments={})],
+            )
+        tool_msg = next((m for m in messages if m.role == Role.TOOL), None)
+        assert tool_msg is not None
+        assert "Current Local Date" in tool_msg.content
+        return Message(role=Role.ASSISTANT, content="The time is 12:00 PM.")
+
+    provider = MockLLMProvider(custom_responder=mock_responder)
+    agent = FridayAgent(settings=Settings(env="testing"), llm_provider=provider)
+    response = agent.process_message("What time is it?")
+    assert response.is_done
+    assert "The time is 12:00 PM." in response.content
+
+
+def test_agent_math_query():
+    call_count = 0
+    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return Message(
+                role=Role.ASSISTANT,
+                content="Calculating...",
+                tool_calls=[ToolCall(id="calc1", name="calculator", arguments={"expression": "125 * 48"})],
+            )
+        tool_msg = next((m for m in messages if m.role == Role.TOOL), None)
+        assert tool_msg is not None
+        assert tool_msg.content == "6000"
+        return Message(role=Role.ASSISTANT, content="125 * 48 is 6000.")
+
+    provider = MockLLMProvider(custom_responder=mock_responder)
+    agent = FridayAgent(settings=Settings(env="testing"), llm_provider=provider)
+    response = agent.process_message("What is 125 * 48?")
+    assert response.is_done
+    assert "6000" in response.content
+
+
+def test_agent_list_dir_query():
+    call_count = 0
+    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return Message(
+                role=Role.ASSISTANT,
+                content="Listing directory...",
+                tool_calls=[ToolCall(id="list1", name="list_dir", arguments={"path": "."})],
+            )
+        tool_msg = next((m for m in messages if m.role == Role.TOOL), None)
+        assert tool_msg is not None
+        assert "README.md" in tool_msg.content
+        return Message(role=Role.ASSISTANT, content="I listed the directory.")
+
+    provider = MockLLMProvider(custom_responder=mock_responder)
+    agent = FridayAgent(settings=Settings(env="testing"), llm_provider=provider)
+    response = agent.process_message("List the files in this directory.")
+    assert response.is_done
+    assert "I listed the directory." in response.content
+
+
+def test_agent_read_file_query():
+    call_count = 0
+    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return Message(
+                role=Role.ASSISTANT,
+                content="Reading file...",
+                tool_calls=[ToolCall(id="read1", name="read_file", arguments={"path": "README.md"})],
+            )
+        tool_msg = next((m for m in messages if m.role == Role.TOOL), None)
+        assert tool_msg is not None
+        assert "FRIDAY" in tool_msg.content
+        return Message(role=Role.ASSISTANT, content="I read the file.")
+
+    provider = MockLLMProvider(custom_responder=mock_responder)
+    agent = FridayAgent(settings=Settings(env="testing"), llm_provider=provider)
+    response = agent.process_message("Read this text file.")
+    assert response.is_done
+    assert "I read the file." in response.content
+
+

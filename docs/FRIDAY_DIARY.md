@@ -1,7 +1,7 @@
 # FRIDAY Project Diary
 
 > **Permanent, never-ending historical record and institutional memory of the FRIDAY project.**
-> **Started: 2026-08-18 | Current Version: v0.2.2 | Milestone: V0.2 Agent Brain & Tool-Calling Architecture**
+> **Started: 2026-08-18 | Current Version: v0.3.0 | Milestone: V0.3 Core Tool Expansion**
 
 ---
 
@@ -96,6 +96,17 @@
   * **Graceful CLI Configuration Failures**: Wrapped `get_settings()` in a `try-except ValidationError` block at the CLI entry point (`src/friday/cli/main.py`). This catches Pydantic configuration failures on startup and prints a clean user message instead of a stack trace.
 * Expanded test suite from 39 to **42 tests** covering unexpected parameter validation errors, null argument filtering default values, and agent multi-turn memory persistence of intermediate tool calls/results.
 * Confirmed 100% test pass rate (42/42 passed in 0.73s).
+
+#### Session 8 — Phase 1.2: Tool System Expansion
+* Added a robust and secure collection of built-in foundational tools:
+  * **Time / Date Tool (`SAFE`)**: Implemented `TimeDateTool` retrieving local date, local time, day of the week, and Unix timestamp. Automatically uses system-local environment settings without hardcoding timezones.
+  * **Safe Calculator Tool (`SAFE`)**: Implements `CalculatorTool` evaluating arithmetic expressions. Built with Python's `ast` parsing module to restrict execution strictly to `ast.Expression`, `ast.BinOp` (Add, Sub, Mult, Div, Pow), `ast.UnaryOp` (USub, UAdd), and `ast.Constant` / `ast.Num` values. Rejects any code injection (functions, attributes, imports) and caps max string length (500 chars) and exponentiation scale (max exponent 1000) to prevent CPU denial-of-service (DoS) locks.
+  * **Sandboxed File Reader Tool (`SAFE`)**: Implements `FileReaderTool` restricted to reading text files. Enforces path traversal validation using `Path.resolve()` to block accessing directories outside the workspace root (directory sandbox model). Rejects reading binary files and sets a default limit of 100 KB to avoid context overflow.
+  * **Sandboxed File Listing Tool (`SAFE`)**: Implements `FileListingTool` to retrieve files and subdirectories inside a workspace directory relative to the workspace root. Enforces traversal boundaries and returns structured markdown tables with details limited to the first 100 elements.
+  * **Deferred Web Search Tool**: Web search implementation was deferred to a future milestone because the codebase lacks configured search providers, and scraping duckduckgo creates fragile, slow, and non-deterministic network execution constraints in test runner environments.
+* Refactored `FridayAgent._create_default_registry()` to auto-load and register all 5 tools on initialization.
+* Expanded test suite from 42 to **54 tests** covering all new built-in tools (arithmetic evaluations, security injection blockages, traversal blocks, file system operations, binary rejections) and natural language agent queries using Mock responders.
+* Confirmed 100% test pass rate (54/54 passed in 0.84s).
 
 ---
 
@@ -277,6 +288,7 @@ FRIDAY/
   * `68207a1`: `docs(diary): finalize V0.2 commit hash in Day 1 log`
   * `f18dc31`: `chore(architecture): stabilize FRIDAY core foundation for Phase 1 (v0.2.1)`
   * `524c8be`: `chore(core): stabilize FRIDAY architecture for Phase 1 (v0.2.2)`
+  * *(Pending Commit)*: `feat(tools): expand FRIDAY core read-only toolset (v0.3.0)`
 * **Remote Repository**: `https://github.com/surendra2304/FRIDAY`
 * **Push Status**: Verified and in sync with `origin/main`
 
@@ -284,7 +296,7 @@ FRIDAY/
 
 ### Current project state
 
-* **Status**: Complete, fully functional, and stabilized **Milestone V0.2 Agent Brain & Tool-Calling Architecture**.
+* **Status**: Complete, fully functional, and stabilized **Milestone V0.3 Core Tool Expansion**.
 * **Capabilities Operational**:
   * Multi-step sequential tool calling decision loop with iteration guardrails.
   * Real-time tool execution event streaming in CLI.
@@ -293,10 +305,13 @@ FRIDAY/
   * Dynamic context assembly and memory persistence of intermediate tool calls/results.
   * Graceful ValidationError config gating on CLI startup.
   * Enriched system diagnostics tool (`get_system_info`) supporting category filtering and hardware inspection.
+  * Time and Date tool (`get_time_date`) retrieving local OS date and time.
+  * Safe AST-parsed Calculator tool (`calculator`) with length/exponentiation DoS guardrails.
+  * Sandboxed File Reader (`read_file`) and Directory Lister (`list_dir`) tools with strict path traversal checking.
   * Correct JSON double-quote argument serialization (fixed Python single-quote bug).
   * Robust error recovery for missing tools, malformed arguments, tool exceptions, and safety denials.
   * Cloud endpoint HTTP error message extraction and HTML truncation handling.
-  * 100% pass rate across 42 automated tests.
+  * 100% pass rate across 54 automated tests.
 
 ---
 

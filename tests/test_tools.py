@@ -5,7 +5,13 @@ import pytest
 from friday.core.exceptions import ToolError
 from friday.core.types import SafetyLevel, ToolResult
 from friday.tools.base import BaseTool
-from friday.tools.builtin.system_info import SystemInfoTool
+from friday.tools.builtin import (
+    SystemInfoTool,
+    TimeDateTool,
+    CalculatorTool,
+    FileReaderTool,
+    FileListingTool,
+)
 from friday.tools.registry import ToolRegistry
 
 
@@ -200,5 +206,125 @@ def test_tool_registry_optional_arg_null_filtering():
     result = reg.execute("dummy_default_tool", {"required_val": "hello", "optional_val": None})
     assert not result.is_error
     assert "optional=42" in result.content
+
+
+def test_time_date_tool():
+    tool = TimeDateTool()
+    result = tool.execute()
+    assert not result.is_error
+    assert result.safety_level == SafetyLevel.SAFE
+    assert "Current Local Date" in result.content
+    assert "Current Local Time" in result.content
+    assert "Day of the Week" in result.content
+    assert "Unix Timestamp" in result.content
+
+
+def test_calculator_tool_valid():
+    tool = CalculatorTool()
+    # Basic math
+    res1 = tool.execute("2 + 3 * 4")
+    assert not res1.is_error
+    assert res1.content == "14"
+    
+    # Exponentiation & Parentheses
+    res2 = tool.execute("(2 + 3) ** 2")
+    assert not res2.is_error
+    assert res2.content == "25"
+    
+    # Float decimals formatting
+    res3 = tool.execute("7 / 2")
+    assert not res3.is_error
+    assert res3.content == "3.5"
+
+
+def test_calculator_tool_division_by_zero():
+    tool = CalculatorTool()
+    res = tool.execute("5 / 0")
+    assert res.is_error
+    assert "Division by zero" in res.content
+
+
+def test_calculator_tool_security_rejections():
+    tool = CalculatorTool()
+    
+    # Python code statement injection
+    res1 = tool.execute("import os; os.system('echo 1')")
+    assert res1.is_error
+    assert "Invalid expression" in res1.content
+    
+    # Calling functions/objects
+    res2 = tool.execute("eval('1+1')")
+    assert res2.is_error
+    assert "Unsupported AST node" in res2.content
+    
+    # Large exponent DoS prevention
+    res3 = tool.execute("9999 ** 9999")
+    assert res3.is_error
+    assert "Exponent too large" in res3.content or "combination too large" in res3.content
+
+
+def test_file_reader_tool_valid():
+    import os
+    test_file_name = "temp_test_read.txt"
+    test_content = "Hello, FRIDAY file reader!\nLine 2 content."
+    
+    with open(test_file_name, "w", encoding="utf-8") as f:
+        f.write(test_content)
+        
+    try:
+        tool = FileReaderTool()
+        result = tool.execute(path=test_file_name)
+        assert not result.is_error
+        assert "Hello, FRIDAY file reader!" in result.content
+        assert "Line 2 content." in result.content
+        
+        # Max bytes truncation
+        trunc_result = tool.execute(path=test_file_name, max_bytes=5)
+        assert not trunc_result.is_error
+        assert "Hello" in trunc_result.content
+        assert "FRIDAY" not in trunc_result.content
+    finally:
+        if os.path.exists(test_file_name):
+            os.remove(test_file_name)
+
+
+def test_file_reader_tool_security_and_binary():
+    tool = FileReaderTool()
+    
+    # Path traversal block
+    result_traversal = tool.execute(path="../outside.txt")
+    assert result_traversal.is_error
+    assert "Security Error" in result_traversal.content
+    
+    # Nonexistent file
+    result_missing = tool.execute(path="nonexistent_file_abc_123.txt")
+    assert result_missing.is_error
+    assert "does not exist" in result_missing.content
+
+
+def test_file_listing_tool_valid():
+    tool = FileListingTool()
+    
+    # List workspace root
+    result = tool.execute(path=".")
+    assert not result.is_error
+    assert "Directory Listing" in result.content
+    assert "README.md" in result.content
+    assert "pyproject.toml" in result.content
+
+
+def test_file_listing_tool_traversal_and_errors():
+    tool = FileListingTool()
+    
+    # Path traversal block
+    res1 = tool.execute(path="../")
+    assert res1.is_error
+    assert "Security Error" in res1.content
+    
+    # Non-existent directory
+    res2 = tool.execute(path="nonexistent_folder_abc")
+    assert res2.is_error
+    assert "does not exist" in res2.content
+
 
 

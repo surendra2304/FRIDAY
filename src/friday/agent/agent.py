@@ -10,7 +10,13 @@ from friday.llm.base import BaseLLMProvider
 from friday.llm.factory import create_llm_provider
 from friday.memory.base import BaseMemory
 from friday.memory.in_memory import InMemoryConversationMemory
-from friday.tools.builtin.system_info import SystemInfoTool
+from friday.tools.builtin import (
+    SystemInfoTool,
+    TimeDateTool,
+    CalculatorTool,
+    FileReaderTool,
+    FileListingTool,
+)
 from friday.tools.registry import ToolRegistry
 
 logger = get_logger("agent.core")
@@ -46,6 +52,10 @@ class FridayAgent:
         """Instantiate default tool registry with built-in safe tools."""
         registry = ToolRegistry()
         registry.register(SystemInfoTool())
+        registry.register(TimeDateTool())
+        registry.register(CalculatorTool())
+        registry.register(FileReaderTool())
+        registry.register(FileListingTool())
         return registry
 
     def process_message(
