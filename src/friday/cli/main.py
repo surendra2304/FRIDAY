@@ -48,6 +48,9 @@ def print_status(agent: FridayAgent) -> None:
     print(f"  User Address    : {status['user_name']}")
     print(f"  LLM Provider    : {status['provider']}")
     print(f"  Model           : {status['model']}")
+    print(f"  Memory Backend  : {status.get('memory_backend', 'in_memory')}")
+    if "conversation_id" in status:
+        print(f"  Conversation ID : {status['conversation_id']}")
     print(f"  Memory Usage    : {status['memory_messages']} / {status['memory_capacity']} messages")
     print(f"  Loaded Tools    : {len(status['tools_registered'])}")
     for t in status["tools_registered"]:

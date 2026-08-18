@@ -20,6 +20,7 @@ from friday.core.types import (
 from friday.llm.base import BaseLLMProvider
 from friday.llm.factory import create_llm_provider
 from friday.memory.base import BaseMemory
+from friday.memory.factory import create_memory
 from friday.memory.in_memory import InMemoryConversationMemory
 from friday.memory.sqlite import SQLiteConversationMemory
 from friday.tools.builtin import (
@@ -47,18 +48,11 @@ class FridayAgent:
         tool_callback: Optional[Callable[[ToolCall, ToolResult], None]] = None,
         authorizer: Optional[BaseAuthorizer] = None,
         tool_timeout: float = 30.0,
+        conversation_id: Optional[str] = None,
     ) -> None:
         self.settings = settings or get_settings()
         self.llm = llm_provider or create_llm_provider(self.settings)
-        if memory:
-            self.memory = memory
-        elif self.settings.memory_backend == "sqlite":
-            self.memory = SQLiteConversationMemory(
-                db_path=self.settings.memory_db_path,
-                max_messages=self.settings.memory_max_messages,
-            )
-        else:
-            self.memory = InMemoryConversationMemory(max_messages=self.settings.memory_max_messages)
+        self.memory = memory or create_memory(self.settings, conversation_id=conversation_id)
         self.tools = tool_registry or self._create_default_registry()
         self.max_tool_iterations = max(1, max_tool_iterations)
         self.tool_callback = tool_callback
@@ -71,6 +65,26 @@ class FridayAgent:
             f"(model: '{self.llm.model}') and {len(self.tools.list_tools())} loaded tools. "
             f"Max tool iterations: {self.max_tool_iterations}."
         )
+
+    @property
+    def conversation_id(self) -> Optional[str]:
+        """Return the active conversation identifier if supported by the memory backend."""
+        if hasattr(self.memory, "active_conversation_id"):
+            return self.memory.active_conversation_id
+        return None
+
+    def switch_conversation(self, conversation_id: str) -> None:
+        """Switch the active conversation session if supported by the memory backend."""
+        if hasattr(self.memory, "load_conversation"):
+            self.memory.load_conversation(conversation_id)
+        else:
+            logger.warning("Active memory backend does not support switching conversations.")
+
+    def create_new_conversation(self, title: Optional[str] = None) -> Optional[str]:
+        """Create and activate a new conversation session if supported by the memory backend."""
+        if hasattr(self.memory, "create_conversation"):
+            return self.memory.create_conversation(title=title)
+        return None
 
     def _create_default_registry(self) -> ToolRegistry:
         """Instantiate default tool registry with built-in safe tools."""
@@ -386,13 +400,17 @@ class FridayAgent:
 
     def get_status(self) -> Dict[str, Any]:
         """Return diagnostic status information about the agent."""
-        return {
+        status = {
             "agent_name": self.settings.agent_name,
             "user_name": self.settings.user_name,
             "provider": self.llm.provider_name,
             "model": self.llm.model,
+            "memory_backend": self.settings.memory_backend,
             "memory_messages": len(self.memory.get_messages()),
             "memory_capacity": self.settings.memory_max_messages,
             "max_tool_iterations": self.max_tool_iterations,
             "tools_registered": [f"{t.name} ({t.safety_level.value})" for t in self.tools.list_tools()],
         }
+        if self.conversation_id:
+            status["conversation_id"] = self.conversation_id
+        return status

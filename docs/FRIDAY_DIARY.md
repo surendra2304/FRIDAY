@@ -1,7 +1,7 @@
 # FRIDAY Project Diary
 
 > **Permanent, never-ending historical record and institutional memory of the FRIDAY project.**
-> **Started: 2026-08-18 | Current Version: v0.4.0 | Milestone: V0.4 Persistent SQLite & Vector Memory**
+> **Started: 2026-08-18 | Current Version: v0.4.1 | Milestone: V0.4 Persistent SQLite Memory Integration**
 
 ---
 
@@ -173,6 +173,16 @@
 * Expanded test suite from 82 to **91 tests** in `tests/test_sqlite_memory.py` covering database auto-creation, schema integrity, conversation lifecycle, message CRUD, tool metadata preservation, sliding context window, multi-conversation isolation, persistence across re-instantiation, and multi-thread concurrency.
 * Confirmed 100% test pass rate (91/91 passed in 12.53s).
 
+#### Session 15 — Phase 2: Integration of Persistent Conversation Memory in Agent Core
+* Integrated persistent conversation memory into `FridayAgent` through the decoupled memory factory:
+  * **Memory Factory (`create_memory`)**: Implemented in `src/friday/memory/factory.py` to instantiate `SQLiteConversationMemory` or `InMemoryConversationMemory` based on `Settings.memory_backend`.
+  * **Active Conversation Session Management**: Added explicit `conversation_id` parameter to `FridayAgent.__init__`, along with helper properties and methods (`agent.conversation_id`, `agent.switch_conversation(id)`, `agent.create_new_conversation(title)`).
+  * **Complete Turn-by-Turn Persistence**: Flow preserves all user prompts, LLM responses, tool calls, tool results, and final synthesized answers inside SQLite while maintaining separate working context window slicing for prompt construction.
+  * **Process Restart Simulation**: Reopening an existing conversation ID across different `FridayAgent` instances reliably reconstructs all prior turns and tool metadata without information loss.
+  * **CLI Diagnostics Enrichment**: Updated `print_status` in `src/friday/cli/main.py` to display the active `Memory Backend` and `Conversation ID`.
+* Expanded test suite from 91 to **98 tests** in `tests/test_agent_persistence.py` verifying agent operations with in-memory and SQLite backends, process restart simulation, tool call/result persistence, session switching, and context window slicing.
+* Confirmed 100% test pass rate (98/98 passed in 13.39s).
+
 ---
 
 ### Architecture / structure changes
@@ -219,6 +229,7 @@ FRIDAY/
 │       ├── memory/
 │       │   ├── __init__.py
 │       │   ├── base.py              # BaseMemory ABC
+│       │   ├── factory.py           # Memory factory (instantiates backend from settings)
 │       │   ├── in_memory.py         # Sliding window conversation memory buffer
 │       │   └── sqlite.py            # Persistent SQLite conversation memory
 │       ├── agent/
@@ -233,6 +244,7 @@ FRIDAY/
     ├── __init__.py
     ├── conftest.py                  # Pytest fixtures
     ├── test_agent.py                # Agent dialog, multi-step tool loops & error handling tests
+    ├── test_agent_persistence.py    # Agent persistent memory integration & session tests
     ├── test_auth.py                 # Authorization gating, validation priority, and CLI tests
     ├── test_config.py               # Settings & masking tests
     ├── test_llm_providers.py        # Mock & OpenAI provider tests
@@ -379,6 +391,7 @@ FRIDAY/
   * `f42a653`: `docs(memory): design persistent FRIDAY memory architecture (v0.3.12)`
   * `fc908d9`: `feat(memory): add persistent SQLite conversation storage (v0.4.0)`
   * `83ad174`: `chore: ignore local SQLite databases in data directory`
+  * *(Pending Commit)*: `feat(agent): integrate persistent conversation memory (v0.4.1)`
 * **Remote Repository**: `https://github.com/surendra2304/FRIDAY`
 * **Push Status**: Verified and in sync with `origin/main`
 
@@ -408,16 +421,16 @@ FRIDAY/
   * Secure SanitizedFormatter blocking all credentials and token leaks from exceptions and traceback logs.
   * Explicit absolute and drive-anchored paths rejection in sandboxed file tools.
   * Persistent conversation memory backend (`SQLiteConversationMemory`) with automatic database creation, session isolation, and ACID guarantees.
+  * Active conversation session management and seamless restart context retention.
   * Correct JSON double-quote argument serialization (fixed Python single-quote bug).
   * Robust error recovery for missing tools, malformed arguments, tool exceptions, and safety denials.
   * Cloud endpoint HTTP error message extraction and HTML truncation handling.
-  * 100% pass rate across 91 automated tests.
+  * 100% pass rate across 98 automated tests.
 
 ---
 
 ### Known issues
 
-* Memory resets upon process termination (in-memory buffer only; persistent SQLite/Vector storage planned for V0.4).
 * Real-time LLM token streaming to CLI output (planned for future iteration).
 
 ---
