@@ -750,3 +750,58 @@ END;
 ### Important notes
 
 * The project diary is permanent. All future development sessions must continue appending chronological entries under their respective dates without deleting historical entries.
+# 2026-08-18 — Phase 4
+
+## Overview
+
+The fourth phase focuses on adding a **cloud‑first voice interface** and a **proactive task engine** while keeping the core FRIDAY architecture unchanged. All heavy AI work stays in Google Gemini cloud services; the local laptop only coordinates I/O, memory, and scheduling.
+
+### Implemented Features
+
+- **Voice Subsystem** – `src/friday/voice/` contains abstract `VoiceInput`, `VoiceOutput`, `VoiceProvider`, a `VoiceSession` controller, and concrete `GeminiVoiceProvider` (stub) plus `MockVoiceProvider` for CI. The CLI can start a session with `--voice-enabled`.
+- **Interruption** – `VoiceSession.interrupt()` stops playback and cancels the current turn, allowing a spoken “stop” command or Ctrl+C.
+- **Personality** – System prompt updated to enforce a calm, concise tone, natural acknowledgments, and explicit confirmation for sensitive actions.
+- **Proactive Task Engine** – `src/friday/tasks/` includes data models, a SQLite‑backed task store, a background `TaskScheduler` (default 60 s interval), and a `ConsoleNotifier` (optional `VoiceNotifier`).
+- **Scheduler** – Executes enabled tasks at their scheduled time, respects daily/weekly/one‑time schedules, and runs with minimal CPU usage.
+- **Notifications** – Console‑based notifications are functional; voice notifications are stubbed pending real TTS.
+- **Authorization & Security** – Tasks have `SafetyLevel` (SAFE, SENSITIVE, DANGEROUS) with a persisted approval table; SENSITIVE/DANGEROUS actions require explicit admin confirmation.
+- **Tests** – New unit and integration tests for voice session flow, task creation/execution, and scheduler behavior are included. All tests now pass (`168 passed`).
+
+### Partially Implemented / Placeholder Features
+
+- **Gemini Voice Integration** – The provider currently implements request/response calls only; real‑time streaming of audio input/output is **not yet implemented** (placeholder methods exist for future work).
+- **Voice Synthesis** – TTS functionality is stubbed; the mock provider returns silent MP3 data for CI. Real speech generation using Gemini TTS will be added later.
+
+### Failed Approaches
+
+- Attempted to implement live Gemini streaming during CI; hardware constraints made this impractical, so the architecture was kept modular for later addition.
+- Real‑time voice synthesis was deferred to avoid heavy local model dependencies.
+
+### Bugs & Fixes
+
+- No outstanding bugs were found after the full test run.
+
+### Test Results
+
+```
+168 passed in 31.03s
+```
+
+### Repository State
+
+- Latest commit `8a5a6cd` – *feat(phase4): complete FRIDAY voice and proactive interaction foundation*.
+- All changes are pushed to `origin/main`; the repository is clean.
+
+### Known Limitations
+
+- No streaming audio support yet.
+- Voice output uses a silent placeholder; actual TTS not available.
+- Scheduler interval is fixed at 60 s (configurable via `Settings.task_check_interval_seconds`).
+
+### Recommended Next Milestone
+
+- Implement true Gemini Live streaming for both input and output.
+- Replace the mock TTS stub with actual Gemini TTS synthesis.
+- Add optional desktop notification integration.
+
+---
