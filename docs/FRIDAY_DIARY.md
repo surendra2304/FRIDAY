@@ -258,6 +258,27 @@
 * Expanded test suite from 125 to **132 tests** in `tests/test_llm_providers.py` verifying factory instantiation, missing API key guard, request/response payload translation, tool call parsing, API key sanitization, and safety filter block recovery.
 * Confirmed 100% test pass rate (132/132 passed in 18.88s).
 
+#### Session 21 — Gemini Function Calling & FRIDAY Tool Trust Boundary
+* Integrated Google Gemini tool calling with FRIDAY's tiered tool execution and safety subsystem:
+  * **Strict Trust Boundary**: Enforced the fundamental security principle:
+    > **Gemini decides WHAT it wants.**
+    > **FRIDAY decides WHETHER it is allowed.**
+    > **FRIDAY executes it.**
+    - Gemini has zero direct OS, memory, or shell access.
+    - Every function call from Gemini passes through FRIDAY's schema validation before authorization.
+    - SENSITIVE and DANGEROUS tools strictly require user confirmation (`BaseAuthorizer`); unapproved actions are rejected and returned as structured error results without execution.
+  * **Schema Declaration Fidelity**:
+    - Validated complete translation of `BaseTool.parameters` schemas into Gemini `functionDeclarations` (names, descriptions, required properties, types, nested arrays, and objects).
+  * **Multi-Step & Coordinated Execution**:
+    - Verified direct answers without tool invocations.
+    - Verified single tool call round-trips (User -> Gemini call -> FRIDAY execution -> Result -> Gemini synthesis).
+    - Verified multiple independent SAFE tools running concurrently via `ThreadPoolExecutor`.
+    - Verified sequential multi-step tool reasoning chains (Step 1 -> Result -> Step 2 -> Result -> Answer).
+    - Verified schema error recovery when malformed arguments are provided by the model.
+    - Verified maximum iteration guardrail preventing infinite tool recursion.
+* Added comprehensive integration test suite `tests/test_gemini_tools.py` (9 tests).
+* Expanded total test count from 132 to **141 tests**, maintaining a 100% pass rate in 25.18s.
+
 ---
 
 ### Architecture / structure changes
@@ -574,6 +595,7 @@ END;
   * `74b87e7`: `perf(memory): harden persistent memory storage and recovery (v0.4.5)`
   * `118843b`: `feat(phase2): complete FRIDAY persistent memory foundation (v0.4.6)`
   * `3ed3430`: `feat(llm): add Gemini cloud provider`
+  * *(Pending Commit)*: `feat(llm): integrate Gemini function calling with FRIDAY tools`
 * **Remote Repository**: `https://github.com/surendra2304/FRIDAY`
 * **Push Status**: Verified and in sync with `origin/main`
 
@@ -581,9 +603,12 @@ END;
 
 ### Current project state
 
-* **Status**: Complete, fully functional, and stabilized **First-Class Google Gemini Cloud Provider & Persistent Memory**.
+* **Status**: Complete, fully functional, and stabilized **Gemini Tool Calling & Safety Architecture**.
 * **Capabilities Operational**:
   * First-class Google Gemini Cloud Provider (`gemini-2.5-flash`, `gemini-1.5-pro`) with function calling, structured system instructions, and zero local laptop compute overhead.
+  * Strict trust boundary enforcement: Gemini requests function calls $\rightarrow$ FRIDAY validates schemas $\rightarrow$ FRIDAY checks authorization $\rightarrow$ FRIDAY executes $\rightarrow$ returns structured result.
+  * Support for direct responses, single tool call round-trips, concurrent parallel SAFE tools, and multi-step sequential reasoning.
+  * Zero automated execution bypass for `SENSITIVE` and `DANGEROUS` tools.
   * Multi-step sequential tool calling decision loop with iteration guardrails.
   * Real-time tool execution event streaming in CLI.
   * Schema-based argument validation across all registered tools with optional `None` argument safety and strict unexpected parameter rejection.
@@ -613,7 +638,7 @@ END;
   * Correct JSON double-quote argument serialization (fixed Python single-quote bug).
   * Robust error recovery for missing tools, malformed arguments, tool exceptions, and safety denials.
   * Cloud endpoint HTTP error message extraction and HTML truncation handling.
-  * 100% pass rate across 132 automated tests.
+  * 100% pass rate across 141 automated tests.
 
 ---
 
