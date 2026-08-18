@@ -31,6 +31,8 @@ Type your message to begin, or use a command:
   /tools            - List registered tools & safety tiers
   /clear            - Clear messages in active conversation
   /delete [id]      - Delete a conversation (requires confirmation)
+  /backup [path]    - Create an online local backup of database
+  /export [path]    - Export active conversation to local JSON file
   /purge            - Permanently delete all stored memory (strong confirmation)
   /help             - Show available commands
   /exit             - Gracefully shutdown FRIDAY
@@ -51,6 +53,8 @@ def print_help() -> None:
     print("  /tools          : View loaded tools and safety classifications")
     print("  /clear          : Reset active conversation memory buffer")
     print("  /delete [id]    : Delete a conversation (requires confirmation)")
+    print("  /backup [path]  : Create local backup of SQLite database")
+    print("  /export [path]  : Export current conversation to JSON")
     print("  /purge          : Permanently delete ALL stored memory (requires confirmation)")
     print("  /help           : Show this help menu")
     print("  /exit           : Exit FRIDAY assistant (or /quit)")
@@ -282,6 +286,28 @@ def main() -> None:
                 print(f"\nAll persistent memory has been completely purged ({count} conversation(s) deleted).\n")
             else:
                 print("\nPurge operation cancelled.\n")
+            continue
+        elif cmd.startswith("/backup"):
+            parts = user_input.split(maxsplit=1)
+            target = parts[1].strip() if len(parts) > 1 else f"data/backups/friday_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+            try:
+                out_path = agent.backup_database(target)
+                print(f"\nDatabase backup successfully created at '{out_path}'.\n")
+            except Exception as e:
+                print(f"\n[Error creating backup]: {e}\n")
+            continue
+        elif cmd.startswith("/export"):
+            parts = user_input.split(maxsplit=1)
+            target = parts[1].strip() if len(parts) > 1 else f"data/exports/conversation_{agent.conversation_id[:8] if agent.conversation_id else 'export'}.json"
+            try:
+                data = agent.export_conversation()
+                out_path = Path(target).resolve()
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(out_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+                print(f"\nExported active conversation to '{out_path}'.\n")
+            except Exception as e:
+                print(f"\n[Error exporting conversation]: {e}\n")
             continue
 
         # Process standard conversation turn

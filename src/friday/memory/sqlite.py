@@ -51,8 +51,11 @@ class SQLiteConversationMemory(BaseMemory):
         )
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON;")
+        conn.execute("PRAGMA busy_timeout = 20000;")
         if self.db_path != ":memory:":
             conn.execute("PRAGMA journal_mode = WAL;")
+            conn.execute("PRAGMA synchronous = NORMAL;")
+            conn.execute("PRAGMA cache_size = -64000;")
         return conn
 
     def _init_db(self) -> None:
@@ -82,6 +85,9 @@ class SQLiteConversationMemory(BaseMemory):
 
                     CREATE INDEX IF NOT EXISTS idx_messages_conv_created 
                     ON messages(conversation_id, created_at);
+
+                    CREATE INDEX IF NOT EXISTS idx_conversations_updated
+                    ON conversations(updated_at DESC);
 
                     CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
                         message_id UNINDEXED,
@@ -338,9 +344,14 @@ class SQLiteConversationMemory(BaseMemory):
         except Exception:
             ts = datetime.now(timezone.utc)
 
+        try:
+            role = Role(row["role"])
+        except Exception:
+            role = Role.USER
+
         return Message(
-            role=Role(row["role"]),
-            content=row["content"],
+            role=role,
+            content=row["content"] or "",
             name=row["name"],
             tool_calls=tool_calls,
             tool_call_id=row["tool_call_id"],
@@ -562,3 +573,51 @@ class SQLiteConversationMemory(BaseMemory):
         if deleted > 0:
             logger.info(f"Pruned {deleted} expired message(s) older than {retention_days} days (cutoff: {cutoff}).")
         return deleted
+
+    def backup(self, backup_path: str) -> str:
+        """Create an online hot backup of the SQLite database to a local destination file.
+
+        Args:
+            backup_path: Target filesystem path for the backup file.
+
+        Returns:
+            Resolved absolute path of the backup file.
+        """
+        target = Path(backup_path).resolve()
+        target.parent.mkdir(parents=True, exist_ok=True)
+
+        with self._lock:
+            with self._get_connection() as src_conn:
+                dest_conn = sqlite3.connect(str(target))
+                try:
+                    src_conn.backup(dest_conn)
+                finally:
+                    dest_conn.close()
+
+        logger.info(f"Created local database backup at '{target}'")
+        return str(target)
+
+    def export_conversation_to_dict(self, conversation_id: str) -> Dict[str, Any]:
+        """Export a full conversation record including metadata and messages to a dictionary."""
+        conv_meta = self.get_conversation(conversation_id)
+        if not conv_meta:
+            raise ValueError(f"Conversation '{conversation_id}' not found.")
+
+        messages = self.get_messages(conversation_id=conversation_id)
+        return {
+            "conversation": conv_meta,
+            "messages": [
+                {
+                    "role": m.role.value,
+                    "content": m.content,
+                    "name": m.name,
+                    "tool_calls": [
+                        {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
+                        for tc in m.tool_calls
+                    ] if m.tool_calls else None,
+                    "tool_call_id": m.tool_call_id,
+                    "timestamp": m.timestamp.isoformat(),
+                }
+                for m in messages
+            ],
+        }

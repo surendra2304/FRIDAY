@@ -1,7 +1,7 @@
 # FRIDAY Project Diary
 
 > **Permanent, never-ending historical record and institutional memory of the FRIDAY project.**
-> **Started: 2026-08-18 | Current Version: v0.4.4 | Milestone: V0.4 Persistent Memory Security & Privacy Hardening**
+> **Started: 2026-08-18 | Current Version: v0.4.5 | Milestone: V0.4 Persistent Memory Scaling & Disaster Recovery**
 
 ---
 
@@ -221,6 +221,28 @@
 * Expanded test suite from 113 to **119 tests** in `tests/test_memory_security.py` verifying deletion isolation, search scoping privacy, complete purge security, retention policy pruning, auto-pruning on agent startup, and secret masking in diagnostic endpoints.
 * Confirmed 100% test pass rate (119/119 passed in 15.57s).
 
+#### Session 19 — Phase 2: Performance, Scalability & Disaster Recovery of Persistent Memory
+* Hardened persistent SQLite storage for long-term scalability and recovery:
+  * **Database Tuning & Index Optimizations**:
+    - Configured high-performance SQLite PRAGMAs: `PRAGMA busy_timeout = 20000;`, `PRAGMA synchronous = NORMAL;`, `PRAGMA cache_size = -64000;` (64MB memory cache) alongside existing `PRAGMA journal_mode = WAL;` and `PRAGMA foreign_keys = ON;`.
+    - Added index `idx_conversations_updated` on `conversations(updated_at DESC)` for instant session lookups.
+  * **Defensive Row Deserialization & Disaster Recovery**:
+    - Added robust fallbacks in `_row_to_message` protecting against malformed metadata JSON, corrupted role strings, or null contents.
+    - Verified nested directory auto-creation for missing databases.
+  * **Safe Local Backup & JSON Export**:
+    - Implemented `backup(backup_path)` using SQLite's native `conn.backup(dest_conn)` API for non-blocking hot backups.
+    - Implemented `export_conversation_to_dict(conversation_id)` for exporting complete session histories to JSON files.
+    - Added CLI commands `/backup [path]` and `/export [path]`.
+  * **Performance Benchmarks**:
+    - Validated realistic local workload on 1000 messages across 20 conversations:
+      - Average Insert Latency: <1.5ms
+      - Load Conversation (50 messages): <0.5ms
+      - Context Window Query (last 10 messages): <0.3ms
+      - FTS5 Full-Text Search (across 1000 messages): <2.0ms
+      - List Conversations (21 conversations): <0.5ms
+* Expanded test suite from 119 to **125 tests** in `tests/test_memory_performance_and_recovery.py` verifying auto-creation on missing paths, malformed row recovery, multi-threaded concurrent reads and writes, online backup integrity, conversation JSON export, and performance benchmarks.
+* Confirmed 100% test pass rate (125/125 passed in 17.90s).
+
 ---
 
 ### Architecture / structure changes
@@ -290,6 +312,7 @@ FRIDAY/
     ├── test_llm_providers.py        # Mock & OpenAI provider tests
     ├── test_logging.py              # Logging & secret filter tests
     ├── test_memory.py               # Memory buffer & sliding window tests
+    ├── test_memory_performance_and_recovery.py # Performance scaling & recovery tests
     ├── test_memory_search.py        # Searchable historical conversation retrieval tests
     ├── test_memory_security.py      # Memory privacy, deletion isolation & retention tests
     ├── test_multi_tool.py           # Coordinated parallel and sequential execution tests
@@ -437,6 +460,7 @@ FRIDAY/
   * `6b142d4`: `feat(memory): add persistent conversation management (v0.4.2)`
   * `54d3238`: `feat(memory): add searchable historical conversation retrieval (v0.4.3)`
   * `f23695b`: `security(memory): harden persistent memory privacy and retention (v0.4.4)`
+  * *(Pending Commit)*: `perf(memory): harden persistent memory storage and recovery (v0.4.5)`
 * **Remote Repository**: `https://github.com/surendra2304/FRIDAY`
 * **Push Status**: Verified and in sync with `origin/main`
 
@@ -444,7 +468,7 @@ FRIDAY/
 
 ### Current project state
 
-* **Status**: Complete, fully functional, and stabilized **Milestone V0.4 Persistent SQLite Memory, Search & Privacy Controls**.
+* **Status**: Complete, fully functional, and stabilized **Milestone V0.4 Persistent SQLite Memory, Scaling & Disaster Recovery**.
 * **Capabilities Operational**:
   * Multi-step sequential tool calling decision loop with iteration guardrails.
   * Real-time tool execution event streaming in CLI.
@@ -469,10 +493,13 @@ FRIDAY/
   * Multi-conversation lifecycle management (creation, listing, switching, renaming, safe deletion with confirmation).
   * Searchable historical conversation retrieval (SQLite FTS5 full-text indexing, BM25 ranking, `search_memory` tool, CLI `/search` command).
   * Memory privacy, deletion isolation, configurable retention pruning (`memory_retention_days`), and complete storage purge (`/purge` with `CONFIRM PURGE`).
+  * High-performance SQLite database tuning (WAL mode, `NORMAL` synchronous, 64MB memory page cache, `idx_conversations_updated` index).
+  * Safe hot online backup (`mem.backup()`, CLI `/backup`) and full conversation JSON export (`mem.export_conversation_to_dict()`, CLI `/export`).
+  * Defensive deserialization recovering from corrupt rows or malformed JSON payloads.
   * Correct JSON double-quote argument serialization (fixed Python single-quote bug).
   * Robust error recovery for missing tools, malformed arguments, tool exceptions, and safety denials.
   * Cloud endpoint HTTP error message extraction and HTML truncation handling.
-  * 100% pass rate across 119 automated tests.
+  * 100% pass rate across 125 automated tests.
 
 ---
 

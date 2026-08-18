@@ -1,7 +1,7 @@
 """Base Memory interface."""
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 from friday.core.types import MemorySearchResult, Message
 
@@ -71,3 +71,11 @@ class BaseMemory(ABC):
     def prune_expired_messages(self, retention_days: int) -> int:
         """Prune messages older than the specified retention period. Returns number of pruned messages."""
         return 0
+
+    def backup(self, backup_path: str) -> str:
+        """Create a local backup of the persistent database. Returns path to backup."""
+        return backup_path
+
+    def export_conversation_to_dict(self, conversation_id: str) -> Dict[str, Any]:
+        """Export a full conversation record including metadata and messages to a dictionary."""
+        return {"conversation": {"id": conversation_id}, "messages": []}

@@ -119,6 +119,17 @@ class FridayAgent:
             return self.memory.prune_expired_messages(days)
         return 0
 
+    def backup_database(self, backup_path: str) -> str:
+        """Create an online hot backup of the persistent database to the target destination path."""
+        return self.memory.backup(backup_path)
+
+    def export_conversation(self, conversation_id: Optional[str] = None) -> Dict[str, Any]:
+        """Export full conversation metadata and messages to a dictionary."""
+        target_id = conversation_id or self.conversation_id
+        if not target_id:
+            raise ValueError("No active conversation to export.")
+        return self.memory.export_conversation_to_dict(target_id)
+
     def search_memory(
         self,
         query: str,
