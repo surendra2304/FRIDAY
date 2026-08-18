@@ -48,3 +48,10 @@ logs/
 .coverage
 htmlcov/
 .tox/
+
+# Database & Persistent Storage
+data/
+*.db
+*.sqlite
+*.sqlite3
+
