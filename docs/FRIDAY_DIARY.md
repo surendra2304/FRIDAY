@@ -1,7 +1,7 @@
 # FRIDAY Project Diary
 
 > **Permanent, never-ending historical record and institutional memory of the FRIDAY project.**
-> **Started: 2026-08-18 | Current Version: v0.3.0 | Milestone: V0.3 Core Tool Expansion**
+> **Started: 2026-08-18 | Current Version: v0.3.5 | Milestone: V0.3 Tool System Expansion & Interactive Confirmation**
 
 ---
 
@@ -308,6 +308,7 @@ FRIDAY/
   * `f18dc31`: `chore(architecture): stabilize FRIDAY core foundation for Phase 1 (v0.2.1)`
   * `524c8be`: `chore(core): stabilize FRIDAY architecture for Phase 1 (v0.2.2)`
   * `1cb8b52`: `feat(tools): expand FRIDAY core read-only toolset (v0.3.0)`
+  * `1c56676`: `feat(security): add explicit tool authorization and confirmation flow (v0.3.5)`
 * **Remote Repository**: `https://github.com/surendra2304/FRIDAY`
 * **Push Status**: Verified and in sync with `origin/main`
 
@@ -315,7 +316,7 @@ FRIDAY/
 
 ### Current project state
 
-* **Status**: Complete, fully functional, and stabilized **Milestone V0.3 Core Tool Expansion**.
+* **Status**: Complete, fully functional, and stabilized **Milestone V0.3 Tool System Expansion & Interactive Confirmation**.
 * **Capabilities Operational**:
   * Multi-step sequential tool calling decision loop with iteration guardrails.
   * Real-time tool execution event streaming in CLI.
@@ -327,10 +328,13 @@ FRIDAY/
   * Time and Date tool (`get_time_date`) retrieving local OS date and time.
   * Safe AST-parsed Calculator tool (`calculator`) with length/exponentiation DoS guardrails.
   * Sandboxed File Reader (`read_file`) and Directory Lister (`list_dir`) tools with strict path traversal checking.
+  * Strongly-typed tool authorization request/response model with auto-deny secure defaults.
+  * Interactive CLI confirmation prompt (`CLIAuthorizer`) with detailed resource printing and case-sensitive verification for dangerous tools.
+  * Validation priority gating (verifies schema before authorization, authorizes before execution).
   * Correct JSON double-quote argument serialization (fixed Python single-quote bug).
   * Robust error recovery for missing tools, malformed arguments, tool exceptions, and safety denials.
   * Cloud endpoint HTTP error message extraction and HTML truncation handling.
-  * 100% pass rate across 54 automated tests.
+  * 100% pass rate across 63 automated tests.
 
 ---
 
