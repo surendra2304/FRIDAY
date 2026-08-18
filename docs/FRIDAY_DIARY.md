@@ -1,7 +1,7 @@
 # FRIDAY Project Diary
 
 > **Permanent, never-ending historical record and institutional memory of the FRIDAY project.**
-> **Started: 2026-08-18 | Current Version: v0.2.0 | Milestone: V0.2 Agent Brain & Tool-Calling Architecture**
+> **Started: 2026-08-18 | Current Version: v0.2.1 | Milestone: V0.2 Agent Brain & Tool-Calling Architecture**
 
 ---
 
@@ -78,6 +78,15 @@
 * **Expanded Test Matrix**:
   * Added comprehensive tests for direct response, single tool invocation, multi-step sequential tool chaining, unknown tool handling, schema argument validation errors, tool runtime exceptions, safety gating, max iteration guardrails, tool event callbacks, and multi-turn context retention.
   * Total test count increased to **35 tests (100% passing)**.
+
+#### Session 6 — Phase 1.1: Repository Audit and Architecture Stabilization
+* Checked and resolved key bugs and weak points identified during a targeted architectural audit:
+  * **JSON Serialization Bug**: Replaced Python's default `str(tc.arguments)` in `Message.to_provider_dict()` (which produces invalid single-quoted Python dict representations) with standard `json.dumps()` output to comply with standard JSON parsing.
+  * **Validation of Optional Parameters**: Modified `BaseTool.validate_arguments()` to skip type validation check on explicit `None` (null) values, permitting optional arguments to bypass strict checks and default cleanly.
+  * **Tool Schema Safety Gating**: Enforced `max_safety` filtering inside `ToolRegistry.get_schemas()` using an explicit safety level hierarchy comparison (`SAFE < SENSITIVE < DANGEROUS`).
+  * **LLM Exception Truncation & Key Masking**: Enhanced `OpenAILLMProvider` to parse structured JSON error messages from the endpoint response, truncate raw HTTP response text to 300 characters (preventing raw HTML page dumps in console/logs), and automatically scrub any API keys from propagated error strings.
+* Expanded test suite from 35 to **39 tests** covering optional `None` argument validation, safety filtering thresholds, JSON error parsing, and HTML truncation.
+* Confirmed 100% test pass rate (39/39 passed in 0.78s).
 
 ---
 
@@ -256,6 +265,8 @@ FRIDAY/
   * `74bd226`: `chore: initialize FRIDAY core foundation (v0.1.0)`
   * `47995ff`: `docs(diary): finalize Day 1 entry with exact commit and push metadata`
   * `0e4709c`: `feat(agent): implement sequential tool-calling architecture & argument validation (v0.2.0)`
+  * `68207a1`: `docs(diary): finalize V0.2 commit hash in Day 1 log`
+  * *(Pending Commit)*: `chore(architecture): stabilize FRIDAY core foundation for Phase 1 (v0.2.1)`
 * **Remote Repository**: `https://github.com/surendra2304/FRIDAY`
 * **Push Status**: Verified and in sync with `origin/main`
 
@@ -263,14 +274,16 @@ FRIDAY/
 
 ### Current project state
 
-* **Status**: Complete, fully functional **Milestone V0.2 Agent Brain & Tool-Calling Architecture**.
+* **Status**: Complete, fully functional, and stabilized **Milestone V0.2 Agent Brain & Tool-Calling Architecture**.
 * **Capabilities Operational**:
   * Multi-step sequential tool calling decision loop with iteration guardrails.
   * Real-time tool execution event streaming in CLI.
-  * Schema-based argument validation across all registered tools.
+  * Schema-based argument validation across all registered tools with optional `None` argument safety.
   * Enriched system diagnostics tool (`get_system_info`) supporting category filtering and hardware inspection.
+  * Correct JSON double-quote argument serialization (fixed Python single-quote bug).
   * Robust error recovery for missing tools, malformed arguments, tool exceptions, and safety denials.
-  * 100% pass rate across 35 automated tests.
+  * Cloud endpoint HTTP error message extraction and HTML truncation handling.
+  * 100% pass rate across 39 automated tests.
 
 ---
 

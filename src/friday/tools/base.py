@@ -56,6 +56,8 @@ class BaseTool(ABC):
         }
 
         for arg_name, arg_val in arguments.items():
+            if arg_val is None:
+                continue
             prop_def = schema_props.get(arg_name)
             if prop_def and "type" in prop_def:
                 expected_type_str = prop_def["type"]

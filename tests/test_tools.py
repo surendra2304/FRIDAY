@@ -135,3 +135,32 @@ def test_tool_registry_nonexistent_tool():
     result = reg.execute("non_existent", {})
     assert result.is_error
     assert "not registered" in result.content
+
+
+def test_tool_argument_validation_optional_none():
+    tool = DummySensitiveTool()
+    
+    # Optional parameter 'lines' explicitly set to None (null) should be valid
+    valid, err = tool.validate_arguments({"path": "file.txt", "lines": None})
+    assert valid
+    assert err is None
+
+
+def test_tool_registry_get_schemas_max_safety():
+    reg = ToolRegistry()
+    
+    safe_tool = SystemInfoTool()
+    sensitive_tool = DummySensitiveTool()
+    
+    reg.register(safe_tool)
+    reg.register(sensitive_tool)
+    
+    # 1. max_safety=SAFE -> only safe tool returned
+    safe_schemas = reg.get_schemas(max_safety=SafetyLevel.SAFE)
+    assert len(safe_schemas) == 1
+    assert safe_schemas[0]["function"]["name"] == "get_system_info"
+    
+    # 2. max_safety=SENSITIVE -> both tools returned
+    sensitive_schemas = reg.get_schemas(max_safety=SafetyLevel.SENSITIVE)
+    assert len(sensitive_schemas) == 2
+

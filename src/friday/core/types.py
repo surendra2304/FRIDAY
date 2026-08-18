@@ -1,5 +1,6 @@
 """Core type definitions and data models for FRIDAY."""
 
+import json
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -69,7 +70,7 @@ class Message(BaseModel):
                 {
                     "id": tc.id,
                     "type": "function",
-                    "function": {"name": tc.name, "arguments": tc.arguments if isinstance(tc.arguments, str) else str(tc.arguments)},
+                    "function": {"name": tc.name, "arguments": tc.arguments if isinstance(tc.arguments, str) else json.dumps(tc.arguments)},
                 }
                 for tc in self.tool_calls
             ]

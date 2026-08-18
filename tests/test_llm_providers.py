@@ -48,3 +48,44 @@ def test_factory_invalid_provider():
     bad_settings = Settings(llm_provider="unsupported_ai")
     with pytest.raises(ConfigError):
         create_llm_provider(bad_settings)
+
+
+def test_openai_provider_error_handling_json():
+    from unittest import mock
+    provider = OpenAILLMProvider(api_key="sk-test-key-12345", base_url="https://api.mock.com")
+    
+    # Mock status code 400 with structured JSON error
+    mock_resp = mock.Mock()
+    mock_resp.status_code = 400
+    mock_resp.json.return_value = {"error": {"message": "Invalid API key sk-test-key-12345 provided."}}
+    
+    with mock.patch("httpx.Client.post", return_value=mock_resp):
+        with pytest.raises(LLMProviderError) as exc_info:
+            provider.generate([Message(role=Role.USER, content="Hello")])
+        
+        # Verify JSON parsed error message is raised
+        assert "Invalid API key" in str(exc_info.value)
+        # Verify API key is masked in the exception message
+        assert "sk-test-key-12345" not in str(exc_info.value)
+        assert "***" in str(exc_info.value)
+
+
+def test_openai_provider_error_handling_html_truncation():
+    from unittest import mock
+    provider = OpenAILLMProvider(api_key="sk-test", base_url="https://api.mock.com")
+    
+    # Mock status 502 with massive HTML error page
+    mock_resp = mock.Mock()
+    mock_resp.status_code = 502
+    mock_resp.text = "<html>" + ("<body>Internal Server Error page content body spam 502 Bad Gateway</body>" * 20) + "</html>"
+    mock_resp.json.side_effect = Exception("Not JSON")
+    
+    with mock.patch("httpx.Client.post", return_value=mock_resp):
+        with pytest.raises(LLMProviderError) as exc_info:
+            provider.generate([Message(role=Role.USER, content="Hello")])
+        
+        # Verify truncated output
+        err_msg = str(exc_info.value)
+        assert len(err_msg) < 500
+        assert "... [TRUNCATED]" in err_msg
+

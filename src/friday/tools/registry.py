@@ -38,7 +38,18 @@ class ToolRegistry:
         Optionally filters tools by maximum safety tolerance.
         """
         schemas = []
+        safety_order = {
+            SafetyLevel.SAFE: 0,
+            SafetyLevel.SENSITIVE: 1,
+            SafetyLevel.DANGEROUS: 2,
+        }
+        
         for tool in self._tools.values():
+            if max_safety:
+                tool_val = safety_order.get(tool.safety_level, 0)
+                max_val = safety_order.get(max_safety, 2)
+                if tool_val > max_val:
+                    continue
             schemas.append(tool.to_openai_schema())
         return schemas
 
