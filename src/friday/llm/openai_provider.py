@@ -1,6 +1,7 @@
 """OpenAI-compatible LLM Provider using HTTPX."""
 
 import json
+import time
 from typing import Any, Dict, List, Optional
 import httpx
 from friday.core.exceptions import LLMProviderError
@@ -56,39 +57,81 @@ class OpenAILLMProvider(BaseLLMProvider):
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
 
-        logger.debug(f"Calling OpenAI provider endpoint {url} with model {self.model}")
+        max_retries = 3
+        backoff_factor = 2.0
+        initial_delay = 1.0
+        data = None
 
-        try:
-            with httpx.Client(timeout=self.timeout) as client:
-                response = client.post(url, headers=headers, json=payload)
-                if response.status_code != 200:
-                    try:
-                        err_json = response.json()
-                        error_detail = err_json.get("error", {}).get("message") or response.text
-                    except Exception:
-                        error_detail = response.text
+        for attempt in range(max_retries + 1):
+            try:
+                logger.debug(
+                    f"Calling OpenAI provider endpoint {url} with model {self.model} "
+                    f"(Attempt {attempt + 1}/{max_retries + 1})"
+                )
+                with httpx.Client(timeout=self.timeout) as client:
+                    response = client.post(url, headers=headers, json=payload)
 
-                    # Truncate long error output to prevent terminal flooding (e.g. raw HTML error pages)
-                    if isinstance(error_detail, str) and len(error_detail) > 300:
-                        error_detail = error_detail[:300] + "... [TRUNCATED]"
+                if response.status_code == 200:
+                    data = response.json()
+                    break
 
-                    # Proactively mask any potential API key in the error string to prevent leaks
-                    if self.api_key and isinstance(error_detail, str) and self.api_key in error_detail:
-                        error_detail = error_detail.replace(self.api_key, "***")
+                try:
+                    err_json = response.json()
+                    error_detail = err_json.get("error", {}).get("message") or response.text
+                except Exception:
+                    error_detail = response.text
 
-                    logger.error(f"LLM API request failed [{response.status_code}]: {error_detail}")
-                    raise LLMProviderError(f"LLM Provider API returned status {response.status_code}: {error_detail}")
+                # Truncate long error output
+                if isinstance(error_detail, str) and len(error_detail) > 300:
+                    error_detail = error_detail[:300] + "... [TRUNCATED]"
 
-                data = response.json()
-        except httpx.RequestError as e:
-            err_msg = str(e)
-            if self.api_key and self.api_key in err_msg:
-                err_msg = err_msg.replace(self.api_key, "***")
-            logger.error(f"Network error communicating with LLM Provider: {err_msg}")
-            raise LLMProviderError(f"Network error during LLM request: {err_msg}") from e
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse LLM response JSON: {e}")
-            raise LLMProviderError("Received invalid JSON payload from LLM API") from e
+                # Proactively mask API key
+                if self.api_key and isinstance(error_detail, str) and self.api_key in error_detail:
+                    error_detail = error_detail.replace(self.api_key, "***")
+
+                # Candidate status codes for retry: 429 (Rate Limit) and 5xx (Server Errors)
+                if response.status_code in (429, 500, 502, 503, 504):
+                    if attempt < max_retries:
+                        wait_time = initial_delay * (backoff_factor ** attempt)
+                        retry_after = response.headers.get("Retry-After")
+                        if retry_after and isinstance(retry_after, (str, int, float)):
+                            try:
+                                wait_time = float(retry_after)
+                            except (ValueError, TypeError):
+                                pass
+                        logger.warning(
+                            f"LLM API request failed with status {response.status_code}. "
+                            f"Retrying in {wait_time:.2f} seconds..."
+                        )
+                        time.sleep(wait_time)
+                        continue
+
+                logger.error(f"LLM API request failed [{response.status_code}]: {error_detail}")
+                raise LLMProviderError(f"LLM Provider API returned status {response.status_code}: {error_detail}")
+
+            except httpx.RequestError as e:
+                err_msg = str(e)
+                if self.api_key and self.api_key in err_msg:
+                    err_msg = err_msg.replace(self.api_key, "***")
+
+                # RequestError is transient (timeout, connect error) -> retry
+                if attempt < max_retries:
+                    wait_time = initial_delay * (backoff_factor ** attempt)
+                    logger.warning(
+                        f"Network error communicating with LLM Provider: {err_msg}. "
+                        f"Retrying in {wait_time:.2f} seconds..."
+                    )
+                    time.sleep(wait_time)
+                    continue
+
+                logger.error(f"Network error communicating with LLM Provider after retries: {err_msg}")
+                raise LLMProviderError(f"Network error during LLM request: {err_msg}") from e
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse LLM response JSON: {e}")
+                raise LLMProviderError("Received invalid JSON payload from LLM API") from e
+
+        if data is None:
+            raise LLMProviderError("Failed to obtain response from LLM Provider after retries")
 
         choices = data.get("choices", [])
         if not choices:

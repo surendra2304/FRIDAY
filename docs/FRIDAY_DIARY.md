@@ -1,7 +1,7 @@
 # FRIDAY Project Diary
 
 > **Permanent, never-ending historical record and institutional memory of the FRIDAY project.**
-> **Started: 2026-08-18 | Current Version: v0.3.8 | Milestone: V0.3 Tool System Expansion & Interactive Confirmation**
+> **Started: 2026-08-18 | Current Version: v0.3.9 | Milestone: V0.3 Tool System Expansion & Interactive Confirmation**
 
 ---
 
@@ -133,6 +133,16 @@
 * Expanded test suite from 63 to **73 tests** in `tests/test_multi_tool.py` covering single tool calls, parallel execution latencies, multi-tool success/failure separation, mixed safety sequential routing, and result correlation order.
 * Confirmed 100% test pass rate (73/73 passed in 1.32s).
 
+#### Session 11 — Phase 1.2: Agent Reliability and Observability Hardening
+* Hardened FRIDAY's execution model against external and internal exceptions, network transients, and timeout blocks:
+  * **LLM Provider Retry & Backoff**: Upgraded `OpenAILLMProvider.generate()` to retry transient network request errors (`httpx.RequestError`), timeouts, and status codes `429` (Rate limits) and `5xx` (Internal server errors) up to 3 times using exponential backoff (1s, 2s, 4s). Parse and respect HTTP `Retry-After` header when rate-limited. Permanent errors (e.g. status code 401/403/400) fail immediately.
+  * **Strict Tool Timeout Gating**: Added constructor parameter `tool_timeout` to `FridayAgent`. Wrapped sequential and parallel tool calls inside a `ThreadPoolExecutor` future request to enforce strict timeout boundaries (default: 30 seconds), preventing hangs and returning graceful error messages instead of blocking indefinitely.
+  * **Clean Error Translations**: Enhanced LLM generation exception handling in `FridayAgent.process_message()` to catch connection failures, authentication mismatches, or rate limits and return friendly, clean default explanations rather than propagating stack traces or JSON response error bodies.
+  * **Audit Observability**: Implemented detailed latency tracking of individual tool execution steps and overall agent turns. Logs are sanitized via the regex secret filter.
+  * **Response Diagnostics**: Enriched `AgentResponse.metadata` to output structured indicators `success` and `tools_used` alongside provider, model, and duration statistics.
+* Expanded test suite from 73 to **79 tests** in `tests/test_reliability.py` verifying transient network retries, rate limit Retry-After waits, auth errors rejection, tool timeouts, clean error translation, and response diagnostics.
+* Confirmed 100% test pass rate (79/79 passed in 12.98s).
+
 ---
 
 ### Architecture / structure changes
@@ -194,6 +204,7 @@ FRIDAY/
     ├── test_logging.py              # Logging & secret filter tests
     ├── test_memory.py               # Memory buffer & sliding window tests
     ├── test_multi_tool.py           # Coordinated parallel and sequential execution tests
+    ├── test_reliability.py          # LLM retries, network errors, tool timeouts, and diagnostics tests
     └── test_tools.py                # Tool registry, schema validation & safety tier tests
 ```
 
@@ -320,6 +331,7 @@ FRIDAY/
   * `1cb8b52`: `feat(tools): expand FRIDAY core read-only toolset (v0.3.0)`
   * `1c56676`: `feat(security): add explicit tool authorization and confirmation flow (v0.3.5)`
   * `b5914d1`: `feat(agent): support coordinated multi-tool execution (v0.3.8)`
+  * *(Pending Commit)*: `feat(core): improve agent reliability and execution observability (v0.3.9)`
 * **Remote Repository**: `https://github.com/surendra2304/FRIDAY`
 * **Push Status**: Verified and in sync with `origin/main`
 
@@ -343,10 +355,13 @@ FRIDAY/
   * Interactive CLI confirmation prompt (`CLIAuthorizer`) with detailed resource printing and case-sensitive verification for dangerous tools.
   * Validation priority gating (verifies schema before authorization, authorizes before execution).
   * Coordinated multi-tool execution (parallel ThreadPool for concurrent SAFE tools, sequential ordering for mixed/sensitive tools).
+  * Robust LLM retry and backoff policy handling network transients, timeout limits, and rate limits (429/5xx).
+  * Strict tool timeout boundary enforcement via thread executor futures.
+  * User-friendly exceptions translation and secret-safe diagnostics response metadata.
   * Correct JSON double-quote argument serialization (fixed Python single-quote bug).
   * Robust error recovery for missing tools, malformed arguments, tool exceptions, and safety denials.
   * Cloud endpoint HTTP error message extraction and HTML truncation handling.
-  * 100% pass rate across 73 automated tests.
+  * 100% pass rate across 79 automated tests.
 
 ---
 

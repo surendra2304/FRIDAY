@@ -45,6 +45,7 @@ class FridayAgent:
         max_tool_iterations: int = 5,
         tool_callback: Optional[Callable[[ToolCall, ToolResult], None]] = None,
         authorizer: Optional[BaseAuthorizer] = None,
+        tool_timeout: float = 30.0,
     ) -> None:
         self.settings = settings or get_settings()
         self.llm = llm_provider or create_llm_provider(self.settings)
@@ -53,6 +54,7 @@ class FridayAgent:
         self.max_tool_iterations = max(1, max_tool_iterations)
         self.tool_callback = tool_callback
         self.authorizer = authorizer or DefaultSecureAuthorizer()
+        self.tool_timeout = tool_timeout
         self.system_message = build_system_message(self.settings)
 
         logger.info(
@@ -71,8 +73,8 @@ class FridayAgent:
         registry.register(FileListingTool())
         return registry
 
-    def _execute_single_tool_call(self, tc: ToolCall, allow_sensitive: bool) -> ToolResult:
-        """Validate, authorize, and execute a single tool call request."""
+    def _execute_single_tool_call_internal(self, tc: ToolCall, allow_sensitive: bool) -> ToolResult:
+        """Validate, authorize, and execute a single tool call request internally."""
         tool = self.tools.get(tc.name)
         if not tool:
             err_msg = f"Error: Tool '{tc.name}' is not registered or available in FRIDAY's tool registry."
@@ -152,6 +154,36 @@ class FridayAgent:
             safety_level=tool.safety_level,
         )
 
+    def _execute_single_tool_call(self, tc: ToolCall, allow_sensitive: bool) -> ToolResult:
+        """Validate, authorize, and execute a single tool call request with duration logging."""
+        tool_start = time.perf_counter()
+        result = self._execute_single_tool_call_internal(tc, allow_sensitive)
+        tool_duration = time.perf_counter() - tool_start
+        logger.info(
+            f"Tool '{tc.name}' execution completed in {tool_duration:.4f}s "
+            f"(Success: {not result.is_error})"
+        )
+        return result
+
+    def _execute_single_tool_call_with_timeout(
+        self, tc: ToolCall, allow_sensitive: bool, timeout: float = 30.0
+    ) -> ToolResult:
+        """Execute a single tool call wrapped inside a thread executor to enforce a strict timeout."""
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(self._execute_single_tool_call, tc, allow_sensitive)
+            try:
+                return future.result(timeout=timeout)
+            except TimeoutError:
+                logger.error(f"Tool '{tc.name}' execution timed out (limit: {timeout}s)")
+                return ToolResult(
+                    tool_call_id=tc.id,
+                    name=tc.name,
+                    content=f"Error: Tool execution timed out after {timeout} seconds.",
+                    is_error=True,
+                    safety_level=SafetyLevel.SAFE,
+                )
+
     def process_message(
         self,
         user_input: str,
@@ -200,12 +232,27 @@ class FridayAgent:
                 assistant_msg = self.llm.generate(messages=working_context, tools=tool_schemas)
             except Exception as e:
                 logger.exception(f"LLM generation failed at iteration {iterations}: {e}")
-                err_text = f"I encountered an error communicating with the intelligence core: {str(e)}"
+                
+                # User friendly translated error messages
+                err_text = "I encountered a transient network issue while communicating with my intelligence core. Please try again in a moment."
+                err_str = str(e).lower()
+                if "rate limit" in err_str or "status 429" in err_str:
+                    err_text = "My intelligence core is currently experiencing high demand. Please hold on a moment and try again."
+                elif "authentication" in err_str or "api key" in err_str or "status 401" in err_str or "status 403" in err_str:
+                    err_text = "I'm unable to authenticate with my intelligence core. Please verify your API key settings."
+                elif "connection" in err_str or "timeout" in err_str or "dns" in err_str:
+                    err_text = "I'm having trouble connecting to my intelligence core. Please check your internet connection and try again."
+                
                 self.memory.add_message(Message(role=Role.ASSISTANT, content=err_text))
                 return AgentResponse(
                     content=err_text,
                     is_done=True,
-                    metadata={"error": str(e), "iterations": iterations},
+                    metadata={
+                        "error": str(e),
+                        "iterations": iterations,
+                        "success": False,
+                        "duration_seconds": time.perf_counter() - start_time,
+                    },
                 )
 
             # If model returned direct answer without requesting tools -> finished turn
@@ -230,24 +277,39 @@ class FridayAgent:
 
             batch_results: List[ToolResult] = []
             batch_start = time.perf_counter()
+            tool_timeout = self.tool_timeout
 
             if all_safe and len(assistant_msg.tool_calls) > 1:
-                # SAFE independent tools -> Parallel execution supported safely
+                # SAFE independent tools -> Parallel execution supported safely with timeout boundaries
                 logger.info(f"Coordinated execution: Executing {len(assistant_msg.tool_calls)} SAFE tools in parallel.")
-                from concurrent.futures import ThreadPoolExecutor
+                from concurrent.futures import ThreadPoolExecutor, TimeoutError
                 with ThreadPoolExecutor(max_workers=len(assistant_msg.tool_calls)) as executor:
                     futures = [
                         executor.submit(self._execute_single_tool_call, tc, allow_sensitive)
                         for tc in assistant_msg.tool_calls
                     ]
-                    batch_results = [f.result() for f in futures]
+                    for fut, tc in zip(futures, assistant_msg.tool_calls):
+                        try:
+                            res = fut.result(timeout=tool_timeout)
+                            batch_results.append(res)
+                        except TimeoutError:
+                            logger.error(f"Tool '{tc.name}' execution timed out (limit: {tool_timeout}s)")
+                            batch_results.append(
+                                ToolResult(
+                                    tool_call_id=tc.id,
+                                    name=tc.name,
+                                    content=f"Error: Tool execution timed out after {tool_timeout} seconds.",
+                                    is_error=True,
+                                    safety_level=SafetyLevel.SAFE,
+                                )
+                            )
                 latency = time.perf_counter() - batch_start
                 logger.info(f"Coordinated parallel execution completed in {latency:.4f}s.")
             else:
                 # Mixed or SENSITIVE/DANGEROUS tools -> Sequential ordering and auth semantics preserved
                 logger.info(f"Coordinated execution: Executing {len(assistant_msg.tool_calls)} tools sequentially.")
                 for tc in assistant_msg.tool_calls:
-                    res = self._execute_single_tool_call(tc, allow_sensitive)
+                    res = self._execute_single_tool_call_with_timeout(tc, allow_sensitive, timeout=tool_timeout)
                     batch_results.append(res)
                 latency = time.perf_counter() - batch_start
                 logger.info(f"Coordinated sequential execution completed in {latency:.4f}s.")
@@ -298,6 +360,8 @@ class FridayAgent:
             metadata={
                 "duration_seconds": duration,
                 "iterations": iterations,
+                "tools_used": list(set(tc.name for tc in all_tool_calls)),
+                "success": all(not r.is_error for r in all_tool_results) if all_tool_results else True,
                 "provider": self.llm.provider_name,
                 "model": self.llm.model,
             },
