@@ -63,6 +63,9 @@ class FridayAgent:
         self.tool_timeout = tool_timeout
         self.system_message = build_system_message(self.settings)
 
+        if self.settings.memory_retention_days:
+            self.prune_memory(self.settings.memory_retention_days)
+
         logger.info(
             f"Initialized {self.settings.agent_name} with provider '{self.llm.provider_name}' "
             f"(model: '{self.llm.model}') and {len(self.tools.list_tools())} loaded tools. "
@@ -104,6 +107,17 @@ class FridayAgent:
     def delete_conversation(self, conversation_id: str) -> bool:
         """Delete a conversation session and all its messages."""
         return self.memory.delete_conversation(conversation_id)
+
+    def purge_all_memory(self) -> int:
+        """Permanently delete all stored conversations and messages."""
+        return self.memory.purge_all()
+
+    def prune_memory(self, retention_days: Optional[int] = None) -> int:
+        """Prune messages older than the retention threshold."""
+        days = retention_days or self.settings.memory_retention_days
+        if days:
+            return self.memory.prune_expired_messages(days)
+        return 0
 
     def search_memory(
         self,

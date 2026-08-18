@@ -5,7 +5,7 @@ import re
 import sqlite3
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from friday.core.logging import get_logger
@@ -158,7 +158,7 @@ class SQLiteConversationMemory(BaseMemory):
                     SELECT id, title, created_at, updated_at, metadata,
                            (SELECT COUNT(*) FROM messages WHERE messages.conversation_id = conversations.id) AS message_count
                     FROM conversations
-                    ORDER BY updated_at DESC
+                    ORDER BY updated_at DESC, rowid DESC
                     LIMIT ?
                     """,
                     (limit,),
@@ -518,3 +518,47 @@ class SQLiteConversationMemory(BaseMemory):
         if not tokens:
             return f'"{query.replace(chr(34), chr(34)+chr(34))}"'
         return " ".join(f'"{t}"*' for t in tokens)
+
+    def purge_all(self) -> int:
+        """Permanently delete all conversations and messages, resetting database storage.
+
+        Returns:
+            Count of conversations purged.
+        """
+        with self._lock:
+            with self._get_connection() as conn:
+                count_row = conn.execute("SELECT COUNT(*) FROM conversations").fetchone()
+                total_convs = count_row[0] if count_row else 0
+                conn.execute("DELETE FROM messages")
+                conn.execute("DELETE FROM conversations")
+                try:
+                    conn.execute("DELETE FROM messages_fts")
+                except sqlite3.OperationalError:
+                    pass
+                conn.commit()
+                conn.execute("VACUUM")
+
+        self._active_conversation_id = self.create_conversation(title="Default Conversation")
+        logger.warning(f"Purged all persistent conversation memory ({total_convs} conversation(s) deleted).")
+        return total_convs
+
+    def prune_expired_messages(self, retention_days: int) -> int:
+        """Prune messages older than retention_days.
+
+        Returns:
+            Count of messages deleted.
+        """
+        if retention_days <= 0:
+            return 0
+
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+        with self._lock:
+            with self._get_connection() as conn:
+                cursor = conn.execute(
+                    "DELETE FROM messages WHERE created_at < ?", (cutoff,)
+                )
+                conn.commit()
+                deleted = cursor.rowcount
+        if deleted > 0:
+            logger.info(f"Pruned {deleted} expired message(s) older than {retention_days} days (cutoff: {cutoff}).")
+        return deleted

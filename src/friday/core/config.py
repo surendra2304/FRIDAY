@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     memory_db_path: str = Field(default="data/friday.db", description="Path to SQLite database file")
     memory_max_messages: int = Field(default=50, ge=2, description="Maximum messages stored in short-term buffer")
     memory_auto_persist: bool = Field(default=True, description="Whether to persist conversations automatically")
+    memory_retention_days: Optional[int] = Field(default=None, ge=1, description="Optional retention policy in days (older messages pruned)")
 
     # Identity
     agent_name: str = Field(default="FRIDAY", description="Name of the AI assistant")

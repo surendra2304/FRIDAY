@@ -63,3 +63,11 @@ class BaseMemory(ABC):
     ) -> List[MemorySearchResult]:
         """Search stored messages across conversations or within a specific conversation."""
         return []
+
+    def purge_all(self) -> int:
+        """Permanently delete all stored conversations and messages. Returns number of purged conversations."""
+        return 0
+
+    def prune_expired_messages(self, retention_days: int) -> int:
+        """Prune messages older than the specified retention period. Returns number of pruned messages."""
+        return 0

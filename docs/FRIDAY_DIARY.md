@@ -1,7 +1,7 @@
 # FRIDAY Project Diary
 
 > **Permanent, never-ending historical record and institutional memory of the FRIDAY project.**
-> **Started: 2026-08-18 | Current Version: v0.4.3 | Milestone: V0.4 Searchable Historical Conversation Memory**
+> **Started: 2026-08-18 | Current Version: v0.4.4 | Milestone: V0.4 Persistent Memory Security & Privacy Hardening**
 
 ---
 
@@ -211,6 +211,16 @@
 * Expanded test suite from 105 to **113 tests** in `tests/test_memory_search.py` covering in-memory search, SQLite exact and prefix matching, conversation filtering, limit enforcement, date constraint filtering, tool execution, agent end-to-end tool loop, and synthetic performance benchmarks (500 messages searched in under 50ms).
 * Confirmed 100% test pass rate (113/113 passed in 15.35s).
 
+#### Session 18 — Phase 2: Security & Privacy Hardening of Persistent Memory
+* Conducted a comprehensive privacy, security, and data lifecycle review of persistent SQLite conversation storage:
+  * **Deletion Isolation & Privacy Guardrails**: Verified that deleting a conversation strictly cascade-deletes only associated messages and FTS5 index tokens without impacting other conversation records or bleeding across sessions.
+  * **Search Scoping & Data Boundary Enforcement**: Enforced strict `conversation_id` parameter binding on FTS5 queries, preventing unauthorized cross-conversation keyword leaks when scoped to a specific thread.
+  * **Complete Storage Purge (`purge_all`)**: Implemented safe, ACID-compliant database reset (`purge_all()`) which cleans tables, drops virtual indexes, and executes `VACUUM` to free storage on disk, protected in the CLI behind an explicit double-confirmation prompt (`CONFIRM PURGE`).
+  * **Configurable Data Retention Policy**: Added `memory_retention_days` setting to `Settings` with automatic pruning on agent initialization, preventing unbounded database growth while preserving recent history by default.
+  * **Secret Leakage Prevention**: Verified all diagnostic outputs (`get_status()`) mask sensitive credentials and API keys.
+* Expanded test suite from 113 to **119 tests** in `tests/test_memory_security.py` verifying deletion isolation, search scoping privacy, complete purge security, retention policy pruning, auto-pruning on agent startup, and secret masking in diagnostic endpoints.
+* Confirmed 100% test pass rate (119/119 passed in 15.57s).
+
 ---
 
 ### Architecture / structure changes
@@ -281,6 +291,7 @@ FRIDAY/
     ├── test_logging.py              # Logging & secret filter tests
     ├── test_memory.py               # Memory buffer & sliding window tests
     ├── test_memory_search.py        # Searchable historical conversation retrieval tests
+    ├── test_memory_security.py      # Memory privacy, deletion isolation & retention tests
     ├── test_multi_tool.py           # Coordinated parallel and sequential execution tests
     ├── test_reliability.py          # LLM retries, network errors, tool timeouts, and diagnostics tests
     ├── test_sqlite_memory.py        # Persistent SQLite storage, lifecycle & isolation tests
@@ -425,6 +436,7 @@ FRIDAY/
   * `2ff4db3`: `feat(agent): integrate persistent conversation memory (v0.4.1)`
   * `6b142d4`: `feat(memory): add persistent conversation management (v0.4.2)`
   * `54d3238`: `feat(memory): add searchable historical conversation retrieval (v0.4.3)`
+  * *(Pending Commit)*: `security(memory): harden persistent memory privacy and retention (v0.4.4)`
 * **Remote Repository**: `https://github.com/surendra2304/FRIDAY`
 * **Push Status**: Verified and in sync with `origin/main`
 
@@ -432,7 +444,7 @@ FRIDAY/
 
 ### Current project state
 
-* **Status**: Complete, fully functional, and stabilized **Milestone V0.4 Persistent SQLite Memory, Multi-Conversation & Searchable Retrieval**.
+* **Status**: Complete, fully functional, and stabilized **Milestone V0.4 Persistent SQLite Memory, Search & Privacy Controls**.
 * **Capabilities Operational**:
   * Multi-step sequential tool calling decision loop with iteration guardrails.
   * Real-time tool execution event streaming in CLI.
@@ -456,10 +468,11 @@ FRIDAY/
   * Persistent conversation memory backend (`SQLiteConversationMemory`) with automatic database creation, session isolation, and ACID guarantees.
   * Multi-conversation lifecycle management (creation, listing, switching, renaming, safe deletion with confirmation).
   * Searchable historical conversation retrieval (SQLite FTS5 full-text indexing, BM25 ranking, `search_memory` tool, CLI `/search` command).
+  * Memory privacy, deletion isolation, configurable retention pruning (`memory_retention_days`), and complete storage purge (`/purge` with `CONFIRM PURGE`).
   * Correct JSON double-quote argument serialization (fixed Python single-quote bug).
   * Robust error recovery for missing tools, malformed arguments, tool exceptions, and safety denials.
   * Cloud endpoint HTTP error message extraction and HTML truncation handling.
-  * 100% pass rate across 113 automated tests.
+  * 100% pass rate across 119 automated tests.
 
 ---
 

@@ -31,6 +31,7 @@ Type your message to begin, or use a command:
   /tools            - List registered tools & safety tiers
   /clear            - Clear messages in active conversation
   /delete [id]      - Delete a conversation (requires confirmation)
+  /purge            - Permanently delete all stored memory (strong confirmation)
   /help             - Show available commands
   /exit             - Gracefully shutdown FRIDAY
 ========================================================================
@@ -50,6 +51,7 @@ def print_help() -> None:
     print("  /tools          : View loaded tools and safety classifications")
     print("  /clear          : Reset active conversation memory buffer")
     print("  /delete [id]    : Delete a conversation (requires confirmation)")
+    print("  /purge          : Permanently delete ALL stored memory (requires confirmation)")
     print("  /help           : Show this help menu")
     print("  /exit           : Exit FRIDAY assistant (or /quit)")
     print("------------------------------\n")
@@ -271,6 +273,15 @@ def main() -> None:
         elif cmd == "/clear":
             agent.clear_memory()
             print("Active conversation memory cleared.")
+            continue
+        elif cmd in ("/purge", "/delete-all", "/clear-all"):
+            print("\n[WARNING]: This operation is DESTRUCTIVE and will permanently delete ALL stored conversations and history.")
+            confirm = input("To proceed, type 'CONFIRM PURGE': ").strip()
+            if confirm == "CONFIRM PURGE":
+                count = agent.purge_all_memory()
+                print(f"\nAll persistent memory has been completely purged ({count} conversation(s) deleted).\n")
+            else:
+                print("\nPurge operation cancelled.\n")
             continue
 
         # Process standard conversation turn
