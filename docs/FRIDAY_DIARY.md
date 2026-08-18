@@ -1,7 +1,7 @@
 # FRIDAY Project Diary
 
 > **Permanent, never-ending historical record and institutional memory of the FRIDAY project.**
-> **Started: 2026-08-18 | Current Version: v0.4.2 | Milestone: V0.4 Persistent Multi-Conversation Management**
+> **Started: 2026-08-18 | Current Version: v0.4.3 | Milestone: V0.4 Searchable Historical Conversation Memory**
 
 ---
 
@@ -197,6 +197,20 @@
 * Expanded test suite from 98 to **105 tests** in `tests/test_conversation_management.py` verifying new conversation creation, conversation isolation, renaming, active metadata inspection, delete lifecycle, invalid switching, and multi-conversation restart persistence.
 * Confirmed 100% test pass rate (105/105 passed in 13.76s).
 
+#### Session 17 — Phase 2: Searchable Historical Conversation Retrieval
+* Implemented searchable memory retrieval across persistent conversations:
+  * **Memory Search Abstraction**: Added `search()` method to `BaseMemory` returning structured `MemorySearchResult` records with conversation title, message timestamp, author role, content snippet, and relevance ranking score.
+  * **SQLite FTS5 Indexing & Triggers**:
+    - Created `messages_fts` virtual table using SQLite's FTS5 tokenizer (`porter unicode61`).
+    - Installed automatic synchronization triggers (`trg_messages_ai`, `trg_messages_ad`, `trg_messages_au`) ensuring full-text index updates in real-time.
+    - Used BM25 ranking (`bm25(messages_fts)`) with query sanitization and wildcard prefix matching, plus graceful `LIKE` pattern fallback.
+  * **Built-in `search_memory` Tool**:
+    - Added `MemorySearchTool` (`SAFE`) in `src/friday/tools/builtin/memory_search.py` enabling the LLM agent to search historical conversations on-demand when users inquire about past discussions.
+  * **Interactive CLI Search**:
+    - Added `/search <query>` command to the CLI for direct historical search from the prompt.
+* Expanded test suite from 105 to **113 tests** in `tests/test_memory_search.py` covering in-memory search, SQLite exact and prefix matching, conversation filtering, limit enforcement, date constraint filtering, tool execution, agent end-to-end tool loop, and synthetic performance benchmarks (500 messages searched in under 50ms).
+* Confirmed 100% test pass rate (113/113 passed in 15.35s).
+
 ---
 
 ### Architecture / structure changes
@@ -238,6 +252,7 @@ FRIDAY/
 │       │       ├── calculator.py    # Safe AST arithmetic expression evaluator (SAFE)
 │       │       ├── file_listing.py  # Sandboxed read-only workspace directory listing (SAFE)
 │       │       ├── file_reader.py   # Sandboxed read-only workspace file reader (SAFE)
+│       │       ├── memory_search.py # Searchable historical conversation retrieval tool (SAFE)
 │       │       ├── system_info.py   # Enriched System Diagnostics Tool (SAFE)
 │       │       └── time_date.py     # Local host system date and time details (SAFE)
 │       ├── memory/
@@ -265,6 +280,7 @@ FRIDAY/
     ├── test_llm_providers.py        # Mock & OpenAI provider tests
     ├── test_logging.py              # Logging & secret filter tests
     ├── test_memory.py               # Memory buffer & sliding window tests
+    ├── test_memory_search.py        # Searchable historical conversation retrieval tests
     ├── test_multi_tool.py           # Coordinated parallel and sequential execution tests
     ├── test_reliability.py          # LLM retries, network errors, tool timeouts, and diagnostics tests
     ├── test_sqlite_memory.py        # Persistent SQLite storage, lifecycle & isolation tests
@@ -408,6 +424,7 @@ FRIDAY/
   * `83ad174`: `chore: ignore local SQLite databases in data directory`
   * `2ff4db3`: `feat(agent): integrate persistent conversation memory (v0.4.1)`
   * `6b142d4`: `feat(memory): add persistent conversation management (v0.4.2)`
+  * *(Pending Commit)*: `feat(memory): add searchable historical conversation retrieval (v0.4.3)`
 * **Remote Repository**: `https://github.com/surendra2304/FRIDAY`
 * **Push Status**: Verified and in sync with `origin/main`
 
@@ -415,7 +432,7 @@ FRIDAY/
 
 ### Current project state
 
-* **Status**: Complete, fully functional, and stabilized **Milestone V0.4 Persistent SQLite Memory & Multi-Conversation Management**.
+* **Status**: Complete, fully functional, and stabilized **Milestone V0.4 Persistent SQLite Memory, Multi-Conversation & Searchable Retrieval**.
 * **Capabilities Operational**:
   * Multi-step sequential tool calling decision loop with iteration guardrails.
   * Real-time tool execution event streaming in CLI.
@@ -438,10 +455,11 @@ FRIDAY/
   * Explicit absolute and drive-anchored paths rejection in sandboxed file tools.
   * Persistent conversation memory backend (`SQLiteConversationMemory`) with automatic database creation, session isolation, and ACID guarantees.
   * Multi-conversation lifecycle management (creation, listing, switching, renaming, safe deletion with confirmation).
+  * Searchable historical conversation retrieval (SQLite FTS5 full-text indexing, BM25 ranking, `search_memory` tool, CLI `/search` command).
   * Correct JSON double-quote argument serialization (fixed Python single-quote bug).
   * Robust error recovery for missing tools, malformed arguments, tool exceptions, and safety denials.
   * Cloud endpoint HTTP error message extraction and HTML truncation handling.
-  * 100% pass rate across 105 automated tests.
+  * 100% pass rate across 113 automated tests.
 
 ---
 

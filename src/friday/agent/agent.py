@@ -6,16 +6,18 @@ from friday.agent.prompts import build_system_message
 from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer
 from friday.core.config import Settings, get_settings
 from friday.core.logging import get_logger
+from datetime import datetime
 from friday.core.types import (
     AgentResponse,
-    Message,
-    Role,
-    ToolCall,
-    ToolResult,
+    AuthorizationDecision,
     AuthorizationRequest,
     AuthorizationResponse,
-    AuthorizationDecision,
+    MemorySearchResult,
+    Message,
+    Role,
     SafetyLevel,
+    ToolCall,
+    ToolResult,
 )
 from friday.llm.base import BaseLLMProvider
 from friday.llm.factory import create_llm_provider
@@ -29,6 +31,7 @@ from friday.tools.builtin import (
     CalculatorTool,
     FileReaderTool,
     FileListingTool,
+    MemorySearchTool,
 )
 from friday.tools.registry import ToolRegistry
 
@@ -102,6 +105,23 @@ class FridayAgent:
         """Delete a conversation session and all its messages."""
         return self.memory.delete_conversation(conversation_id)
 
+    def search_memory(
+        self,
+        query: str,
+        conversation_id: Optional[str] = None,
+        limit: int = 10,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+    ) -> List[MemorySearchResult]:
+        """Search historical conversation messages."""
+        return self.memory.search(
+            query=query,
+            conversation_id=conversation_id,
+            limit=limit,
+            start_time=start_time,
+            end_time=end_time,
+        )
+
     def _create_default_registry(self) -> ToolRegistry:
         """Instantiate default tool registry with built-in safe tools."""
         registry = ToolRegistry()
@@ -110,6 +130,7 @@ class FridayAgent:
         registry.register(CalculatorTool())
         registry.register(FileReaderTool())
         registry.register(FileListingTool())
+        registry.register(MemorySearchTool(self.memory))
         return registry
 
     def _execute_single_tool_call_internal(self, tc: ToolCall, allow_sensitive: bool) -> ToolResult:

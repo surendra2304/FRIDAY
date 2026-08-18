@@ -1,8 +1,9 @@
 """In-memory sliding window conversation buffer memory."""
 
-from typing import List
+from datetime import datetime
+from typing import List, Optional
 from friday.core.logging import get_logger
-from friday.core.types import Message
+from friday.core.types import MemorySearchResult, Message
 from friday.memory.base import BaseMemory
 
 logger = get_logger("memory.in_memory")
@@ -37,6 +38,39 @@ class InMemoryConversationMemory(BaseMemory):
         if max_messages <= 0:
             return []
         return list(self._messages[-max_messages:])
+
+    def search(
+        self,
+        query: str,
+        conversation_id: Optional[str] = None,
+        limit: int = 10,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+    ) -> List[MemorySearchResult]:
+        """Search in-memory messages by substring matching."""
+        if not query or not query.strip():
+            return []
+
+        q = query.strip().lower()
+        results: List[MemorySearchResult] = []
+        for idx, msg in enumerate(self._messages):
+            if q in msg.content.lower():
+                if start_time and msg.timestamp < start_time:
+                    continue
+                if end_time and msg.timestamp > end_time:
+                    continue
+                results.append(
+                    MemorySearchResult(
+                        conversation_id="default",
+                        conversation_title="Default Conversation",
+                        message_id=str(idx),
+                        role=msg.role,
+                        content=msg.content,
+                        timestamp=msg.timestamp,
+                        score=1.0,
+                    )
+                )
+        return results[:max(1, limit)]
 
     def __len__(self) -> int:
         return len(self._messages)

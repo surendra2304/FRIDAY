@@ -25,6 +25,7 @@ Type your message to begin, or use a command:
   /switch <id>      - Switch to an existing conversation
   /rename <title>   - Rename the active conversation
   /current          - Show active conversation details
+  /search <query>   - Search historical conversations for keywords
   /status           - Inspect agent status & configuration
   /history          - Display current conversation memory
   /tools            - List registered tools & safety tiers
@@ -43,6 +44,7 @@ def print_help() -> None:
     print("  /switch <id>    : Switch to a conversation by ID or prefix")
     print("  /rename <title> : Rename the current active conversation")
     print("  /current        : Show metadata for the active conversation")
+    print("  /search <query> : Search historical conversations for keywords")
     print("  /status         : Display active model, memory stats, and tools")
     print("  /history        : View stored conversation turns")
     print("  /tools          : View loaded tools and safety classifications")
@@ -110,6 +112,19 @@ def print_current_conversation(agent: FridayAgent) -> None:
         print(f"  Updated At   : {curr['updated_at']}")
         print(f"  Message Count: {curr['message_count']}")
     print("------------------------------------\n")
+
+
+def print_search_results(agent: FridayAgent, query: str) -> None:
+    results = agent.search_memory(query=query, limit=10)
+    print(f"\n--- Search Results for '{query}' ({len(results)} matches) ---")
+    if not results:
+        print("  (No matching messages found in conversation history)")
+    else:
+        for idx, r in enumerate(results, 1):
+            time_str = r.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+            print(f"  [{idx}] [{r.conversation_title}] ({time_str}) {r.role.value.upper()}:")
+            print(f"      {r.content}")
+    print("----------------------------------------------------------\n")
 
 
 def print_tools(agent: FridayAgent) -> None:
@@ -223,6 +238,14 @@ def main() -> None:
             continue
         elif cmd == "/current":
             print_current_conversation(agent)
+            continue
+        elif cmd.startswith("/search"):
+            parts = user_input.split(maxsplit=1)
+            if len(parts) < 2:
+                print("\n[Usage]: /search <query>\n")
+                continue
+            search_query = parts[1].strip()
+            print_search_results(agent, search_query)
             continue
         elif cmd.startswith("/delete"):
             parts = user_input.split(maxsplit=1)

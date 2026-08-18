@@ -2,7 +2,8 @@
 
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional
-from friday.core.types import Message
+from datetime import datetime
+from friday.core.types import MemorySearchResult, Message
 
 
 class BaseMemory(ABC):
@@ -51,3 +52,14 @@ class BaseMemory(ABC):
     def delete_conversation(self, conversation_id: str) -> bool:
         """Delete a conversation session and all its messages."""
         return False
+
+    def search(
+        self,
+        query: str,
+        conversation_id: Optional[str] = None,
+        limit: int = 10,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+    ) -> List[MemorySearchResult]:
+        """Search stored messages across conversations or within a specific conversation."""
+        return []

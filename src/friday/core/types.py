@@ -109,3 +109,14 @@ class AuthorizationResponse(BaseModel):
     """Decision outcome and reason for a tool call authorization request."""
     decision: AuthorizationDecision = Field(..., description="The authorization decision")
     reason: Optional[str] = Field(default=None, description="Detailed rationale for the decision")
+
+
+class MemorySearchResult(BaseModel):
+    """Result of a historical memory search."""
+    conversation_id: str = Field(..., description="ID of the conversation containing the message")
+    conversation_title: str = Field(default="", description="Title of the conversation")
+    message_id: str = Field(..., description="Unique message ID")
+    role: Role = Field(..., description="Message author role")
+    content: str = Field(..., description="Text content of the matching message")
+    timestamp: datetime = Field(..., description="Timestamp of the message")
+    score: float = Field(default=1.0, description="Relevance ranking score")

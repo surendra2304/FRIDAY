@@ -1,6 +1,7 @@
 """SQLite-backed conversation memory with ACID persistence and conversation isolation."""
 
 import json
+import re
 import sqlite3
 import threading
 import uuid
@@ -8,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from friday.core.logging import get_logger
-from friday.core.types import Message, Role, ToolCall
+from friday.core.types import MemorySearchResult, Message, Role, ToolCall
 from friday.memory.base import BaseMemory
 
 logger = get_logger("memory.sqlite")
@@ -81,6 +82,32 @@ class SQLiteConversationMemory(BaseMemory):
 
                     CREATE INDEX IF NOT EXISTS idx_messages_conv_created 
                     ON messages(conversation_id, created_at);
+
+                    CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+                        message_id UNINDEXED,
+                        conversation_id UNINDEXED,
+                        content,
+                        tokenize = 'porter unicode61'
+                    );
+
+                    CREATE TRIGGER IF NOT EXISTS trg_messages_ai AFTER INSERT ON messages BEGIN
+                        INSERT INTO messages_fts(message_id, conversation_id, content)
+                        VALUES (new.id, new.conversation_id, new.content);
+                    END;
+
+                    CREATE TRIGGER IF NOT EXISTS trg_messages_ad AFTER DELETE ON messages BEGIN
+                        DELETE FROM messages_fts WHERE message_id = old.id;
+                    END;
+
+                    CREATE TRIGGER IF NOT EXISTS trg_messages_au AFTER UPDATE ON messages BEGIN
+                        DELETE FROM messages_fts WHERE message_id = old.id;
+                        INSERT INTO messages_fts(message_id, conversation_id, content)
+                        VALUES (new.id, new.conversation_id, new.content);
+                    END;
+
+                    INSERT INTO messages_fts(message_id, conversation_id, content)
+                    SELECT id, conversation_id, content FROM messages
+                    WHERE id NOT IN (SELECT message_id FROM messages_fts);
                 """)
                 logger.debug(f"Initialized SQLite conversation database schema at '{self.db_path}'")
 
@@ -388,3 +415,106 @@ class SQLiteConversationMemory(BaseMemory):
                     (self._active_conversation_id,),
                 ).fetchone()
                 return int(row["count"]) if row else 0
+
+    def search(
+        self,
+        query: str,
+        conversation_id: Optional[str] = None,
+        limit: int = 10,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+    ) -> List[MemorySearchResult]:
+        """Search historical conversation messages using full-text search with relevance ranking."""
+        if not query or not query.strip():
+            return []
+
+        clean_query = query.strip()
+        limit = max(1, limit)
+        start_iso = start_time.isoformat() if start_time else None
+        end_iso = end_time.isoformat() if end_time else None
+
+        fts_query = self._format_fts_query(clean_query)
+
+        with self._lock:
+            with self._get_connection() as conn:
+                try:
+                    sql = """
+                        SELECT m.id, m.conversation_id, c.title AS conversation_title,
+                               m.role, m.content, m.created_at,
+                               bm25(messages_fts) AS rank_score
+                        FROM messages_fts f
+                        JOIN messages m ON f.message_id = m.id
+                        JOIN conversations c ON m.conversation_id = c.id
+                        WHERE messages_fts MATCH ?
+                    """
+                    params: List[Any] = [fts_query]
+
+                    if conversation_id:
+                        sql += " AND m.conversation_id = ?"
+                        params.append(conversation_id)
+                    if start_iso:
+                        sql += " AND m.created_at >= ?"
+                        params.append(start_iso)
+                    if end_iso:
+                        sql += " AND m.created_at <= ?"
+                        params.append(end_iso)
+
+                    sql += " ORDER BY rank_score ASC LIMIT ?"
+                    params.append(limit)
+
+                    rows = conn.execute(sql, tuple(params)).fetchall()
+                except sqlite3.OperationalError as e:
+                    logger.warning(f"FTS5 query failed for '{fts_query}' ({e}). Falling back to LIKE search.")
+                    sql = """
+                        SELECT m.id, m.conversation_id, c.title AS conversation_title,
+                               m.role, m.content, m.created_at,
+                               1.0 AS rank_score
+                        FROM messages m
+                        JOIN conversations c ON m.conversation_id = c.id
+                        WHERE m.content LIKE ?
+                    """
+                    params = [f"%{clean_query}%"]
+                    if conversation_id:
+                        sql += " AND m.conversation_id = ?"
+                        params.append(conversation_id)
+                    if start_iso:
+                        sql += " AND m.created_at >= ?"
+                        params.append(start_iso)
+                    if end_iso:
+                        sql += " AND m.created_at <= ?"
+                        params.append(end_iso)
+                    sql += " ORDER BY m.created_at DESC LIMIT ?"
+                    params.append(limit)
+                    rows = conn.execute(sql, tuple(params)).fetchall()
+
+                results: List[MemorySearchResult] = []
+                for r in rows:
+                    try:
+                        ts = datetime.fromisoformat(r["created_at"])
+                    except Exception:
+                        ts = datetime.now(timezone.utc)
+
+                    results.append(
+                        MemorySearchResult(
+                            conversation_id=r["conversation_id"],
+                            conversation_title=r["conversation_title"] or "Untitled",
+                            message_id=r["id"],
+                            role=Role(r["role"]),
+                            content=r["content"],
+                            timestamp=ts,
+                            score=float(r["rank_score"]),
+                        )
+                    )
+                return results
+
+    def _format_fts_query(self, query: str) -> str:
+        """Sanitize and format query string for FTS5 matching."""
+        if query.startswith('"') and query.endswith('"') and len(query) > 2:
+            inner = query[1:-1].replace('"', '""')
+            return f'"{inner}"'
+
+        cleaned = re.sub(r'[^\w\s]', ' ', query)
+        tokens = cleaned.split()
+        if not tokens:
+            return f'"{query.replace(chr(34), chr(34)+chr(34))}"'
+        return " ".join(f'"{t}"*' for t in tokens)
