@@ -6,7 +6,7 @@ FRIDAY is a modular, extensible, autonomous personal AI assistant built with a s
 
 ---
 
-## 🌟 Features (v0.4.0)
+## 🌟 Features (v0.4.5)
 
 - **Modular Architecture**: Clean interfaces for LLM providers (`BaseLLMProvider`), tools (`BaseTool`), memory (`BaseMemory`), and authorization (`BaseAuthorizer`).
 - **Pluggable LLM Backends**:
@@ -21,9 +21,15 @@ FRIDAY is a modular, extensible, autonomous personal AI assistant built with a s
   - `calculator` — AST-parsed arithmetic expression evaluator with DoS/length limitations.
   - `read_file` — Sandboxed read-only text file reader (rejects absolute paths and binary formats).
   - `list_dir` — Sandboxed directory lister (rejects absolute paths and limits output to 100 items).
-- **Persistent Conversation Memory**: Durable SQLite database storage (`SQLiteConversationMemory`) surviving process restarts with session isolation, atomic transactions, and sliding context window support.
+  - `search_memory` — Search past conversation history across sessions or within specific threads.
+- **Durable Persistent Memory (SQLite + FTS5)**:
+  - Multi-conversation lifecycle management (create, list, switch, rename, delete).
+  - High-performance SQLite database engine with WAL mode, `NORMAL` synchronous mode, 64MB memory page cache, and ACID guarantees.
+  - SQLite FTS5 full-text indexing with Porter stemming, tokenizer, and BM25 relevance ranking.
+  - Online hot local backups (`/backup`) and JSON conversation exports (`/export`).
+  - Strict privacy boundaries: deletion isolation, search scoping, configurable retention policies (`FRIDAY_MEMORY_RETENTION_DAYS`), and complete storage purge (`/purge` with `CONFIRM PURGE`).
 - **Safe & Structured Logging**: Regex secret masking and custom `SanitizedFormatter` preventing credentials leakage in tracebacks.
-- **Interactive Terminal REPL**: Full CLI with commands (`/status`, `/history`, `/tools`, `/clear`, `/exit`).
+- **Interactive Terminal REPL**: Full CLI with comprehensive conversation management, search, and backup commands.
 - **Comprehensive Project Diary**: Permanent source of truth at [`docs/FRIDAY_DIARY.md`](docs/FRIDAY_DIARY.md).
 
 ---
@@ -64,6 +70,9 @@ FRIDAY_LLM_PROVIDER=mock
 # Memory backend (sqlite or in_memory):
 FRIDAY_MEMORY_BACKEND=sqlite
 FRIDAY_MEMORY_DB_PATH=data/friday.db
+FRIDAY_MEMORY_MAX_MESSAGES=50
+# Optional retention policy in days (None/0 for indefinite):
+# FRIDAY_MEMORY_RETENTION_DAYS=30
 
 # Or configure OpenAI/Ollama/Groq:
 # FRIDAY_LLM_PROVIDER=openai
@@ -90,10 +99,20 @@ friday
 
 While running FRIDAY, you can use the following commands:
 
+- `/new [title]` — Start a new conversation session and switch to it.
+- `/conversations` (or `/list`) — List all stored conversation sessions with message counts.
+- `/switch <id>` — Switch active session by full ID or prefix.
+- `/rename <title>` — Rename the current active conversation.
+- `/current` — Display metadata, ID, and message metrics for active conversation.
+- `/search <query>` — Search historical messages for keywords across sessions.
+- `/backup [path]` — Create a hot local backup copy of the SQLite database.
+- `/export [path]` — Export active conversation to a local JSON file.
 - `/status` — View current agent status, active provider, model, memory size, and loaded tools.
-- `/history` — View the stored conversation history.
+- `/history` — View the stored conversation history in the active session.
 - `/tools` — View registered tools and their safety classifications.
-- `/clear` — Clear the conversation memory.
+- `/clear` — Clear the messages in the active conversation session.
+- `/delete [id]` — Permanently delete a conversation session (requires confirmation).
+- `/purge` — Completely wipe all stored conversations and database memory (`CONFIRM PURGE`).
 - `/help` — Display available commands.
 - `/exit` or `/quit` — Gracefully exit the assistant.
 
@@ -121,7 +140,7 @@ FRIDAY maintains a permanent engineering diary, architectural decision records (
 - [x] **V0.1 — Core Architecture & Foundation**
 - [x] **V0.2 — Basic Agent Reasoning**
 - [x] **V0.3 — Tool System Expansion & Interactive Confirmation Gating**
-- [x] **V0.4 — Persistent SQLite Conversation Memory** *(Current)*
+- [x] **V0.4 — Persistent SQLite Memory & Multi-Conversation Management** *(Current)*
 - [ ] **V0.4.5 — Long-Term Semantic Vector Memory**
 - [ ] **V0.5 — Local Voice Interface (Whisper & Kokoro/EdgeTTS)**
 - [ ] **V0.6 — Safe Computer Control & Desktop Automation**

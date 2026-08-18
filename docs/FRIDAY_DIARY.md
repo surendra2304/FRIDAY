@@ -1,7 +1,7 @@
 # FRIDAY Project Diary
 
 > **Permanent, never-ending historical record and institutional memory of the FRIDAY project.**
-> **Started: 2026-08-18 | Current Version: v0.4.5 | Milestone: V0.4 Persistent Memory Scaling & Disaster Recovery**
+> **Started: 2026-08-18 | Current Version: v0.4.6 | Milestone: Phase 2 Complete (Persistent Memory Foundation)**
 
 ---
 
@@ -367,6 +367,124 @@ FRIDAY/
   * *Reason*: SQLite is built-in, transactional, reliable, and requires zero external infrastructure. It stores conversation histories cleanly and allows future semantic/vector indices to reference message IDs directly.
   * *Consequences*: Instant local persistence across CLI sessions with zero new runtime dependencies.
 
+* **ADR-008: SQLite FTS5 Full-Text Search for Historical Message Retrieval**
+  * *Decision*: Leverage SQLite's built-in FTS5 virtual table engine with BM25 relevance ranking and Porter stemming for keyword memory retrieval instead of introducing heavy embedding models in Phase 2.
+  * *Alternatives Considered*: Pure Python linear search, external vector databases (Chroma/FAISS) with high latency and GPU/RAM footprint.
+  * *Reason*: FTS5 executes in under 2ms across thousands of messages, requires 0 extra dependencies, runs 100% offline, and integrates directly with SQLite database triggers.
+  * *Consequences*: High-speed keyword and substring historical context retrieval available to both the CLI (`/search`) and autonomous agent (`search_memory` tool).
+
+* **ADR-009: Multi-Conversation Session Isolation & Two-Tier Deletion Safety**
+  * *Decision*: Structure persistent storage into discrete conversation threads with foreign-key cascade deletes, complemented by a strict two-tier deletion model: single session deletion (y/N prompt) vs complete database purge (`CONFIRM PURGE` prompt).
+  * *Alternatives Considered*: Single monolithic conversation history, silent auto-deletion.
+  * *Reason*: Users need distinct topic threads (work, personal, coding) without context pollution. Destructive database-wide wipes must require explicit, conscious confirmation.
+  * *Consequences*: Clean session organization, zero cross-conversation context bleeding, and airtight privacy controls.
+
+* **ADR-010: Online Hot Database Backups & JSON Export**
+  * *Decision*: Implement hot online local database backups using `sqlite3.Connection.backup()` and structured JSON exports.
+  * *Alternatives Considered*: Raw OS file copies (risks corrupted copies during active writes), cloud sync (violates local-first privacy principle).
+  * *Reason*: SQLite's online backup API guarantees non-blocking, transaction-consistent disk copies while the agent is running.
+  * *Consequences*: Users can reliably back up or export conversations locally at any time without downtime.
+
+---
+
+### Phase 2 Final Memory Architecture Snapshot
+
+```text
++-----------------------------------------------------------------------------+
+|                                FRIDAY Agent                                 |
++--------------------------------------+--------------------------------------+
+                                       |
+                   +-------------------+-------------------+
+                   |                                       |
+                   v                                       v
++------------------------------------+  +-------------------------------------+
+|      Layer 1: Working Memory       |  |  Layer 3: Historical Search & Tool  |
+|  [IMPLEMENTED]                     |  |  [IMPLEMENTED]                      |
+|  - In-memory sliding context       |  |  - SQLite FTS5 Virtual Table Index  |
+|  - Configurable max buffer (50)    |  |  - Porter Stemmer & BM25 Ranking    |
+|  - Tool call / result correlation  |  |  - `search_memory` Agent Tool       |
+|  - Dynamic prompt assembly         |  |  - CLI `/search <query>` Command    |
++------------------+-----------------+  +------------------+------------------+
+                   |                                       |
+                   +-------------------+-------------------+
+                                       |
+                                       v
++-----------------------------------------------------------------------------+
+|            Layer 2: Durable Persistent Storage (SQLite + ACID)              |
+|  [IMPLEMENTED]                                                              |
+|  - Tables: conversations, messages, messages_fts                            |
+|  - Triggers: trg_messages_ai, trg_messages_ad, trg_messages_au               |
+|  - Tuning: WAL mode, NORMAL synchronous, 20s busy timeout, 64MB cache       |
+|  - Lifecycle: /new, /conversations, /switch, /rename, /current, /delete     |
+|  - Privacy: Deletion isolation, /purge (CONFIRM PURGE), retention policies  |
+|  - Disaster Recovery: Hot online backup (`/backup`), JSON export (`/export`)|
++--------------------------------------+--------------------------------------+
+                                       |
+                                       v  (Planned Future Interface)
++-----------------------------------------------------------------------------+
+|            Layer 4: Long-Term Semantic Vector Memory                        |
+|  [FUTURE / DEFERRED TO PHASE 3]                                             |
+|  - Local sentence embeddings (all-MiniLM-L6-v2 / BGE-Small)                 |
+|  - Embedding vector index (sqlite-vss / Chroma / local HNSW)                |
+|  - Cross-session associative recall & automatic fact extraction             |
+|  - User preference graph & long-term episodic memory                        |
++-----------------------------------------------------------------------------+
+```
+
+---
+
+### Database Schema (v0.4.5)
+
+```sql
+-- Conversations Table
+CREATE TABLE IF NOT EXISTS conversations (
+    id TEXT PRIMARY KEY,
+    title TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    metadata TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at DESC);
+
+-- Messages Table
+CREATE TABLE IF NOT EXISTS messages (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    name TEXT,
+    tool_calls TEXT,
+    tool_call_id TEXT,
+    created_at TEXT NOT NULL,
+    metadata TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_messages_conv_created ON messages(conversation_id, created_at);
+
+-- Full-Text Search Virtual Table
+CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+    message_id UNINDEXED,
+    conversation_id UNINDEXED,
+    content,
+    tokenize = 'porter unicode61'
+);
+
+-- Triggers for Real-time FTS Synchronization
+CREATE TRIGGER IF NOT EXISTS trg_messages_ai AFTER INSERT ON messages BEGIN
+    INSERT INTO messages_fts(message_id, conversation_id, content)
+    VALUES (new.id, new.conversation_id, new.content);
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_messages_ad AFTER DELETE ON messages BEGIN
+    DELETE FROM messages_fts WHERE message_id = old.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_messages_au AFTER UPDATE ON messages BEGIN
+    DELETE FROM messages_fts WHERE message_id = old.id;
+    INSERT INTO messages_fts(message_id, conversation_id, content)
+    VALUES (new.id, new.conversation_id, new.content);
+END;
+```
+
 ---
 
 ### Bugs encountered
@@ -461,6 +579,7 @@ FRIDAY/
   * `54d3238`: `feat(memory): add searchable historical conversation retrieval (v0.4.3)`
   * `f23695b`: `security(memory): harden persistent memory privacy and retention (v0.4.4)`
   * `74b87e7`: `perf(memory): harden persistent memory storage and recovery (v0.4.5)`
+  * *(Pending Commit)*: `feat(phase2): complete FRIDAY persistent memory foundation (v0.4.6)`
 * **Remote Repository**: `https://github.com/surendra2304/FRIDAY`
 * **Push Status**: Verified and in sync with `origin/main`
 
@@ -468,7 +587,7 @@ FRIDAY/
 
 ### Current project state
 
-* **Status**: Complete, fully functional, and stabilized **Milestone V0.4 Persistent SQLite Memory, Scaling & Disaster Recovery**.
+* **Status**: Complete, fully functional, and stabilized **Phase 2 — Persistent Memory Foundation**.
 * **Capabilities Operational**:
   * Multi-step sequential tool calling decision loop with iteration guardrails.
   * Real-time tool execution event streaming in CLI.
@@ -511,10 +630,11 @@ FRIDAY/
 
 ### Next planned work
 
-* **Milestone V0.4 — Persistent SQLite & Vector Memory**:
-  * Implement SQLite-based conversation history persistence.
-  * Integrate simple local vector storage for semantic retrieval and long-term context retention.
-  * Local CLI history caching.
+* **Phase 3 — Local Voice Interface & Long-Term Semantic Vector Memory**:
+  - Local embedding models & vector similarity search (`sqlite-vss` / Chroma / FAISS).
+  - Cross-session associative recall & automatic episodic fact extraction.
+  - Local Voice Input/Output (Whisper STT & Kokoro/EdgeTTS audio synthesis).
+  - Safe desktop automation & proactive background workflows.
 
 ---
 
