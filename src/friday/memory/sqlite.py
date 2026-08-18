@@ -492,6 +492,13 @@ class SQLiteConversationMemory(BaseMemory):
                     params.append(limit)
 
                     rows = conn.execute(sql, tuple(params)).fetchall()
+                    if not rows and not (clean_query.startswith('"') and clean_query.endswith('"')):
+                        # Fallback to OR query for natural language questions with stop words
+                        tokens = [t for t in re.sub(r'[^\w\s]', ' ', clean_query).split() if len(t) > 2]
+                        if len(tokens) > 1:
+                            or_query = " OR ".join(f'"{t}"*' for t in tokens)
+                            or_params = [or_query] + params[1:]
+                            rows = conn.execute(sql, tuple(or_params)).fetchall()
                 except sqlite3.OperationalError as e:
                     logger.warning(f"FTS5 query failed for '{fts_query}' ({e}). Falling back to LIKE search.")
                     sql = """

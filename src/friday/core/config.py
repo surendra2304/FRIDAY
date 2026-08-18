@@ -46,10 +46,15 @@ class Settings(BaseSettings):
     memory_max_messages: int = Field(default=50, ge=2, description="Maximum messages stored in short-term buffer")
     memory_auto_persist: bool = Field(default=True, description="Whether to persist conversations automatically")
     memory_retention_days: Optional[int] = Field(default=None, ge=1, description="Optional retention policy in days (older messages pruned)")
-    embedding_provider: str = Field(default="gemini", description="Embedding provider: 'gemini', 'mock', 'none'")
+    embedding_provider: str = Field(default="none", description="Embedding provider: 'gemini', 'mock', 'none'")
     embedding_model: str = Field(default="text-embedding-004", description="Embedding model identifier")
     embedding_dimension: int = Field(default=768, ge=1, le=8192, description="Expected dimensionality of embedding vectors")
     embedding_similarity_threshold: float = Field(default=0.6, ge=0.0, le=1.0, description="Minimum cosine similarity threshold for semantic retrieval")
+    retrieval_mode: str = Field(default="hybrid", description="Memory recall mode: 'hybrid', 'semantic', 'fts', 'none'")
+    max_recalled_memories: int = Field(default=3, ge=1, le=20, description="Maximum historical memories to recall into context")
+    recall_similarity_threshold: float = Field(default=0.6, ge=0.0, le=1.0, description="Minimum similarity threshold for recalled memories")
+    max_recall_chars: int = Field(default=1000, ge=100, le=10000, description="Maximum total characters of recalled memories injected")
+    enable_auto_recall: bool = Field(default=True, description="Whether to automatically retrieve relevant historical context")
 
     # Identity
     agent_name: str = Field(default="FRIDAY", description="Name of the AI assistant")

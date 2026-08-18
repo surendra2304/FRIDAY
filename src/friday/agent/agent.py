@@ -269,6 +269,59 @@ class FridayAgent:
                     safety_level=SafetyLevel.SAFE,
                 )
 
+    def _retrieve_relevant_memories(self, query: str) -> List[MemorySearchResult]:
+        """Controlled retrieval of relevant historical context based on settings."""
+        if not getattr(self.settings, "enable_auto_recall", True):
+            return []
+
+        mode = getattr(self.settings, "retrieval_mode", "hybrid").lower().strip()
+        if mode in ("none", "disabled", "false", ""):
+            return []
+
+        clean_query = query.strip()
+        if len(clean_query) < 4 or clean_query.lower() in ("hi", "hello", "hey", "bye", "exit", "quit", "ok", "thanks"):
+            return []
+
+        limit = getattr(self.settings, "max_recalled_memories", 3)
+        threshold = getattr(self.settings, "recall_similarity_threshold", 0.6)
+        max_chars = getattr(self.settings, "max_recall_chars", 1000)
+
+        results: List[MemorySearchResult] = []
+        try:
+            if mode == "semantic":
+                sem_res = self.memory.search_semantic(clean_query, limit=limit, threshold=threshold)
+                results = [
+                    MemorySearchResult(
+                        conversation_id=sr.conversation_id,
+                        conversation_title=sr.metadata.get("conversation_title", ""),
+                        message_id=sr.message_id or sr.record_id,
+                        role=Role(sr.metadata.get("role", "assistant")),
+                        content=sr.source_text,
+                        timestamp=sr.created_at,
+                        score=sr.score,
+                    )
+                    for sr in sem_res
+                ]
+            elif mode == "fts":
+                results = self.memory.search(clean_query, limit=limit)
+            else:  # hybrid
+                results = self.memory.search_hybrid(clean_query, limit=limit)
+        except Exception as e:
+            logger.warning(f"Auto memory recall failed: {e}")
+            return []
+
+        filtered: List[MemorySearchResult] = []
+        total_chars = 0
+        for r in results:
+            if r.content.strip().lower() == clean_query.lower():
+                continue
+            if total_chars + len(r.content) > max_chars:
+                break
+            filtered.append(r)
+            total_chars += len(r.content)
+
+        return filtered
+
     def process_message(
         self,
         user_input: str,
@@ -286,16 +339,38 @@ class FridayAgent:
 
         logger.info(f"Processing user turn: '{clean_input[:60]}...'")
 
-        # 1. Append user message to long-term memory
+        # 1. Retrieve relevant historical memories prior to appending current turn
+        recalled = self._retrieve_relevant_memories(clean_input)
+        if recalled:
+            logger.info(f"Controlled Recall: Retrieved {len(recalled)} relevant historical memory item(s).")
+
+        # 2. Append user message to long-term memory
         user_msg = Message(role=Role.USER, content=clean_input)
         self.memory.add_message(user_msg)
 
-        # 2. Construct conversation context window (System Prompt + Memory Slice)
-        working_context: List[Message] = [self.system_message] + self.memory.get_context_window(
+        # 3. Construct base system prompt augmented with bounded historical context
+        system_content = self.system_message.content
+        if recalled:
+            memory_block = "\n".join(
+                f"- [{r.timestamp.strftime('%Y-%m-%d')}] {r.role.value.capitalize()}: {r.content}"
+                for r in recalled
+            )
+            augmented_system = (
+                f"{system_content}\n\n"
+                f"[Relevant Historical Memories]\n"
+                f"{memory_block}\n"
+                f"[End of Historical Memories]"
+            )
+            base_sys_msg = Message(role=Role.SYSTEM, content=augmented_system)
+        else:
+            base_sys_msg = self.system_message
+
+        # 4. Construct conversation context window (System Prompt + Memory Slice)
+        working_context: List[Message] = [base_sys_msg] + self.memory.get_context_window(
             self.settings.memory_max_messages
         )
 
-        # 3. Retrieve registered tool schemas
+        # 5. Retrieve registered tool schemas
         tool_schemas = self.tools.get_schemas() if self.tools.list_tools() else None
 
         all_tool_calls: List[ToolCall] = []
@@ -303,13 +378,13 @@ class FridayAgent:
         final_content = ""
         iterations = 0
 
-        # 4. Multi-step Reasoning & Tool-calling Loop
+        # 6. Multi-step Reasoning & Tool-calling Loop
         while iterations < self.max_tool_iterations:
             iterations += 1
             logger.debug(f"Agent decision iteration {iterations}/{self.max_tool_iterations}")
 
             # Rebuild working context from memory dynamically to maintain precise dialogue history
-            working_context = [self.system_message] + self.memory.get_context_window(
+            working_context = [base_sys_msg] + self.memory.get_context_window(
                 self.settings.memory_max_messages
             )
 
@@ -437,6 +512,16 @@ class FridayAgent:
         duration = time.perf_counter() - start_time
         logger.info(f"Turn processed successfully in {duration:.2f}s across {iterations} iteration(s)")
 
+        recalled_info = [
+            {
+                "source_conversation": r.conversation_id,
+                "timestamp": r.timestamp.isoformat(),
+                "content": r.content,
+                "score": r.score,
+            }
+            for r in recalled
+        ]
+
         return AgentResponse(
             content=final_content,
             tool_calls=all_tool_calls if all_tool_calls else None,
@@ -451,6 +536,7 @@ class FridayAgent:
                 "provider": self.llm.provider_name,
                 "model": self.llm.model,
                 "cost_mode": getattr(self.settings, "cost_mode", "free_first"),
+                "recalled_memories": recalled_info,
             },
         )
 
