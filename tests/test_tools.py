@@ -164,3 +164,41 @@ def test_tool_registry_get_schemas_max_safety():
     sensitive_schemas = reg.get_schemas(max_safety=SafetyLevel.SENSITIVE)
     assert len(sensitive_schemas) == 2
 
+
+class DummyDefaultTool(BaseTool):
+    name = "dummy_default_tool"
+    description = "A dummy tool to test parameter defaults."
+    parameters = {
+        "type": "object",
+        "properties": {
+            "required_val": {"type": "string"},
+            "optional_val": {"type": "integer"},
+        },
+        "required": ["required_val"],
+    }
+    
+    def execute(self, required_val: str, optional_val: int = 42, **kwargs: Any) -> ToolResult:
+        return ToolResult(
+            name=self.name,
+            content=f"required={required_val}, optional={optional_val}",
+        )
+
+
+def test_tool_argument_validation_unexpected_arg():
+    tool = DummySensitiveTool()
+    valid, err = tool.validate_arguments({"path": "file.txt", "lines": 5, "unexpected_param": True})
+    assert not valid
+    assert "Unexpected parameter 'unexpected_param'" in err
+
+
+def test_tool_registry_optional_arg_null_filtering():
+    reg = ToolRegistry()
+    tool = DummyDefaultTool()
+    reg.register(tool)
+    
+    # Passing optional_val as None explicitly should trigger the default value of 42
+    result = reg.execute("dummy_default_tool", {"required_val": "hello", "optional_val": None})
+    assert not result.is_error
+    assert "optional=42" in result.content
+
+

@@ -45,6 +45,11 @@ class BaseTool(ABC):
             if req not in arguments:
                 return False, f"Missing required parameter '{req}' for tool '{self.name}'."
 
+        # Check for unexpected arguments
+        for arg_name in arguments:
+            if arg_name not in schema_props:
+                return False, f"Unexpected parameter '{arg_name}' passed to tool '{self.name}'."
+
         # Check basic types for provided arguments
         type_mapping = {
             "string": str,

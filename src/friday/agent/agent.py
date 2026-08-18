@@ -87,6 +87,11 @@ class FridayAgent:
             iterations += 1
             logger.debug(f"Agent decision iteration {iterations}/{self.max_tool_iterations}")
 
+            # Rebuild working context from memory dynamically to maintain precise dialogue history
+            working_context = [self.system_message] + self.memory.get_context_window(
+                self.settings.memory_max_messages
+            )
+
             try:
                 assistant_msg = self.llm.generate(messages=working_context, tools=tool_schemas)
             except Exception as e:
@@ -106,7 +111,9 @@ class FridayAgent:
 
             # Model requested one or more tool calls
             logger.info(f"Iteration {iterations}: Model requested {len(assistant_msg.tool_calls)} tool call(s)")
-            working_context.append(assistant_msg)
+            
+            # Persist assistant's tool call intent message to memory
+            self.memory.add_message(assistant_msg)
 
             for tc in assistant_msg.tool_calls:
                 all_tool_calls.append(tc)
@@ -127,8 +134,8 @@ class FridayAgent:
                     except Exception as cb_err:
                         logger.warning(f"Tool callback error: {cb_err}")
 
-                # Append tool result message into working context for next reasoning pass
-                working_context.append(
+                # Persist tool execution result message to memory
+                self.memory.add_message(
                     Message(
                         role=Role.TOOL,
                         name=tc.name,

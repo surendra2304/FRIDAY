@@ -92,7 +92,14 @@ def main() -> None:
             sys.stdout.reconfigure(encoding="utf-8", errors="replace")
         except Exception:
             pass
-    settings = get_settings()
+    from pydantic import ValidationError
+    try:
+        settings = get_settings()
+    except ValidationError as e:
+        print(f"\n[Configuration Error]: Failed to validate application configuration.")
+        print(f"Details: {e}\n")
+        sys.exit(1)
+
     setup_logging(level=settings.log_level, log_file=settings.log_file)
     logger.info("Starting FRIDAY CLI session")
 

@@ -112,8 +112,14 @@ class ToolRegistry:
             )
 
         try:
-            logger.info(f"Executing tool '{name}' (Safety: {tool.safety_level.value}) with args: {arguments}")
-            result = tool.execute(**arguments)
+            # Filter out optional parameters with None values so Python defaults are used
+            required_fields = tool.parameters.get("required", [])
+            exec_args = {
+                k: v for k, v in arguments.items()
+                if v is not None or k in required_fields
+            }
+            logger.info(f"Executing tool '{name}' (Safety: {tool.safety_level.value}) with args: {exec_args}")
+            result = tool.execute(**exec_args)
             result.tool_call_id = tool_call_id
             return result
         except Exception as e:

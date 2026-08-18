@@ -1,7 +1,7 @@
 # FRIDAY Project Diary
 
 > **Permanent, never-ending historical record and institutional memory of the FRIDAY project.**
-> **Started: 2026-08-18 | Current Version: v0.2.1 | Milestone: V0.2 Agent Brain & Tool-Calling Architecture**
+> **Started: 2026-08-18 | Current Version: v0.2.2 | Milestone: V0.2 Agent Brain & Tool-Calling Architecture**
 
 ---
 
@@ -87,6 +87,15 @@
   * **LLM Exception Truncation & Key Masking**: Enhanced `OpenAILLMProvider` to parse structured JSON error messages from the endpoint response, truncate raw HTTP response text to 300 characters (preventing raw HTML page dumps in console/logs), and automatically scrub any API keys from propagated error strings.
 * Expanded test suite from 35 to **39 tests** covering optional `None` argument validation, safety filtering thresholds, JSON error parsing, and HTML truncation.
 * Confirmed 100% test pass rate (39/39 passed in 0.78s).
+
+#### Session 7 — Phase 1.1: Core Audit and Stabilization Updates
+* Checked and resolved key bugs, security, and extensibility issues during a targeted core architectural audit:
+  * **Strict Rejection of Unexpected Parameters**: Upgraded `BaseTool.validate_arguments()` to strictly check for and reject any keys present in the arguments dictionary that are not defined in the tool's JSON schema properties. This prevents unexpected arguments from triggering runtime `TypeError` exceptions during execution.
+  * **Null Gating for Optional Parameters**: Modified `ToolRegistry.execute()` to filter out optional parameters containing `None` values prior to tool invocation. This allows native Python default parameter values in method signatures to take over instead of being overwritten by `None`, preventing potential type crashes inside tool implementations.
+  * **Dialogue Context Memory Persistence**: Upgraded `FridayAgent.process_message()` to persist intermediate assistant messages (with tool calls) and tool response messages directly to the short-term conversation memory (`self.memory`) as they occur. Rebuilds `working_context` dynamically in each reasoning iteration. This ensures the complete dialog history is preserved across subsequent turns.
+  * **Graceful CLI Configuration Failures**: Wrapped `get_settings()` in a `try-except ValidationError` block at the CLI entry point (`src/friday/cli/main.py`). This catches Pydantic configuration failures on startup and prints a clean user message instead of a stack trace.
+* Expanded test suite from 39 to **42 tests** covering unexpected parameter validation errors, null argument filtering default values, and agent multi-turn memory persistence of intermediate tool calls/results.
+* Confirmed 100% test pass rate (42/42 passed in 0.73s).
 
 ---
 
@@ -267,6 +276,7 @@ FRIDAY/
   * `0e4709c`: `feat(agent): implement sequential tool-calling architecture & argument validation (v0.2.0)`
   * `68207a1`: `docs(diary): finalize V0.2 commit hash in Day 1 log`
   * `f18dc31`: `chore(architecture): stabilize FRIDAY core foundation for Phase 1 (v0.2.1)`
+  * *(Pending Commit)*: `chore(core): stabilize FRIDAY architecture for Phase 1 (v0.2.2)`
 * **Remote Repository**: `https://github.com/surendra2304/FRIDAY`
 * **Push Status**: Verified and in sync with `origin/main`
 
@@ -278,12 +288,15 @@ FRIDAY/
 * **Capabilities Operational**:
   * Multi-step sequential tool calling decision loop with iteration guardrails.
   * Real-time tool execution event streaming in CLI.
-  * Schema-based argument validation across all registered tools with optional `None` argument safety.
+  * Schema-based argument validation across all registered tools with optional `None` argument safety and strict unexpected parameter rejection.
+  * Optional parameter `None` gating to preserve Python parameter defaults during execution.
+  * Dynamic context assembly and memory persistence of intermediate tool calls/results.
+  * Graceful ValidationError config gating on CLI startup.
   * Enriched system diagnostics tool (`get_system_info`) supporting category filtering and hardware inspection.
   * Correct JSON double-quote argument serialization (fixed Python single-quote bug).
   * Robust error recovery for missing tools, malformed arguments, tool exceptions, and safety denials.
   * Cloud endpoint HTTP error message extraction and HTML truncation handling.
-  * 100% pass rate across 39 automated tests.
+  * 100% pass rate across 42 automated tests.
 
 ---
 
