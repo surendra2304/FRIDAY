@@ -1,6 +1,7 @@
 """SQLite-backed conversation memory with ACID persistence and conversation isolation."""
 
 import json
+import math
 import re
 import sqlite3
 import threading
@@ -9,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from friday.core.logging import get_logger
-from friday.core.types import MemorySearchResult, Message, Role, ToolCall
+from friday.core.types import EmbeddingRecord, MemorySearchResult, Message, Role, SemanticSearchResult, ToolCall
 from friday.memory.base import BaseMemory
 
 logger = get_logger("memory.sqlite")
@@ -23,9 +24,11 @@ class SQLiteConversationMemory(BaseMemory):
         db_path: str = "data/friday.db",
         conversation_id: Optional[str] = None,
         max_messages: int = 50,
+        embedding_provider: Optional[Any] = None,
     ) -> None:
         self.db_path = db_path
         self.max_messages = max(2, max_messages)
+        self.embedding_provider = embedding_provider
         self._lock = threading.Lock()
 
         # Resolve path & ensure directory existence if not in-memory
@@ -110,6 +113,21 @@ class SQLiteConversationMemory(BaseMemory):
                         INSERT INTO messages_fts(message_id, conversation_id, content)
                         VALUES (new.id, new.conversation_id, new.content);
                     END;
+
+                    CREATE TABLE IF NOT EXISTS embeddings (
+                        id TEXT PRIMARY KEY,
+                        conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+                        message_id TEXT REFERENCES messages(id) ON DELETE CASCADE,
+                        source_text TEXT NOT NULL,
+                        embedding_blob BLOB NOT NULL,
+                        model TEXT NOT NULL,
+                        dimension INTEGER NOT NULL,
+                        created_at TEXT NOT NULL,
+                        metadata TEXT
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_embeddings_conv ON embeddings(conversation_id);
+                    CREATE INDEX IF NOT EXISTS idx_embeddings_msg ON embeddings(message_id);
 
                     INSERT INTO messages_fts(message_id, conversation_id, content)
                     SELECT id, conversation_id, content FROM messages
@@ -517,6 +535,189 @@ class SQLiteConversationMemory(BaseMemory):
                         )
                     )
                 return results
+
+    def add_embedding(self, record: EmbeddingRecord) -> None:
+        """Store a semantic embedding vector record in SQLite."""
+        with self._lock:
+            with self._get_connection() as conn:
+                blob_str = json.dumps(record.embedding)
+                meta_str = json.dumps(record.metadata) if record.metadata else None
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO embeddings (
+                        id, conversation_id, message_id, source_text,
+                        embedding_blob, model, dimension, created_at, metadata
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        record.id,
+                        record.conversation_id,
+                        record.message_id,
+                        record.source_text,
+                        blob_str,
+                        record.model,
+                        record.dimension,
+                        record.created_at.isoformat(),
+                        meta_str,
+                    ),
+                )
+                conn.commit()
+
+    def get_embeddings_for_conversation(self, conversation_id: str) -> List[EmbeddingRecord]:
+        """Retrieve all stored embedding records for a given conversation."""
+        with self._lock:
+            with self._get_connection() as conn:
+                rows = conn.execute(
+                    """
+                    SELECT id, conversation_id, message_id, source_text,
+                           embedding_blob, model, dimension, created_at, metadata
+                    FROM embeddings WHERE conversation_id = ?
+                    ORDER BY created_at ASC
+                    """,
+                    (conversation_id,),
+                ).fetchall()
+
+        records: List[EmbeddingRecord] = []
+        for r in rows:
+            try:
+                vec = json.loads(r["embedding_blob"]) if isinstance(r["embedding_blob"], str) else json.loads(r["embedding_blob"].decode("utf-8"))
+                meta = json.loads(r["metadata"]) if r["metadata"] else {}
+                records.append(
+                    EmbeddingRecord(
+                        id=r["id"],
+                        conversation_id=r["conversation_id"],
+                        message_id=r["message_id"],
+                        source_text=r["source_text"],
+                        embedding=vec,
+                        model=r["model"],
+                        dimension=int(r["dimension"]),
+                        created_at=datetime.fromisoformat(r["created_at"]),
+                        metadata=meta,
+                    )
+                )
+            except Exception as e:
+                logger.warning(f"Error deserializing embedding record '{r['id']}': {e}")
+        return records
+
+    def search_semantic(
+        self,
+        query: str,
+        conversation_id: Optional[str] = None,
+        limit: int = 10,
+        threshold: float = 0.0,
+    ) -> List[SemanticSearchResult]:
+        """Perform cosine similarity search across stored embedding vectors."""
+        if not self.embedding_provider:
+            return []
+
+        try:
+            query_vector = self.embedding_provider.embed_text(query)
+        except Exception as e:
+            logger.warning(f"Failed to generate query embedding: {e}")
+            return []
+
+        with self._lock:
+            with self._get_connection() as conn:
+                if conversation_id:
+                    cursor = conn.execute(
+                        """
+                        SELECT id, conversation_id, message_id, source_text,
+                               embedding_blob, model, dimension, created_at, metadata
+                        FROM embeddings WHERE conversation_id = ?
+                        """,
+                        (conversation_id,),
+                    )
+                else:
+                    cursor = conn.execute(
+                        """
+                        SELECT id, conversation_id, message_id, source_text,
+                               embedding_blob, model, dimension, created_at, metadata
+                        FROM embeddings
+                        """
+                    )
+                rows = cursor.fetchall()
+
+        scored: List[SemanticSearchResult] = []
+        for r in rows:
+            dim = int(r["dimension"])
+            if dim != len(query_vector):
+                logger.warning(
+                    f"Embedding dimension mismatch on record '{r['id']}' (expected {dim}, got {len(query_vector)}). Skipping."
+                )
+                continue
+
+            try:
+                vec = json.loads(r["embedding_blob"]) if isinstance(r["embedding_blob"], str) else json.loads(r["embedding_blob"].decode("utf-8"))
+            except Exception:
+                continue
+
+            score = self._cosine_similarity(query_vector, vec)
+            if score >= threshold:
+                meta = json.loads(r["metadata"]) if r["metadata"] else {}
+                try:
+                    dt = datetime.fromisoformat(r["created_at"])
+                except Exception:
+                    dt = datetime.now(timezone.utc)
+
+                scored.append(
+                    SemanticSearchResult(
+                        record_id=r["id"],
+                        conversation_id=r["conversation_id"],
+                        message_id=r["message_id"],
+                        source_text=r["source_text"],
+                        score=round(score, 4),
+                        created_at=dt,
+                        metadata=meta,
+                    )
+                )
+
+        scored.sort(key=lambda x: x.score, reverse=True)
+        return scored[:limit]
+
+    def search_hybrid(
+        self,
+        query: str,
+        conversation_id: Optional[str] = None,
+        limit: int = 10,
+    ) -> List[MemorySearchResult]:
+        """Search memory with semantic similarity if available, degrading gracefully to keyword search."""
+        if self.embedding_provider:
+            try:
+                semantic_results = self.search_semantic(
+                    query=query,
+                    conversation_id=conversation_id,
+                    limit=limit,
+                    threshold=0.3,
+                )
+                if semantic_results:
+                    return [
+                        MemorySearchResult(
+                            conversation_id=sr.conversation_id,
+                            conversation_title=sr.metadata.get("conversation_title", "Semantic Match"),
+                            message_id=sr.message_id or sr.record_id,
+                            role=Role(sr.metadata.get("role", "assistant")),
+                            content=sr.source_text,
+                            timestamp=sr.created_at,
+                            score=sr.score,
+                        )
+                        for sr in semantic_results
+                    ]
+            except Exception as e:
+                logger.warning(f"Semantic search failed; falling back to FTS5 keyword retrieval: {e}")
+
+        return self.search(query=query, conversation_id=conversation_id, limit=limit)
+
+    @staticmethod
+    def _cosine_similarity(u: List[float], v: List[float]) -> float:
+        """Compute cosine similarity between two float vectors."""
+        if not u or not v or len(u) != len(v):
+            return 0.0
+        dot = sum(a * b for a, b in zip(u, v))
+        norm_u = math.sqrt(sum(a * a for a in u))
+        norm_v = math.sqrt(sum(b * b for b in v))
+        if norm_u == 0.0 or norm_v == 0.0:
+            return 0.0
+        return dot / (norm_u * norm_v)
 
     def _format_fts_query(self, query: str) -> str:
         """Sanitize and format query string for FTS5 matching."""

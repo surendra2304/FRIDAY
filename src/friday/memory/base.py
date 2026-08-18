@@ -1,9 +1,9 @@
 """Base Memory interface."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
 from datetime import datetime
-from friday.core.types import MemorySearchResult, Message
+from typing import Any, Dict, List, Optional
+from friday.core.types import EmbeddingRecord, MemorySearchResult, Message, SemanticSearchResult
 
 
 class BaseMemory(ABC):
@@ -63,6 +63,29 @@ class BaseMemory(ABC):
     ) -> List[MemorySearchResult]:
         """Search stored messages across conversations or within a specific conversation."""
         return []
+
+    def add_embedding(self, record: "EmbeddingRecord") -> None:
+        """Store an embedding record."""
+        pass
+
+    def search_semantic(
+        self,
+        query: str,
+        conversation_id: Optional[str] = None,
+        limit: int = 10,
+        threshold: float = 0.0,
+    ) -> List["SemanticSearchResult"]:
+        """Search stored embedding vectors using cosine similarity."""
+        return []
+
+    def search_hybrid(
+        self,
+        query: str,
+        conversation_id: Optional[str] = None,
+        limit: int = 10,
+    ) -> List[MemorySearchResult]:
+        """Search memory with semantic similarity if available, degrading gracefully to keyword search."""
+        return self.search(query=query, conversation_id=conversation_id, limit=limit)
 
     def purge_all(self) -> int:
         """Permanently delete all stored conversations and messages. Returns number of purged conversations."""

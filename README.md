@@ -84,12 +84,24 @@ FRIDAY_MEMORY_MAX_MESSAGES=50
 # Optional retention policy in days (None/0 for indefinite):
 # FRIDAY_MEMORY_RETENTION_DAYS=30
 
+# Semantic Long-Term Memory (Cloud-First Remote Embeddings):
+FRIDAY_EMBEDDING_PROVIDER=gemini
+FRIDAY_EMBEDDING_MODEL=text-embedding-004
+FRIDAY_EMBEDDING_DIMENSION=768
+FRIDAY_EMBEDDING_SIMILARITY_THRESHOLD=0.6
+
 # Or configure OpenAI/Groq/OpenRouter:
 # FRIDAY_LLM_PROVIDER=openai
 # FRIDAY_LLM_MODEL=gpt-4o-mini
 # FRIDAY_LLM_API_KEY=your-api-key-here
 # FRIDAY_LLM_BASE_URL=https://api.openai.com/v1
 ```
+
+> **Memory Layers**: FRIDAY operates a 4-layer memory system:
+> 1. **Layer 1: Working Memory** (Sliding in-memory context buffer).
+> 2. **Layer 2: Persistent Conversation Memory** (ACID SQLite session isolation).
+> 3. **Layer 3: Historical Search** (High-speed SQLite FTS5 full-text indexing with BM25 ranking).
+> 4. **Layer 4: Semantic Long-Term Memory** (Cloud-first vector embeddings with cosine similarity and automatic FTS5 fallback). Zero heavy local embedding models or vector databases are run on your laptop.
 
 > **Note on Free-First Operation**: `FRIDAY_COST_MODE=free_first` ensures FRIDAY runs within predictable limits without silently activating paid billing or third-party paid services. Note that cloud provider rate limits and daily quota limits still apply according to your API tier.
 

@@ -120,3 +120,27 @@ class MemorySearchResult(BaseModel):
     content: str = Field(..., description="Text content of the matching message")
     timestamp: datetime = Field(..., description="Timestamp of the message")
     score: float = Field(default=1.0, description="Relevance ranking score")
+
+
+class EmbeddingRecord(BaseModel):
+    """Durable representation of a semantic embedding vector and source reference."""
+    id: str = Field(..., description="Unique ID of the embedding record")
+    conversation_id: str = Field(..., description="Conversation ID reference")
+    message_id: Optional[str] = Field(default=None, description="Optional Message ID reference")
+    source_text: str = Field(..., description="Source text that was embedded")
+    embedding: List[float] = Field(..., description="Dense embedding vector array")
+    model: str = Field(..., description="Identifier of the model that generated the embedding")
+    dimension: int = Field(..., description="Dimensionality of the embedding vector")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Creation timestamp")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Arbitrary metadata attributes")
+
+
+class SemanticSearchResult(BaseModel):
+    """Result of a semantic vector similarity search."""
+    record_id: str = Field(..., description="Unique ID of the matching embedding record")
+    conversation_id: str = Field(..., description="Conversation ID reference")
+    message_id: Optional[str] = Field(default=None, description="Optional Message ID reference")
+    source_text: str = Field(..., description="Text content of the retrieved memory")
+    score: float = Field(..., description="Cosine similarity score (0.0 to 1.0)")
+    created_at: datetime = Field(..., description="Timestamp when the embedding was created")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Metadata associated with the embedding")

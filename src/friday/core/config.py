@@ -40,12 +40,16 @@ class Settings(BaseSettings):
     llm_temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="Sampling temperature")
     llm_max_tokens: int = Field(default=2048, ge=1, le=32768, description="Max tokens per response")
 
-    # Memory Settings
+    # Memory & Semantic Settings
     memory_backend: str = Field(default="sqlite", description="Memory backend: 'sqlite', 'in_memory'")
     memory_db_path: str = Field(default="data/friday.db", description="Path to SQLite database file")
     memory_max_messages: int = Field(default=50, ge=2, description="Maximum messages stored in short-term buffer")
     memory_auto_persist: bool = Field(default=True, description="Whether to persist conversations automatically")
     memory_retention_days: Optional[int] = Field(default=None, ge=1, description="Optional retention policy in days (older messages pruned)")
+    embedding_provider: str = Field(default="gemini", description="Embedding provider: 'gemini', 'mock', 'none'")
+    embedding_model: str = Field(default="text-embedding-004", description="Embedding model identifier")
+    embedding_dimension: int = Field(default=768, ge=1, le=8192, description="Expected dimensionality of embedding vectors")
+    embedding_similarity_threshold: float = Field(default=0.6, ge=0.0, le=1.0, description="Minimum cosine similarity threshold for semantic retrieval")
 
     # Identity
     agent_name: str = Field(default="FRIDAY", description="Name of the AI assistant")

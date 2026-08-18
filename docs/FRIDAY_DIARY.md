@@ -297,6 +297,28 @@
 * Added dedicated test suite `tests/test_gemini_cost_and_controls.py` (8 tests).
 * Expanded total test count from 141 to **149 tests**, maintaining a 100% pass rate in 26.74s.
 
+#### Session 23 — Provider-Independent Semantic Memory & Low-Laptop-Load Architecture
+* Extended FRIDAY's memory subsystem to support 4 distinct operating layers:
+  * **Layer 1 (Working Memory)**: Fast in-memory sliding window context buffer.
+  * **Layer 2 (Persistent Conversation Memory)**: SQLite ACID storage with conversation lifecycle isolation.
+  * **Layer 3 (Historical Search)**: SQLite FTS5 Porter-stemmed BM25 keyword search.
+  * **Layer 4 (Semantic Long-Term Memory)**: Provider-independent dense vector embeddings with cosine similarity.
+* **Low Laptop Compute Constraint**:
+  - Maintained zero local model inference overhead on the host laptop.
+  - Remote cloud embedding provider (`GeminiEmbeddingProvider`) utilizes Google Gemini's `text-embedding-004` REST endpoint.
+* **Provider-Independent Semantic Abstractions**:
+  - `BaseEmbeddingProvider`: Pluggable interface for generating vector embeddings.
+  - `MockEmbeddingProvider`: Deterministic offline unit vectors for testing.
+  - `GeminiEmbeddingProvider`: Remote cloud embedding generation with bounded retries and exponential backoff.
+  - `create_embedding_provider`: Configuration factory.
+  - `EmbeddingRecord` & `SemanticSearchResult`: Strongly-typed domain representations.
+* **Lightweight Local Storage & Graceful Fallback**:
+  - Added `embeddings` table and foreign key cascade indices in SQLite (`data/friday.db`).
+  - Implemented vector cosine similarity calculations in pure Python without external daemon requirements.
+  - Hybrid search automatically falls back to SQLite FTS5 BM25 keyword retrieval if embedding providers are disabled, unconfigured, or encounter transient network errors.
+* Added comprehensive test suite `tests/test_semantic_memory.py` (8 tests).
+* Expanded total test count from 149 to **157 tests**, maintaining a 100% pass rate in 27.25s.
+
 ---
 
 ### Architecture / structure changes
@@ -452,9 +474,15 @@ FRIDAY/
   * *Reason*: Users require total transparency and cost safety. Cloud usage must never silently trigger paid billing, and failed API calls must fail cleanly and predictably.
   * *Consequences*: Predictable operation within free-tier quotas, zero accidental credit charges, clean user feedback on quota exhaustion, and full visibility into turn request counts and latencies.
 
+* **ADR-013: Provider-Independent Remote Semantic Memory & FTS5 Graceful Fallback**
+  * *Decision*: Implement Layer 4 Semantic Long-Term Memory using cloud-first remote embeddings (`GeminiEmbeddingProvider` via `text-embedding-004`), lightweight local vector storage in SQLite, pure-Python cosine similarity search, and seamless automatic degradation to SQLite FTS5 BM25 keyword retrieval.
+  * *Alternatives Considered*: Local embedding model execution via PyTorch/Ollama (violates low-laptop-load constraint), external vector DB services like Pinecone/Qdrant/Weaviate (unnecessary local RAM/CPU/networking overhead).
+  * *Reason*: FRIDAY must remain ultra-lightweight and responsive on the host laptop while providing rich semantic similarity retrieval with zero dependency on local GPU or heavy runtime services.
+  * *Consequences*: Instantaneous offline setup, zero local memory load, durable vector persistence alongside relational conversation data, and robust resilience when offline or unconfigured.
+
 ---
 
-### Phase 2 Final Memory Architecture Snapshot
+### Phase 3 Memory Architecture Snapshot
 
 ```text
 +-----------------------------------------------------------------------------+
@@ -479,7 +507,7 @@ FRIDAY/
 +-----------------------------------------------------------------------------+
 |            Layer 2: Durable Persistent Storage (SQLite + ACID)              |
 |  [IMPLEMENTED]                                                              |
-|  - Tables: conversations, messages, messages_fts                            |
+|  - Tables: conversations, messages, messages_fts, embeddings                |
 |  - Triggers: trg_messages_ai, trg_messages_ad, trg_messages_au               |
 |  - Tuning: WAL mode, NORMAL synchronous, 20s busy timeout, 64MB cache       |
 |  - Lifecycle: /new, /conversations, /switch, /rename, /current, /delete     |
@@ -487,14 +515,15 @@ FRIDAY/
 |  - Disaster Recovery: Hot online backup (`/backup`), JSON export (`/export`)|
 +--------------------------------------+--------------------------------------+
                                        |
-                                       v  (Planned Future Interface)
+                                       v
 +-----------------------------------------------------------------------------+
 |            Layer 4: Long-Term Semantic Vector Memory                        |
-|  [FUTURE / DEFERRED TO PHASE 3]                                             |
-|  - Local sentence embeddings (all-MiniLM-L6-v2 / BGE-Small)                 |
-|  - Embedding vector index (sqlite-vss / Chroma / local HNSW)                |
-|  - Cross-session associative recall & automatic fact extraction             |
-|  - User preference graph & long-term episodic memory                        |
+|  [IMPLEMENTED]                                                              |
+|  - Provider-independent embedding interface (`BaseEmbeddingProvider`)      |
+|  - Cloud-first remote embeddings (`GeminiEmbeddingProvider` / 768d)         |
+|  - Deterministic test provider (`MockEmbeddingProvider`)                    |
+|  - Durable embedding storage & pure-Python cosine similarity search        |
+|  - Graceful fallback: Hybrid search auto-falls back to FTS5 on error/offline|
 +-----------------------------------------------------------------------------+
 ```
 
@@ -621,6 +650,7 @@ END;
   * `3ed3430`: `feat(llm): add Gemini cloud provider`
   * `e9c1043`: `feat(llm): integrate Gemini function calling with FRIDAY tools`
   * `cca2925`: `feat(config): add Gemini model and usage controls`
+  * *(Pending Commit)*: `feat(memory): add provider-independent semantic memory architecture`
 * **Remote Repository**: `https://github.com/surendra2304/FRIDAY`
 * **Push Status**: Verified and in sync with `origin/main`
 
@@ -628,8 +658,17 @@ END;
 
 ### Current project state
 
-* **Status**: Complete, fully functional, and stabilized **Gemini Model Controls, Cost Governance & Usage Observability**.
+* **Status**: Complete, fully functional, and stabilized **Provider-Independent Semantic Memory & Hybrid Retrieval**.
 * **Capabilities Operational**:
+  * Complete 4-Layer Memory Architecture:
+    - **Layer 1: Working Memory** (Sliding in-memory context buffer).
+    - **Layer 2: Persistent Conversation Memory** (ACID SQLite session isolation).
+    - **Layer 3: Historical Search** (SQLite FTS5 full-text indexing with BM25 ranking).
+    - **Layer 4: Semantic Long-Term Memory** (Cloud-first vector embeddings with cosine similarity and automatic FTS5 fallback).
+  * Provider-independent embedding interfaces (`BaseEmbeddingProvider`, `MockEmbeddingProvider`, `GeminiEmbeddingProvider`).
+  * Zero local embedding inference overhead on laptop; remote processing via Google Gemini `text-embedding-004`.
+  * Durable vector records (`EmbeddingRecord`) stored in SQLite with foreign key cascade guarantees.
+  * Graceful fallback in hybrid search (`search_hybrid` degrading automatically to FTS5 on error/missing provider).
   * First-class Google Gemini Cloud Provider (`gemini-2.5-flash`, `gemini-1.5-pro`) with function calling, structured system instructions, and zero local laptop compute overhead.
   * Free-first cost policy (`FRIDAY_COST_MODE=free_first`) ensuring operations stay within predictable free-tier limits without accidental paid service activations.
   * Fine-grained model tuning controls: `FRIDAY_GEMINI_TIMEOUT`, `FRIDAY_GEMINI_MAX_RETRIES`, `FRIDAY_GEMINI_BACKOFF_FACTOR`, `FRIDAY_GEMINI_MAX_TOKENS`, `FRIDAY_GEMINI_TEMPERATURE`, and `FRIDAY_MAX_DAILY_REQUESTS`.
@@ -668,7 +707,7 @@ END;
   * Correct JSON double-quote argument serialization (fixed Python single-quote bug).
   * Robust error recovery for missing tools, malformed arguments, tool exceptions, and safety denials.
   * Cloud endpoint HTTP error message extraction and HTML truncation handling.
-  * 100% pass rate across 149 automated tests.
+  * 100% pass rate across 157 automated tests.
 
 ---
 
