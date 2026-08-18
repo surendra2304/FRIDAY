@@ -42,6 +42,18 @@ class SecretMaskingFilter(logging.Filter):
         return text
 
 
+class SanitizedFormatter(logging.Formatter):
+    """Logging formatter that ensures the final formatted message is sanitized of secrets."""
+
+    def __init__(self, fmt: str, datefmt: str, filter_obj: SecretMaskingFilter):
+        super().__init__(fmt=fmt, datefmt=datefmt)
+        self.filter_obj = filter_obj
+
+    def format(self, record: logging.LogRecord) -> str:
+        formatted = super().format(record)
+        return self.filter_obj._sanitize(formatted)
+
+
 def setup_logging(
     level: Optional[str] = None,
     log_file: Optional[str] = None,
@@ -59,13 +71,14 @@ def setup_logging(
     if logger.hasHandlers():
         logger.handlers.clear()
 
-    formatter = logging.Formatter(
-        fmt="%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-
     mask_filter = SecretMaskingFilter(
         secrets_to_mask=[settings.llm_api_key] if settings.llm_api_key else []
+    )
+
+    formatter = SanitizedFormatter(
+        fmt="%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        filter_obj=mask_filter,
     )
 
     # Console Handler

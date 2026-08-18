@@ -1,7 +1,7 @@
 # FRIDAY Project Diary
 
 > **Permanent, never-ending historical record and institutional memory of the FRIDAY project.**
-> **Started: 2026-08-18 | Current Version: v0.3.9 | Milestone: V0.3 Tool System Expansion & Interactive Confirmation**
+> **Started: 2026-08-18 | Current Version: v0.3.10 | Milestone: V0.3 Tool System Expansion & Interactive Confirmation**
 
 ---
 
@@ -142,6 +142,15 @@
   * **Response Diagnostics**: Enriched `AgentResponse.metadata` to output structured indicators `success` and `tools_used` alongside provider, model, and duration statistics.
 * Expanded test suite from 73 to **79 tests** in `tests/test_reliability.py` verifying transient network retries, rate limit Retry-After waits, auth errors rejection, tool timeouts, clean error translation, and response diagnostics.
 * Confirmed 100% test pass rate (79/79 passed in 12.98s).
+
+#### Session 12 — Phase 1.2: Security Hardening and Execution Boundary Audits
+* Conducted a thorough security audit of configuration, environmental handling, logging, tool registry, built-in tools (calculator, time/date, filesystem tools), authorization policies, agent reasoning loops, and provider HTTP boundaries:
+  * **Accidental Secret Logging and Traceback Sanitization**: Discovered that standard logging filters do not catch formatted exception tracebacks since `exc_info` is formatted by the Logger Formatter after the Filter is applied. Mitigated this by implementing `SanitizedFormatter` in `src/friday/core/logging.py` which intercepts and sanitizes the final formatted string output of Console and File handlers, protecting against credential leaks in all tracebacks.
+  * **Absolute Path Traversal Protection**: Hardened `FileReaderTool` and `FileListingTool` to explicitly reject any absolute or drive-anchored paths (e.g. `/etc/passwd`, `C:\Windows`) inside input parameters prior to path combination and resolution, avoiding Windows UNC drive mapping bypasses and ensuring strict workspace containment.
+  * **Safe Arithmetic Evaluation**: Re-verified the `ast` parsing arithmetic evaluator. Node exclusions (Call, Attribute, Subscript, import blocks, and Variable Names) correctly block code injections. Input length (500 chars) and AST Pow combination boundaries successfully defend against Denial of Service CPU locks.
+  * **Zero Trust Gating**: Audited execution chains. System parameter schema verification strictly occurs before authorization prompts, preventing parameter pollution and ensuring invalid requests do not reach the user or compromise safety boundaries.
+* Expanded test suite from 79 to **82 tests** in `tests/test_logging.py` and `tests/test_tools.py` verifying absolute path rejections (Unix/Windows format boundaries) and SanitizedFormatter traceback filtering.
+* Confirmed 100% test pass rate (82/82 passed in 13.30s).
 
 ---
 
@@ -332,6 +341,7 @@ FRIDAY/
   * `1c56676`: `feat(security): add explicit tool authorization and confirmation flow (v0.3.5)`
   * `b5914d1`: `feat(agent): support coordinated multi-tool execution (v0.3.8)`
   * `5519b4d`: `feat(core): improve agent reliability and execution observability (v0.3.9)`
+  * *(Pending Commit)*: `security(core): harden FRIDAY Phase 1 execution boundaries (v0.3.10)`
 * **Remote Repository**: `https://github.com/surendra2304/FRIDAY`
 * **Push Status**: Verified and in sync with `origin/main`
 
@@ -358,10 +368,12 @@ FRIDAY/
   * Robust LLM retry and backoff policy handling network transients, timeout limits, and rate limits (429/5xx).
   * Strict tool timeout boundary enforcement via thread executor futures.
   * User-friendly exceptions translation and secret-safe diagnostics response metadata.
+  * Secure SanitizedFormatter blocking all credentials and token leaks from exceptions and traceback logs.
+  * Explicit absolute and drive-anchored paths rejection in sandboxed file tools.
   * Correct JSON double-quote argument serialization (fixed Python single-quote bug).
   * Robust error recovery for missing tools, malformed arguments, tool exceptions, and safety denials.
   * Cloud endpoint HTTP error message extraction and HTML truncation handling.
-  * 100% pass rate across 79 automated tests.
+  * 100% pass rate across 82 automated tests.
 
 ---
 

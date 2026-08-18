@@ -35,6 +35,16 @@ class FileReaderTool(BaseTool):
         # Guard max bytes
         max_bytes = min(max(1, max_bytes), 524288)
 
+        # Defensively reject absolute paths or drive letters directly
+        path_obj = Path(path)
+        if path_obj.is_absolute() or path_obj.anchor:
+            return ToolResult(
+                name=self.name,
+                content="Security Error: File path is outside the allowed workspace sandbox.",
+                is_error=True,
+                safety_level=self.safety_level,
+            )
+
         try:
             # Combine paths and resolve to eliminate traversal components (e.g. '..')
             target_path = (workspace_root / path).resolve()

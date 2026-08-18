@@ -327,4 +327,23 @@ def test_file_listing_tool_traversal_and_errors():
     assert "does not exist" in res2.content
 
 
+def test_file_reader_tool_absolute_path_rejection():
+    tool = FileReaderTool()
+    
+    # Test absolute Unix and Windows path formats
+    for abs_path in ("/etc/passwd", "C:\\Windows\\system32\\cmd.exe", "\\Windows\\system32\\cmd.exe"):
+        res = tool.execute(path=abs_path)
+        assert res.is_error
+        assert "Security Error" in res.content
+
+
+def test_file_listing_tool_absolute_path_rejection():
+    tool = FileListingTool()
+    
+    for abs_path in ("/etc", "C:\\Windows", "\\Windows"):
+        res = tool.execute(path=abs_path)
+        assert res.is_error
+        assert "Security Error" in res.content
+
+
 

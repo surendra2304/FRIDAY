@@ -1,7 +1,7 @@
 """Tests for logging and secret sanitization."""
 
 import logging
-from friday.core.logging import SecretMaskingFilter, get_logger, setup_logging
+from friday.core.logging import SecretMaskingFilter, SanitizedFormatter, get_logger, setup_logging
 
 
 def test_secret_masking_filter_direct_secret():
@@ -50,3 +50,32 @@ def test_setup_logging(tmp_path):
     assert log_file.exists()
     content = log_file.read_text(encoding="utf-8")
     assert "Test log message" in content
+
+
+def test_sanitized_formatter_filters_exception_tracebacks():
+    secret = "sk-sensitiveapikey123456789"
+    mask_filter = SecretMaskingFilter(secrets_to_mask=[secret])
+    formatter = SanitizedFormatter(
+        fmt="%(message)s",
+        datefmt="",
+        filter_obj=mask_filter
+    )
+    
+    # Simulate an exception containing a secret in its traceback details
+    try:
+        raise ValueError(f"Connection failed with credentials: {secret}")
+    except Exception as e:
+        import sys
+        record = logging.LogRecord(
+            name="test",
+            level=logging.ERROR,
+            pathname="",
+            lineno=0,
+            msg="An error occurred",
+            args=(),
+            exc_info=sys.exc_info(),
+        )
+    
+    formatted_msg = formatter.format(record)
+    assert secret not in formatted_msg
+    assert "***" in formatted_msg or "[REDACTED_SECRET]" in formatted_msg

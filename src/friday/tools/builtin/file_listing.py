@@ -27,6 +27,16 @@ class FileListingTool(BaseTool):
     def execute(self, path: str = ".", **kwargs: Any) -> ToolResult:
         workspace_root = Path.cwd().resolve()
 
+        # Defensively reject absolute paths or drive letters directly
+        path_obj = Path(path)
+        if path_obj.is_absolute() or path_obj.anchor:
+            return ToolResult(
+                name=self.name,
+                content="Security Error: Directory path is outside the allowed workspace sandbox.",
+                is_error=True,
+                safety_level=self.safety_level,
+            )
+
         try:
             # Combine paths and resolve
             target_path = (workspace_root / path).resolve()
