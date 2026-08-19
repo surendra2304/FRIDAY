@@ -40,6 +40,7 @@ class ToolCall(BaseModel):
     id: str = Field(default="", description="Unique identifier for the tool call")
     name: str = Field(..., description="Name of the tool to execute")
     arguments: Dict[str, Any] = Field(default_factory=dict, description="Arguments passed to the tool")
+    thought_signature: Optional[Any] = Field(default=None, description="Cryptographic thought signature from thinking models")
 
 
 class ToolResult(BaseModel):

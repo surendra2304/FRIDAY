@@ -131,9 +131,18 @@ class GeminiLLMProvider(BaseLLMProvider):
                 if msg.tool_calls:
                     for tc in msg.tool_calls:
                         args = tc.arguments if isinstance(tc.arguments, dict) else {}
-                        parts.append(
-                            genai_types.Part.from_function_call(name=tc.name, args=args)
-                        )
+                        sig = getattr(tc, "thought_signature", None)
+                        if sig:
+                            parts.append(
+                                genai_types.Part(
+                                    function_call=genai_types.FunctionCall(name=tc.name, args=args),
+                                    thought_signature=sig,
+                                )
+                            )
+                        else:
+                            parts.append(
+                                genai_types.Part.from_function_call(name=tc.name, args=args)
+                            )
                 if not parts:
                     parts.append(genai_types.Part.from_text(text=""))
                 contents.append(genai_types.Content(role="model", parts=parts))
@@ -147,7 +156,7 @@ class GeminiLLMProvider(BaseLLMProvider):
                     parsed = {"output": msg.content}
                 contents.append(
                     genai_types.Content(
-                        role="tool",
+                        role="user",
                         parts=[genai_types.Part.from_function_response(name=tool_name, response=parsed)],
                     )
                 )
@@ -299,7 +308,15 @@ class GeminiLLMProvider(BaseLLMProvider):
                             except Exception:
                                 fc_args = {"raw": str(fc_args)}
                         call_id = getattr(fc, "id", None) or f"call_{fc_name}_{uuid.uuid4().hex[:8]}"
-                        tool_calls.append(ToolCall(id=call_id, name=fc_name, arguments=fc_args or {}))
+                        thought_sig = getattr(part, "thought_signature", None) or getattr(fc, "thought_signature", None)
+                        tool_calls.append(
+                            ToolCall(
+                                id=call_id,
+                                name=fc_name,
+                                arguments=fc_args or {},
+                                thought_signature=thought_sig,
+                            )
+                        )
 
                 final_text = "".join(text_parts).strip()
                 return Message(role=Role.ASSISTANT, content=final_text, tool_calls=tool_calls)

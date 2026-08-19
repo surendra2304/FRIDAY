@@ -1,5 +1,6 @@
 """SQLite-backed conversation memory with ACID persistence and conversation isolation."""
 
+import base64
 import json
 import math
 import re
@@ -296,10 +297,17 @@ class SQLiteConversationMemory(BaseMemory):
         
         tool_calls_str = None
         if message.tool_calls:
-            tool_calls_str = json.dumps([
-                {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
-                for tc in message.tool_calls
-            ])
+            tc_list = []
+            for tc in message.tool_calls:
+                tc_dict = {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
+                sig = getattr(tc, "thought_signature", None)
+                if sig:
+                    if isinstance(sig, bytes):
+                        tc_dict["thought_signature"] = base64.b64encode(sig).decode("ascii")
+                    else:
+                        tc_dict["thought_signature"] = str(sig)
+                tc_list.append(tc_dict)
+            tool_calls_str = json.dumps(tc_list)
         
         with self._lock:
             with self._get_connection() as conn:
@@ -338,14 +346,23 @@ class SQLiteConversationMemory(BaseMemory):
             try:
                 tc_data = json.loads(row["tool_calls"])
                 if isinstance(tc_data, list):
-                    tool_calls = [
-                        ToolCall(
-                            id=item.get("id", ""),
-                            name=item.get("name", ""),
-                            arguments=item.get("arguments", {}),
+                    tool_calls = []
+                    for item in tc_data:
+                        sig_val = item.get("thought_signature")
+                        sig_bytes = None
+                        if sig_val:
+                            try:
+                                sig_bytes = base64.b64decode(sig_val)
+                            except Exception:
+                                sig_bytes = sig_val.encode("utf-8")
+                        tool_calls.append(
+                            ToolCall(
+                                id=item.get("id", ""),
+                                name=item.get("name", ""),
+                                arguments=item.get("arguments", {}),
+                                thought_signature=sig_bytes,
+                            )
                         )
-                        for item in tc_data
-                    ]
             except Exception as e:
                 logger.warning(f"Failed to deserialize tool_calls for message {row['id']}: {e}")
 

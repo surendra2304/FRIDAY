@@ -917,3 +917,56 @@ The fourth phase focuses on adding a **cloud‑first voice interface** and a **p
 * Full test suite: **177 passed in 42.70s (100% pass rate)**.
 
 ---
+
+## Real Live Gemini API & Tool Verification
+
+**Date**: 2026-08-19  
+**Branch**: `main`  
+**Status**: VERIFIED & PASSING
+
+### Distinction: Real Live Gemini API vs Mock/Unit Tests
+* **Real Live Gemini Test**: Real network requests executed against Google Cloud Gemini API using production keys loaded locally from `.env`. Zero mock providers used.
+* **Mock/Unit Test Suite**: Fast offline regression suite (`pytest -q`) using isolated mock and in-memory providers.
+
+### Live Gemini Verification Results
+
+1. **Real Gemini Text Request**: **PASS**
+   - Model: `gemini-3.6-flash`
+   - Latency: `5.068s`
+   - Request: `"Reply with exactly: FRIDAY LIVE GEMINI TEST PASSED"`
+   - Actual Response: `"FRIDAY LIVE GEMINI TEST PASSED"`
+
+2. **Real Gemini Function Calling & Tool Execution**: **PASS**
+   - Latency: `18.997s`
+   - Model: `gemini-3.6-flash`
+   - Tool Invoked: `get_time_date` (Safe system tool)
+   - Function Calling Pipeline:
+     - User query: `"Tell me the current time and date."`
+     - Gemini generated structured function call `get_time_date()` with cryptographic `thought_signature`.
+     - Tool executed locally, returning `Current Local Date: 2026-08-19, Current Local Time: 11:04:03, Day of the Week: Wednesday`.
+     - Output sent back to Gemini as function response.
+     - Final Gemini Answer: `"It is currently **11:04 AM** on **Wednesday, August 19, 2026**."`
+
+3. **Real Gemini Embeddings**: **PASS**
+   - Model: `gemini-embedding-2`
+   - Latency: `1.421s`
+   - Text: `"FRIDAY live semantic memory test."`
+   - Output Vector Length: `768`
+   - Vector L2 Norm: `1.0000` (perfect unit normalization)
+
+4. **Real Semantic Retrieval with SQLite Memory**: **PASS**
+   - Real embeddings generated and stored into SQLite memory store.
+   - Query: `"What is the password for the ProjectOrion database?"`
+   - Retrieved Top Record: `"Project ProjectOrion secret database password is SaturnBlueAsteroid99."`
+   - Top Cosine Similarity Score: `0.8976`
+
+### Key Fixes During Verification
+* **Thought Signature Preservation**: Fixed Google GenAI thinking-model requirement where `thought_signature` must be passed back alongside function calls. Updated `ToolCall`, `GeminiLLMProvider`, and `SQLiteConversationMemory` (base64 serialization) to seamlessly preserve thought signatures across multiple turns.
+* **Function Response Role**: Corrected function response role mapping from `'tool'` to `'user'` as mandated by the `google-genai` API specification.
+
+### Automated Test Suite
+```
+177 passed (100% pass rate)
+```
+
+---
