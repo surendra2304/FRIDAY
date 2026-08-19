@@ -1425,3 +1425,32 @@ Enable natural conversational turn-taking and true dual-layer barge-in interrupt
    - **Full Test Suite**: **216 / 216 PASSING** (0 failed, 14m 53s).
 
 ---
+
+## 2026-08-19 — Phase 5.5: Voice + Tools + Memory + Authorization Integration
+
+### Objective
+Integrate real-time Gemini Live voice streaming with the single unified FRIDAY intelligence stack (`FridayAgent`, `ToolRegistry`, `SQLiteConversationMemory`, `SemanticMemory`, `BaseAuthorizer`). Voice obeys the exact same security policies, tool registry, and memory persistence as the text interface without creating a separate agent brain.
+
+### Work Completed
+1. **Single Agent Intelligence Architecture**:
+   - `GeminiLiveVoiceSession` directly dispatches function calls through the agent's `ToolRegistry` and records results to `FridayAgent.memory`.
+   - Tool schemas are dynamically exported from the unified registry to Gemini Live Declarations via `_build_tools_config()`.
+2. **Function Call Correlation & Error Handling**:
+   - Accurately preserves tool name, call ID, argument dictionaries, and returns `FunctionResponse(name=..., id=..., response={"output": ...})`.
+   - Safely catches runtime tool execution exceptions and returns structured errors without crashing the live stream.
+3. **Unified Security & Authorization Gating**:
+   - Voice tool executions strictly adhere to `SafetyLevel` (SAFE, SENSITIVE, DANGEROUS).
+   - Sensitive and Dangerous tool calls route through `agent.authorizer.authorize()` — unauthorized actions return rejection errors to the model.
+4. **Bidirectional Memory Synchronization**:
+   - Text -> Save, Voice -> Retrieve: Facts saved in text sessions are queryable and recalled in voice sessions.
+   - Voice -> Save, Text -> Retrieve: Transcribed turn completions commit directly to SQLite and semantic vector store upon turn completion. Tiny intermediate audio chunks are not embedded.
+5. **Deterministic Test Suite (`tests/test_voice_agent_integration.py`)**:
+   - Tests: Tool calling with registry, authorization gating, multi-step execution, tool error resilience, semantic memory retrieval via `search_memory` tool, and bidirectional text/voice memory synchronization.
+   - Result: **7 / 7 passed**.
+6. **Real Integration Verification**:
+   - 6 tools exposed to live session.
+   - Real calculator tool execution: `12345 * 6789 = 83810205` -> **PASS**.
+   - Real memory persistence & semantic retrieval -> **PASS**.
+   - Real authorization security gating -> **PASS**.
+
+---
