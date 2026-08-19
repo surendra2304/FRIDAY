@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# FRIDAY - Pre-commit hook to enforce project diary updates
+
+WATCHED_PATHS="^(src/|tests/|docs/|pyproject\.toml|requirements\.txt)"
+DIARY_PATH="docs/FRIDAY_DIARY.md"
+
+# Check if any meaningful files are staged
+meaningful_changes=$(git diff --cached --name-only | grep -E "$WATCHED_PATHS" | grep -v "$DIARY_PATH")
+
+if [ -n "$meaningful_changes" ]; then
+    # Meaningful files are staged. Check if the diary is also staged.
+    diary_staged=$(git diff --cached --name-only | grep -x "$DIARY_PATH")
+    
+    if [ -z "$diary_staged" ]; then
+        echo "================================================================="
+        echo "ERROR: Diary Omission Detected!"
+        echo "You have staged meaningful project changes, but $DIARY_PATH"
+        echo "is not included in this commit."
+        echo ""
+        echo "FRIDAY POLICY: EVERY meaningful action MUST be recorded in the diary."
+        echo "Please update docs/FRIDAY_DIARY.md, stage it, and try committing again."
+        echo "================================================================="
+        
+        # Allow bypass with SKIP_DIARY_CHECK=1
+        if [ "$SKIP_DIARY_CHECK" != "1" ]; then
+            exit 1
+        else
+            echo "Bypassing diary check due to SKIP_DIARY_CHECK=1"
+        fi
+    fi
+fi
+
+exit 0

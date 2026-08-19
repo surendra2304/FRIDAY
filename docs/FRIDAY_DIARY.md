@@ -1,9 +1,12 @@
-﻿# FRIDAY Project Diary
+# FRIDAY Project Diary
 
 > **Permanent, never-ending historical record and institutional memory of the FRIDAY project.**
 > **Started: 2026-08-18 | Current Version: v0.4.6 | Milestone: Phase 2 Complete (Persistent Memory Foundation)**
 
+From this date forward, FRIDAY_DIARY.md is maintained continuously as the permanent chronological source of truth for the project.
+
 ---
+
 
 ## 2026-08-18 â€” Day 1
 
@@ -1592,3 +1595,22 @@ Provide comprehensive consolidation, capability auditing, security verification,
 - Highly sensitive output from tools executed via Gemini Live are gated from automatic SQLite embedding.
 - Added 12 new test cases in `test_voice_tool_security.py` validating execution gating and logging.
 
+---
+
+### Diary Automation & Permanent Project Record Setup
+
+#### Objective
+Establish the project diary (`docs/FRIDAY_DIARY.md`) as a permanent, automatic, non-optional component of the FRIDAY development lifecycle.
+
+#### Work Performed
+1. Added a permanent policy declaration to the top of `docs/FRIDAY_DIARY.md` establishing it as the eternal chronological source of truth.
+2. Created a git pre-commit hook at `scripts/hooks/pre-commit` and configured `core.hooksPath` to enforce diary updates before any commit involving `src/`, `tests/`, `docs/`, `pyproject.toml`, or `requirements.txt`.
+3. Verified `.env` remains fully untracked and protected.
+
+#### Security & Policy
+- **Diary Policy**: ACTIVE
+- **Automatic Diary Maintenance**: ENABLED
+- **Commit Guardrail**: ENABLED (via pre-commit hook)
+
+#### Git
+- Staged and committed hook and policy updates.
