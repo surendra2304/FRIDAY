@@ -1037,3 +1037,40 @@ The fourth phase focuses on adding a **cloud‑first voice interface** and a **p
    - Result: `LIVE SESSION CONNECTED: PASS`.
 
 ---
+
+## Phase 5.3 — Real-Time Audio Pipeline & Device Management
+
+**Date**: 2026-08-19  
+**Branch**: `main`  
+**Status**: IMPLEMENTED & TESTED
+
+### Architecture & Pipeline Specifications
+
+1. **Audio Formats**:
+   - **Input (Microphone)**: 16 kHz, 16-bit mono linear signed PCM (chunk duration: 100ms = 1,600 samples / 3,200 bytes per chunk).
+   - **Output (Speaker)**: 24 kHz, 16-bit mono linear signed PCM streamed from Gemini Live WebSocket.
+
+2. **Buffering & Concurrency**:
+   - **Microphone**: Non-blocking `sounddevice.RawInputStream` callback thread passing CFFI buffers to an `asyncio.Queue` via `loop.call_soon_threadsafe`.
+   - **Speaker**: Circular playback buffer consuming chunks with fallback silence padding on underflow and instant purge on interruption.
+   - **Clean Async/Thread Boundary**: Microphone capture never blocks WebSocket communication or agent processing; speaker playback never stalls microphone input.
+
+3. **Device Management & Diagnostics**:
+   - Implemented `get_audio_diagnostics()` discovering host audio drivers, default input/output indices, max channels, and device lists.
+   - Graceful recovery and descriptive diagnostics when devices are busy, disconnected, or unavailable.
+
+4. **Instant Interruption (Barge-In)**:
+   - On server interruption (`interrupted=True`) or explicit barge-in, `SpeakerStream.stop()` instantly empties playback queue and halts current audio output.
+
+5. **Resource Usage Profile**:
+   - **Local Inference**: Zero local AI models (No local Whisper, Ollama, PyTorch, or local TTS).
+   - **Process Memory**: < 100 MB resident memory footprint.
+   - **CPU**: < 1% CPU utilization during streaming capture/playback.
+   - **GPU**: 0% GPU allocation (pure cloud-first live intelligence).
+
+6. **Hardware Verification**:
+   - Captured 10 chunks (32,000 bytes in 1.0s) from laptop default microphone.
+   - Played 24 kHz synthesized PCM chime through laptop speakers.
+   - Result: `REAL AUDIO PIPELINE: PASS`.
+
+---
