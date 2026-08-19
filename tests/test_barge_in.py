@@ -372,3 +372,71 @@ async def test_programmatic_cancellation():
     # Loops should return immediately without processing
     await session._audio_sender_loop(mock_ws, mic, spk, stop_event)
     assert len(mock_ws.sent_realtime_chunks) == 0
+
+
+@pytest.mark.anyio
+async def test_speaker_mode_eliminates_self_interruption_even_with_large_echo():
+    """Verify speaker mode (default) eliminates self-interruption from speaker echo even with large acoustic RMS spikes (e.g. 7600+)."""
+    session = GeminiLiveVoiceSession(
+        api_key="TEST_GEMINI_API_KEY",
+        barge_in_rms_threshold=350.0,
+    )
+    session.local_barge_in_during_playback = False
+    session.headphones_mode = False
+    session._active = True
+
+    # Real-world observed large acoustic echo spike from laptop speakers (RMS > 7000)
+    loud_speaker_echo_pcm = struct.pack("<800h", *[7500] * 800)
+    mic = MockMicrophoneStream(chunks=[loud_speaker_echo_pcm] * 10)
+    mic.start()
+
+    spk = SpeakerStream(sample_rate=24000)
+    spk._active = True
+    spk.play_chunk(b"ai_playing_output" * 50)
+    assert spk.is_playing
+
+    mock_ws = MockAsyncSession()
+    stop_event = asyncio.Event()
+
+    task = asyncio.create_task(session._audio_sender_loop(mock_ws, mic, spk, stop_event))
+    await asyncio.sleep(0.08)
+    stop_event.set()
+    await task
+
+    # Under speaker mode, speaker playback must NOT be interrupted locally by echo spikes
+    assert spk.is_playing
+    assert session.speaker_playback_interruptions == 0
+    # But mic audio is continuously forwarded to Gemini for authoritative server VAD
+    assert len(mock_ws.sent_realtime_chunks) == 10
+
+
+@pytest.mark.anyio
+async def test_adaptive_noise_floor_updates_during_silence():
+    """Verify ambient noise floor dynamically updates from incoming audio frames when speaker is idle."""
+    session = GeminiLiveVoiceSession(
+        api_key="TEST_GEMINI_API_KEY",
+        barge_in_rms_threshold=350.0,
+    )
+    session._ambient_noise_floor = 20.0
+    session.adaptive_noise_alpha = 0.2
+    session._active = True
+
+    # Moderate background room noise (RMS ~100)
+    noise_pcm = struct.pack("<800h", *[100] * 800)
+    mic = MockMicrophoneStream(chunks=[noise_pcm, noise_pcm, noise_pcm])
+    mic.start()
+
+    spk = SpeakerStream(sample_rate=24000)
+    spk._active = False  # Idle speaker
+
+    mock_ws = MockAsyncSession()
+    stop_event = asyncio.Event()
+
+    task = asyncio.create_task(session._audio_sender_loop(mock_ws, mic, spk, stop_event))
+    await asyncio.sleep(0.05)
+    stop_event.set()
+    await task
+
+    # Adaptive noise floor must have adjusted upward toward 100
+    assert session._ambient_noise_floor > 20.0
+

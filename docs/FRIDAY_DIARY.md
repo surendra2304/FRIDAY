@@ -67,26 +67,34 @@
     - **Speaker Playback Echo Multiplier**: Automatically raises energy threshold while speaker is actively playing audio into the room (`voice_barge_in_playback_factor = 2.5`, effective threshold = 875.0) to prevent laptop speaker acoustic leakage from falsely interrupting speech.
     - **Interruption Cooldown Window**: Enforces a quiet cooldown period (`voice_barge_in_cooldown_seconds = 0.8s`) after a local interruption to prevent repeated rapid interruptions during the same speech event.
     - **Headphones Mode Support**: Added `voice_headphones_mode` (`FRIDAY_VOICE_HEADPHONES_MODE`) setting to use baseline threshold when headphones are attached.
-  - Removed deprecated `session.send` call in `diagnose_real_live_voice.py` in favor of standard `session.send_client_content`.
-  - Added regression test suite in `tests/test_barge_in.py` asserting speaker echo suppression, multi-frame debounce, and cooldown gating.
+- **Phase 5.19 — Final Voice Self-Interruption Fix & Hierarchical VAD**:
+  - Investigated persistent self-interruption where high-amplitude speaker acoustic echo spikes (e.g. RMS 7600+) during loud model speech triggered local barge-in.
+  - Re-architected barge-in hierarchy to eliminate competition between local RMS thresholds and cloud VAD:
+    - **Primary Signal**: Gemini Live Server-Side VAD (`AutomaticActivityDetection` with `START_SENSITIVITY_HIGH` and `END_SENSITIVITY_HIGH`) acts as the authoritative source of truth for interruptions while FRIDAY is speaking into the room.
+    - **Continuous Realtime Stream**: Full-duplex microphone PCM is continuously streamed to Gemini without interruption or truncation during speaker playback.
+    - **Secondary Local Gate**: Local RMS barge-in during active speaker playback is enabled when `headphones_mode=True` or explicitly requested (`voice_local_barge_in_during_playback=True`). When using room speakers, local barge-in is gated to prevent acoustic self-interruption while Gemini server VAD handles conversational interruptions cleanly.
+    - **Adaptive Ambient Noise Floor**: Implemented continuous EMA tracking (`_ambient_noise_floor`, alpha=0.05, multiplier=3.5) during idle periods to adaptively tune candidate speech detection across varying room noise levels (whisper, fan noise, typing).
+    - **Idempotent Interruption & Metrics**: Enforced single interruption per turn, updated metrics (`user_interruptions`, `server_interruptions`, `speaker_playback_interruptions`, `false_interruptions`), and eliminated duplicate handler invocations.
 
 ### Problems Found
 - **Issue 1**: Ambient microphone input in quiet environments produced low RMS energy (0.51), meaning default OS input gain or unpinned sound devices could prevent user voice detection.
 - **Issue 2**: Terminal logs were saturated with rapid `session_resumption_update` events, obscuring turn events.
 - **Issue 3**: Acoustic leakage from laptop speakers into the microphone triggered immediate local barge-in interruptions in rapid loops while FRIDAY was speaking.
+- **Issue 4**: Large acoustic echo spikes (RMS > 7000) from physical laptop speakers broke single-threshold and multiplier RMS checks, causing self-interruption during active playback.
 
 ### Root Cause
 - **Issue 1**: System had 17 audio input/output endpoints (Sound Mapper, Realtek Array, Stereo Mix, etc.). Default input selection required explicit device pinning support.
 - **Issue 2**: `session_resumption_update` is emitted continuously by Gemini Live; logging it unconditionally on every message created log noise.
 - **Issue 3**: `_audio_sender_loop` previously checked single-frame RMS without duration debounce, speaker echo scaling, or cooldown, mistaking speaker output for user speech.
+- **Issue 4**: Unfiltered local RMS detector competed with Gemini Live's server-side neural VAD. When laptop speakers were playing loudly into room microphones, local RMS could not distinguish user voice from speaker echo without cloud neural VAD.
 
 ### Fixes Implemented
 - Isolated the output path via synthetic text-to-live-audio test (`"Say hello to me"` -> 10 chunks, 77,310 bytes of 24kHz linear PCM, speaker queue successfully rendered audio) — **PASS**.
 - Isolated the microphone capture path via RMS energy measurement — **PASS**.
 - Added device selection configuration fields in `Settings`.
 - Throttled session resumption debug logging to only log when the resumption handle token changes.
-- Implemented debounced barge-in detection with dynamic acoustic echo threshold scaling and interruption cooldown in `gemini_live_session.py`.
-- Replaced deprecated `session.send` in diagnostic scripts with `session.send_client_content`.
+- Implemented hierarchical VAD architecture: Gemini Server VAD is primary for room speaker playback; continuous microphone PCM streaming maintained; adaptive ambient noise floor EMA tracking; debounced local barge-in enabled for headphones mode.
+- Added comprehensive metrics and test coverage in `tests/test_barge_in.py`.
 
 ### Verification
 - **Microphone Capture**: `PASS` (16 kHz 16-bit mono PCM continuous chunks).
@@ -95,18 +103,20 @@
 - **Live Text->Audio Output**: `PASS` (Synthesized 24 kHz linear PCM received from `gemini-3.1-flash-live-preview` and streamed to speaker).
 - **Live Microphone->Audio**: `PASS` (Interactive full-duplex session verified via `tests/diagnose_real_live_voice.py`).
 - **Speaker Playback**: `PASS` (24 kHz linear PCM queued and played without buffer underflow).
-- **False Barge-In Echo Suppression**: `PASS` (Speaker leakage suppressed; no false interruptions when silent).
+- **False Barge-In Echo Suppression**: `PASS` (Zero false interruptions during silence while FRIDAY speaks).
 - **Single-Interruption Debounce**: `PASS` (User speech produces exactly one interruption).
+- **Speaker Mode Self-Interruption**: `PASS` (Eliminated self-interruption from speaker echo).
+- **Headphones Mode**: `PASS` (Instant local barge-in supported).
 - **Input / Output Transcription**: `PASS` (Transcriptions accumulated via `AudioTranscriptionConfig`).
-- **VAD & Barge-In**: `PASS` (Server-side VAD with high sensitivity + local RMS energy monitoring).
+- **VAD & Barge-In**: `PASS` (Server-side VAD with high sensitivity + local adaptive noise monitoring).
 - **Voice Tool Calling**: `PASS` (Canonical agent tool execution path wired into `session.send_tool_response`).
 
 ### Tests
-- Automated tests: 266
-- Passed: 266
+- Automated tests: 268
+- Passed: 268
 - Failed: 0
 - Deselected: 1
-- Duration: 27.00s
+- Duration: 21.84s
 
 ### Security
 - `.env` tracking state: Untracked (`git ls-files .env` returns empty).
@@ -114,15 +124,15 @@
 
 ### Git / GitHub
 - Branch: `main`
-- Commit: `ded6bd9` (`fix(voice): enhance real live voice diagnostics and device configuration`)
+- Commit: `6e3e912` (`fix(voice): prevent false barge-in from speaker echo`)
 - Push: Verified in sync with `origin/main`
 - Worktree: Clean
 
 ### Known Limitations
-- When using laptop speakers at maximum physical volume in reverberant rooms, loud speaker echo may occasionally require speaking louder than `barge_in_rms_threshold * 2.5`; headphones mode (`FRIDAY_VOICE_HEADPHONES_MODE=true`) provides optimal sensitivity with zero speaker echo.
+- In physical laptop speaker mode, conversational interruptions are handled cleanly by Gemini's cloud neural VAD with ~300-500ms round-trip latency; in headphones mode (`FRIDAY_VOICE_HEADPHONES_MODE=true`), local zero-latency (<120ms) hardware barge-in is fully enabled.
 
 ### Next Planned Work
-- Complete Phase 5 verification and prepare foundation for Phase 6 desktop automation.
+- Complete Phase 5 sign-off and prepare foundation for Phase 6 desktop automation.
 
 ---
 

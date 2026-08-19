@@ -165,6 +165,10 @@ async def run_diagnostics():
     print(f"  LIVE MODEL                 : {settings.voice_live_model}")
     print(f"  AUDIO INPUT SAMPLE RATE    : 16000 Hz (16-bit Mono PCM)")
     print(f"  AUDIO OUTPUT SAMPLE RATE   : 24000 Hz (16-bit Mono PCM)")
+    print(f"  USER INTERRUPTIONS         : {live_session.user_interruptions}")
+    print(f"  SERVER VAD INTERRUPTIONS   : {live_session.server_interruptions}")
+    print(f"  SPEAKER ECHO INTERRUPTIONS : {live_session.speaker_playback_interruptions}")
+    print(f"  FALSE INTERRUPTIONS        : {live_session.false_interruptions}")
     print("=" * 60 + "\n")
 
 

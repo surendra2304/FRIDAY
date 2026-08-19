@@ -96,10 +96,13 @@ class GeminiLiveVoiceSession:
         self.vad_prefix_padding_ms = vad_prefix_padding_ms if vad_prefix_padding_ms is not None else getattr(settings, "voice_vad_prefix_padding_ms", 200)
         self.vad_silence_duration_ms = vad_silence_duration_ms if vad_silence_duration_ms is not None else getattr(settings, "voice_vad_silence_duration_ms", 400)
         self.barge_in_rms_threshold = barge_in_rms_threshold if barge_in_rms_threshold is not None else getattr(settings, "voice_barge_in_rms_threshold", 350.0)
-        self.barge_in_consecutive_frames = getattr(settings, "voice_barge_in_consecutive_frames", 3)
-        self.barge_in_playback_factor = getattr(settings, "voice_barge_in_playback_factor", 2.5)
-        self.barge_in_cooldown_seconds = getattr(settings, "voice_barge_in_cooldown_seconds", 0.8)
+        self.barge_in_consecutive_frames = getattr(settings, "voice_barge_in_consecutive_frames", 4)
+        self.barge_in_playback_factor = getattr(settings, "voice_barge_in_playback_factor", 3.0)
+        self.barge_in_cooldown_seconds = getattr(settings, "voice_barge_in_cooldown_seconds", 1.0)
+        self.local_barge_in_during_playback = getattr(settings, "voice_local_barge_in_during_playback", False)
         self.headphones_mode = getattr(settings, "voice_headphones_mode", False)
+        self.adaptive_noise_alpha = getattr(settings, "voice_adaptive_noise_alpha", 0.05)
+        self.adaptive_noise_multiplier = getattr(settings, "voice_adaptive_noise_multiplier", 3.5)
         self.thinking_level = thinking_level or getattr(settings, "voice_thinking_level", "MINIMAL")
         self.thinking_budget = thinking_budget if thinking_budget is not None else getattr(settings, "voice_thinking_budget", None)
 
@@ -109,9 +112,16 @@ class GeminiLiveVoiceSession:
         self._resumption_handle: Optional[str] = None
         self._connected_event = asyncio.Event()
 
-        # Barge-in debouncing & cooldown state
+        # Adaptive Noise & Barge-in state
+        self._ambient_noise_floor: float = 50.0
         self._consecutive_speech_frames: int = 0
         self._last_interruption_time: float = 0.0
+
+        # Diagnostics counters
+        self.user_interruptions: int = 0
+        self.server_interruptions: int = 0
+        self.speaker_playback_interruptions: int = 0
+        self.false_interruptions: int = 0
 
     def _set_state(self, new_state: LiveSessionState) -> None:
         """Atomically transition state with audit logging."""
@@ -496,7 +506,7 @@ class GeminiLiveVoiceSession:
         spk: SpeakerStream,
         stop_event: asyncio.Event,
     ) -> None:
-        """Stream microphone PCM chunks continuously with robust debounced barge-in."""
+        """Stream microphone PCM chunks continuously with adaptive noise floor and robust barge-in."""
         try:
             while self._active and not stop_event.is_set():
                 chunk = await mic.read_chunk()
@@ -505,12 +515,18 @@ class GeminiLiveVoiceSession:
                     rms = compute_pcm_rms(chunk)
                     is_speaker_active = getattr(spk, "is_playing", False) or getattr(spk, "queue_size", 0) > 0
 
-                    # Dynamic threshold calculation based on output activity and headphone mode
+                    # 1. Candidate speech threshold calculation
+                    candidate_threshold = max(self.barge_in_rms_threshold, self._ambient_noise_floor * self.adaptive_noise_multiplier)
+
+                    # 2. Update adaptive ambient noise floor when speaker is silent and below speech threshold
+                    if not is_speaker_active and rms < candidate_threshold:
+                        self._ambient_noise_floor = (1.0 - self.adaptive_noise_alpha) * self._ambient_noise_floor + (self.adaptive_noise_alpha * rms)
+                    
                     if is_speaker_active and not self.headphones_mode:
-                        # Speaker is playing into room: apply higher threshold to avoid acoustic echo trigger
-                        effective_threshold = self.barge_in_rms_threshold * self.barge_in_playback_factor
+                        # Laptop speaker acoustic echo protection multiplier
+                        effective_threshold = candidate_threshold * self.barge_in_playback_factor
                     else:
-                        effective_threshold = self.barge_in_rms_threshold
+                        effective_threshold = candidate_threshold
 
                     # Debounced speech energy tracking
                     if rms > effective_threshold:
@@ -518,26 +534,34 @@ class GeminiLiveVoiceSession:
                     else:
                         self._consecutive_speech_frames = 0
 
-                    # Handle Barge-In Interruption while FRIDAY is speaking
+                    # 3. Handle Barge-In Interruption while FRIDAY is speaking
                     if is_speaker_active:
-                        # Check cooldown and required sustained consecutive frames (e.g. 3 frames = ~120ms)
                         is_cooldown_active = (now - self._last_interruption_time) < self.barge_in_cooldown_seconds
+                        # Allow local interruption ONLY if headphone mode is active or explicitly enabled in config
+                        # By default, Gemini Server-side VAD serves as authoritative interruption source to eliminate self-interruption from speaker echo
+                        allow_local_barge_in = self.headphones_mode or self.local_barge_in_during_playback
+                        
                         if (
-                            not is_cooldown_active
+                            allow_local_barge_in
+                            and not is_cooldown_active
                             and self._consecutive_speech_frames >= self.barge_in_consecutive_frames
                             and self._state != LiveSessionState.INTERRUPTED
                         ):
                             logger.info(
                                 f"Local barge-in: sustained user speech detected (RMS: {rms:.1f}, "
+                                f"noise_floor: {self._ambient_noise_floor:.1f}, "
                                 f"frames: {self._consecutive_speech_frames}), purging speaker buffer"
                             )
                             self._set_state(LiveSessionState.INTERRUPTED)
                             self._last_interruption_time = now
                             self._consecutive_speech_frames = 0
+                            self.user_interruptions += 1
+                            self.speaker_playback_interruptions += 1
                             spk.stop()
-                    elif rms > self.barge_in_rms_threshold and self._state == LiveSessionState.CONNECTED:
+                    elif rms > candidate_threshold and self._state == LiveSessionState.CONNECTED:
                         self._set_state(LiveSessionState.USER_SPEAKING)
 
+                    # 4. Continuous Realtime Audio Dispatch to Gemini Live
                     blob = genai_types.Blob(
                         data=chunk,
                         mime_type=f"audio/pcm;rate={self.sample_rate_in}",
@@ -593,7 +617,11 @@ class GeminiLiveVoiceSession:
                 if server_content:
                     # Instant barge-in / Interruption from Live API
                     if getattr(server_content, "interrupted", False) is True:
-                        logger.info("Server barge-in signal: interrupting local speaker playback")
+                        if not turn_interrupted:
+                            logger.info("Server barge-in signal: interrupting local speaker playback")
+                            self.server_interruptions += 1
+                            self.user_interruptions += 1
+                            self._last_interruption_time = time.time()
                         self._set_state(LiveSessionState.INTERRUPTED)
                         turn_interrupted = True
                         spk.stop()

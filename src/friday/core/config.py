@@ -200,14 +200,21 @@ class Settings(BaseSettings):
     voice_vad_prefix_padding_ms: int = Field(default=200, ge=0, le=1000, description="VAD prefix audio padding (ms)")
     voice_vad_silence_duration_ms: int = Field(default=400, ge=100, le=2000, description="VAD silence duration before turn complete (ms)")
     voice_barge_in_rms_threshold: float = Field(default=350.0, ge=50.0, le=5000.0, description="RMS energy threshold for local zero-latency barge-in")
-    voice_barge_in_consecutive_frames: int = Field(default=3, ge=1, le=20, description="Consecutive frames exceeding threshold required to confirm user barge-in (debounce)")
-    voice_barge_in_playback_factor: float = Field(default=2.5, ge=1.0, le=10.0, description="Multiplier for barge-in threshold when FRIDAY is actively playing audio (echo protection)")
-    voice_barge_in_cooldown_seconds: float = Field(default=0.8, ge=0.0, le=5.0, description="Cooldown window after an interruption during which new local interruptions are suppressed")
+    voice_barge_in_consecutive_frames: int = Field(default=4, ge=1, le=20, description="Consecutive frames exceeding threshold required to confirm user barge-in (debounce)")
+    voice_barge_in_playback_factor: float = Field(default=3.0, ge=1.0, le=20.0, description="Multiplier for barge-in threshold when FRIDAY is actively playing audio (echo protection)")
+    voice_barge_in_cooldown_seconds: float = Field(default=1.0, ge=0.0, le=5.0, description="Cooldown window after an interruption during which new local interruptions are suppressed")
+    voice_local_barge_in_during_playback: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("FRIDAY_VOICE_LOCAL_BARGE_IN_DURING_PLAYBACK", "VOICE_LOCAL_BARGE_IN_DURING_PLAYBACK", "voice_local_barge_in_during_playback"),
+        description="Whether to allow local RMS detector to interrupt during speaker playback (False lets Gemini Server VAD drive authoritative interruptions to prevent acoustic echo self-interruption)",
+    )
     voice_headphones_mode: bool = Field(
         default=False,
         validation_alias=AliasChoices("FRIDAY_VOICE_HEADPHONES_MODE", "VOICE_HEADPHONES_MODE", "voice_headphones_mode"),
-        description="Whether headphones are used (reduces speaker echo protection threshold)",
+        description="Whether headphones are used (enables local barge-in during playback with lower threshold)",
     )
+    voice_adaptive_noise_alpha: float = Field(default=0.05, ge=0.001, le=0.5, description="Exponential moving average alpha for tracking ambient noise floor")
+    voice_adaptive_noise_multiplier: float = Field(default=3.5, ge=1.5, le=10.0, description="Adaptive noise floor multiplier to declare candidate speech")
     voice_thinking_level: str = Field(
         default="MINIMAL",
         validation_alias=AliasChoices("FRIDAY_VOICE_THINKING_LEVEL", "VOICE_THINKING_LEVEL", "voice_thinking_level"),
