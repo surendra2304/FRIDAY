@@ -36,7 +36,7 @@ class GeminiLiveVoiceSession:
         api_key: Optional[str] = None,
         model: Optional[str] = None,
         agent: Optional[Any] = None,
-        voice_name: str = "Puck",
+        voice_name: Optional[str] = None,
         sample_rate_in: int = 16000,
         sample_rate_out: int = 24000,
         max_retries: int = 3,
@@ -45,9 +45,9 @@ class GeminiLiveVoiceSession:
         self.api_key = api_key or settings.gemini_api_key or settings.llm_api_key
         if not self.api_key:
             raise ValueError("Gemini API key is required for Gemini Live voice session")
-        self.model = model or getattr(settings, "voice_live_model", "gemini-2.0-flash")
+        self.model = model or getattr(settings, "voice_live_model", "gemini-2.5-flash-native-audio-latest")
         self.agent = agent
-        self.voice_name = voice_name
+        self.voice_name = voice_name or getattr(settings, "voice_name", "Aoede")
         self.sample_rate_in = sample_rate_in
         self.sample_rate_out = sample_rate_out
         self.max_retries = max_retries
@@ -79,15 +79,30 @@ class GeminiLiveVoiceSession:
         return [genai_types.Tool(function_declarations=func_decls)]
 
     def _build_system_instruction(self) -> Optional[genai_types.Content]:
-        """Construct system prompt including user identity and background memory context."""
+        """Construct system prompt embodying FRIDAY's futuristic, natural spoken persona."""
         settings = get_settings()
         user_name = getattr(settings, "user_name", "Surendra")
         base_prompt = (
-            f"You are FRIDAY (Fully Responsive Intelligent Digital Assistant), an advanced AI assistant "
-            f"communicating directly with {user_name} in real-time spoken conversation.\n"
-            f"Be concise, natural, direct, and conversational. Address the user as {user_name}.\n"
-            f"You have access to tools for system operations, time, memory, and calculations. "
-            f"Use tools when asked for real-time information or actions."
+            f"You are FRIDAY (Fully Responsive Intelligent Digital Assistant), an advanced personal AI assistant "
+            f"communicating in real-time spoken voice.\n\n"
+            f"CORE VOICE PERSONA:\n"
+            f"- Personality: Calm, intelligent, concise, confident, natural, professional, and responsive.\n"
+            f"- Speaking Style: Speak naturally and conversationally. Strongly prefer brief, direct answers.\n"
+            f"  * Simple queries: 'Done.', 'It is 11:15 AM.', 'I found 12 files.'\n"
+            f"  * Complex topics: Speak clearly and concisely without huge monologues.\n"
+            f"  * Status cues: Provide subtle, natural cues when helpful (e.g., 'Checking that now.', 'One moment.'), but never add artificial filler to every turn.\n"
+            f"  * Tools/Actions: For visible actions, state clearly (e.g., 'Opening Chrome.', 'Checking the file.'). For hidden/internal work, avoid unnecessary narration.\n"
+            f"- STRICT ANTI-PATTERNS (DO NOT DO):\n"
+            f"  * Do NOT repeat the user's name ({user_name}) on every turn. Use it rarely and naturally.\n"
+            f"  * Do NOT use repetitive acknowledgements ('Sure!', 'Certainly!', 'I can help with that!').\n"
+            f"  * Do NOT use robotic, formulaic language or forced catchphrases.\n"
+            f"  * Do NOT use excessive 'Boss' or sycophantic greetings.\n"
+            f"  * Do NOT give unsolicited meta-explanations of your internal reasoning.\n"
+            f"- INTERRUPTION ADAPTATION:\n"
+            f"  * When interrupted, immediately pivot to the user's new request without apologizing or referencing the cut-off topic unless asked.\n"
+            f"- SAFETY & TOOLS:\n"
+            f"  * Use tools when asked for real-time actions, calculations, file management, or memory search.\n"
+            f"  * Dangerous or sensitive operations require user confirmation before proceeding."
         )
 
         # Inject historical memory context if agent is available

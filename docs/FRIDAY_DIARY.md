@@ -1132,3 +1132,36 @@ The fourth phase focuses on adding a **cloud‑first voice interface** and a **p
    - Tool execution errors are cleanly captured and returned to Gemini Live for natural conversational explanation.
 
 ---
+
+## Phase 5.6 — Futuristic Voice Experience & Persona Refinement
+
+**Date**: 2026-08-19  
+**Branch**: `main`  
+**Status**: IMPLEMENTED & TESTED
+
+### Voice Persona & Natural Speaking Style
+
+1. **Persona Principles**:
+   - **Calm, intelligent, concise, confident, natural, professional, and responsive**.
+   - Strongly prefers brief, direct answers without unnecessary exposition or conversational padding.
+   - For simple queries: *"Done."*, *"It is 11:15 AM."*, *"I found 12 files."*
+   - For complex queries: direct conversational summary without massive monologues.
+
+2. **Strict Anti-Patterns Eliminating Robotic Clichés**:
+   - **No Repetitive Names**: Never repeats the user's name on every turn.
+   - **No Filler Acknowledgements**: Banishes *"Sure!"*, *"Certainly!"*, *"I can help with that!"*.
+   - **No Sycophancy**: Banishes excessive *"Boss"* and robotic filler phrases.
+   - **No Meta-Narration**: Avoids narrating hidden background tool reasoning or internal steps.
+
+3. **Status Cues & Tool Actions**:
+   - Natural spoken cues where useful (*"Checking that now."*, *"Opening Chrome."*).
+   - Silent execution for internal operations without repetitive filler narration.
+
+4. **Configurable Voice Profile**:
+   - Configurable voice name via `FRIDAY_VOICE_NAME` / `Settings.voice_name` (default: `"Aoede"`).
+   - Supports all standard Google GenAI voices (`Aoede`, `Puck`, `Charon`, `Kore`, `Fenrir`) without imitating copyrighted voices.
+
+5. **Instant Interruption Adaptation**:
+   - Seamlessly pivots to new requests upon interruption without apologizing or referencing cut-off context unless requested.
+
+---

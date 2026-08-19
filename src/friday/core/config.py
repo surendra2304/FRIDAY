@@ -149,6 +149,11 @@ class Settings(BaseSettings):
     voice_provider: str = Field(default="gemini", description="Voice provider: 'gemini' or 'mock'")
     voice_input_sample_rate: int = Field(default=16000, description="Audio sample rate for microphone input (Hz)")
     voice_output_format: str = Field(default="mp3", description="Audio format for synthesized speech")
+    voice_name: str = Field(
+        default="Aoede",
+        validation_alias=AliasChoices("FRIDAY_VOICE_NAME", "VOICE_NAME", "voice_name"),
+        description="Prebuilt voice name for Gemini speech synthesis (e.g. Aoede, Puck, Charon, Kore, Fenrir)",
+    )
     voice_playback_buffer_ms: int = Field(default=100, description="Playback buffer size in milliseconds for non‑blocking audio")
     voice_live_model: str = Field(
         default="gemini-2.5-flash-native-audio-latest",
