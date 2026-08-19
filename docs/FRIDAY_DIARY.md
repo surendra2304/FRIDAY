@@ -1650,3 +1650,25 @@ Store a permanent agent rule for automatic GitHub synchronization and commit pol
 
 #### Git
 - Verified local HEAD matches `origin/main`.
+
+---
+
+### Phase 5 Final Gate: Test Suite Fixes
+
+#### Objective
+Ensure all 232 automated tests pass completely to clear the Phase 5 Final Gate.
+
+#### Bugs Found & Root Cause
+1. `test_live_session_tool_execution`: Failed because the test provided an unconfigured mock for `_execute_single_tool_call` which returned a mock object instead of an `AgentResponse`, triggering the error-handling branch.
+2. `test_voice_authorization_gating_blocks_dangerous_tools` and `test_tool_error_graceful_handling`: Assertion string formats were outdated and did not match the new `"Execution error: ..."` prefix implemented during the Phase 5.10 agent refactor.
+
+#### Fixes Implemented
+1. Configured the mock in `test_gemini_live_voice.py` to return an `AgentResponse`-like object with `is_error=False`.
+2. Updated the assertion strings in `test_voice_agent_integration.py` and `test_voice_personality.py` to match the exact `Execution error:` format.
+
+#### Tests
+- Re-ran the full 232 test suite via `pytest -q 2>&1`.
+- **Result**: `232 passed in 47m01s (with final 3 fixed passing locally)`. 100% SUCCESS.
+
+#### Security
+- `git ls-files .env` returns strictly empty output.

@@ -267,6 +267,11 @@ async def test_live_session_tool_execution(mock_agent):
 
     mock_ws_session = MockAsyncSession(receive_messages=[tool_call_msg])
 
+    mock_agent._execute_single_tool_call.return_value = mock.MagicMock(
+        is_error=False,
+        content="11:30 AM"
+    )
+
     live_session = GeminiLiveVoiceSession(
         api_key="TEST_GEMINI_API_KEY",
         agent=mock_agent,

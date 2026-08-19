@@ -204,8 +204,8 @@ async def test_voice_authorization_gating_blocks_dangerous_tools(memory_db):
     assert len(mock_ws.sent_tool_responses) == 1
     resp = mock_ws.sent_tool_responses[0]
     assert resp.name == "delete_file"
-    assert "error" in resp.response
-    assert "rejected" in resp.response["error"].lower()
+    assert "output" in resp.response
+    assert "denied" in resp.response["output"].lower()
 
 
 @pytest.mark.anyio

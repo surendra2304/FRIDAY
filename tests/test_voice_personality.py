@@ -221,7 +221,7 @@ async def test_tool_error_graceful_handling(memory_db):
     assert len(mock_ws.sent_tool_responses) == 1
     resp = mock_ws.sent_tool_responses[0]
     assert resp.name == "broken_service"
-    assert "Error: Remote service unavailable (503)" in resp.response["output"]
+    assert "Execution error: Remote service unavailable (503)" in resp.response["output"]
 
 
 @pytest.mark.anyio
