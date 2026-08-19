@@ -149,7 +149,7 @@ def test_two_independent_safe_tool_calls(registry):
         return Message(role=Role.ASSISTANT, content="Complete.")
 
     agent = FridayAgent(
-        settings=Settings(env="testing"),
+        settings=Settings(env="testing", embedding_provider="none"),
         llm_provider=MockLLMProvider(custom_responder=mock_responder),
         tool_registry=registry,
         authorizer=AutoApproveAuthorizer()

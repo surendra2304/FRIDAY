@@ -150,10 +150,13 @@ class Settings(BaseSettings):
     voice_input_sample_rate: int = Field(default=16000, description="Audio sample rate for microphone input (Hz)")
     voice_output_format: str = Field(default="mp3", description="Audio format for synthesized speech")
     voice_playback_buffer_ms: int = Field(default=100, description="Playback buffer size in milliseconds for non‑blocking audio")
-    voice_model_warmup_text: str = Field(default="hello", description="Short text used to warm‑up the Gemini model on startup")
-    voice_live_model: str = Field(default="gemini-1.5-flash", description="Gemini Live voice model")
-    voice_live_sample_rate: int = Field(default=16000, description="Audio sample rate for microphone input (Hz) for live")
-    voice_live_output_format: str = Field(default="mp3", description="Audio format returned by Gemini Live")
+    voice_live_model: str = Field(
+        default="gemini-2.5-flash-native-audio-latest",
+        validation_alias=AliasChoices("FRIDAY_VOICE_LIVE_MODEL", "VOICE_LIVE_MODEL", "voice_live_model"),
+        description="Gemini Live multimodal voice model",
+    )
+    voice_live_sample_rate: int = Field(default=24000, description="Audio sample rate for Gemini Live output (Hz)")
+    voice_live_output_format: str = Field(default="pcm", description="Audio format returned by Gemini Live (raw PCM)")
     voice_live_max_retries: int = Field(default=3, description="Max retries for live‑stream failures")
     task_enabled: bool = Field(default=False, description="Enable proactive task automation")
     task_max_calls: int = Field(default=100, description="Maximum allowed LLM calls per task")
