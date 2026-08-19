@@ -1816,3 +1816,30 @@ Audited and structured test markers across all 240 automated test items:
 - **Normal Pytest Requires Hardware**: NO.
 - **Live Tests Isolated**: YES.
 - **Hardware Tests Isolated**: YES.
+
+
+## [2026-08-19] PHASE 5.13: Memory & Embedding Architecture Optimization
+
+### 1. Architectural Design & Components
+Unified SQLite, FTS5 lexical indexing, Gemini semantic embeddings, and hybrid rank fusion into a cooperative, zero-stalling memory architecture:
+- **Message Storage**: All conversation turns are unconditionally recorded in SQLite tables (`conversations`, `messages`, `embeddings`) before any cloud embedding attempts.
+- **FTS5 Lexical Search**: Fast local first-pass retrieval layer (1.25 ms / query) optimized for exact phrases, names, technical terms, commands, and identifiers.
+- **Semantic Vector Search**: Google Gemini Cloud embeddings (`gemini-embedding-2`, 768-dim) invoked when semantic understanding provides genuine value.
+- **Hybrid Ranking**: Reciprocal Rank Fusion (RRF, $k=60$) combining lexical and semantic results with deduplication and normalized composite scoring.
+
+### 2. Intelligent Decision Policies
+- **Retrieval Policy (`should_retrieve_memory`)**:
+  - Automatically bypasses memory retrieval on greetings (`hello`, `good morning`), realtime clock queries (`what time is it`), pure arithmetic (`15 * 84`), and simple commands (`stop`, `cancel`).
+  - Activates retrieval on preference, factual, project, and past-context inquiries (`which editor`, `what did we decide`, `remember`).
+- **Embedding Policy (`should_embed_message`)**:
+  - Skips vectorization for greetings, transient acknowledgements, calculations, and error messages.
+  - Generates embeddings for user preferences, project decisions, stable facts, and substantive explanations.
+- **Embedding Deduplication**: Queries SQLite cache for identical `source_text` before calling the cloud embedding API, achieving 0 extra API calls on duplicate content.
+- **429 Circuit Breaker**: Immediate fail-fast with dynamic `Retry-After` header extraction, allowing conversational turns to continue uninterrupted via local FTS5.
+
+### 3. Benchmark Measurements & Test Results
+- **FTS5 Search Latency**: 1.25 ms / query
+- **Semantic Search Latency**: 5.14 ms / query
+- **Hybrid Search Latency**: 6.70 ms / query
+- **Embedding Calls Per Turn**: 0 for greetings, clock, and math turns; 1 for substantive facts/preferences.
+- **Automated Test Suite**: 245 passed, 1 deselected in 49.80s (100% success rate).

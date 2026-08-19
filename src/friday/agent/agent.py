@@ -23,6 +23,7 @@ from friday.llm.base import BaseLLMProvider
 from friday.llm.factory import create_llm_provider
 from friday.memory.base import BaseMemory
 from friday.memory.factory import create_memory
+from friday.memory.policies import should_retrieve_memory
 from friday.memory.in_memory import InMemoryConversationMemory
 from friday.memory.sqlite import SQLiteConversationMemory
 from friday.tools.builtin import (
@@ -283,7 +284,7 @@ class FridayAgent:
             return []
 
         clean_query = query.strip()
-        if len(clean_query) < 4 or clean_query.lower() in ("hi", "hello", "hey", "bye", "exit", "quit", "ok", "thanks"):
+        if not should_retrieve_memory(clean_query):
             return []
 
         limit = getattr(self.settings, "max_recalled_memories", 3)

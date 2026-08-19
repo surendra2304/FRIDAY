@@ -17,6 +17,8 @@ from friday.core.types import EmbeddingRecord, MemorySearchResult, Message, Role
 from friday.memory.base import BaseMemory
 from friday.core.config import get_settings
 
+from friday.memory.policies import should_embed_message, should_retrieve_memory
+
 logger = get_logger("memory.sqlite")
 
 
@@ -323,11 +325,7 @@ class SQLiteConversationMemory(BaseMemory):
                 conn.commit()
                 logger.debug(f"Saved message '{msg_id}' [Role: {message.role.value}] to conversation '{conv_id}'")
 
-        text = message.content.strip() if message.content else ""
-        word_count = len(text.split())
-        is_trivial = len(text) < 20 or word_count < 4
-        
-        if auto_embed and self.embedding_provider and text and not is_trivial:
+        if auto_embed and self.embedding_provider and should_embed_message(message):
             try:
                 existing_emb = None
                 with self._get_connection() as conn:
@@ -711,13 +709,9 @@ class SQLiteConversationMemory(BaseMemory):
         # 1. Gather lexical results from FTS5
         lexical_results = self.search(query=query, conversation_id=conversation_id, limit=limit * 2)
 
-        # 2. FTS-First Bypass: skip semantic search for simple, short queries
-        clean_query = query.strip()
-        word_count = len(clean_query.split())
-        is_simple_query = len(clean_query) < 20 or word_count < 4
-        
-        if is_simple_query:
-            logger.debug(f"Skipping semantic embedding for simple query: '{clean_query}'")
+        # 2. Retrieval Policy: skip semantic search for simple, non-memory queries
+        if not should_retrieve_memory(query):
+            logger.debug(f"Retrieval policy skipped semantic search for query: '{query}'")
             return lexical_results[:limit]
 
         # 3. Gather semantic results if embedding provider is available
