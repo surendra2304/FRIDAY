@@ -170,6 +170,7 @@ class Settings(BaseSettings):
     voice_vad_prefix_padding_ms: int = Field(default=200, ge=0, le=1000, description="VAD prefix audio padding (ms)")
     voice_vad_silence_duration_ms: int = Field(default=400, ge=100, le=2000, description="VAD silence duration before turn complete (ms)")
     voice_barge_in_rms_threshold: float = Field(default=350.0, ge=50.0, le=5000.0, description="RMS energy threshold for local zero-latency barge-in")
+    voice_thinking_budget: Optional[int] = Field(default=0, ge=0, le=2048, description="Thinking budget tokens for Live session (0 = minimal thinking, lowest latency)")
     task_enabled: bool = Field(default=False, description="Enable proactive task automation")
     task_max_calls: int = Field(default=100, description="Maximum allowed LLM calls per task")
     task_retry_limit: int = Field(default=3, description="Maximum retry attempts for transient failures")

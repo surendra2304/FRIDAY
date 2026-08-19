@@ -48,6 +48,7 @@ class GeminiLiveVoiceSession:
         vad_prefix_padding_ms: Optional[int] = None,
         vad_silence_duration_ms: Optional[int] = None,
         barge_in_rms_threshold: Optional[float] = None,
+        thinking_budget: Optional[int] = None,
     ):
         settings = get_settings()
         self.api_key = api_key or settings.gemini_api_key or settings.llm_api_key
@@ -69,6 +70,7 @@ class GeminiLiveVoiceSession:
         self.vad_prefix_padding_ms = vad_prefix_padding_ms if vad_prefix_padding_ms is not None else getattr(settings, "voice_vad_prefix_padding_ms", 200)
         self.vad_silence_duration_ms = vad_silence_duration_ms if vad_silence_duration_ms is not None else getattr(settings, "voice_vad_silence_duration_ms", 400)
         self.barge_in_rms_threshold = barge_in_rms_threshold if barge_in_rms_threshold is not None else getattr(settings, "voice_barge_in_rms_threshold", 350.0)
+        self.thinking_budget = thinking_budget if thinking_budget is not None else getattr(settings, "voice_thinking_budget", 0)
 
         self._active = False
         self._session: Optional[Any] = None
@@ -195,6 +197,13 @@ class GeminiLiveVoiceSession:
             )
         except Exception as e:
             logger.debug(f"Realtime VAD config error: {e}")
+
+        # Thinking configuration (0 = minimal thinking, lowest latency for live voice)
+        if self.thinking_budget is not None:
+            try:
+                config_kwargs["thinking_config"] = genai_types.ThinkingConfig(thinking_budget=self.thinking_budget)
+            except Exception as e:
+                logger.debug(f"ThinkingConfig error: {e}")
 
         # Session resumption
         if self.enable_session_resumption and self._resumption_handle:
