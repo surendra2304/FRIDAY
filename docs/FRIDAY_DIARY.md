@@ -48,6 +48,12 @@
 ## 2026-08-20
 
 ### Work Completed
+- **CLI Banner Refinement**:
+  - Replaced malformed FRIDAY ASCII logo with a clean, proportioned 3D block-letter design (`______ _____ _____ _____`).
+  - Added responsive centering via `render_friday_banner()` dynamically scaling to terminal width.
+  - Removed internal provider state (`Active: NONE`) from startup UI, preserving full diagnostic details under `/status`.
+  - Maintained clean prompt styling (`Surendra >`) with zero debug log pollution on startup.
+
 - **Phase 5.18 — Real Voice Pipeline & Audio Hardware Diagnostic**:
   - Investigated reported real hardware failure where Gemini Live connected but user speech produced no visible audio response.
   - Built comprehensive diagnostic suite in `tests/diagnose_real_live_voice.py` evaluating:

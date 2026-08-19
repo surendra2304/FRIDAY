@@ -10,18 +10,40 @@ from friday.cli.auth import CLIAuthorizer
 from friday.core.config import get_settings
 from friday.core.logging import get_logger, setup_logging
 
+import shutil
+
 logger = get_logger("cli")
 
-BANNER = r"""
-  ______ _____  _____ _____           __   __
- |  ____|  __ \|_   _|  __ \   /\     \ \ / /
- | |__  | |__) | | | | |  | | /  \     \ V / 
- |  __| |  _  /  | | | |  | |/ /\ \     > <  
- | |    | | \ \ _| |_| |__| / ____ \   / . \ 
- |_|    |_|  \_\_____|_____/_/    \_\ /_/ \_\
- 
-  Fully Responsive Intelligent Digital Assistant for You
-"""
+FRIDAY_LOGO_LINES = [
+    r" ______ _____  _____ _____            __     __ ",
+    r"|  ____|  __ \|_   _|  __ \     /\    \ \   / / ",
+    r"| |__  | |__) | | | | |  | |   /  \    \ \_/ /  ",
+    r"|  __| |  _  /  | | | |  | |  / /\ \    \   /   ",
+    r"| |    | | \ \ _| |_| |__| | / ____ \    | |    ",
+    r"|_|    |_|  \_\_____|_____/ /_/    \_\   |_|    ",
+]
+
+
+def render_friday_banner(version: str = "0.4.6") -> str:
+    """Render a cleanly centered, futuristic 3D block-letter FRIDAY startup banner."""
+    terminal_width = shutil.get_terminal_size((80, 20)).columns
+    # Ensure minimum width to avoid clipping logo lines
+    width = max(terminal_width, 60)
+
+    lines = [""]
+    for logo_line in FRIDAY_LOGO_LINES:
+        lines.append(logo_line.center(width))
+    lines.append("")
+    lines.append("Fully Responsive Intelligent Digital Assistant for You".center(width))
+    lines.append("")
+    lines.append(f"Version {version}".center(width))
+    lines.append("")
+
+    return "\n".join(lines)
+
+
+# Retain BANNER variable for backwards compatibility
+BANNER = render_friday_banner("0.4.6")
 
 
 def print_help() -> None:
@@ -203,9 +225,7 @@ def main() -> None:
             voice_session.start()
             logger.info("Mock Voice session ended")
 
-    print(BANNER)
-    active_project = preflight.get("active_project", "PRIMARY")
-    print(f"  v0.4.6 | Model: {agent.llm.model} | Active: {active_project}\n")
+    print(render_friday_banner("0.4.6"))
 
     while True:
         try:

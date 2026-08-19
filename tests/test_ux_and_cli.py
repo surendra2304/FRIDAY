@@ -7,7 +7,7 @@ from unittest import mock
 import pytest
 
 from friday.auth.credential_pool import GeminiCredentialPool, FailureCategory, COOLDOWN_DURATIONS
-from friday.cli.main import BANNER, print_status
+from friday.cli.main import BANNER, print_status, render_friday_banner, FRIDAY_LOGO_LINES
 from friday.core.config import Settings
 from friday.core.logging import setup_logging
 from friday.core.types import Message, Role
@@ -19,10 +19,15 @@ from friday.memory.policies import should_retrieve_memory, should_embed_message
 # TEST 1 & 2: Banner Rendering & PowerShell Safety
 # -----------------------------------------------------------------------------
 def test_banner_ascii_rendering():
-    """Verify banner contains assistant tagline and valid characters without Unicode errors."""
-    assert "Fully Responsive Intelligent Digital Assistant for You" in BANNER
-    # Verify ASCII/ANSI safety
-    encoded = BANNER.encode("ascii")
+    """Verify banner contains assistant tagline, version, and valid characters without Unicode errors."""
+    banner_text = render_friday_banner("0.4.6")
+    assert "Fully Responsive Intelligent Digital Assistant for You" in banner_text
+    assert "Version 0.4.6" in banner_text
+    assert "><" not in banner_text  # Verify no malformed Y geometry
+    # Verify all logo lines are present and ASCII-safe
+    for l in FRIDAY_LOGO_LINES:
+        assert l.strip() in [line.strip() for line in banner_text.splitlines() if line.strip()]
+    encoded = banner_text.encode("ascii")
     assert len(encoded) > 50
 
 
