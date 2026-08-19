@@ -323,9 +323,23 @@ class SQLiteConversationMemory(BaseMemory):
                 conn.commit()
                 logger.debug(f"Saved message '{msg_id}' [Role: {message.role.value}] to conversation '{conv_id}'")
 
-        if auto_embed and self.embedding_provider and message.content and message.content.strip():
+        if auto_embed and self.embedding_provider and message.content and len(message.content.strip()) > 15:
             try:
-                emb = self.embedding_provider.embed_text(message.content)
+                existing_emb = None
+                with self._get_connection() as conn:
+                    row = conn.execute("SELECT embedding_blob FROM embeddings WHERE source_text = ? LIMIT 1", (message.content,)).fetchone()
+                    if row and row["embedding_blob"]:
+                        try:
+                            existing_emb = json.loads(row["embedding_blob"])
+                        except Exception:
+                            pass
+                
+                if existing_emb and isinstance(existing_emb, list):
+                    emb = existing_emb
+                    logger.debug("Reused existing semantic embedding from cache.")
+                else:
+                    emb = self.embedding_provider.embed_text(message.content)
+
                 emb_rec = EmbeddingRecord(
                     id=str(uuid.uuid4()),
                     conversation_id=conv_id,

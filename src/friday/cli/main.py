@@ -9,15 +9,15 @@ from friday.core.logging import get_logger, setup_logging
 logger = get_logger("cli")
 
 BANNER = """
-  ______   _____  _____  _____ 
- |  ___| |  ___||  ___||  ___|
- | |_    | |_   | |_   | |_   
- |  _|   |  _|  |  _|  |  _|  
- | |     | |    | |    | |    
- |_|     |_|    |_|    |_|    
+  _____  _____   _____  _____         __   __
+ |  ___||  _  \ |_   _||  _  \  /\    \ \ / /
+ | |_   | |_| |   | |  | | | | /  \    \ V /
+ |  _|  |  _  /   | |  | | | |/ /\ \    | |
+ | |    | | \ \  _| |_ | |_| / ____ \   | |
+ |_|    |_|  \_\|_____||____/_/    \_\  |_|
   Fully Responsive Intelligent Digital Assistant for You
   Version 0.4.1 — Persistent Memory
-"""""
+"""
 
 
 def print_help() -> None:

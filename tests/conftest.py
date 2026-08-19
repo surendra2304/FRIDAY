@@ -14,8 +14,20 @@ from friday.llm.mock_provider import MockLLMProvider
 from friday.memory.in_memory import InMemoryConversationMemory
 from friday.tools.builtin.system_info import SystemInfoTool
 from friday.tools.registry import ToolRegistry
+import os
+from unittest.mock import patch
 
-
+@pytest.fixture(autouse=True, scope="session")
+def isolate_test_environment():
+    """Ensure tests never load real .env keys or accidentally hit real embedding APIs."""
+    os.environ["FRIDAY_EMBEDDING_PROVIDER"] = "none"
+    os.environ["FRIDAY_GEMINI_API_KEY"] = "TEST_GEMINI_API_KEY_PLACEHOLDER_03"
+    os.environ["FRIDAY_LLM_API_KEY"] = "sk-fakeopenaikeyfortestingonly00000000000"
+    
+    # Patch config so `Settings()` defaults to NOT loading `.env`
+    with patch("friday.core.config.resolve_env_file") as mock_resolve:
+        mock_resolve.return_value = Path("/dev/null/fake.env")
+        yield
 @pytest.fixture
 def mock_settings() -> Settings:
     """Fixture providing clean default settings for testing."""

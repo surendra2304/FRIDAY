@@ -26,6 +26,8 @@ SECRET_PATTERNS = [
 
 class GeminiEmbeddingProvider(BaseEmbeddingProvider):
     """Generates text embeddings remotely using Google Gemini API (gemini-embedding-2)."""
+    
+    _circuit_breaker_cooldown_until: float = 0.0
 
     def __init__(
         self,
@@ -99,6 +101,9 @@ class GeminiEmbeddingProvider(BaseEmbeddingProvider):
 
     def embed_text(self, text: str) -> List[float]:
         """Generate embedding for a single text chunk."""
+        if time.time() < GeminiEmbeddingProvider._circuit_breaker_cooldown_until:
+            raise LLMProviderError("Gemini embedding circuit breaker is open due to recent quota limits.")
+
         if not self.api_key:
             raise LLMProviderError("Gemini API key is required for semantic embeddings.")
 
@@ -128,7 +133,11 @@ class GeminiEmbeddingProvider(BaseEmbeddingProvider):
                 err_msg = self._mask_key(str(e.message or e))
                 code = getattr(e, "code", None) or getattr(e, "status_code", 500)
                 status_str = f"status {code}: {err_msg}"
-                if code in (429, 500, 502, 503, 504) and attempt < self.max_retries:
+                if code == 429:
+                    GeminiEmbeddingProvider._circuit_breaker_cooldown_until = time.time() + 60.0
+                    logger.error(f"Gemini embedding quota exhausted (429). Opening circuit breaker for 60s.")
+                    raise LLMProviderError(f"Gemini embedding rate-limited: {err_msg}")
+                if code in (500, 502, 503, 504) and attempt < self.max_retries:
                     wait = 1.0 * (self.backoff_factor ** attempt)
                     logger.warning(f"Gemini embedding API error [{code}]: {err_msg}. Retrying in {wait:.2f}s...")
                     time.sleep(wait)
@@ -142,9 +151,13 @@ class GeminiEmbeddingProvider(BaseEmbeddingProvider):
             except Exception as e:
                 err_msg = self._mask_key(str(e))
                 err_lower = err_msg.lower()
-                if ("429" in err_lower or "quota" in err_lower or "resource exhausted" in err_lower) and attempt < self.max_retries:
+                if "429" in err_lower or "quota" in err_lower or "resource exhausted" in err_lower:
+                    GeminiEmbeddingProvider._circuit_breaker_cooldown_until = time.time() + 60.0
+                    logger.error(f"Gemini embedding quota exhausted. Opening circuit breaker for 60s.")
+                    raise LLMProviderError(f"Gemini embedding rate-limited: {err_msg}")
+                if attempt < self.max_retries:
                     wait = 1.0 * (self.backoff_factor ** attempt)
-                    logger.warning(f"Gemini embedding rate-limited: {err_msg}. Retrying in {wait:.2f}s...")
+                    logger.warning(f"Gemini embedding API error: {err_msg}. Retrying in {wait:.2f}s...")
                     time.sleep(wait)
                     continue
                 raise LLMProviderError(f"Gemini embedding error: {err_msg}") from e
@@ -153,6 +166,9 @@ class GeminiEmbeddingProvider(BaseEmbeddingProvider):
 
     def embed_batch(self, texts: List[str]) -> List[List[float]]:
         """Generate embeddings for a list of texts using bounded batch requests."""
+        if time.time() < GeminiEmbeddingProvider._circuit_breaker_cooldown_until:
+            raise LLMProviderError("Gemini embedding circuit breaker is open due to recent quota limits.")
+
         if not texts:
             return []
 
@@ -184,6 +200,11 @@ class GeminiEmbeddingProvider(BaseEmbeddingProvider):
                         chunk_success = True
                         break
                 except Exception as e:
+                    err_msg = str(e).lower()
+                    if "429" in err_msg or "quota" in err_msg or "resource exhausted" in err_msg:
+                        GeminiEmbeddingProvider._circuit_breaker_cooldown_until = time.time() + 60.0
+                        logger.error("Gemini batch embedding quota exhausted. Opening circuit breaker.")
+                        raise LLMProviderError("Gemini embedding rate-limited.")
                     if attempt < self.max_retries:
                         time.sleep(1.0 * (self.backoff_factor ** attempt))
                         continue

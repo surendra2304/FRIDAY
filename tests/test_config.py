@@ -55,12 +55,23 @@ def test_dotenv_file_loading_overrides_defaults(tmp_path):
         "FRIDAY_USER_NAME=Alex\n",
         encoding="utf-8",
     )
-    settings = Settings(_env_file=str(env_file))
-    assert settings.llm_provider == "openai"
-    assert settings.gemini_model == "gemini-3.6-flash"
-    assert settings.embedding_provider == "mock"
-    assert settings.voice_enabled is True
-    assert settings.user_name == "Alex"
+    
+    # We must patch os.environ to remove the autouse isolation fixture overrides
+    # so we can strictly test dotenv loading vs defaults.
+    env_overrides = {
+        "FRIDAY_LLM_PROVIDER": "",
+        "FRIDAY_GEMINI_MODEL": "",
+        "FRIDAY_EMBEDDING_PROVIDER": "",
+        "FRIDAY_VOICE_ENABLED": "",
+        "FRIDAY_USER_NAME": "",
+    }
+    with mock.patch.dict(os.environ, env_overrides):
+        settings = Settings(_env_file=str(env_file))
+        assert settings.llm_provider == "openai"
+        assert settings.gemini_model == "gemini-3.6-flash"
+        assert settings.embedding_provider == "mock"
+        assert settings.voice_enabled is True
+        assert settings.user_name == "Alex"
 
 
 def test_process_env_overrides_dotenv(tmp_path):
@@ -94,11 +105,14 @@ def test_empty_process_env_does_not_wipe_dotenv_value(tmp_path):
 def test_missing_dotenv_falls_back_to_defaults(tmp_path):
     """Test C: Missing .env file falls back to code defaults."""
     non_existent = tmp_path / "non_existent.env"
-    settings = Settings(_env_file=str(non_existent))
-    assert settings.llm_provider == "gemini"
-    assert settings.embedding_provider == "gemini"
-    assert settings.embedding_model == "gemini-embedding-2"
-    assert settings.voice_enabled is False
+    
+    # Remove autouse fixture environment overrides to test raw defaults
+    with mock.patch.dict(os.environ, {"FRIDAY_LLM_PROVIDER": "", "FRIDAY_EMBEDDING_PROVIDER": "", "FRIDAY_EMBEDDING_MODEL": "", "FRIDAY_VOICE_ENABLED": ""}):
+        settings = Settings(_env_file=str(non_existent))
+        assert settings.llm_provider == "gemini"
+        assert settings.embedding_provider == "gemini"
+        assert settings.embedding_model == "gemini-embedding-2"
+        assert settings.voice_enabled is False
 
 
 def test_gemini_key_detected_without_leakage(tmp_path):
