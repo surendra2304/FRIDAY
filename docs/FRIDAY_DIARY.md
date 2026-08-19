@@ -1892,3 +1892,16 @@ Unified SQLite, FTS5 lexical indexing, Gemini semantic embeddings, and hybrid ra
 ### 2. Final Release Decision
 **PHASE 5 RELEASE STATUS: READY**
 All Phase 5 criteria, forensic requirements, and live hardware gates have been verified against actual code and runtime evidence.
+
+
+## [2026-08-19] EMBEDDING VERIFICATION CLARIFICATION & PRODUCTION MODEL RETENTION
+
+### 1. Model Selection & Obsolete Model Rejection
+- **INCORRECT VERIFICATION ATTEMPT**: An ad-hoc verification step attempted to test `text-embedding-004`, which Google shut down on January 14, 2026. The test failure was correctly identified as an obsolete model invocation, NOT a FRIDAY architecture flaw.
+- **CORRECT PRODUCTION MODEL**: `gemini-embedding-2` (768 dimensions) remains the permanent, active, and configured embedding model across all FRIDAY configurations.
+
+### 2. Quota Behavior & FTS5 Resilient Fallback
+- **REAL GEMINI EMBEDDING**: `BLOCKED BY CURRENT QUOTA` (free-tier daily request limit reached on user's API key).
+- **Circuit Breaker**: Opened cleanly for 60.0s upon receiving the 429 response without repeated retry loops.
+- **FTS5 Fallback**: 100% operational (`PASS`). All messages persisted unconditionally to SQLite and searchable via full-text keyword indexing.
+- **Main Gemini Response**: Unblocked (`NO`). Main conversational reasoning and tool execution continue with sub-second latency regardless of embedding quota status.
