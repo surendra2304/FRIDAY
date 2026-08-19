@@ -1,4 +1,6 @@
+import argparse
 import json
+import logging
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -11,10 +13,14 @@ from friday.core.logging import get_logger, setup_logging
 logger = get_logger("cli")
 
 BANNER = r"""
-================================================================================
-                                    FRIDAY
-             Fully Responsive Intelligent Digital Assistant for You
-================================================================================
+  ______ _____  _____ _____           __   __
+ |  ____|  __ \|_   _|  __ \   /\     \ \ / /
+ | |__  | |__) | | | | |  | | /  \     \ V / 
+ |  __| |  _  /  | | | |  | |/ /\ \     > <  
+ | |    | | \ \ _| |_| |__| / ____ \   / . \ 
+ |_|    |_|  \_\_____|_____/_/    \_\ /_/ \_\
+ 
+  Fully Responsive Intelligent Digital Assistant for You
 """
 
 
@@ -41,19 +47,27 @@ def print_help() -> None:
 
 def print_status(agent: FridayAgent) -> None:
     status = agent.get_status()
-    print("\n--- Agent Status ---")
+    print("\n==================================================")
+    print("               FRIDAY AGENT STATUS                ")
+    print("==================================================")
     print(f"  Agent Name      : {status['agent_name']}")
     print(f"  User Address    : {status['user_name']}")
     print(f"  LLM Provider    : {status['provider']}")
     print(f"  Model           : {status['model']}")
+    print(f"  Active Project  : {status.get('active_project', 'PRIMARY')}")
+    print("--------------------------------------------------")
+    print(f"  Embedding       : {status.get('embedding_provider', 'none')} ({status.get('embedding_model', 'none')})")
+    print(f"  Embedding Status: {status.get('embedding_status', 'AVAILABLE')}")
     print(f"  Memory Backend  : {status.get('memory_backend', 'in_memory')}")
     if "conversation_id" in status:
         print(f"  Conversation ID : {status['conversation_id']}")
     print(f"  Memory Usage    : {status['memory_messages']} / {status['memory_capacity']} messages")
+    print("--------------------------------------------------")
     print(f"  Loaded Tools    : {len(status['tools_registered'])}")
     for t in status["tools_registered"]:
         print(f"    * {t}")
-    print("--------------------\n")
+    print("==================================================\n")
+
 
 
 def print_history(agent: FridayAgent) -> None:
@@ -125,18 +139,22 @@ def print_tools(agent: FridayAgent) -> None:
 
 
 def on_tool_event(tool_call, tool_result) -> None:
-    """Print clean indicator in console when a tool executes."""
-    status_tag = "[ERROR]" if tool_result.is_error else "[DONE]"
-    print(f"  -> [Tool] {tool_call.name} ({tool_result.safety_level.value}) {status_tag}")
+    """Print clean indicator in console when a tool executes (only shown in debug mode or sensitive tools)."""
+    pass
 
 
 def main() -> None:
     """Main CLI entry point."""
+    parser = argparse.ArgumentParser(description="FRIDAY AI Assistant CLI")
+    parser.add_argument("--debug", action="store_true", help="Enable verbose debug logging in terminal console")
+    args, unknown = parser.parse_known_args()
+
     if hasattr(sys.stdout, "reconfigure"):
         try:
             sys.stdout.reconfigure(encoding="utf-8", errors="replace")
         except Exception:
             pass
+
     from pydantic import ValidationError
     try:
         settings = get_settings()
@@ -145,12 +163,18 @@ def main() -> None:
         print(f"Details: {e}\n")
         sys.exit(1)
 
-    setup_logging(level=settings.log_level, log_file=settings.log_file)
+    # In default mode, keep console clean (WARNING only), all debug/info goes to log file
+    console_log_level = logging.DEBUG if args.debug else logging.WARNING
+    setup_logging(level=settings.log_level, log_file=settings.log_file, console_level=console_log_level)
     logger.info("Starting FRIDAY CLI session")
+
+    # Perform one-time startup preflight check on Gemini pool if available
+    from friday.auth.credential_pool import credential_pool
+    preflight = credential_pool.preflight_check(model=settings.llm_model)
 
     agent = FridayAgent(
         settings=settings,
-        tool_callback=on_tool_event,
+        tool_callback=on_tool_event if args.debug else None,
         authorizer=CLIAuthorizer(),
     )
 
@@ -169,7 +193,6 @@ def main() -> None:
         else:
             from friday.voice.session import VoiceSession
             from friday.voice.mock_provider import MockVoiceProvider
-            # Example mock transcripts; replace with real data as needed
             provider = MockVoiceProvider([
                 "Hello, FRIDAY.",
                 "Remember my favorite editor is VS Code.",
@@ -181,7 +204,8 @@ def main() -> None:
             logger.info("Mock Voice session ended")
 
     print(BANNER)
-    print(f"FRIDAY initialized. Provider: [{agent.llm.provider_name}], Model: [{agent.llm.model}].\n")
+    active_project = preflight.get("active_project", "PRIMARY")
+    print(f"  v0.4.6 | Model: {agent.llm.model} | Active: {active_project}\n")
 
     while True:
         try:

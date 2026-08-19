@@ -354,7 +354,11 @@ class SQLiteConversationMemory(BaseMemory):
                 )
                 self.add_embedding(emb_rec)
             except Exception as e:
-                logger.warning(f"Auto-embedding message failed: {e}")
+                err_str = str(e)
+                if "circuit breaker is open" in err_str or "429" in err_str or "quota" in err_str:
+                    logger.debug(f"Auto-embedding skipped: {err_str}")
+                else:
+                    logger.debug(f"Auto-embedding message failed: {err_str}")
 
     def _row_to_message(self, row: sqlite3.Row) -> Message:
         """Deserialize a SQLite row into a strongly-typed Message instance."""

@@ -57,8 +57,15 @@ class SanitizedFormatter(logging.Formatter):
 def setup_logging(
     level: Optional[str] = None,
     log_file: Optional[str] = None,
+    console_level: Optional[int] = None,
 ) -> logging.Logger:
-    """Initialize root and application loggers with sanitization."""
+    """Initialize root and application loggers with sanitization.
+    
+    Args:
+        level: Base log level string (default: from settings.log_level).
+        log_file: Path to log file (default: from settings.log_file).
+        console_level: Optional override for console stream (e.g. logging.WARNING or logging.CRITICAL).
+    """
     settings = get_settings()
     log_level_str = level or settings.log_level
     log_level = getattr(logging, log_level_str.upper(), logging.INFO)
@@ -81,14 +88,15 @@ def setup_logging(
         filter_obj=mask_filter,
     )
 
-    # Console Handler
+    # Console Handler (default to console_level or WARNING if normal CLI mode, full level if debug)
+    eff_console_level = console_level if console_level is not None else log_level
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(log_level)
+    console_handler.setLevel(eff_console_level)
     console_handler.setFormatter(formatter)
     console_handler.addFilter(mask_filter)
     logger.addHandler(console_handler)
 
-    # File Handler
+    # File Handler (always records at full log_level)
     if target_file:
         try:
             log_dir = os.path.dirname(target_file)

@@ -368,9 +368,9 @@ class GeminiLLMProvider(BaseLLMProvider):
                 err_msg = self._mask_key(str(e))
                 code = getattr(e, "code", None) or getattr(e, "status_code", 500)
                 
-                # Report failure to credential pool for auth/quota/network errors
+                # Report failure to credential pool for auth/quota/network errors with error classification
                 if hasattr(self, "credential_pool") and self.credential_pool and not self.api_key:
-                    self.credential_pool.report_failure(active_key)
+                    self.credential_pool.report_failure(active_key, error=e)
                 
                 err_lower = err_msg.lower()
                 # If this looks like a quota or rate limit issue, treat as retryable

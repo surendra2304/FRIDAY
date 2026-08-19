@@ -1970,4 +1970,38 @@ All Phase 5 criteria, forensic requirements, and live hardware gates have been v
 - **Security Audit**: `git ls-files .env` returns empty. Zero credentials leaked.
 
 
+## [2026-08-19] PHASE 5.17: Final CLI UX, Provider Preflight, and Quota-Aware Runtime
+
+### 1. Terminal UX & Visual Identity Redesign
+- **Large 3D ASCII FRIDAY Banner (`src/friday/cli/main.py`)**:
+  - Replaced plain minimal header with large, visually impressive 3D block-letter ASCII banner (`______ _____ _____ _____`).
+  - Guaranteed 100% Windows PowerShell / ANSI / UTF-8 compatibility with zero unprintable surrogate errors.
+- **Quiet Default Console UX**:
+  - Configured `setup_logging` to direct `DEBUG` and `INFO` internal execution logs strictly to the log file on disk.
+  - Console handler defaults to `WARNING`, presenting only clean user-assistant dialogue without noisy `Processing user turn` or `Requesting authorization` clutter.
+  - Added `--debug` CLI flag to expose full terminal debugging on-demand when desired.
+
+### 2. Intelligent Provider Preflight & Session-Level Stickiness
+- **Quota-Conscious Startup Preflight (`GeminiCredentialPool.preflight_check`)**:
+  - Runs once at session initialization to determine active healthy project from persisted health state.
+  - Avoids wasteful network quota probing when health status is known.
+- **Failure Classification (`FailureCategory`)**:
+  - Differentiates `rate_limit_exceeded` (30s), `quota_exceeded` (3600s), `authentication_failed` (24h), `model_not_found` (3600s), `service_error` (60s), and `network_error` (30s).
+- **Persistent Health State**:
+  - Saves non-sensitive health metadata to `data/gemini_pool_state.json` without storing secrets or keys.
+- **Dynamic Factory Integration**:
+  - Configured `create_llm_provider` in `src/friday/llm/factory.py` to route through the pool singleton, allowing transparent multi-project failover across all 5 projects.
+
+### 3. Embedding Quota Resilience & Fast Normal Turns
+- **Quiet Embedding Failure Handling**:
+  - Replaced auto-embedding warning spam with quiet debug logs when the circuit breaker is open.
+  - Trivial queries (`Hello FRIDAY`, `What time is it?`, `Calculate 2+2`) skip semantic embedding and recall entirely.
+  - Memory-oriented queries fallback instantly to FTS5 SQLite index when cloud embeddings are quota-cooldown limited.
+
+### 4. Verification & Metrics
+- **Automated Test Suite**: 264 passed, 1 deselected in 22.69s (100% pass rate).
+- **Security Audit**: `git ls-files .env` returns empty. Zero credentials leaked.
+
+
+
 

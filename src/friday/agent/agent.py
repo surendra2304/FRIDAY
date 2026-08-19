@@ -550,11 +550,30 @@ class FridayAgent:
 
     def get_status(self) -> Dict[str, Any]:
         """Return diagnostic status information about the agent."""
+        # Get safe LLM active project label if available
+        active_project = "PRIMARY"
+        if hasattr(self.llm, "credential_pool") and self.llm.credential_pool:
+            try:
+                active_project = self.llm.credential_pool.get_active_label()
+            except Exception:
+                active_project = "UNKNOWN"
+
+        # Check embedding status
+        embedding_status = "AVAILABLE"
+        if self.settings.embedding_provider == "gemini":
+            from friday.memory.embeddings.gemini import GeminiEmbeddingProvider
+            if time.time() < GeminiEmbeddingProvider._circuit_breaker_cooldown_until:
+                embedding_status = "QUOTA COOLDOWN"
+
         status = {
             "agent_name": self.settings.agent_name,
             "user_name": self.settings.user_name,
             "provider": self.llm.provider_name,
             "model": self.llm.model,
+            "active_project": active_project,
+            "embedding_provider": self.settings.embedding_provider,
+            "embedding_model": self.settings.embedding_model,
+            "embedding_status": embedding_status,
             "memory_backend": self.settings.memory_backend,
             "memory_messages": len(self.memory.get_messages()),
             "memory_capacity": self.settings.memory_max_messages,
