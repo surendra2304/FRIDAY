@@ -56,10 +56,13 @@ class GeminiLiveVoiceSession:
 
     def _build_tools_config(self) -> Optional[List[genai_types.Tool]]:
         """Extract tool schemas from agent registry and convert to GenAI tool declarations."""
-        if not self.agent or not getattr(self.agent, "tool_registry", None):
+        if not self.agent:
+            return None
+        registry = getattr(self.agent, "tools", getattr(self.agent, "tool_registry", None))
+        if not registry:
             return None
 
-        schemas = self.agent.tool_registry.get_schemas()
+        schemas = registry.get_schemas()
         if not schemas:
             return None
 
@@ -88,9 +91,9 @@ class GeminiLiveVoiceSession:
         )
 
         # Inject historical memory context if agent is available
-        if self.agent and getattr(self.agent, "memory", None):
+        if self.agent is not None and getattr(self.agent, "memory", None) is not None:
             try:
-                recent_memories = self.agent.memory.get_context_window(limit=5)
+                recent_memories = self.agent.memory.get_context_window(max_messages=5)
                 if recent_memories:
                     hist_lines = []
                     for m in recent_memories:
@@ -124,14 +127,15 @@ class GeminiLiveVoiceSession:
 
         logger.info(f"Gemini Live requested tool: '{tool_name}' with args: {args}")
 
-        if not self.agent or not getattr(self.agent, "tool_registry", None):
+        registry = getattr(self.agent, "tools", getattr(self.agent, "tool_registry", None)) if self.agent else None
+        if not registry:
             return genai_types.FunctionResponse(
                 name=tool_name,
                 id=tool_id,
                 response={"error": "Agent tool registry not available"},
             )
 
-        tool = self.agent.tool_registry.get(tool_name)
+        tool = registry.get(tool_name)
         if not tool:
             return genai_types.FunctionResponse(
                 name=tool_name,
@@ -142,12 +146,27 @@ class GeminiLiveVoiceSession:
         # Check authorization gating
         authorizer = getattr(self.agent, "authorizer", None)
         if authorizer and tool.safety_level in (SafetyLevel.SENSITIVE, SafetyLevel.DANGEROUS):
-            auth_result = authorizer.authorize(tool.name, args, tool.safety_level)
-            if not auth_result.approved:
+            from friday.core.types import AuthorizationRequest, AuthorizationDecision
+            try:
+                auth_req = AuthorizationRequest(
+                    tool_name=tool.name,
+                    arguments=args,
+                    safety_level=tool.safety_level,
+                )
+                auth_resp = authorizer.authorize(auth_req)
+                is_approved = getattr(auth_resp, "decision", None) == AuthorizationDecision.APPROVED or getattr(auth_resp, "approved", False)
+                reason = getattr(auth_resp, "reason", "Action not approved")
+            except TypeError:
+                auth_resp = authorizer.authorize(tool.name, args, tool.safety_level)
+                is_approved = getattr(auth_resp, "approved", False) or getattr(auth_resp, "decision", None) == AuthorizationDecision.APPROVED
+                reason = getattr(auth_resp, "reason", "Action not approved")
+
+            if not is_approved:
+                logger.warning(f"Voice tool '{tool_name}' blocked by authorizer: {reason}")
                 return genai_types.FunctionResponse(
                     name=tool_name,
                     id=tool_id,
-                    response={"error": f"Tool execution rejected: {auth_result.reason}"},
+                    response={"error": f"Tool execution rejected: {reason}"},
                 )
 
         # Execute tool safely
@@ -156,6 +175,22 @@ class GeminiLiveVoiceSession:
             content = res.content if not res.is_error else f"Error: {res.content}"
         except Exception as e:
             content = f"Execution error: {str(e)}"
+
+        # Record tool execution in agent conversation memory
+        if self.agent is not None and getattr(self.agent, "memory", None) is not None:
+            try:
+                conv_id = getattr(self.agent, "conversation_id", None) or getattr(self.agent.memory, "active_conversation_id", None)
+                self.agent.memory.add_message(
+                    Message(
+                        role=Role.TOOL,
+                        content=str(content),
+                        name=tool_name,
+                        tool_call_id=tool_id,
+                    ),
+                    conversation_id=conv_id,
+                )
+            except Exception as mem_err:
+                logger.debug(f"Error persisting live tool execution to memory: {mem_err}")
 
         return genai_types.FunctionResponse(
             name=tool_name,
@@ -293,7 +328,7 @@ class GeminiLiveVoiceSession:
                 server_content = getattr(message, "server_content", None)
                 if server_content:
                     # Instant barge-in / Interruption from Live API
-                    if getattr(server_content, "interrupted", False):
+                    if getattr(server_content, "interrupted", False) is True:
                         logger.info("Server barge-in signal: interrupting local speaker playback")
                         turn_interrupted = True
                         spk.stop()
@@ -338,11 +373,12 @@ class GeminiLiveVoiceSession:
                             on_turn_complete(user_text, agent_text)
 
                         # Commit completed turn into SQLite conversation memory without corrupted state
-                        if self.agent and getattr(self.agent, "memory", None):
+                        if self.agent is not None and getattr(self.agent, "memory", None) is not None:
+                            conv_id = getattr(self.agent, "conversation_id", None) or getattr(self.agent.memory, "active_conversation_id", None)
                             if user_text:
-                                self.agent.memory.add_message(Message(role=Role.USER, content=user_text))
+                                self.agent.memory.add_message(Message(role=Role.USER, content=user_text), conversation_id=conv_id)
                             if agent_text:
-                                self.agent.memory.add_message(Message(role=Role.ASSISTANT, content=agent_text))
+                                self.agent.memory.add_message(Message(role=Role.ASSISTANT, content=agent_text), conversation_id=conv_id)
 
                         user_transcript_accum.clear()
                         agent_text_parts.clear()

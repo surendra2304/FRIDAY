@@ -71,6 +71,7 @@ def mock_agent():
     agent = mock.MagicMock()
     registry = ToolRegistry()
     registry.register(DummyTimeTool())
+    agent.tools = registry
     agent.tool_registry = registry
     agent.memory = mock.MagicMock()
     agent.authorizer = mock.MagicMock()

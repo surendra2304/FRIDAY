@@ -404,7 +404,7 @@ class SQLiteConversationMemory(BaseMemory):
 
     def get_context_window(
         self,
-        max_messages: int,
+        max_messages: int = 50,
         conversation_id: Optional[str] = None,
     ) -> List[Message]:
         """Retrieve recent slice of messages up to max_messages for active context window."""

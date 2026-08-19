@@ -1101,3 +1101,34 @@ The fourth phase focuses on adding a **cloud‑first voice interface** and a **p
    - Supports `Ctrl+C` and cancellation events via `asyncio.Event` with clean WebSocket disconnect and device release.
 
 ---
+
+## Phase 5.5 — Full Voice Agent Integration
+
+**Date**: 2026-08-19  
+**Branch**: `main`  
+**Status**: IMPLEMENTED & TESTED
+
+### Architecture & Unification
+
+1. **Single Unified Intelligence Layer**:
+   - Spoken interactions route directly through the central `FridayAgent` brain.
+   - No separate `VoiceAgent` class or parallel tool routing:
+     `Microphone → Gemini Live → FRIDAY Agent → ToolRegistry → Memory → Gemini Live audio`.
+
+2. **Unified Tool Calling & Safety Gating**:
+   - Voice commands trigger the identical `ToolRegistry` (`get_time_date`, `calculator`, `system_info`, `memory_search`, `manage_directory`).
+   - Gemini Live function calls strictly obey `BaseAuthorizer` / `AutoApproveAuthorizer` / `DefaultSecureAuthorizer` safety rules (`SAFE`, `SENSITIVE`, `DANGEROUS`).
+   - SENSITIVE and DANGEROUS tools are gated; unapproved requests return descriptive `FunctionResponse` rejections without crashing the Live session.
+
+3. **Unified Memory & Cross-Modal Retrieval**:
+   - Voice turns persist directly into the shared `SQLiteConversationMemory` within the active conversation session.
+   - Multi-modal coherence verified:
+     - Spoken voice utterances are stored in SQLite and indexed with `gemini-embedding-2`.
+     - Text commands retrieve facts spoken during voice sessions.
+     - Voice sessions retrieve facts entered via text commands.
+
+4. **Multi-Step Tool Calling & Error Resilience**:
+   - Supports parallel and sequential function calls in a single voice turn with full correlation IDs.
+   - Tool execution errors are cleanly captured and returned to Gemini Live for natural conversational explanation.
+
+---
