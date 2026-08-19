@@ -1,114 +1,106 @@
-# FRIDAY — Phase 5 Real-Time Gemini Live Voice Architecture
+# FRIDAY — Real-Time Gemini Live Voice Architecture Specification
+Document Version: 2.0.0 (Phase 5.1 Architecture Audit)  
+Date: 2026-08-19  
+Status: Approved Design & Specification  
 
-## 1. Executive Summary & Architectural Evolution
+---
 
-FRIDAY is transitioning from a turn-based request-response audio pipeline (fixed 4-second chunk recording, batch transcription, and post-response speech synthesis) to a **full-duplex, low-latency, real-time Gemini Live WebSocket session**.
+## 1. Executive Summary & Audit of Current Voice Architecture
 
-### Problem Statement (Legacy vs. Target)
-| Dimension | Legacy Phase 4 Implementation | Target Phase 5 Gemini Live Architecture |
-| :--- | :--- | :--- |
-| **Communication Protocol** | Discrete HTTP `generate_content` calls | Bidirectional WebSocket stream via `client.aio.live.connect` |
-| **Microphone Input** | Fixed 4.0-second blocking WAV recording | Continuous 16 kHz 16-bit PCM audio stream (50–100ms chunks) |
-| **Turn Detection** | Hardcoded recording timeout | Automatic Gemini Live Voice Activity Detection (VAD) |
-| **Audio Output** | Batch MP3 download and synchronous play | Low-latency 24 kHz 16-bit PCM streaming to output buffer |
-| **Interruption (Barge-In)** | Not supported; user must wait for full speech | Immediate playback abortion upon `interrupted=True` signal |
-| **Tool Execution** | Re-invoked via separate text turns | Native WebSocket tool calls via `LiveServerMessage.tool_call` |
-| **Laptop Resource Load** | Zero local inference (cloud API) | Zero local inference (cloud WebSocket streaming) |
+FRIDAY's voice subsystem provides a full-duplex, low-latency, conversational spoken interface directly tethered to the unified FRIDAY intelligence layer. 
+
+### 1.1 Current Architecture & Identified Limitations
+An audit of the codebase (`src/friday/voice/*`, `src/friday/agent/*`, `src/friday/cli/*`) reveals the following historical vs. current state:
+
+| Subsystem Component | Legacy Turn-Based (Phase 4) | Interim Gemini Live (Phase 5 prototype) | Target Production Standard (Phase 5.2+) |
+| :--- | :--- | :--- | :--- |
+| **API Protocol** | Turn-based HTTP REST (`generate_content`) | Asynchronous WebSocket (`client.aio.live.connect`) | Persistent WebSocket with session resumption & GoAway handling |
+| **Microphone Input** | Fixed 4.0s blocking WAV recording | Continuous 16 kHz 16-bit PCM (40ms chunks) | Continuous 16 kHz 16-bit mono PCM streaming (20–50ms non-blocking chunks) |
+| **Turn Detection** | Hardcoded timer cutoff | Server-side Gemini Live VAD | Server-side Gemini Live VAD + Local RMS speech onset detector |
+| **Audio Output** | Batch download of MP3 and synchronous playback | Raw 24 kHz 16-bit PCM streamed to `SpeakerStream` | Jitter-buffered streaming 24 kHz 16-bit PCM playback with zero-latency purge |
+| **Barge-In / Interruption** | Not possible (blocking audio play) | Dual-layer: Server `interrupted=True` + Local RMS purge | Dual-layer with graceful turn transition & uncorrupted memory commit |
+| **Tool Orchestration** | Disconnected re-invocation | Shared `ToolRegistry` via Live `tool_call` | Unified `FridayAgent.tools` with security gating & memory recording |
+| **Session Lifecycle** | Ephemeral per turn | Single live connection loop | Auto-reconnect on network drop, GoAway handling, context compression |
+
+### 1.2 Identified Problems Being Addressed
+1. **Lack of Session Resumption & GoAway Handling**: Long-running live connections may be dropped by the server (`LiveServerGoAway`) or by transient network drops; the system must gracefully reconnect without losing conversational continuity.
+2. **Audio Chunking Tuning for Latency**: Current default chunk durations (40–100ms) need optimal tuning (20–40ms / 320–640 samples per chunk at 16kHz) for immediate sub-second voice transmission without buffer overrun.
+3. **Turn Transition & Memory Consistency**: When an utterance is interrupted mid-speech, the truncated assistant response and user interruption must be cleanly formatted and committed to `SQLiteConversationMemory` without state corruption or tool orphan states.
+4. **CLI Integration**: Voice session must be seamlessly launchable from the CLI (`/voice` interactive command) or configured as default without blocking text fallback.
+
+---
+
+## 2. Target System Architecture
 
 ```
-                       +-----------------------------------+
-                       |          User (Surendra)          |
-                       +-----------------------------------+
-                             |                       ^
-                 Continuous  |                       |  Low-Latency
-                 16kHz PCM   v                       |  24kHz PCM
-                       +-----------------+   +------------------+
-                       | MicrophoneInput |   | AudioOutputQueue |
-                       +-----------------+   +------------------+
-                             |                       ^
-                             |                       | Streamed Audio
-                             v                       | Chunks
-        +-------------------------------------------------------------+
-        |                 FRIDAY Voice Live Session                   |
-        |              (Asyncio Bidirectional Worker)                 |
-        |                                                             |
-        |  - Sends Realtime Audio Chunks (send_realtime_input)        |
-        |  - Receives Server Content & Audio Stream (receive)         |
-        |  - Handles Barge-in / Interruption (clears playback queue)  |
-        |  - Integrates Tool Execution & Authorization Gating         |
-        |  - Logs Completed Turns to SQLite Conversation Memory       |
-        +-------------------------------------------------------------+
-                             |                       ^
-              WebSocket Send |                       | WebSocket Receive
-                             v                       |
-        +-------------------------------------------------------------+
-        |                Google Gemini Live API Cloud                 |
-        |                   (google-genai SDK)                        |
-        |                                                             |
-        |  - Real-time Audio Processing & Speech Understanding        |
-        |  - Gemini 2.0 / 2.5 Live Multimodal Model                   |
-        |  - Server-side VAD & Interruption Management                |
-        |  - Native Tool Calling & Streaming Speech Synthesis         |
-        +-------------------------------------------------------------+
+                          +-----------------------------------+
+                          |          User (Surendra)          |
+                          +-----------------------------------+
+                                |                       ^
+               Continuous 16kHz |                       | Low-Latency 24kHz
+               16-bit Mono PCM  v                       | 16-bit Mono PCM
+                         +-----------------+   +------------------+
+                         | MicrophoneStream|   |  SpeakerStream   |
+                         |  (sounddevice)  |   |  (sounddevice)   |
+                         +-----------------+   +------------------+
+                                |                       ^
+                                | 20-50ms Chunks        | Streaming Audio
+                                v                       | Chunks
+         +-------------------------------------------------------------+
+         |                 FRIDAY Voice Live Session                   |
+         |              (Asyncio Bidirectional Worker)                 |
+         |                                                             |
+         |  - Continuous Audio Capture & Streaming                     |
+         |  - Zero-Latency Local RMS Barge-In Detection                |
+         |  - WebSocket Frame Dispatch (send_realtime_input)           |
+         |  - Stream Receiver & Server Interruption Dispatcher         |
+         |  - Session Resumption, Reconnection & GoAway Monitor        |
+         +-------------------------------------------------------------+
+               |                       ^                 |
+   Tool Calls  |         Tool Results  |                 | Memory Commit
+   & Auth Gate v                       |                 v
++------------------------------------------+   +-----------------------+
+|        FRIDAY Agent Core (Brain)         |   | SQLite Conversation   |
+|  - ToolRegistry (Unified Tool Execution) |   | Memory + Vector Store |
+|  - Authorizer (Tiered Security Gating)   |   | (FTS5 + Hybrid RRF)   |
++------------------------------------------+   +-----------------------+
+               |                       ^
+WebSocket Send |                       | WebSocket Receive
+               v                       |
++----------------------------------------------------------------------+
+|                     Google Gemini Live API Cloud                     |
+|                  (Official google-genai Python SDK)                  |
+|                                                                      |
+|  - Real-time Audio Processing & Speech Understanding                 |
+|  - Gemini 2.0 Flash / Gemini 2.5 Flash Multimodal Live Model         |
+|  - Server-Side Voice Activity Detection (VAD)                        |
+|  - Real-time Speech Synthesis (Configurable: Aoede, Puck, Charon)    |
+|  - Native Function Calling Protocol & Cancellation Signaling         |
++----------------------------------------------------------------------+
 ```
 
 ---
 
-## 2. Gemini Live API Integration (`google-genai`)
+## 3. Single Unified Brain Integration
 
-The implementation strictly uses the official **`google-genai`** Python SDK (`from google import genai` and `google.genai.types`).
-
-### Connection Setup
-```python
-from google import genai
-from google.genai import types as genai_types
-
-client = genai.Client(api_key=settings.gemini_api_key)
-
-# Configure tools from FRIDAY's existing ToolRegistry
-tool_declarations = [
-    genai_types.FunctionDeclaration(
-        name=t["name"],
-        description=t["description"],
-        parameters=t["parameters"],
-    )
-    for t in tool_registry.get_schemas()
-]
-
-config = genai_types.LiveConnectConfig(
-    response_modalities=[genai_types.LiveModality.AUDIO],
-    speech_config=genai_types.SpeechConfig(
-        voice_config=genai_types.VoiceConfig(
-            prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
-                voice_name="Puck"  # Configurable: Puck, Charon, Aoede, Fenrir, Kore
-            )
-        )
-    ),
-    system_instruction=genai_types.Content(
-        parts=[genai_types.Part.from_text(text=system_prompt)]
-    ),
-    tools=[genai_types.Tool(function_declarations=tool_declarations)],
-)
-
-async with client.aio.live.connect(model=settings.voice_live_model, config=config) as session:
-    # Full-duplex send / receive tasks
-    ...
-```
-
-### Configurable Model Architecture
-The Live model is decoupled and configurable in `Settings`:
-* `FRIDAY_VOICE_LIVE_MODEL` defaults to `gemini-2.0-flash` (or `gemini-2.0-flash-exp` / `gemini-2.5-flash`).
-* No hardcoded legacy or deprecated preview strings.
+FRIDAY strictly maintains **one single brain** across both text and voice modalities:
+- **No Disconnected Voice Agent**: Spoken dialogue and text dialogue interact with the identical `FridayAgent` instance.
+- **Unified Tool Registry**: Tools called by Gemini Live over WebSockets (`LiveServerMessage.tool_call`) are resolved directly against `FridayAgent.tools` (`ToolRegistry`).
+- **Unified Authorization**: SENSITIVE or DANGEROUS tools invoke `FridayAgent.authorizer` (`CLIAuthorizer` or `DefaultSecureAuthorizer`). If rejected, an error response is returned to the WebSocket preventing execution.
+- **Unified Persistent Memory**: Upon turn completion (`turn_complete=True`), user transcription and assistant spoken transcripts are written to `SQLiteConversationMemory`, making them immediately searchable via hybrid semantic search (`search_hybrid`).
+- **Context Injection**: Historical conversation turns and relevant recalled memories are formatted into `system_instruction` before opening the WebSocket stream.
 
 ---
 
-## 3. Audio Stream Specifications & Mechanics
+## 4. Audio Pipeline & Format Specifications
 
-### Input Audio Stream (Microphone -> Gemini Live)
-* **Format**: Linear PCM, 16-bit signed, little-endian (`int16`).
-* **Sample Rate**: 16,000 Hz (16 kHz), single channel (mono).
-* **Chunking**: Non-blocking audio stream generating chunks every 50ms–100ms (800–1600 samples = 1,600–3,200 bytes).
-* **Payload Transmission**:
+### 4.1 Input Audio Stream (Microphone -> Gemini Live)
+- **Format**: Linear PCM, 16-bit signed, little-endian (`int16`, `s16le`).
+- **Sample Rate**: 16,000 Hz (16 kHz).
+- **Channels**: 1 (Mono).
+- **Chunk Duration**: 20ms to 40ms per block (320 to 640 samples = 640 to 1,280 bytes).
+- **Driver**: Non-blocking `sounddevice.RawInputStream` running in an OS audio thread, bridging chunks safely to the `asyncio` event loop via `loop.call_soon_threadsafe`.
+- **Payload Format**:
   ```python
   await session.send_realtime_input(
       media_chunks=[
@@ -120,85 +112,94 @@ The Live model is decoupled and configurable in `Settings`:
   )
   ```
 
-### Output Audio Stream (Gemini Live -> Local Speaker)
-* **Format**: Linear PCM, 16-bit signed (`int16`).
-* **Sample Rate**: 24,000 Hz (24 kHz), single channel (mono).
-* **Delivery**: Received in streaming chunks via `server_content.model_turn.parts[].inline_data.data`.
-* **Playback Mechanics**: Chunks are enqueued into an asynchronous, non-blocking playback stream (e.g. `sounddevice.RawOutputStream(samplerate=24000, channels=1, dtype='int16')`).
+### 4.2 Output Audio Stream (Gemini Live -> Speakers)
+- **Format**: Linear PCM, 16-bit signed, little-endian (`int16`, `s16le`).
+- **Sample Rate**: 24,000 Hz (24 kHz).
+- **Channels**: 1 (Mono).
+- **Delivery**: Received in real-time streaming chunks inside `server_content.model_turn.parts[].inline_data.data`.
+- **Playback Driver**: `sounddevice.RawOutputStream(samplerate=24000, channels=1, dtype='int16', blocksize=512)`.
+- **Queue Mechanics**: Thread-safe playback buffer queue (`queue.Queue(maxsize=100)`) with zero-latency atomic purge on interruption.
 
 ---
 
-## 4. Voice Activity Detection (VAD) & Barge-In Architecture
+## 5. Voice Activity Detection (VAD) & Dual-Layer Barge-In
 
-### Automatic Turn-Taking & VAD
-Gemini Live features built-in server-side Voice Activity Detection:
-1. **Speech Start**: When the user begins speaking, Gemini detects vocal energy and begins streaming input processing.
-2. **Speech End**: When the user finishes speaking, Gemini produces `turn_complete=True` and generates its vocal response.
+### 5.1 Server-Side Gemini Live VAD
+Gemini Live manages speech segmentation in the cloud:
+1. **Speech Start**: When the user speaks, Gemini Live triggers speech recognition and begins incremental generation.
+2. **Speech End**: Upon silence detection, Gemini emits `turn_complete=True` and finishes audio transmission.
+3. **Interruption Signal**: If the user starts speaking while Gemini is transmitting output audio, Gemini immediately emits `LiveServerContent(interrupted=True)`.
 
-### Instant Barge-In (Interruption Handling)
-When the user speaks while FRIDAY is vocalizing:
-1. Gemini Live detects user speech over the microphone input.
-2. Gemini immediately sends a `LiveServerContent` message with `interrupted=True`.
-3. **Local Action**:
-   - The FRIDAY voice worker instantly halts the local audio playback stream.
-   - Clears all buffered 24 kHz PCM audio chunks from the playback queue.
-   - Sets speech status to listening, ensuring zero latency before hearing the user's new instruction.
-4. If a tool call was in-flight when interrupted, Gemini emits `tool_call_cancellation` to discard aborted executions.
-
----
-
-## 5. Single Unified Brain Integration
-
-The voice subsystem is **not** a disconnected second agent. It is a real-time multimodal interface into FRIDAY's existing core systems:
-
-1. **Tool Execution & Authorization**:
-   - When Gemini Live requests a tool execution via `LiveServerMessage.tool_call`:
-   - Tool calls are routed directly through FRIDAY's `ToolRegistry` and `AutoApproveAuthorizer` / `BaseAuthorizer`.
-   - Result outputs (and thought signatures where applicable) are sent back across the WebSocket via `session.send_tool_response(function_responses=...)`.
-   - Gemini incorporates tool results and continues vocal generation seamlessly.
-2. **Persistent Conversation Memory**:
-   - Upon turn completion (`turn_complete=True`), the accumulated user transcription and agent output transcription are committed into `SQLiteConversationMemory`.
-   - Memory auto-generates `gemini-embedding-2` embeddings for long-term recall.
-3. **Semantic Memory Recall**:
-   - Prior to session connection, relevant historical memories are retrieved via hybrid search and injected into the Live session `system_instruction`.
+### 5.2 Local Zero-Latency RMS Energy Gate (Dual-Layer Barge-In)
+To eliminate network round-trip latency when interrupting loud speaker playback:
+1. While `SpeakerStream.is_playing` is true, incoming microphone PCM chunks are analyzed for Root Mean Square (RMS) energy:
+   $$\text{RMS} = \sqrt{\frac{1}{N} \sum_{i=1}^{N} s_i^2}$$
+2. If RMS exceeds the speech energy threshold (e.g. $> 350.0$), `SpeakerStream.stop()` is invoked locally **immediately** without waiting for the server round-trip packet.
+3. The server receives the user's speech and confirms interruption with `interrupted=True`.
+4. The local assistant transcript for the turn is suffixed with `[interrupted]` and persisted safely to memory.
 
 ---
 
-## 6. Security, Privacy & Token Management
+## 6. Session Reliability & Lifecycle Management
 
-1. **Local Desktop Architecture**:
-   - FRIDAY runs as a secured local desktop application on Windows.
-   - `FRIDAY_GEMINI_API_KEY` is loaded from the root `.env` into process memory with zero console logging or exception leakage.
-2. **Future Ephemeral Token Strategy**:
-   - For future distributed or mobile clients where the frontend does not run in a trusted local environment:
-   - FRIDAY backend issues short-lived (10-minute) ephemeral session tokens via Google Cloud token exchange.
-   - The client connects using the ephemeral token, never exposing master API keys.
+Gemini Live connections require active lifecycle management:
+
+```
+[Disconnected] ──> Connect (client.aio.live.connect) ──> [Active Live Session]
+       ^                                                        │
+       │                                     Network Drop /     │
+       │                                     GoAway Received    │
+       │                                                        v
+       └──────────────── Reconnect with Backoff ◄───────────────┘
+```
+
+1. **GoAway Message Handling**: When receiving `LiveServerGoAway`, the session finishes in-flight responses and prepares for reconnect.
+2. **Session Resumption**: `LiveConnectConfig.session_resumption` is enabled with `LiveSessionResumptionConfig` to preserve conversation context across reconnects without resending entire histories.
+3. **Context Window Compression**: `LiveConnectConfig.context_window_compression` is enabled to automatically compress long sessions without memory exhaustion.
+4. **Graceful Shutdown**: Interruption via CLI (`Ctrl+C` or `stop_event`) cancels worker tasks cleanly, closes streams, and releases audio hardware drivers.
 
 ---
 
-## 7. Configuration Surface
+## 7. Personality & Spoken Persona Directives
 
-| Setting Key | Default Value | Description |
+The system prompt injected into `LiveConnectConfig.system_instruction` enforces FRIDAY's character:
+- **Calm, Intelligent, Concise, Confident, Natural, Professional**.
+- **Terse Spoken Responses**: Answers simple queries in 1–5 words ("Done.", "It is 11:15 AM.", "I found 12 files.").
+- **Anti-Patterns**:
+  - Never repeat the user's name on every turn.
+  - Never use formulaic acknowledgments ("Sure!", "Certainly!", "I would be happy to help with that!").
+  - Never use excessive "Boss" or robotic catchphrases.
+  - Never monologue on complex tasks; summarize key points.
+
+---
+
+## 8. Configuration Surface
+
+| Setting Key | Default | Description |
 | :--- | :--- | :--- |
-| `FRIDAY_VOICE_ENABLED` | `false` | Master toggle (CLI starts in text mode by default; `/voice` enters live mode) |
+| `FRIDAY_VOICE_ENABLED` | `false` | Master toggle for voice subsystem |
 | `FRIDAY_VOICE_PROVIDER` | `gemini` | Voice provider backend (`gemini` or `mock`) |
-| `FRIDAY_VOICE_LIVE_MODEL` | `gemini-2.0-flash` | Gemini Live multimodal voice model |
-| `FRIDAY_VOICE_INPUT_SAMPLE_RATE` | `16000` | Input PCM sample rate (Hz) |
-| `FRIDAY_VOICE_LIVE_SAMPLE_RATE` | `24000` | Output PCM sample rate (Hz) |
-| `FRIDAY_VOICE_PLAYBACK_BUFFER_MS` | `100` | Output audio buffering window |
-| `FRIDAY_VOICE_LIVE_MAX_RETRIES` | `3` | Maximum WebSocket reconnect attempts on transient network disconnect |
+| `FRIDAY_VOICE_LIVE_MODEL` | `gemini-2.0-flash` | Gemini Live multimodal model |
+| `FRIDAY_VOICE_NAME` | `Aoede` | Voice timbre (`Aoede`, `Puck`, `Charon`, `Kore`, `Fenrir`) |
+| `FRIDAY_VOICE_INPUT_SAMPLE_RATE` | `16000` | Input PCM sample rate (16 kHz) |
+| `FRIDAY_VOICE_LIVE_SAMPLE_RATE` | `24000` | Output PCM sample rate (24 kHz) |
+| `FRIDAY_VOICE_PLAYBACK_BUFFER_MS`| `100` | Playback buffer window in ms |
+| `FRIDAY_VOICE_LIVE_MAX_RETRIES` | `3` | Max WebSocket reconnection retries |
 
 ---
 
-## 8. Implementation Roadmap (Phase 5.2+)
+## 9. Verification & Testing Strategy
 
-1. **`src/friday/voice/live_session.py`**:
-   - Implement `GeminiLiveVoiceSession` using `client.aio.live.connect`.
-   - Full-duplex `asyncio` task architecture for audio capture, streaming, reception, playback, and tool invocation.
-2. **`src/friday/voice/audio_io.py`**:
-   - Continuous non-blocking microphone stream (`sounddevice.RawInputStream`).
-   - Continuous non-blocking speaker stream (`sounddevice.RawOutputStream`) with instant purge on interruption.
-3. **`src/friday/cli/main.py`**:
-   - Connect `/voice` interactive command to launch the `GeminiLiveVoiceSession` on demand.
-4. **Offline Mock & Integration Suite**:
-   - Mock WebSocket session fixtures in `tests/test_live_voice.py` verifying full-duplex loops, interruption purges, and tool calls without hardware dependencies.
+1. **Deterministic Unit Tests (Mock Audio I/O & Mock Session)**:
+   - `test_audio_diagnostics`: Verify hardware enumeration and driver safety.
+   - `test_microphone_stream_chunk_sizing`: Verify PCM chunk calculation.
+   - `test_speaker_stream_buffering_and_purge`: Verify instant queue clearing on barge-in.
+   - `test_local_zero_latency_barge_in`: Verify local RMS threshold triggers speaker purge.
+   - `test_server_side_interruption_and_memory_coherence`: Verify server interruption tags turn and commits uncorrupted memory.
+   - `test_voice_tool_calling_with_unified_registry`: Verify Gemini Live function calls route through `ToolRegistry` and commit `Role.TOOL` messages.
+   - `test_voice_authorization_gating_blocks_dangerous_tools`: Verify authorizer blocks dangerous tools during voice sessions.
+   - `test_voice_personality_system_prompt_guidelines`: Verify system instruction contains required persona constraints.
+2. **Hardware Integration Acceptance Tests (Live Verification)**:
+   - Microphone real-device capture verification.
+   - Speaker real-device 24 kHz playback verification.
+   - Real-world Live WebSocket round-trip conversation.

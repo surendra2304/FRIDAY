@@ -1312,3 +1312,32 @@ The real Gemini API key was never printed, modified, copied, committed, or place
 - **COMMIT:** `security(tests): remove credential-shaped test fixtures`
 
 ---
+
+## 2026-08-19 — Phase 5.1: Real-Time Voice Architecture Audit
+
+### Audit Context & Objective
+FRIDAY's text Gemini provider, real Gemini function calling, Gemini embeddings, semantic memory, SQLite persistence, tools, authorization, and scheduler are fully functional and locked. Subsystem under design and reconstruction: **Real-Time Voice**.
+
+Conducted an architecture audit of the current voice implementation (`src/friday/voice/*`, `src/friday/agent/*`, `src/friday/cli/*`, `tests/test_gemini_live_voice.py`, `tests/*voice*`, and official Google `google-genai` SDK v2.18.1 documentation).
+
+### Key Audit Findings & Target Architecture
+1. **API Protocol**:
+   - Migration from discrete turn-based request-response models to persistent bidirectional WebSocket sessions using `google-genai` (`client.aio.live.connect`).
+   - Configurable Live Model: Defaults to `gemini-2.0-flash` (or `gemini-2.5-flash-native-audio-latest`).
+2. **Audio I/O Pipeline**:
+   - **Input**: 16 kHz 16-bit mono linear PCM (`int16`, little-endian) captured in 20–50ms chunks via `sounddevice.RawInputStream` and dispatched via `send_realtime_input(media_chunks=[genai_types.Blob(...)])`.
+   - **Output**: 24 kHz 16-bit mono linear PCM (`int16`, little-endian) delivered streaming via `server_content.model_turn.parts[].inline_data.data` to `sounddevice.RawOutputStream`.
+   - Strictly avoid fake MP3 conversions, silent placeholders, or waiting for turn completions prior to streaming audio playback.
+3. **Voice Activity Detection (VAD) & Barge-In**:
+   - Server-side Gemini Live VAD for conversational turn boundaries.
+   - Dual-layer instant barge-in: (1) Local RMS speech energy detector on microphone input purges speaker playback buffers instantly (<10ms), (2) Server `interrupted=True` signal cleans up state and marks turn as `[interrupted]` in memory without corruption.
+4. **Single Unified Brain**:
+   - Voice operates strictly through the single central `FridayAgent`.
+   - Live function calls (`tool_call`) route directly through `ToolRegistry` and `BaseAuthorizer`.
+   - Completed turns and tool executions persist to `SQLiteConversationMemory`.
+5. **Session Reliability**:
+   - Support for `LiveServerGoAway` handling, session resumption (`LiveSessionResumptionConfig`), context window compression (`LiveContextWindowCompressionConfig`), and graceful cancellation.
+6. **Documentation Updated**:
+   - Comprehensive system architecture, audio format specifications, VAD/barge-in mechanics, and test plans documented in `docs/voice_architecture.md`.
+
+---
