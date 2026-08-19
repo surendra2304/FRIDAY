@@ -83,7 +83,7 @@ def test_openai_provider_error_handling_html_truncation():
     mock_resp.text = "<html>" + ("<body>Internal Server Error page content body spam 502 Bad Gateway</body>" * 20) + "</html>"
     mock_resp.json.side_effect = Exception("Not JSON")
 
-    with mock.patch("httpx.Client.post", return_value=mock_resp):
+    with mock.patch("httpx.Client.post", return_value=mock_resp), mock.patch("time.sleep"):
         with pytest.raises(LLMProviderError) as exc_info:
             provider.generate([Message(role=Role.USER, content="Hello")])
 

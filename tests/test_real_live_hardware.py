@@ -11,7 +11,7 @@ Run this manually with your real FRIDAY_GEMINI_API_KEY exported in your environm
 """
 
 import pytest
-pytestmark = pytest.mark.skip(reason="Manual hardware test requiring real API keys and audio devices")
+pytestmark = pytest.mark.hardware
 
 import asyncio
 import os

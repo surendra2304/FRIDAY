@@ -1787,3 +1787,32 @@ Traced and verified all transitions across the full runtime path:
 - **Audio I/O**: Remainder buffer and byte alignment verified.
 - **State Machine**: Transitions verified across audio streaming, barge-in, turn complete, and tool calling.
 - **Real Hardware Check**: Microphone capture (16kHz), speaker stream (24kHz), WebSocket connection (`gemini-3.1-flash-live-preview`), and barge-in queue purging verified on real device.
+
+
+## [2026-08-19] PHASE 5.12: Test Suite Integrity and Quota / Hardware Isolation
+
+### 1. Test Classification Architecture
+Audited and structured test markers across all 240 automated test items:
+- **UNIT**: `test_config.py`, `test_logging.py`, `test_tools.py`, `test_audio_pipeline.py`, `test_memory.py`, `test_sqlite_memory.py`, `test_conversation_management.py`, `test_llm_providers.py`, `test_gemini_cost_and_controls.py`.
+- **INTEGRATION**: `test_agent.py`, `test_agent_persistence.py`, `test_multi_tool.py`, `test_gemini_tools.py`, `test_gemini_live_voice.py`, `test_voice_agent_integration.py`, `test_voice_personality.py`, `test_barge_in.py`, `test_controlled_semantic_recall.py`, `test_gemini_semantic_search.py`, `test_semantic_memory.py`, `test_memory_search.py`.
+- **SECURITY**: `test_auth.py`, `test_memory_security.py`, `test_voice_tool_security.py`, `test_quota_isolation.py`.
+- **PERFORMANCE**: `test_reliability.py`, `test_memory_performance_and_recovery.py`.
+- **LIVE** (opt-in via `pytest -m live`): Real Google GenAI cloud integration tests.
+- **HARDWARE** (opt-in via `pytest -m hardware`): Real microphone and speaker device tests.
+
+### 2. Quota & Environment Isolation
+- Configured `pyproject.toml` with `addopts = "-m 'not live and not hardware'"` ensuring default `pytest -q` runs 100% offline with zero external network activity or hardware requirements.
+- Autouse session fixture `isolate_test_environment` in `tests/conftest.py` prevents loading the user's `.env`, injects synthetic credentials, and sets `FRIDAY_EMBEDDING_PROVIDER="none"`.
+- Added `tests/test_quota_isolation.py` to continuously assert environment isolation, synthetic keys, and fast-failing circuit breakers.
+
+### 3. Test Speed & Fail-Fast Optimizations
+- Patched idle `time.sleep` in `test_openai_provider_error_handling_html_truncation`, cutting duration from 8.12s to 0.99s while preserving full HTML truncation coverage.
+- Slowest remaining test is `test_tool_timeout_enforcement` at 1.87s (verifying actual async timeout boundaries).
+
+### 4. Metrics & Status
+- **Default Suite**: 239 passed, 1 deselected in 48.61s.
+- **Normal Pytest Uses Real Gemini**: NO.
+- **Normal Pytest Uses Real .env**: NO.
+- **Normal Pytest Requires Hardware**: NO.
+- **Live Tests Isolated**: YES.
+- **Hardware Tests Isolated**: YES.

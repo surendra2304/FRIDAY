@@ -38,3 +38,12 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+addopts = "-m 'not live and not hardware'"
+markers = [
+    "unit: Unit tests verifying isolated components and data models",
+    "integration: Multi-component agent and memory integration tests",
+    "security: Authentication, authorization, and secret protection tests",
+    "performance: Benchmarks, reliability, and recovery resilience tests",
+    "live: Real external Google Gemini API tests (opt-in only via pytest -m live)",
+    "hardware: Real physical microphone/speaker device tests (opt-in only via pytest -m hardware)",
+]
