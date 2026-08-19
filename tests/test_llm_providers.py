@@ -174,25 +174,25 @@ def test_gemini_request_translation():
 
 def test_gemini_direct_response_generation():
     from unittest import mock
+    from google.genai import types
+
     provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", model="gemini-2.5-flash")
-
-    mock_resp = mock.Mock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {
-        "candidates": [
-            {
-                "content": {
-                    "parts": [{"text": "Hello! I am FRIDAY, your assistant."}],
-                    "role": "model",
-                },
-                "finishReason": "STOP",
-            }
+    mock_resp = types.GenerateContentResponse(
+        candidates=[
+            types.Candidate(
+                content=types.Content(
+                    role="model",
+                    parts=[types.Part.from_text(text="Hello! I am FRIDAY, your assistant.")],
+                ),
+                finish_reason=types.FinishReason.STOP,
+            )
         ]
-    }
+    )
 
-    with mock.patch("httpx.Client.post", return_value=mock_resp):
-        response = provider.generate([Message(role=Role.USER, content="Hello")])
+    provider._client = mock.Mock()
+    provider._client.models.generate_content.return_value = mock_resp
 
+    response = provider.generate([Message(role=Role.USER, content="Hello")])
     assert response.role == Role.ASSISTANT
     assert response.content == "Hello! I am FRIDAY, your assistant."
     assert response.tool_calls is None
@@ -200,33 +200,31 @@ def test_gemini_direct_response_generation():
 
 def test_gemini_tool_call_response_generation():
     from unittest import mock
+    from google.genai import types
+
     provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", model="gemini-2.5-flash")
-
-    mock_resp = mock.Mock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {
-        "candidates": [
-            {
-                "content": {
-                    "parts": [
-                        {"text": "Let me calculate that for you."},
-                        {
-                            "functionCall": {
-                                "name": "calculator",
-                                "args": {"expression": "25 * 4"},
-                            }
-                        },
+    mock_resp = types.GenerateContentResponse(
+        candidates=[
+            types.Candidate(
+                content=types.Content(
+                    role="model",
+                    parts=[
+                        types.Part.from_text(text="Let me calculate that for you."),
+                        types.Part.from_function_call(
+                            name="calculator",
+                            args={"expression": "25 * 4"},
+                        ),
                     ],
-                    "role": "model",
-                },
-                "finishReason": "STOP",
-            }
+                ),
+                finish_reason=types.FinishReason.STOP,
+            )
         ]
-    }
+    )
 
-    with mock.patch("httpx.Client.post", return_value=mock_resp):
-        response = provider.generate([Message(role=Role.USER, content="What is 25 * 4?")])
+    provider._client = mock.Mock()
+    provider._client.models.generate_content.return_value = mock_resp
 
+    response = provider.generate([Message(role=Role.USER, content="What is 25 * 4?")])
     assert response.role == Role.ASSISTANT
     assert response.content == "Let me calculate that for you."
     assert response.tool_calls is not None
@@ -240,19 +238,13 @@ def test_gemini_error_handling_and_secret_masking():
     secret_key = "TEST_GEMINI_API_KEY_PLACEHOLDER_09"
     provider = GeminiLLMProvider(api_key=secret_key)
 
-    mock_resp = mock.Mock()
-    mock_resp.status_code = 400
-    mock_resp.json.return_value = {
-        "error": {
-            "code": 400,
-            "message": f"API key {secret_key} is not valid. Please pass a valid API key.",
-            "status": "INVALID_ARGUMENT",
-        }
-    }
+    provider._client = mock.Mock()
+    provider._client.models.generate_content.side_effect = Exception(
+        f"API key {secret_key} is not valid. Please pass a valid API key."
+    )
 
-    with mock.patch("httpx.Client.post", return_value=mock_resp):
-        with pytest.raises(LLMProviderError) as exc_info:
-            provider.generate([Message(role=Role.USER, content="Hi")])
+    with pytest.raises(LLMProviderError) as exc_info:
+        provider.generate([Message(role=Role.USER, content="Hi")])
 
     err_msg = str(exc_info.value)
     assert "API key" in err_msg
@@ -262,22 +254,22 @@ def test_gemini_error_handling_and_secret_masking():
 
 def test_gemini_safety_block_handling():
     from unittest import mock
+    from google.genai import types
+
     provider = GeminiLLMProvider(api_key="test-key")
+    mock_resp = types.GenerateContentResponse(
+        candidates=[],
+        prompt_feedback=types.GenerateContentResponsePromptFeedback(
+            block_reason=types.BlockedReason.SAFETY,
+        ),
+    )
 
-    mock_resp = mock.Mock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {
-        "candidates": [],
-        "promptFeedback": {
-            "blockReason": "SAFETY",
-            "safetyRatings": [{"category": "HARM_CATEGORY_DANGEROUS", "probability": "HIGH"}],
-        },
-    }
+    provider._client = mock.Mock()
+    provider._client.models.generate_content.return_value = mock_resp
 
-    with mock.patch("httpx.Client.post", return_value=mock_resp):
-        with pytest.raises(LLMProviderError) as exc_info:
-            provider.generate([Message(role=Role.USER, content="Dangerous input")])
+    with pytest.raises(LLMProviderError) as exc_info:
+        provider.generate([Message(role=Role.USER, content="Dangerous input")])
 
-    assert "blocked by safety filters: SAFETY" in str(exc_info.value)
+    assert "blocked by safety filters" in str(exc_info.value)
 
 

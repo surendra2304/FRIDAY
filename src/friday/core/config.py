@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     log_file: Optional[str] = Field(default="logs/friday.log", description="Path to log file")
 
     # LLM Settings & Cost Controls
-    llm_provider: str = Field(default="mock", description="LLM provider name: 'mock', 'openai', 'gemini'")
+    llm_provider: str = Field(default="gemini", description="LLM provider name: 'mock', 'openai', 'gemini'")
     llm_model: str = Field(default="gemini-2.5-flash", description="Model identifier")
     llm_api_key: Optional[str] = Field(default=None, description="API Key for the provider (OpenAI or general)")
     gemini_api_key: Optional[str] = Field(default=None, description="API Key specifically for Google Gemini")
@@ -46,8 +46,8 @@ class Settings(BaseSettings):
     memory_max_messages: int = Field(default=50, ge=2, description="Maximum messages stored in short-term buffer")
     memory_auto_persist: bool = Field(default=True, description="Whether to persist conversations automatically")
     memory_retention_days: Optional[int] = Field(default=None, ge=1, description="Optional retention policy in days (older messages pruned)")
-    embedding_provider: str = Field(default="none", description="Embedding provider: 'gemini', 'mock', 'none'")
-    embedding_model: str = Field(default="text-embedding-004", description="Embedding model identifier")
+    embedding_provider: str = Field(default="gemini", description="Embedding provider: 'gemini', 'mock', 'none'")
+    embedding_model: str = Field(default="gemini-embedding-2", description="Embedding model identifier")
     embedding_dimension: int = Field(default=768, ge=1, le=8192, description="Expected dimensionality of embedding vectors")
     embedding_similarity_threshold: float = Field(default=0.6, ge=0.0, le=1.0, description="Minimum cosine similarity threshold for semantic retrieval")
     retrieval_mode: str = Field(default="hybrid", description="Memory recall mode: 'hybrid', 'semantic', 'fts', 'none'")

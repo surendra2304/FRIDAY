@@ -32,7 +32,7 @@ class SQLiteConversationMemory(BaseMemory):
         self.db_path = db_path
         self.max_messages = max(2, max_messages)
         self.embedding_provider = embedding_provider
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
         # Resolve path & ensure directory existence if not in-memory
         if self.db_path != ":memory:":
@@ -314,6 +314,23 @@ class SQLiteConversationMemory(BaseMemory):
                 conn.commit()
                 logger.debug(f"Saved message '{msg_id}' [Role: {message.role.value}] to conversation '{conv_id}'")
 
+        if self.embedding_provider and message.content and message.content.strip():
+            try:
+                emb = self.embedding_provider.embed_text(message.content)
+                emb_rec = EmbeddingRecord(
+                    id=str(uuid.uuid4()),
+                    conversation_id=conv_id,
+                    message_id=msg_id,
+                    source_text=message.content,
+                    embedding=emb,
+                    model=self.embedding_provider.model,
+                    dimension=self.embedding_provider.dimension,
+                    metadata={"role": message.role.value},
+                )
+                self.add_embedding(emb_rec)
+            except Exception as e:
+                logger.warning(f"Auto-embedding message failed: {e}")
+
     def _row_to_message(self, row: sqlite3.Row) -> Message:
         """Deserialize a SQLite row into a strongly-typed Message instance."""
         tool_calls = None
@@ -417,6 +434,22 @@ class SQLiteConversationMemory(BaseMemory):
                 row = conn.execute("SELECT COUNT(*) as count FROM messages WHERE conversation_id = ?", (self._active_conversation_id,)).fetchone()
                 return int(row["count"]) if row else 0
     
+    def purge_all(self) -> int:
+        """Permanently delete all stored conversations, messages, and embeddings. Returns number of purged conversations."""
+        with self._lock:
+            with self._get_connection() as conn:
+                conn.execute('BEGIN IMMEDIATE')
+                count_row = conn.execute("SELECT COUNT(*) as count FROM conversations").fetchone()
+                total_convs = int(count_row["count"]) if count_row else 0
+                conn.execute("DELETE FROM embeddings")
+                conn.execute("DELETE FROM messages")
+                conn.execute("DELETE FROM conversations")
+                conn.commit()
+                # Re-create a clean default conversation
+                self._active_conversation_id = self.create_conversation(title="Default Conversation")
+                logger.info(f"Purged all memory ({total_convs} conversations removed)")
+                return total_convs
+
     def purge_all_memory(self, confirm: bool = False) -> None:
         """Delete the entire SQLite database file after confirmation."""
         if not confirm:
@@ -728,10 +761,17 @@ class SQLiteConversationMemory(BaseMemory):
             return f'"{inner}"'
 
         cleaned = re.sub(r'[^\w\s]', ' ', query)
-        tokens = cleaned.split()
+        tokens = [t for t in cleaned.split() if t]
         if not tokens:
             return f'"{query.replace(chr(34), chr(34)+chr(34))}"'
-        return " ".join(f'"{t}"*' for t in tokens)
+        stop_words = {
+            "what", "is", "my", "our", "the", "a", "an", "and", "or", "in",
+            "on", "at", "to", "for", "with", "where", "how", "when", "who",
+            "why", "can", "you", "tell", "me", "about", "that", "this",
+        }
+        content_tokens = [t for t in tokens if t.lower() not in stop_words and len(t) > 1]
+        active_tokens = content_tokens if content_tokens else tokens
+        return " OR ".join(f'"{t}"*' for t in active_tokens)
 
     def retain_conversations(self, retention_days: Optional[int] = None) -> None:
         """Purge conversations older than retention period (default from settings)."""

@@ -2,6 +2,7 @@
 
 from unittest import mock
 import pytest
+from google.genai import types as genai_types
 from friday.agent.agent import FridayAgent
 from friday.core.auth import BaseAuthorizer
 from friday.core.config import Settings
@@ -78,6 +79,36 @@ class AutoDenyAuthorizer(BaseAuthorizer):
         return AuthorizationResponse(decision=AuthorizationDecision.DENIED, reason="Denied by test policy")
 
 
+def _make_text_response(text: str) -> genai_types.GenerateContentResponse:
+    return genai_types.GenerateContentResponse(
+        candidates=[
+            genai_types.Candidate(
+                content=genai_types.Content(
+                    role="model",
+                    parts=[genai_types.Part.from_text(text=text)],
+                ),
+                finish_reason=genai_types.FinishReason.STOP,
+            )
+        ]
+    )
+
+
+def _make_tool_response(calls: list[tuple[str, dict]], text: str = "") -> genai_types.GenerateContentResponse:
+    parts = []
+    if text:
+        parts.append(genai_types.Part.from_text(text=text))
+    for name, args in calls:
+        parts.append(genai_types.Part.from_function_call(name=name, args=args))
+    return genai_types.GenerateContentResponse(
+        candidates=[
+            genai_types.Candidate(
+                content=genai_types.Content(role="model", parts=parts),
+                finish_reason=genai_types.FinishReason.STOP,
+            )
+        ]
+    )
+
+
 def test_gemini_schema_declaration_fidelity():
     """Verify that BaseTool parameters with complex schemas convert accurately without data loss."""
     provider = GeminiLLMProvider(api_key="test-key", model="gemini-2.5-flash")
@@ -122,26 +153,15 @@ def test_gemini_schema_declaration_fidelity():
 def test_gemini_direct_response_no_tools():
     """Verify Gemini answers ordinary conversational queries directly without invoking tools."""
     provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", model="gemini-2.5-flash")
-    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12")
+    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", embedding_provider="none")
     memory = InMemoryConversationMemory()
     agent = FridayAgent(settings=settings, llm_provider=provider, memory=memory)
 
-    mock_resp = mock.Mock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {
-        "candidates": [
-            {
-                "content": {
-                    "parts": [{"text": "Python was created by Guido van Rossum."}],
-                    "role": "model",
-                },
-                "finishReason": "STOP",
-            }
-        ]
-    }
+    mock_resp = _make_text_response("Python was created by Guido van Rossum.")
+    provider._client = mock.Mock()
+    provider._client.models.generate_content.return_value = mock_resp
 
-    with mock.patch("httpx.Client.post", return_value=mock_resp):
-        response = agent.process_message("Who created Python?")
+    response = agent.process_message("Who created Python?")
 
     assert response.is_done is True
     assert "Guido van Rossum" in response.content
@@ -151,51 +171,19 @@ def test_gemini_direct_response_no_tools():
 def test_gemini_single_tool_call_round_trip():
     """Verify User -> Gemini function call -> FRIDAY validation & execution -> Gemini -> Final answer."""
     provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", model="gemini-2.5-flash")
-    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12")
+    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", embedding_provider="none")
     memory = InMemoryConversationMemory()
     agent = FridayAgent(settings=settings, llm_provider=provider, memory=memory)
 
-    # Step 1: Gemini returns function call for calculator
-    step1_resp = mock.Mock()
-    step1_resp.status_code = 200
-    step1_resp.json.return_value = {
-        "candidates": [
-            {
-                "content": {
-                    "parts": [
-                        {
-                            "functionCall": {
-                                "name": "calculator",
-                                "args": {"expression": "128 * 4"},
-                            }
-                        }
-                    ],
-                    "role": "model",
-                },
-                "finishReason": "STOP",
-            }
-        ]
-    }
+    step1_resp = _make_tool_response([("calculator", {"expression": "128 * 4"})])
+    step2_resp = _make_text_response("128 multiplied by 4 is 512.")
 
-    # Step 2: After receiving calculator result ("512"), Gemini returns final text
-    step2_resp = mock.Mock()
-    step2_resp.status_code = 200
-    step2_resp.json.return_value = {
-        "candidates": [
-            {
-                "content": {
-                    "parts": [{"text": "128 multiplied by 4 is 512."}],
-                    "role": "model",
-                },
-                "finishReason": "STOP",
-            }
-        ]
-    }
+    provider._client = mock.Mock()
+    provider._client.models.generate_content.side_effect = [step1_resp, step2_resp]
 
-    with mock.patch("httpx.Client.post", side_effect=[step1_resp, step2_resp]) as mock_post:
-        response = agent.process_message("What is 128 * 4?")
+    response = agent.process_message("What is 128 * 4?")
 
-    assert mock_post.call_count == 2
+    assert provider._client.models.generate_content.call_count == 2
     assert response.is_done is True
     assert "512" in response.content
     assert response.tool_results is not None
@@ -207,55 +195,17 @@ def test_gemini_single_tool_call_round_trip():
 def test_gemini_multiple_parallel_safe_tool_calls():
     """Verify Gemini can request multiple independent SAFE tools that FRIDAY coordinates concurrently."""
     provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", model="gemini-2.5-flash")
-    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12")
+    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", embedding_provider="none")
     memory = InMemoryConversationMemory()
     agent = FridayAgent(settings=settings, llm_provider=provider, memory=memory)
 
-    # Step 1: Gemini requests both get_time_date and calculator in parallel
-    step1_resp = mock.Mock()
-    step1_resp.status_code = 200
-    step1_resp.json.return_value = {
-        "candidates": [
-            {
-                "content": {
-                    "parts": [
-                        {
-                            "functionCall": {
-                                "name": "get_time_date",
-                                "args": {},
-                            }
-                        },
-                        {
-                            "functionCall": {
-                                "name": "calculator",
-                                "args": {"expression": "99 + 1"},
-                            }
-                        },
-                    ],
-                    "role": "model",
-                },
-                "finishReason": "STOP",
-            }
-        ]
-    }
+    step1_resp = _make_tool_response([("get_time_date", {}), ("calculator", {"expression": "99 + 1"})])
+    step2_resp = _make_text_response("The current time is retrieved and 99 + 1 is 100.")
 
-    # Step 2: Gemini synthesizes both tool outputs
-    step2_resp = mock.Mock()
-    step2_resp.status_code = 200
-    step2_resp.json.return_value = {
-        "candidates": [
-            {
-                "content": {
-                    "parts": [{"text": "The current time is retrieved and 99 + 1 is 100."}],
-                    "role": "model",
-                },
-                "finishReason": "STOP",
-            }
-        ]
-    }
+    provider._client = mock.Mock()
+    provider._client.models.generate_content.side_effect = [step1_resp, step2_resp]
 
-    with mock.patch("httpx.Client.post", side_effect=[step1_resp, step2_resp]):
-        response = agent.process_message("Give me the time and compute 99 + 1")
+    response = agent.process_message("Give me the time and compute 99 + 1")
 
     assert response.is_done is True
     assert "100" in response.content
@@ -268,53 +218,20 @@ def test_gemini_multiple_parallel_safe_tool_calls():
 def test_gemini_sequential_multi_step_tool_calls():
     """Verify Step 1 Tool -> Result -> Step 2 Tool -> Result -> Final Answer."""
     provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", model="gemini-2.5-flash")
-    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12")
+    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", embedding_provider="none")
     memory = InMemoryConversationMemory()
     agent = FridayAgent(settings=settings, llm_provider=provider, memory=memory)
 
-    # Turn 1: Gemini calls calculator for intermediate calculation
-    resp1 = mock.Mock()
-    resp1.status_code = 200
-    resp1.json.return_value = {
-        "candidates": [{
-            "content": {
-                "parts": [{"functionCall": {"name": "calculator", "args": {"expression": "50 * 2"}}}],
-                "role": "model",
-            },
-            "finishReason": "STOP",
-        }]
-    }
+    resp1 = _make_tool_response([("calculator", {"expression": "50 * 2"})])
+    resp2 = _make_tool_response([("calculator", {"expression": "100 + 25"})])
+    resp3 = _make_text_response("The sequential calculation result is 125.")
 
-    # Turn 2: Gemini calls calculator for second calculation
-    resp2 = mock.Mock()
-    resp2.status_code = 200
-    resp2.json.return_value = {
-        "candidates": [{
-            "content": {
-                "parts": [{"functionCall": {"name": "calculator", "args": {"expression": "100 + 25"}}}],
-                "role": "model",
-            },
-            "finishReason": "STOP",
-        }]
-    }
+    provider._client = mock.Mock()
+    provider._client.models.generate_content.side_effect = [resp1, resp2, resp3]
 
-    # Turn 3: Gemini finishes with natural language
-    resp3 = mock.Mock()
-    resp3.status_code = 200
-    resp3.json.return_value = {
-        "candidates": [{
-            "content": {
-                "parts": [{"text": "The sequential calculation result is 125."}],
-                "role": "model",
-            },
-            "finishReason": "STOP",
-        }]
-    }
+    response = agent.process_message("Calculate 50 * 2 then add 25 to it.")
 
-    with mock.patch("httpx.Client.post", side_effect=[resp1, resp2, resp3]) as mock_post:
-        response = agent.process_message("Calculate 50 * 2 then add 25 to it.")
-
-    assert mock_post.call_count == 3
+    assert provider._client.models.generate_content.call_count == 3
     assert response.is_done is True
     assert "125" in response.content
     assert len(response.tool_results) == 2
@@ -323,7 +240,7 @@ def test_gemini_sequential_multi_step_tool_calls():
 def test_gemini_sensitive_tool_authorization_denied():
     """Verify that Gemini cannot execute SENSITIVE tools without approval and receives structured denial."""
     provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", model="gemini-2.5-flash")
-    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12")
+    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", embedding_provider="none")
     memory = InMemoryConversationMemory()
     registry = ToolRegistry()
     registry.register(SensitiveTestTool())
@@ -337,39 +254,13 @@ def test_gemini_sensitive_tool_authorization_denied():
         authorizer=authorizer,
     )
 
-    # Step 1: Gemini attempts to call sensitive tool
-    resp1 = mock.Mock()
-    resp1.status_code = 200
-    resp1.json.return_value = {
-        "candidates": [{
-            "content": {
-                "parts": [{
-                    "functionCall": {
-                        "name": "modify_system_setting",
-                        "args": {"setting_key": "theme", "setting_value": "dark"},
-                    }
-                }],
-                "role": "model",
-            },
-            "finishReason": "STOP",
-        }]
-    }
+    resp1 = _make_tool_response([("modify_system_setting", {"setting_key": "theme", "setting_value": "dark"})])
+    resp2 = _make_text_response("I was not authorized to modify the theme setting.")
 
-    # Step 2: After receiving authorization denial, Gemini informs user
-    resp2 = mock.Mock()
-    resp2.status_code = 200
-    resp2.json.return_value = {
-        "candidates": [{
-            "content": {
-                "parts": [{"text": "I was not authorized to modify the theme setting."}],
-                "role": "model",
-            },
-            "finishReason": "STOP",
-        }]
-    }
+    provider._client = mock.Mock()
+    provider._client.models.generate_content.side_effect = [resp1, resp2]
 
-    with mock.patch("httpx.Client.post", side_effect=[resp1, resp2]):
-        response = agent.process_message("Change theme to dark")
+    response = agent.process_message("Change theme to dark")
 
     assert response.is_done is True
     assert "not authorized" in response.content.lower()
@@ -380,7 +271,7 @@ def test_gemini_sensitive_tool_authorization_denied():
 def test_gemini_dangerous_tool_authorization_approved():
     """Verify that DANGEROUS tools execute ONLY when explicitly authorized."""
     provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", model="gemini-2.5-flash")
-    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12")
+    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", embedding_provider="none")
     memory = InMemoryConversationMemory()
     registry = ToolRegistry()
     registry.register(DangerousTestTool())
@@ -394,37 +285,13 @@ def test_gemini_dangerous_tool_authorization_approved():
         authorizer=authorizer,
     )
 
-    resp1 = mock.Mock()
-    resp1.status_code = 200
-    resp1.json.return_value = {
-        "candidates": [{
-            "content": {
-                "parts": [{
-                    "functionCall": {
-                        "name": "delete_database",
-                        "args": {"target": "temp.db"},
-                    }
-                }],
-                "role": "model",
-            },
-            "finishReason": "STOP",
-        }]
-    }
+    resp1 = _make_tool_response([("delete_database", {"target": "temp.db"})])
+    resp2 = _make_text_response("The database temp.db has been deleted.")
 
-    resp2 = mock.Mock()
-    resp2.status_code = 200
-    resp2.json.return_value = {
-        "candidates": [{
-            "content": {
-                "parts": [{"text": "The database temp.db has been deleted."}],
-                "role": "model",
-            },
-            "finishReason": "STOP",
-        }]
-    }
+    provider._client = mock.Mock()
+    provider._client.models.generate_content.side_effect = [resp1, resp2]
 
-    with mock.patch("httpx.Client.post", side_effect=[resp1, resp2]):
-        response = agent.process_message("Delete temp.db")
+    response = agent.process_message("Delete temp.db")
 
     assert response.is_done is True
     assert "deleted" in response.content.lower()
@@ -435,61 +302,18 @@ def test_gemini_dangerous_tool_authorization_approved():
 def test_gemini_malformed_arguments_recovery():
     """Verify that FRIDAY validates schema before execution and Gemini recovers from argument errors."""
     provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", model="gemini-2.5-flash")
-    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12")
+    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", embedding_provider="none")
     memory = InMemoryConversationMemory()
     agent = FridayAgent(settings=settings, llm_provider=provider, memory=memory)
 
-    # Step 1: Gemini sends missing required argument 'expression'
-    resp1 = mock.Mock()
-    resp1.status_code = 200
-    resp1.json.return_value = {
-        "candidates": [{
-            "content": {
-                "parts": [{
-                    "functionCall": {
-                        "name": "calculator",
-                        "args": {},  # missing 'expression'
-                    }
-                }],
-                "role": "model",
-            },
-            "finishReason": "STOP",
-        }]
-    }
+    resp1 = _make_tool_response([("calculator", {})])  # missing required expression
+    resp2 = _make_tool_response([("calculator", {"expression": "10 * 10"})])
+    resp3 = _make_text_response("10 * 10 is 100.")
 
-    # Step 2: Gemini receives validation error and sends corrected expression
-    resp2 = mock.Mock()
-    resp2.status_code = 200
-    resp2.json.return_value = {
-        "candidates": [{
-            "content": {
-                "parts": [{
-                    "functionCall": {
-                        "name": "calculator",
-                        "args": {"expression": "10 * 10"},
-                    }
-                }],
-                "role": "model",
-            },
-            "finishReason": "STOP",
-        }]
-    }
+    provider._client = mock.Mock()
+    provider._client.models.generate_content.side_effect = [resp1, resp2, resp3]
 
-    # Step 3: Gemini finishes
-    resp3 = mock.Mock()
-    resp3.status_code = 200
-    resp3.json.return_value = {
-        "candidates": [{
-            "content": {
-                "parts": [{"text": "10 * 10 is 100."}],
-                "role": "model",
-            },
-            "finishReason": "STOP",
-        }]
-    }
-
-    with mock.patch("httpx.Client.post", side_effect=[resp1, resp2, resp3]):
-        response = agent.process_message("Calculate 10 times 10")
+    response = agent.process_message("Calculate 10 times 10")
 
     assert response.is_done is True
     assert "100" in response.content
@@ -503,33 +327,18 @@ def test_gemini_malformed_arguments_recovery():
 def test_gemini_max_iteration_guardrail():
     """Verify FRIDAY halts execution if Gemini enters an infinite tool call loop."""
     provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", model="gemini-2.5-flash")
-    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12")
+    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", embedding_provider="none")
     memory = InMemoryConversationMemory()
     agent = FridayAgent(settings=settings, llm_provider=provider, memory=memory, max_tool_iterations=3)
 
-    # Gemini continuously requests calculator indefinitely
-    loop_resp = mock.Mock()
-    loop_resp.status_code = 200
-    loop_resp.json.return_value = {
-        "candidates": [{
-            "content": {
-                "parts": [{
-                    "functionCall": {
-                        "name": "calculator",
-                        "args": {"expression": "1 + 1"},
-                    }
-                }],
-                "role": "model",
-            },
-            "finishReason": "STOP",
-        }]
-    }
+    loop_resp = _make_tool_response([("calculator", {"expression": "1 + 1"})])
 
-    with mock.patch("httpx.Client.post", return_value=loop_resp) as mock_post:
-        response = agent.process_message("Loop forever")
+    provider._client = mock.Mock()
+    provider._client.models.generate_content.return_value = loop_resp
 
-    # Should execute exactly max_tool_iterations (3) and then halt safely
-    assert mock_post.call_count == 3
+    response = agent.process_message("Loop forever")
+
+    assert provider._client.models.generate_content.call_count == 3
     assert response.is_done is True
     assert response.metadata["iterations"] == 3
     assert "completed the requested tool operations" in response.content.lower()

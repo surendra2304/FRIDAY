@@ -1,60 +1,38 @@
-"""Real Gemini voice provider implementation.
+"""Real Gemini voice provider implementation using official google-genai SDK.
 
-This module provides a production‑ready voice interface for FRIDAY using the official
-Google Gemini Generative AI SDK. It captures microphone audio, streams it to Gemini
-for speech‑to‑text, and synthesizes spoken responses using Gemini's audio output
-capabilities.
-
-The implementation relies on the following lightweight dependencies:
-- ``sounddevice`` – cross‑platform audio I/O (already selected by the user).
-- ``numpy`` – required by ``sounddevice`` for audio buffers.
-- ``google-generativeai`` – official Gemini SDK.
-
-All secrets (the Gemini API key) are read from the existing configuration via
-``get_settings()``; no key is written to source files.
+This module provides a voice interface for FRIDAY using the official Google GenAI SDK.
+It captures microphone audio, sends it to Gemini for transcription, and synthesizes
+responses using Gemini audio capabilities.
 """
 
 from __future__ import annotations
 
-import io
 import base64
+import io
 import wave
-import logging
 from typing import Optional
 
 import numpy as np
 import sounddevice as sd
-import google.generativeai as genai
+from google import genai
+from google.genai import types as genai_types
 
 from .base import VoiceInput, VoiceOutput, VoiceProvider
 from ..core.config import get_settings
 
-# Module‑level singleton for the Gemini model to avoid re‑initialisation per call
-_shared_model = None
+_shared_client: Optional[genai.Client] = None
 
-def _get_shared_model(api_key: str):
-    """Return a cached GenerativeModel instance configured with the given API key.
-    The first call creates the model; subsequent calls reuse it.
-    """
-    global _shared_model
-    if _shared_model is None:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        _shared_model = genai.GenerativeModel("gemini-1.5-flash")
-    return _shared_model
 
+def _get_shared_client(api_key: str) -> genai.Client:
+    """Return a cached GenAI Client configured with the given API key."""
+    global _shared_client
+    if _shared_client is None:
+        _shared_client = genai.Client(api_key=api_key)
+    return _shared_client
 
 
 def _record_audio(sample_rate: int = 16000, duration: float = 4.0) -> bytes:
-    """Record audio from the default microphone.
-
-    Args:
-        sample_rate: Sample rate in Hz.
-        duration: Recording duration in seconds.
-
-    Returns:
-        WAV‑encoded audio bytes.
-    """
+    """Record audio from the default microphone."""
     wav_io = io.BytesIO()
     recording = sd.rec(int(duration * sample_rate), samplerate=sample_rate, channels=1, dtype="int16")
     sd.wait()
@@ -67,11 +45,7 @@ def _record_audio(sample_rate: int = 16000, duration: float = 4.0) -> bytes:
 
 
 def _decode_audio_mp3(audio_bytes: bytes) -> np.ndarray:
-    """Decode MP3 bytes to a NumPy float32 array for playback.
-
-    This helper uses a simple fallback: treat the payload as raw PCM int16. If the
-    conversion fails, an empty array is returned.
-    """
+    """Decode audio bytes to a NumPy float32 array for playback."""
     try:
         return np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
     except Exception:
@@ -79,8 +53,7 @@ def _decode_audio_mp3(audio_bytes: bytes) -> np.ndarray:
 
 
 class GeminiVoiceInput(VoiceInput):
-    """Capture microphone audio and obtain a transcription via Gemini Live.
-    """
+    """Capture microphone audio and obtain a transcription via Gemini."""
 
     def __init__(self, api_key: str, sample_rate: int = 16000, duration: float = 4.0):
         self.api_key = api_key
@@ -98,17 +71,18 @@ class GeminiVoiceInput(VoiceInput):
         if not self.active:
             raise RuntimeError("GeminiVoiceInput not started")
         wav_bytes = _record_audio(sample_rate=self.sample_rate, duration=self.duration)
-        model = _get_shared_model(self.api_key)
-        audio_part = {"mime_type": "audio/wav", "data": base64.b64encode(wav_bytes).decode("utf-8")}
+        client = _get_shared_client(self.api_key)
+        audio_part = genai_types.Part.from_bytes(data=wav_bytes, mime_type="audio/wav")
         try:
-            response = model.generate_content([audio_part])
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=[audio_part, "Transcribe the spoken audio verbatim. Return only the transcript text."],
+            )
         except Exception as exc:
             raise RuntimeError(f"Gemini transcription failed: {exc}") from exc
-        transcript = getattr(response, "text", None) or getattr(response, "content", None)
+        transcript = getattr(response, "text", None) or ""
         if not transcript:
             raise RuntimeError("Gemini returned no transcription")
-        if not isinstance(transcript, str):
-            transcript = str(transcript)
         return transcript.strip()
 
 
@@ -120,31 +94,38 @@ class GeminiVoiceOutput(VoiceOutput):
         self.output_format = output_format
 
     def synthesize(self, text: str) -> bytes:
-        # Reuse shared Gemini model for synthesis
-        model = _get_shared_model(self.api_key)
-        generation_config = {"response_mime_type": f"audio/{self.output_format}"}
+        client = _get_shared_client(self.api_key)
+        config = genai_types.GenerateContentConfig(
+            response_mime_type=f"audio/{self.output_format}",
+        )
         try:
-            response = model.generate_content(text, generation_config=generation_config)
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=text,
+                config=config,
+            )
         except Exception:
             return b""
         audio_bytes = getattr(response, "audio", None)
         if audio_bytes is None:
             try:
-                audio_bytes = response.candidates[0].content.parts[0].audio
+                candidate = response.candidates[0]
+                for part in candidate.content.parts:
+                    if getattr(part, "inline_data", None):
+                        audio_bytes = part.inline_data.data
+                        break
             except Exception:
                 audio_bytes = b""
         return audio_bytes or b""
 
     def play(self, audio: bytes) -> None:
-        """Play audio bytes non‑blocking. Playback can be interrupted via `stop`.
-        """
+        """Play audio bytes non-blocking."""
         if not audio:
             return
         try:
             pcm = _decode_audio_mp3(audio)
             if pcm.size == 0:
                 return
-            # Non‑blocking playback; do not call sd.wait()
             sd.play(pcm, samplerate=16000)
         except Exception:
             return
@@ -162,12 +143,9 @@ class GeminiVoiceProvider(VoiceProvider):
 
     def __init__(self):
         settings = get_settings()
-        api_key = settings.gemini_api_key
+        api_key = settings.gemini_api_key or settings.llm_api_key
         if not api_key:
             raise ValueError("Gemini API key not configured (FRIDAY_GEMINI_API_KEY)")
-        # Warm‑up the shared model with a short dummy request
-        warmup_text = getattr(settings, "voice_model_warmup_text", "hello")
-        _get_shared_model(api_key).generate_content(warmup_text)
         input_dev = GeminiVoiceInput(
             api_key=api_key,
             sample_rate=getattr(settings, "voice_input_sample_rate", 16000),
@@ -182,7 +160,6 @@ class GeminiVoiceProvider(VoiceProvider):
         self.input.start()
         try:
             while True:
-                # Ensure any previous playback is stopped before new input
                 self.output.stop()
                 try:
                     user_text = self.input.read_chunk()

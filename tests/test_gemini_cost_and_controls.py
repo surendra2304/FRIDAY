@@ -65,6 +65,8 @@ def test_gemini_missing_api_key_fails_cleanly_without_silent_fallback():
 
 def test_gemini_retry_behavior_bounded_by_max_retries():
     """Verify transient failures retry up to max_retries and fail predictably without endless loops."""
+    from google.genai import errors as genai_errors
+
     provider = GeminiLLMProvider(
         api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12",
         model="gemini-2.5-flash",
@@ -72,25 +74,22 @@ def test_gemini_retry_behavior_bounded_by_max_retries():
         backoff_factor=1.0,
     )
 
-    mock_resp = mock.Mock()
-    mock_resp.status_code = 429
-    mock_resp.json.return_value = {
-        "error": {
-            "code": 429,
-            "message": "Resource has been exhausted (quota limit reached).",
-            "status": "RESOURCE_EXHAUSTED",
-        }
-    }
+    api_error = genai_errors.APIError(
+        429,
+        {"error": {"message": "Resource has been exhausted (quota limit reached).", "status": "RESOURCE_EXHAUSTED"}},
+    )
 
-    with mock.patch("httpx.Client.post", return_value=mock_resp) as mock_post:
-        with mock.patch("time.sleep") as mock_sleep:
-            with pytest.raises(LLMProviderError) as exc_info:
-                provider.generate([Message(role=Role.USER, content="Hello")])
+    provider._client = mock.Mock()
+    provider._client.models.generate_content.side_effect = api_error
+
+    with mock.patch("time.sleep") as mock_sleep:
+        with pytest.raises(LLMProviderError) as exc_info:
+            provider.generate([Message(role=Role.USER, content="Hello")])
 
     # Initial attempt + 2 retries = 3 calls total
-    assert mock_post.call_count == 3
+    assert provider._client.models.generate_content.call_count == 3
     assert mock_sleep.call_count == 2
-    assert "status 429" in str(exc_info.value)
+    assert "429" in str(exc_info.value)
     assert "Resource has been exhausted" in str(exc_info.value)
 
 
@@ -103,12 +102,14 @@ def test_gemini_timeout_handling():
         max_retries=1,
     )
 
-    with mock.patch("httpx.Client.post", side_effect=httpx.TimeoutException("Read timed out.")):
-        with mock.patch("time.sleep"):
-            with pytest.raises(LLMProviderError) as exc_info:
-                provider.generate([Message(role=Role.USER, content="Hello")])
+    provider._client = mock.Mock()
+    provider._client.models.generate_content.side_effect = Exception("Read timed out.")
 
-    assert "Network error during Gemini request" in str(exc_info.value)
+    with mock.patch("time.sleep"):
+        with pytest.raises(LLMProviderError) as exc_info:
+            provider.generate([Message(role=Role.USER, content="Hello")])
+
+    assert "Gemini provider error" in str(exc_info.value)
     assert "Read timed out" in str(exc_info.value)
 
 
@@ -140,27 +141,29 @@ def test_provider_selection_validation():
 
 def test_usage_observability_metadata_in_agent_response():
     """Verify non-secret metadata (latency, iterations, provider, model, request_count, cost_mode) is exposed."""
+    from google.genai import types
+
     provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", model="gemini-2.5-flash", cost_mode="free_first")
-    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", cost_mode="free_first")
+    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", cost_mode="free_first", embedding_provider="none")
     memory = InMemoryConversationMemory()
     agent = FridayAgent(settings=settings, llm_provider=provider, memory=memory)
 
-    mock_resp = mock.Mock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {
-        "candidates": [
-            {
-                "content": {
-                    "parts": [{"text": "All systems nominal, Boss."}],
-                    "role": "model",
-                },
-                "finishReason": "STOP",
-            }
+    mock_resp = types.GenerateContentResponse(
+        candidates=[
+            types.Candidate(
+                content=types.Content(
+                    parts=[types.Part.from_text(text="All systems nominal, Surendra.")],
+                    role="model",
+                ),
+                finish_reason=types.FinishReason.STOP,
+            )
         ]
-    }
+    )
 
-    with mock.patch("httpx.Client.post", return_value=mock_resp):
-        response = agent.process_message("Status report")
+    provider._client = mock.Mock()
+    provider._client.models.generate_content.return_value = mock_resp
+
+    response = agent.process_message("Status report")
 
     assert response.is_done is True
     assert "All systems nominal" in response.content

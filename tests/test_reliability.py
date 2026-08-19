@@ -141,7 +141,7 @@ def test_tool_timeout_enforcement(slow_registry):
     tc = ToolCall(id="c1", name="slow_tool", arguments={"duration": 1.0})
     
     # Executing the slow tool with 0.1s limit should trigger a timeout
-    result = agent._execute_single_tool_call_with_timeout(tc, allow_sensitive=False, timeout=0.1)
+    result = agent._execute_single_tool_call_with_timeout(tc, timeout=0.1)
     
     assert result.is_error
     assert "timed out after 0.1 seconds" in result.content

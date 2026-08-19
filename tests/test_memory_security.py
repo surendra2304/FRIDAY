@@ -23,7 +23,7 @@ def test_deletion_isolation_does_not_affect_other_conversations(tmp_path):
     assert len(mem.list_conversations()) == 3  # Default + c1 + c2
 
     # Delete c1
-    mem.delete_conversation(c1)
+    mem.delete_conversation(c1, confirm=True)
 
     # c2 must remain intact
     mem.load_conversation(c2)

@@ -62,6 +62,7 @@ class FridayAgent:
         self.authorizer = authorizer or DefaultSecureAuthorizer()
         self.tool_timeout = tool_timeout
         self.system_message = build_system_message(self.settings)
+        self._processed_tool_ids: set = set()
 
         if self.settings.memory_retention_days:
             self.prune_memory(self.settings.memory_retention_days)
@@ -104,13 +105,17 @@ class FridayAgent:
             return self.memory.rename_conversation(target_id, new_title)
         return False
 
-    def delete_conversation(self, conversation_id: str) -> bool:
+    def delete_conversation(self, conversation_id: str, confirm: bool = True) -> bool:
         """Delete a conversation session and all its messages."""
-        return self.memory.delete_conversation(conversation_id)
+        return self.memory.delete_conversation(conversation_id, confirm=confirm)
 
-    def purge_all_memory(self) -> int:
+    def purge_all_memory(self, confirm: bool = True) -> int:
         """Permanently delete all stored conversations and messages."""
-        return self.memory.purge_all()
+        return self.memory.purge_all(confirm=confirm)
+
+    def clear_memory(self, confirm: bool = True) -> None:
+        """Clear messages from the active conversation."""
+        self.memory.clear(conversation_id=self.conversation_id, confirm=confirm)
 
     def prune_memory(self, retention_days: Optional[int] = None) -> int:
         """Prune messages older than the retention threshold."""
@@ -541,10 +546,6 @@ class FridayAgent:
     def get_history(self) -> List[Message]:
         """Retrieve stored conversation messages."""
         return self.memory.get_messages()
-
-    def clear_memory(self) -> None:
-        """Reset conversation memory."""
-        self.memory.clear()
 
     def get_status(self) -> Dict[str, Any]:
         """Return diagnostic status information about the agent."""

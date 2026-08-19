@@ -5,6 +5,7 @@ import sqlite3
 import threading
 from datetime import datetime, timezone
 import pytest
+from friday.core.config import Settings
 from friday.core.types import Message, Role, ToolCall
 from friday.memory.sqlite import SQLiteConversationMemory
 
@@ -51,7 +52,7 @@ def test_sqlite_memory_conversation_lifecycle(tmp_path):
     assert mem.active_conversation_id == default_id
 
     # Deleting conversation
-    deleted = mem.delete_conversation(conv2_id)
+    deleted = mem.delete_conversation(conv2_id, confirm=True)
     assert deleted is True
     assert len(mem.list_conversations()) == 1
 
@@ -65,7 +66,6 @@ def test_sqlite_memory_message_crud_and_ordering(tmp_path):
     mem = SQLiteConversationMemory(db_path=db_file)
 
     msg1 = Message(role=Role.USER, content="Hello Friday")
-    # Use dynamic user name from settings
     settings = Settings()
     user_name = settings.user_name
     msg2 = Message(role=Role.ASSISTANT, content=f"Hello {user_name}, how can I help you?")
@@ -78,7 +78,7 @@ def test_sqlite_memory_message_crud_and_ordering(tmp_path):
     assert messages[0].role == Role.USER
     assert messages[0].content == "Hello Friday"
     assert messages[1].role == Role.ASSISTANT
-    assert messages[1].content == "Hello Boss, how can I help you?"
+    assert messages[1].content == f"Hello {user_name}, how can I help you?"
     assert len(mem) == 2
 
 
@@ -148,7 +148,7 @@ def test_sqlite_memory_clear(tmp_path):
     mem.add_message(Message(role=Role.ASSISTANT, content="Answer 1"))
     assert len(mem) == 2
 
-    mem.clear()
+    mem.clear(confirm=True)
     assert len(mem) == 0
     assert mem.get_messages() == []
 

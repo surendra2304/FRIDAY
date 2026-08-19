@@ -1,26 +1,26 @@
 # -*- coding: utf-8 -*-
-"""Gemini LLM Provider using the official google-generativeai SDK.
+"""Gemini LLM Provider using the official google-genai SDK.
 
-This modern implementation replaces the previous low‑level HTTPX based provider.
-It keeps the original `BaseLLMProvider` interface so the rest of FRIDAY remains
-unchanged, while delegating authentication, request construction and response
-parsing to the official SDK.
+This modern implementation uses Google's current official `google-genai` Python SDK
+(`from google import genai`). It preserves FRIDAY's `BaseLLMProvider` contract,
+enforces strict tool safety and authorization boundaries, and guarantees zero
+local inference compute.
 
 Security considerations:
 - The API key is never logged; any accidental inclusion in error messages is
   masked with "***".
 - No secrets are written to disk or exposed in `__repr__`.
-- All retries are bounded and exponential back‑off controlled.
+- All retries are bounded and exponential back-off controlled.
 """
 
 import json
-import httpx
 import time
 from typing import Any, Dict, List, Optional
+import uuid
 
-from google.generativeai import configure as genai_config
-import google.generativeai as genai
-from google.api_core import exceptions as google_exceptions
+from google import genai
+from google.genai import errors as genai_errors
+from google.genai import types as genai_types
 
 from friday.core.exceptions import LLMProviderError
 from friday.core.logging import get_logger
@@ -31,11 +31,7 @@ logger = get_logger("llm.gemini")
 
 
 class GeminiLLMProvider(BaseLLMProvider):
-    """LLM Provider for Google Gemini using the official google‑generativeai SDK.
-
-    The provider respects the same configuration interface as the previous
-    HTTPX implementation but delegates request handling to the official SDK.
-    """
+    """LLM Provider for Google Gemini using the official google-genai SDK."""
 
     def __init__(
         self,
@@ -56,20 +52,41 @@ class GeminiLLMProvider(BaseLLMProvider):
         self.max_retries = max_retries
         self.backoff_factor = backoff_factor
         self.cost_mode = cost_mode
+        self._client: Optional[genai.Client] = None
         if self.api_key:
-            genai.configure(api_key=self.api_key)
+            try:
+                self._client = genai.Client(api_key=self.api_key)
+            except Exception as e:
+                logger.warning(f"Failed to initialize GenAI client: {self._mask_key(str(e))}")
         else:
             logger.warning("Gemini API key not provided; provider may fail on generate calls.")
+
+    @property
+    def client(self) -> genai.Client:
+        """Retrieve or create the cached GenAI Client instance."""
+        if self._client is None:
+            if not self.api_key:
+                raise LLMProviderError(
+                    "Gemini API key is required. Set FRIDAY_GEMINI_API_KEY or FRIDAY_LLM_API_KEY."
+                )
+            self._client = genai.Client(api_key=self.api_key)
+        return self._client
 
     @property
     def provider_name(self) -> str:
         return "gemini"
 
+    def _mask_key(self, text: str) -> str:
+        """Mask API key in any error or diagnostic string."""
+        if self.api_key and self.api_key in text:
+            return text.replace(self.api_key, "***")
+        return text
+
     # ---------------------------------------------------------------------
-    # Helper conversion utilities (unchanged from previous implementation)
+    # Schema and Message Conversion Helpers
     # ---------------------------------------------------------------------
     def _convert_schema_to_gemini(self, tool_def: Dict[str, Any]) -> Dict[str, Any]:
-        """Convert an OpenAI‑compatible tool JSON schema to a Gemini function declaration."""
+        """Convert an OpenAI-compatible tool JSON schema to a Gemini function declaration dict."""
         if tool_def.get("type") == "function" and "function" in tool_def:
             func = tool_def["function"]
             return {
@@ -83,14 +100,89 @@ class GeminiLLMProvider(BaseLLMProvider):
             "parameters": tool_def.get("parameters", {}),
         }
 
+    def _build_contents_and_config(
+        self,
+        messages: List[Message],
+        tools: Optional[List[Dict[str, Any]]] = None,
+    ) -> tuple[List[genai_types.Content], genai_types.GenerateContentConfig]:
+        """Translate FRIDAY Messages and Tool definitions to GenAI SDK types."""
+        system_instruction_text = ""
+        contents: List[genai_types.Content] = []
+
+        for msg in messages:
+            if msg.role == Role.SYSTEM:
+                if msg.content:
+                    system_instruction_text = (
+                        f"{system_instruction_text}\n\n{msg.content}".strip()
+                        if system_instruction_text
+                        else msg.content
+                    )
+            elif msg.role == Role.USER:
+                contents.append(
+                    genai_types.Content(
+                        role="user",
+                        parts=[genai_types.Part.from_text(text=msg.content or "")],
+                    )
+                )
+            elif msg.role == Role.ASSISTANT:
+                parts: List[genai_types.Part] = []
+                if msg.content:
+                    parts.append(genai_types.Part.from_text(text=msg.content))
+                if msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        args = tc.arguments if isinstance(tc.arguments, dict) else {}
+                        parts.append(
+                            genai_types.Part.from_function_call(name=tc.name, args=args)
+                        )
+                if not parts:
+                    parts.append(genai_types.Part.from_text(text=""))
+                contents.append(genai_types.Content(role="model", parts=parts))
+            elif msg.role == Role.TOOL:
+                tool_name = msg.name or "tool"
+                try:
+                    parsed = json.loads(msg.content) if isinstance(msg.content, str) else msg.content
+                    if not isinstance(parsed, dict):
+                        parsed = {"output": parsed}
+                except Exception:
+                    parsed = {"output": msg.content}
+                contents.append(
+                    genai_types.Content(
+                        role="tool",
+                        parts=[genai_types.Part.from_function_response(name=tool_name, response=parsed)],
+                    )
+                )
+
+        # Build tools if provided
+        genai_tools: Optional[List[genai_types.Tool]] = None
+        if tools:
+            func_decls = []
+            for t in tools:
+                converted = self._convert_schema_to_gemini(t)
+                func_decls.append(
+                    genai_types.FunctionDeclaration(
+                        name=converted.get("name", ""),
+                        description=converted.get("description", ""),
+                        parameters=converted.get("parameters", {}),
+                    )
+                )
+            genai_tools = [genai_types.Tool(function_declarations=func_decls)]
+
+        config = genai_types.GenerateContentConfig(
+            temperature=self.temperature,
+            max_output_tokens=self.max_tokens,
+            system_instruction=system_instruction_text if system_instruction_text else None,
+            tools=genai_tools,
+            automatic_function_calling=genai_types.AutomaticFunctionCallingConfig(disable=True),
+        )
+
+        return contents, config
+
     def _build_gemini_payload(
         self,
         messages: List[Message],
         tools: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
-        """Translate FRIDAY messages and optional tool schemas into the payload format expected
-        by the google‑generativeai SDK.
-        """
+        """Backwards-compatible dictionary serialization of Gemini payload for testing."""
         system_instruction_parts = []
         contents: List[Dict[str, Any]] = []
 
@@ -129,188 +221,115 @@ class GeminiLLMProvider(BaseLLMProvider):
                     "parts": [{"functionResponse": {"name": tool_name, "response": parsed}}],
                 })
 
-        payload = {
+        payload: Dict[str, Any] = {
             "contents": contents,
             "generationConfig": {"temperature": self.temperature, "max_output_tokens": self.max_tokens},
         }
         if system_instruction_parts:
-            # Use camelCase key as expected by tests and Gemini API
             payload["systemInstruction"] = {"parts": system_instruction_parts}
         if tools:
             func_decls = [self._convert_schema_to_gemini(t) for t in tools]
-            # Use camelCase as expected by Gemini API and tests
             payload["tools"] = [{"functionDeclarations": func_decls}]
         return payload
 
     # ---------------------------------------------------------------------
-    # Public generate method – core of the provider
+    # Public generate method
     # ---------------------------------------------------------------------
     def generate(
         self,
         messages: List[Message],
         tools: Optional[List[Dict[str, Any]]] = None,
     ) -> Message:
-        """Generate a response using Gemini.
+        """Generate an assistant response using the Google GenAI SDK.
 
-        Errors from the SDK are wrapped in ``LLMProviderError`` with any secret values
-        masked before they are logged or re‑raised.
+        Translates FRIDAY messages, enforces function-calling trust boundaries,
+        and wraps exceptions in LLMProviderError with secret masking.
         """
         if not self.api_key:
             raise LLMProviderError(
                 "Gemini API key is required. Set FRIDAY_GEMINI_API_KEY or FRIDAY_LLM_API_KEY."
             )
 
-        model_name = self.model
-        if not model_name.startswith("models/"):
-            model_path = f"models/{model_name}"
-        else:
-            model_path = model_name
-
-        payload = self._build_gemini_payload(messages, tools)
-
-        # Extract components for the SDK call
-        generation_config = payload.pop("generationConfig", {})
-        system_instruction = payload.pop("systemInstruction", None)
-        tools_payload = payload.pop("tools", None)
-        contents = payload.get("contents", [])
-        # Prepare the request URL for Gemini generateContent endpoint
-        request_url = f"{self.base_url}/{model_path}:generateContent"
-        # Build request payload matching Gemini API expectations
-        request_body = {
-            "contents": contents,
-        }
-        if generation_config:
-            request_body["generationConfig"] = generation_config
-        if system_instruction:
-            request_body["systemInstruction"] = system_instruction
-        if tools_payload:
-            request_body["tools"] = tools_payload
+        contents, config = self._build_contents_and_config(messages, tools)
 
         attempt = 0
         while attempt <= self.max_retries:
             try:
                 logger.debug(
-                    f"Calling Gemini endpoint {request_url} (attempt {attempt + 1}/{self.max_retries + 1})"
+                    f"Calling GenAI generate_content (model: {self.model}, attempt {attempt + 1}/{self.max_retries + 1})"
                 )
-                # Use httpx.Client for request to allow test mocking via httpx.Client.post
-                with httpx.Client(timeout=self.timeout) as client:
-                    response = client.post(
-                        request_url,
-                        headers={"Content-Type": "application/json"},
-                        json=request_body,
-                    )
-                    # If the response is not successful, treat it as a retryable error
-                    if response.status_code != 200:
-                        # Extract error message for logging / retry
-                        try:
-                            err_json = response.json()
-                            err_msg = err_json.get("error", {}).get("message", f"Unexpected status code: {response.status_code}")
-                        except Exception:
-                            err_msg = f"Unexpected status code: {response.status_code}"
-                        # Raise as HTTPStatusError to trigger retry logic
-                        raise httpx.HTTPStatusError(err_msg, request=None, response=response)
-                    resp_json = response.json()
-                # Parse the Gemini response structure
-                # Handle safety block reasons before checking candidates
-                candidates = resp_json.get("candidates", [])
-                if not candidates:
-                    pf = resp_json.get("promptFeedback", {})
-                    block_reason = pf.get("blockReason")
-                    if block_reason:
-                        raise LLMProviderError(f"blocked by safety filters: {block_reason}")
+                response = self.client.models.generate_content(
+                    model=self.model,
+                    contents=contents,
+                    config=config,
+                )
+
+                # Check candidates and safety blocks
+                if not response.candidates:
+                    if hasattr(response, "prompt_feedback") and response.prompt_feedback:
+                        block_reason = getattr(response.prompt_feedback, "block_reason", None)
+                        if block_reason:
+                            raise LLMProviderError(f"blocked by safety filters: {block_reason}")
                     raise LLMProviderError("Gemini returned no candidates")
-                candidate = candidates[0]
-                # Extract text parts and function calls safely
-                content = candidate.get("content") or {}
-                parts = content.get("parts", [])
+
+                candidate = response.candidates[0]
+                content = candidate.content
+                parts = getattr(content, "parts", []) or []
+
                 text_parts: List[str] = []
                 tool_calls: Optional[List[ToolCall]] = None
+
                 for part in parts:
-                    if "text" in part and part["text"] is not None:
-                        # Append stripped text to avoid NoneType errors
-                        text_parts.append(part["text"].strip())
-                    elif "functionCall" in part:
-                        fc = part["functionCall"]
+                    if getattr(part, "text", None):
+                        text_parts.append(part.text.strip())
+                    elif getattr(part, "function_call", None):
+                        fc = part.function_call
                         if tool_calls is None:
                             tool_calls = []
-                        fc_name = fc.get("name", "")
-                        fc_args = fc.get("args", {})
-                        # Ensure arguments are a dict
+                        fc_name = getattr(fc, "name", "")
+                        fc_args = getattr(fc, "args", {})
                         if isinstance(fc_args, str):
                             try:
                                 fc_args = json.loads(fc_args)
                             except json.JSONDecodeError:
                                 fc_args = {"raw_arguments": fc_args}
-                        call_id = f"call_{fc_name}_{int(time.time() * 1000)}"
+                        elif not isinstance(fc_args, dict):
+                            try:
+                                fc_args = dict(fc_args)
+                            except Exception:
+                                fc_args = {"raw": str(fc_args)}
+                        call_id = getattr(fc, "id", None) or f"call_{fc_name}_{uuid.uuid4().hex[:8]}"
                         tool_calls.append(ToolCall(id=call_id, name=fc_name, arguments=fc_args or {}))
+
                 final_text = "".join(text_parts).strip()
                 return Message(role=Role.ASSISTANT, content=final_text, tool_calls=tool_calls)
-            except httpx.HTTPStatusError as e:
-                try:
-                    err_data = e.response.json()
-                    detail = err_data.get("error", {}).get("message", str(e))
-                except Exception:
-                    detail = str(e)
-                status = e.response.status_code
-                err_msg = f"status {status}: {detail}"
-                if self.api_key and self.api_key in err_msg:
-                    err_msg = err_msg.replace(self.api_key, "***")
-                if attempt < self.max_retries:
-                    wait = self.timeout * (self.backoff_factor ** attempt)
-                    logger.warning(
-                        f"HTTP status {status} from Gemini: {err_msg}. Retrying in {wait:.2f}s..."
-                    )
+
+            except genai_errors.APIError as e:
+                err_msg = self._mask_key(str(e.message or e))
+                code = getattr(e, "code", None) or getattr(e, "status_code", 500)
+                status_str = f"status {code}: {err_msg}"
+                if code in (429, 500, 502, 503, 504) and attempt < self.max_retries:
+                    wait = 1.0 * (self.backoff_factor ** attempt)
+                    logger.warning(f"GenAI API error [{code}]: {err_msg}. Retrying in {wait:.2f}s...")
                     time.sleep(wait)
                     attempt += 1
                     continue
-                logger.error(f"HTTP status {status} after retries: {err_msg}")
-                raise LLMProviderError(f"Network error during Gemini request (status {status}): {err_msg}") from e
-            except httpx.HTTPError as e:
-                err_msg = str(e)
-                if self.api_key and self.api_key in err_msg:
-                    err_msg = err_msg.replace(self.api_key, "***")
-                if attempt < self.max_retries:
-                    wait = self.timeout * (self.backoff_factor ** attempt)
-                    logger.warning(
-                        f"HTTP error communicating with Gemini Provider: {err_msg}. Retrying in {wait:.2f}s..."
-                    )
-                    time.sleep(wait)
-                    attempt += 1
-                    continue
-                logger.error(f"HTTP error after retries: {err_msg}")
-                raise LLMProviderError(f"Network error during Gemini request: {err_msg}") from e
-            except httpx.RequestError as e:
-                err_msg = str(e)
-                if self.api_key and self.api_key in err_msg:
-                    err_msg = err_msg.replace(self.api_key, "***")
-                if attempt < self.max_retries:
-                    wait = self.timeout * (self.backoff_factor ** attempt)
-                    logger.warning(
-                        f"Request error communicating with Gemini Provider: {err_msg}. Retrying in {wait:.2f}s..."
-                    )
-                    time.sleep(wait)
-                    attempt += 1
-                    continue
-                logger.error(f"Request error after retries: {err_msg}")
-                raise LLMProviderError(f"Network error during Gemini request: {err_msg}") from e
-            except httpx.TimeoutException as e:
-                err_msg = str(e)
-                if self.api_key and self.api_key in err_msg:
-                    err_msg = err_msg.replace(self.api_key, "***")
-                if attempt < self.max_retries:
-                    wait = self.timeout * (self.backoff_factor ** attempt)
-                    logger.warning(
-                        f"Timeout communicating with Gemini Provider: {err_msg}. Retrying in {wait:.2f}s..."
-                    )
-                    time.sleep(wait)
-                    attempt += 1
-                    continue
-                logger.error(f"Timeout after retries: {err_msg}")
-                raise LLMProviderError(f"Network error during Gemini request: {err_msg}") from e
+                logger.error(f"GenAI API error after retries: {status_str}")
+                raise LLMProviderError(f"Network error during Gemini request ({status_str})") from e
+
+            except LLMProviderError:
+                raise
+
             except Exception as e:
-                msg = str(e)
-                if self.api_key and self.api_key in msg:
-                    msg = msg.replace(self.api_key, "***")
-                logger.error(f"Gemini provider error: {msg}")
-                raise LLMProviderError(f"Gemini provider error: {msg}") from e
+                err_msg = self._mask_key(str(e))
+                err_lower = err_msg.lower()
+                if ("429" in err_lower or "quota" in err_lower or "resource exhausted" in err_lower) and attempt < self.max_retries:
+                    wait = 1.0 * (self.backoff_factor ** attempt)
+                    logger.warning(f"GenAI rate limit: {err_msg}. Retrying in {wait:.2f}s...")
+                    time.sleep(wait)
+                    attempt += 1
+                    continue
+                logger.error(f"Gemini provider error: {err_msg}")
+                raise LLMProviderError(f"Gemini provider error: {err_msg}") from e
+
         raise LLMProviderError("Failed to obtain response from Gemini Provider after retries")

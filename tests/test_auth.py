@@ -80,8 +80,8 @@ class CustomTestAuthorizer(BaseAuthorizer):
 def test_safe_tool_auto_executes():
     # Registry with get_system_info (SAFE)
     agent = FridayAgent(
-        settings=Settings(env="testing"),
-        authorizer=DefaultSecureAuthorizer()  # Safe tools auto-approved
+        settings=Settings(env="testing", llm_provider="mock", embedding_provider="none"),
+        authorizer=DefaultSecureAuthorizer(),
     )
     
     # Run a safe command

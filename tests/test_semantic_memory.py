@@ -33,29 +33,31 @@ def test_mock_embedding_provider_deterministic_unit_vectors():
 
 
 def test_gemini_embedding_provider_remote_call_and_api_key_check():
-    """Verify Gemini embedding provider calls remote REST endpoint with correct schema."""
+    """Verify Gemini embedding provider calls GenAI SDK with correct schema."""
+    from google.genai import types
+
     provider_missing_key = GeminiEmbeddingProvider(api_key="")
     with pytest.raises(LLMProviderError) as exc_info:
         provider_missing_key.embed_text("Test prompt")
     assert "Gemini API key is required" in str(exc_info.value)
 
-    provider = GeminiEmbeddingProvider(api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_17MockKey", dimension=768)
-    mock_resp = mock.Mock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {
-        "embedding": {
-            "values": [0.123] * 768
-        }
-    }
+    provider = GeminiEmbeddingProvider(api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_17MockKey", model="gemini-embedding-2", dimension=768)
+    mock_resp = types.EmbedContentResponse(
+        embeddings=[types.ContentEmbedding(values=[0.123] * 768)]
+    )
 
-    with mock.patch("httpx.Client.post", return_value=mock_resp) as mock_post:
-        vec = provider.embed_text("Hello Gemini embeddings")
+    provider._client = mock.Mock()
+    provider._client.models.embed_content.return_value = mock_resp
+
+    vec = provider.embed_text("Hello Gemini embeddings")
 
     assert len(vec) == 768
     norm = sum(x * x for x in vec) ** 0.5
     assert pytest.approx(norm, rel=1e-3) == 1.0
-    assert mock_post.called
-    assert "models/text-embedding-004:embedContent" in mock_post.call_args[0][0]
+    assert provider._client.models.embed_content.called
+    call_kwargs = provider._client.models.embed_content.call_args[1]
+    assert call_kwargs["model"] == "gemini-embedding-2"
+    assert call_kwargs["config"].output_dimensionality == 768
 
 
 def test_embedding_factory_creation():

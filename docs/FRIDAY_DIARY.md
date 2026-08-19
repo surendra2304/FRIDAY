@@ -843,3 +843,46 @@ The fourth phase focuses on adding a **cloud‑first voice interface** and a **p
 - Add optional desktop notification integration.
 
 ---
+
+## Critical Gemini Stack Modernization & SDK Migration
+
+**Date**: 2026-08-19  
+**Branch**: `main`  
+**Status**: COMPLETE
+
+### What Was Built & Modernized
+
+1. **Official `google-genai` Python SDK Migration**:
+   - Replaced deprecated `google.generativeai` package and legacy custom HTTPX implementations.
+   - Refactored `src/friday/llm/gemini_provider.py` around `from google import genai` and `client.models.generate_content(...)` using `genai.Client(api_key=...)`, `types.GenerateContentConfig`, `types.Content`, and `types.Part`.
+   - Refactored `src/friday/memory/embeddings/gemini.py` around `client.models.embed_content(...)` using `types.EmbedContentConfig(output_dimensionality=...)`.
+   - Updated `src/friday/voice/gemini_provider.py` to use `google-genai`.
+   - Declared runtime dependency `google-genai>=1.0.0` in both `requirements.txt` and `pyproject.toml`.
+
+2. **Embedding Model Modernization**:
+   - Replaced legacy `text-embedding-004` default with the current recommended `gemini-embedding-2` model.
+   - Preserved configurable dimensions (default 768) and unit L2 vector normalization.
+
+3. **Cloud-First & Low Laptop Load Guarantee**:
+   - Verified zero local heavy inference (no local Ollama, Whisper, Kokoro, or PyTorch models).
+   - All text generation and embeddings are offloaded to Gemini Cloud API (`gemini-2.5-flash` and `gemini-embedding-2`).
+   - Maintained `cost_mode = "free_first"` policy.
+
+4. **Default Configuration Modernization**:
+   - Configured `llm_provider = "gemini"` as default.
+   - Configured `embedding_provider = "gemini"` as default.
+   - Configured `embedding_model = "gemini-embedding-2"` as default.
+   - Preserved explicit `Mock` mode for isolated offline unit testing.
+
+5. **Security & Privacy**:
+   - Verified `.env` is not tracked in git (`git ls-files .env` returns nothing).
+   - Validated secret masking across all logs and provider exception messages.
+   - Zero hardcoded API keys in tracked repository files.
+
+### Test Results
+
+```
+168 passed in 44.65s (100% test pass rate)
+```
+
+---

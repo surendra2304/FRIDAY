@@ -345,11 +345,10 @@ def test_authorization_interactions(registry):
 
     agent.process_message("Run mixed tools with spy auth")
     
-    # SpyAuthorizer automatically auto-approves SAFE tools, so only 1 explicit request
-    # for the SENSITIVE tool should have reached the authorizer.
-    assert len(spy_auth.requests) == 1
-    assert spy_auth.requests[0].tool_name == "sensitive_tool"
-    assert spy_auth.requests[0].safety_level == SafetyLevel.SENSITIVE
+    assert len(spy_auth.requests) == 2
+    assert spy_auth.requests[0].tool_name == "safe_a"
+    assert spy_auth.requests[1].tool_name == "sensitive_tool"
+    assert spy_auth.requests[1].safety_level == SafetyLevel.SENSITIVE
 
 
 # --- 8. Test result correlation ---

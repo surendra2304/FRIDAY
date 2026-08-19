@@ -11,80 +11,89 @@ from friday.memory.sqlite import SQLiteConversationMemory
 
 
 def test_gemini_embedding_output_dimensionality():
-    """Verify GeminiEmbeddingProvider sends outputDimensionality in payload and normalizes vector."""
+    """Verify GeminiEmbeddingProvider sends output_dimensionality and normalizes vector."""
+    from google.genai import types
+
     provider = GeminiEmbeddingProvider(
         api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12",
-        model="text-embedding-004",
+        model="gemini-embedding-2",
         dimension=256,
     )
 
-    mock_resp = mock.Mock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {
-        "embedding": {
-            "values": [0.5] * 256
-        }
-    }
+    mock_resp = types.EmbedContentResponse(
+        embeddings=[
+            types.ContentEmbedding(values=[0.5] * 256)
+        ]
+    )
 
-    with mock.patch("httpx.Client.post", return_value=mock_resp) as mock_post:
-        vec = provider.embed_text("Test dimensionality payload")
+    provider._client = mock.Mock()
+    provider._client.models.embed_content.return_value = mock_resp
+
+    vec = provider.embed_text("Test dimensionality payload")
 
     assert len(vec) == 256
     norm = math.sqrt(sum(x * x for x in vec))
     assert pytest.approx(norm, rel=1e-3) == 1.0
 
-    call_payload = mock_post.call_args[1]["json"]
-    assert call_payload["outputDimensionality"] == 256
-    assert "models/text-embedding-004:embedContent" in mock_post.call_args[0][0]
+    call_kwargs = provider._client.models.embed_content.call_args[1]
+    assert call_kwargs["config"].output_dimensionality == 256
+    assert call_kwargs["model"] == "gemini-embedding-2"
 
 
 def test_gemini_batch_embed_contents_endpoint():
-    """Verify embed_batch calls batchEmbedContents with safe chunking."""
+    """Verify embed_batch calls embed_content with safe chunking."""
+    from google.genai import types
+
     provider = GeminiEmbeddingProvider(
         api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12",
-        model="text-embedding-004",
+        model="gemini-embedding-2",
         dimension=64,
         max_batch_size=4,
     )
 
     texts = [f"Text item number {i}" for i in range(10)]
 
-    mock_resp = mock.Mock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {
-        "embeddings": [
-            {"values": [0.1] * 64} for _ in range(4)
-        ]
-    }
+    mock_resp = types.EmbedContentResponse(
+        embeddings=[types.ContentEmbedding(values=[0.1] * 64) for _ in range(4)]
+    )
 
-    with mock.patch("httpx.Client.post", return_value=mock_resp) as mock_post:
-        batch_vectors = provider.embed_batch(texts)
+    provider._client = mock.Mock()
+    provider._client.models.embed_content.return_value = mock_resp
 
-    assert len(batch_vectors) == 12  # 3 chunks of 4 (padded by mock return in test)
-    assert mock_post.call_count == 3  # 10 items in chunks of 4 -> 3 requests
-    assert "batchEmbedContents" in mock_post.call_args[0][0]
+    batch_vectors = provider.embed_batch(texts)
+
+    assert len(batch_vectors) == 12  # 3 chunks of 4
+    assert provider._client.models.embed_content.call_count == 3
 
 
 def test_gemini_batch_embed_fallback_to_individual_on_batch_failure():
     """Verify embed_batch falls back gracefully to individual single-embed calls if batch endpoint fails."""
+    from google.genai import types
+
     provider = GeminiEmbeddingProvider(
         api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12",
-        model="text-embedding-004",
+        model="gemini-embedding-2",
         dimension=32,
     )
 
     texts = ["Item 1", "Item 2"]
 
-    batch_fail_resp = mock.Mock()
-    batch_fail_resp.status_code = 404
-    batch_fail_resp.text = "batchEmbedContents Not Found"
-    batch_fail_resp.json.side_effect = Exception("Not JSON")
+    single_ok_resp = types.EmbedContentResponse(
+        embeddings=[types.ContentEmbedding(values=[0.2] * 32)]
+    )
 
-    single_ok_resp = mock.Mock()
-    single_ok_resp.status_code = 200
-    single_ok_resp.json.return_value = {"embedding": {"values": [0.2] * 32}}
+    provider._client = mock.Mock()
+    # Batch fails with exception, then sequential calls succeed
+    provider._client.models.embed_content.side_effect = [
+        Exception("Batch error"),
+        Exception("Batch retry 1"),
+        Exception("Batch retry 2"),
+        Exception("Batch retry 3"),
+        single_ok_resp,
+        single_ok_resp,
+    ]
 
-    with mock.patch("httpx.Client.post", side_effect=[batch_fail_resp, single_ok_resp, single_ok_resp]):
+    with mock.patch("time.sleep"):
         results = provider.embed_batch(texts)
 
     assert len(results) == 2
@@ -93,6 +102,8 @@ def test_gemini_batch_embed_fallback_to_individual_on_batch_failure():
 
 def test_secret_sanitization_before_cloud_embedding():
     """Verify secrets, private keys, and API keys are redacted before sending to external Gemini API."""
+    from google.genai import types
+
     provider = GeminiEmbeddingProvider(api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12")
 
     sensitive_text = "Here is my secret API key: TEST_GEMINI_API_KEY_PLACEHOLDER_08 and token sk-123456789012345678901234"
@@ -102,17 +113,18 @@ def test_secret_sanitization_before_cloud_embedding():
     assert "sk-1234567890" not in sanitized
     assert "[REDACTED_SECRET]" in sanitized
 
-    mock_resp = mock.Mock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {"embedding": {"values": [0.1] * 768}}
+    mock_resp = types.EmbedContentResponse(
+        embeddings=[types.ContentEmbedding(values=[0.1] * 768)]
+    )
 
-    with mock.patch("httpx.Client.post", return_value=mock_resp) as mock_post:
-        provider.embed_text(sensitive_text)
+    provider._client = mock.Mock()
+    provider._client.models.embed_content.return_value = mock_resp
 
-    sent_payload = mock_post.call_args[1]["json"]
-    sent_text = sent_payload["content"]["parts"][0]["text"]
-    assert "TEST_GEMINI_API_KEY_PLACEHOLDER_17ABCDEF" not in sent_text
-    assert "[REDACTED_SECRET]" in sent_text
+    provider.embed_text(sensitive_text)
+
+    sent_contents = provider._client.models.embed_content.call_args[1]["contents"]
+    assert "TEST_GEMINI_API_KEY_PLACEHOLDER_17ABCDEF" not in sent_contents
+    assert "[REDACTED_SECRET]" in sent_contents
 
 
 def test_reciprocal_rank_fusion_hybrid_search(tmp_path):

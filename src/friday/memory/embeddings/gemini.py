@@ -1,10 +1,14 @@
-"""Google Gemini Cloud Embedding Provider using HTTPX."""
+"""Google Gemini Cloud Embedding Provider using the official google-genai SDK."""
 
 import math
 import re
 import time
 from typing import Any, Dict, List, Optional
-import httpx
+
+from google import genai
+from google.genai import errors as genai_errors
+from google.genai import types as genai_types
+
 from friday.core.exceptions import LLMProviderError
 from friday.core.logging import get_logger
 from friday.memory.embeddings.base import BaseEmbeddingProvider
@@ -21,13 +25,13 @@ SECRET_PATTERNS = [
 
 
 class GeminiEmbeddingProvider(BaseEmbeddingProvider):
-    """Generates text embeddings remotely using Google Gemini API (models/text-embedding-004)."""
+    """Generates text embeddings remotely using Google Gemini API (gemini-embedding-2)."""
 
     def __init__(
         self,
         api_key: Optional[str] = None,
         base_url: str = "https://generativelanguage.googleapis.com/v1beta",
-        model: str = "text-embedding-004",
+        model: str = "gemini-embedding-2",
         dimension: int = 768,
         timeout: float = 30.0,
         max_retries: int = 3,
@@ -41,10 +45,31 @@ class GeminiEmbeddingProvider(BaseEmbeddingProvider):
         self.max_retries = max_retries
         self.backoff_factor = backoff_factor
         self.max_batch_size = max(1, min(max_batch_size, 32))
+        self._client: Optional[genai.Client] = None
+        if self.api_key:
+            try:
+                self._client = genai.Client(api_key=self.api_key)
+            except Exception as e:
+                logger.warning(f"Failed to initialize GenAI embedding client: {self._mask_key(str(e))}")
+
+    @property
+    def client(self) -> genai.Client:
+        """Retrieve or create the cached GenAI Client instance."""
+        if self._client is None:
+            if not self.api_key:
+                raise LLMProviderError("Gemini API key is required for semantic embeddings.")
+            self._client = genai.Client(api_key=self.api_key)
+        return self._client
 
     @property
     def provider_name(self) -> str:
         return "gemini"
+
+    def _mask_key(self, text: str) -> str:
+        """Mask API key in any error or diagnostic string."""
+        if self.api_key and self.api_key in text:
+            return text.replace(self.api_key, "***")
+        return text
 
     @staticmethod
     def sanitize_text_for_embedding(text: str) -> str:
@@ -81,79 +106,50 @@ class GeminiEmbeddingProvider(BaseEmbeddingProvider):
         if not clean_text.strip():
             return [0.0] * self.dimension
 
-        model_path = self._get_model_path()
-        url = f"{self.base_url}/{model_path}:embedContent"
-        headers = {
-            "Content-Type": "application/json",
-            "x-goog-api-key": self.api_key,
-        }
-        payload: Dict[str, Any] = {
-            "model": model_path,
-            "content": {
-                "parts": [{"text": clean_text}],
-            },
-        }
-        if self.dimension:
-            payload["outputDimensionality"] = self.dimension
-
-        initial_delay = 1.0
-        data = None
+        config = genai_types.EmbedContentConfig(
+            output_dimensionality=self.dimension if self.dimension else None
+        )
 
         for attempt in range(self.max_retries + 1):
             try:
-                with httpx.Client(timeout=self.timeout) as client:
-                    response = client.post(url, headers=headers, json=payload)
+                response = self.client.models.embed_content(
+                    model=self.model,
+                    contents=clean_text,
+                    config=config,
+                )
 
-                if response.status_code == 200:
-                    data = response.json()
-                    break
+                if response.embeddings:
+                    values = getattr(response.embeddings[0], "values", None)
+                    if values:
+                        return self.normalize_vector(values)
+                raise LLMProviderError("Empty embedding vector returned from Gemini API.")
 
-                error_detail = response.text
-                try:
-                    err_json = response.json()
-                    error_detail = err_json.get("error", {}).get("message") or response.text
-                except Exception:
-                    pass
-
-                if self.api_key and self.api_key in error_detail:
-                    error_detail = error_detail.replace(self.api_key, "***")
-
-                if response.status_code in (429, 500, 502, 503, 504) and attempt < self.max_retries:
-                    wait_time = initial_delay * (self.backoff_factor ** attempt)
-                    retry_after = response.headers.get("Retry-After")
-                    if retry_after:
-                        try:
-                            wait_time = float(retry_after)
-                        except (ValueError, TypeError):
-                            pass
-                    logger.warning(
-                        f"Gemini embedding rate-limited/failed [{response.status_code}]. "
-                        f"Retrying in {wait_time:.2f}s (Attempt {attempt+1}/{self.max_retries+1})"
-                    )
-                    time.sleep(wait_time)
+            except genai_errors.APIError as e:
+                err_msg = self._mask_key(str(e.message or e))
+                code = getattr(e, "code", None) or getattr(e, "status_code", 500)
+                status_str = f"status {code}: {err_msg}"
+                if code in (429, 500, 502, 503, 504) and attempt < self.max_retries:
+                    wait = 1.0 * (self.backoff_factor ** attempt)
+                    logger.warning(f"Gemini embedding API error [{code}]: {err_msg}. Retrying in {wait:.2f}s...")
+                    time.sleep(wait)
                     continue
+                logger.error(f"Gemini embedding error after retries: {status_str}")
+                raise LLMProviderError(f"Gemini embedding request failed ({status_str})") from e
 
-                raise LLMProviderError(f"Gemini embedding request failed [{response.status_code}]: {error_detail}")
+            except LLMProviderError:
+                raise
 
-            except httpx.RequestError as e:
-                err_msg = str(e)
-                if self.api_key and self.api_key in err_msg:
-                    err_msg = err_msg.replace(self.api_key, "***")
-                if attempt < self.max_retries:
-                    wait_time = initial_delay * (self.backoff_factor ** attempt)
-                    logger.warning(f"Network error in Gemini embedding: {err_msg}. Retrying in {wait_time:.2f}s...")
-                    time.sleep(wait_time)
+            except Exception as e:
+                err_msg = self._mask_key(str(e))
+                err_lower = err_msg.lower()
+                if ("429" in err_lower or "quota" in err_lower or "resource exhausted" in err_lower) and attempt < self.max_retries:
+                    wait = 1.0 * (self.backoff_factor ** attempt)
+                    logger.warning(f"Gemini embedding rate-limited: {err_msg}. Retrying in {wait:.2f}s...")
+                    time.sleep(wait)
                     continue
-                raise LLMProviderError(f"Network error during Gemini embedding request: {err_msg}") from e
+                raise LLMProviderError(f"Gemini embedding error: {err_msg}") from e
 
-        if data is None:
-            raise LLMProviderError("Failed to obtain embedding from Gemini API after retries.")
-
-        values = data.get("embedding", {}).get("values", [])
-        if not values:
-            raise LLMProviderError("Empty embedding vector returned from Gemini API.")
-
-        return self.normalize_vector(values)
+        raise LLMProviderError("Failed to obtain embedding from Gemini API after retries.")
 
     def embed_batch(self, texts: List[str]) -> List[List[float]]:
         """Generate embeddings for a list of texts using bounded batch requests."""
@@ -163,82 +159,44 @@ class GeminiEmbeddingProvider(BaseEmbeddingProvider):
         if not self.api_key:
             raise LLMProviderError("Gemini API key is required for semantic embeddings.")
 
-        model_path = self._get_model_path()
-        url = f"{self.base_url}/{model_path}:batchEmbedContents"
-        headers = {
-            "Content-Type": "application/json",
-            "x-goog-api-key": self.api_key,
-        }
-
         all_vectors: List[List[float]] = []
 
-        # Process in safe, bounded chunks
+        config = genai_types.EmbedContentConfig(
+            output_dimensionality=self.dimension if self.dimension else None
+        )
+
         for i in range(0, len(texts), self.max_batch_size):
             chunk = texts[i : i + self.max_batch_size]
-            requests_payload = []
-            for t in chunk:
-                clean_t = self.sanitize_text_for_embedding(t)
-                req_obj: Dict[str, Any] = {
-                    "model": model_path,
-                    "content": {"parts": [{"text": clean_t if clean_t.strip() else " "}]},
-                }
-                if self.dimension:
-                    req_obj["outputDimensionality"] = self.dimension
-                requests_payload.append(req_obj)
+            clean_chunk = [self.sanitize_text_for_embedding(t) or " " for t in chunk]
 
-            payload = {"requests": requests_payload}
-            chunk_data = None
-            initial_delay = 1.0
-
+            chunk_success = False
             for attempt in range(self.max_retries + 1):
                 try:
-                    with httpx.Client(timeout=self.timeout) as client:
-                        response = client.post(url, headers=headers, json=payload)
-
-                    if response.status_code == 200:
-                        chunk_data = response.json()
-                        break
-
-                    error_detail = response.text
-                    try:
-                        err_json = response.json()
-                        error_detail = err_json.get("error", {}).get("message") or response.text
-                    except Exception:
-                        pass
-
-                    if self.api_key and self.api_key in error_detail:
-                        error_detail = error_detail.replace(self.api_key, "***")
-
-                    if response.status_code in (429, 500, 502, 503, 504) and attempt < self.max_retries:
-                        wait_time = initial_delay * (self.backoff_factor ** attempt)
-                        time.sleep(wait_time)
-                        continue
-
-                    # If batch endpoint returns 404 or unsupported status, fall back to sequential single embed
-                    logger.warning(
-                        f"Batch embedding request failed with status {response.status_code}: {error_detail}. "
-                        "Falling back to individual embedding calls for this chunk."
+                    response = self.client.models.embed_content(
+                        model=self.model,
+                        contents=clean_chunk,
+                        config=config,
                     )
-                    break
-
-                except httpx.RequestError as e:
+                    if response.embeddings:
+                        for emb in response.embeddings:
+                            vals = getattr(emb, "values", None) or []
+                            all_vectors.append(self.normalize_vector(vals) if vals else [0.0] * self.dimension)
+                        chunk_success = True
+                        break
+                except Exception as e:
                     if attempt < self.max_retries:
-                        time.sleep(initial_delay * (self.backoff_factor ** attempt))
+                        time.sleep(1.0 * (self.backoff_factor ** attempt))
                         continue
-                    logger.warning(f"Batch embedding network error: {e}. Falling back to single embeds.")
+                    logger.warning(f"Batch embedding failed: {self._mask_key(str(e))}. Falling back to single embeds.")
                     break
 
-            if chunk_data and "embeddings" in chunk_data:
-                for item in chunk_data["embeddings"]:
-                    vals = item.get("values", [])
-                    all_vectors.append(self.normalize_vector(vals) if vals else [0.0] * self.dimension)
-            else:
-                # Sequential fallback for this chunk
+            if not chunk_success:
+                # Fallback to sequential embedding for this chunk
                 for t in chunk:
                     try:
                         all_vectors.append(self.embed_text(t))
                     except Exception as e:
-                        logger.warning(f"Individual fallback embedding failed: {e}")
+                        logger.warning(f"Individual fallback embedding failed: {self._mask_key(str(e))}")
                         all_vectors.append([0.0] * self.dimension)
 
         return all_vectors

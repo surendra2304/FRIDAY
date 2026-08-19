@@ -8,7 +8,7 @@ from friday.core.config import Settings, get_settings
 def test_default_settings():
     settings = Settings()
     assert settings.env == "development"
-    assert settings.llm_provider == "mock"
+    assert settings.llm_provider == "gemini"
     assert settings.memory_max_messages == 50
     assert settings.agent_name == "FRIDAY"
 
