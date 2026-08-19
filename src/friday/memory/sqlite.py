@@ -288,6 +288,7 @@ class SQLiteConversationMemory(BaseMemory):
         self,
         message: Message,
         conversation_id: Optional[str] = None,
+        auto_embed: bool = True,
     ) -> None:
         """Persist a message into the conversation store within a transaction."""
         conv_id = conversation_id or self._active_conversation_id
@@ -317,12 +318,12 @@ class SQLiteConversationMemory(BaseMemory):
                     conn.execute("INSERT INTO conversations (id, title, created_at, updated_at, metadata) VALUES (?, ?, ?, ?, ?)",
                                  (conv_id, "Auto-created Conversation", created_at, now, "{}"))
                 conn.execute("INSERT INTO messages (id, conversation_id, role, content, name, tool_calls, tool_call_id, created_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                             (msg_id, conv_id, message.role.value, message.content, message.name, tool_calls_str, message.tool_call_id, created_at, "{}"))
+                              (msg_id, conv_id, message.role.value, message.content, message.name, tool_calls_str, message.tool_call_id, created_at, "{}"))
                 conn.execute("UPDATE conversations SET updated_at = ? WHERE id = ?", (now, conv_id))
                 conn.commit()
                 logger.debug(f"Saved message '{msg_id}' [Role: {message.role.value}] to conversation '{conv_id}'")
 
-        if self.embedding_provider and message.content and message.content.strip():
+        if auto_embed and self.embedding_provider and message.content and message.content.strip():
             try:
                 emb = self.embedding_provider.embed_text(message.content)
                 emb_rec = EmbeddingRecord(

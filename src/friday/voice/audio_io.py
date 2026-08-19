@@ -71,7 +71,7 @@ class MicrophoneStream:
         self,
         sample_rate: int = 16000,
         channels: int = 1,
-        chunk_duration_ms: int = 100,
+        chunk_duration_ms: int = 40,
         device: Optional[int] = None,
     ):
         self.sample_rate = sample_rate
@@ -228,13 +228,14 @@ class SpeakerStream:
         try:
             self._stream = sd.RawOutputStream(
                 samplerate=self.sample_rate,
+                blocksize=512,
                 device=self.device,
                 channels=self.channels,
                 dtype="int16",
                 callback=_callback,
             )
             self._stream.start()
-            logger.info(f"SpeakerStream started ({self.sample_rate}Hz, 16-bit mono PCM)")
+            logger.info(f"SpeakerStream started ({self.sample_rate}Hz, 16-bit mono PCM, blocksize: 512)")
         except Exception as e:
             self._error = f"Failed to start speaker stream: {e}"
             logger.warning(self._error)
