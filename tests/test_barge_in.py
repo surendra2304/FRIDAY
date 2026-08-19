@@ -1,6 +1,7 @@
-"""Deterministic tests for true barge-in, natural interruption, and context coherence."""
+"""Deterministic tests for true barge-in, natural interruption, VAD signals, and context coherence."""
 
 import asyncio
+import struct
 from unittest import mock
 import pytest
 
@@ -30,10 +31,19 @@ class MockGenAIServerContent:
 
 
 class MockGenAIServerMessage:
-    def __init__(self, server_content=None, tool_call=None, tool_call_cancellation=None):
+    def __init__(
+        self,
+        server_content=None,
+        tool_call=None,
+        tool_call_cancellation=None,
+        session_resumption_update=None,
+        go_away=None,
+    ):
         self.server_content = server_content
         self.tool_call = tool_call
         self.tool_call_cancellation = tool_call_cancellation
+        self.session_resumption_update = session_resumption_update
+        self.go_away = go_away
 
 
 class MockAsyncSession:
@@ -56,7 +66,6 @@ class MockAsyncSession:
 
 def test_pcm_rms_calculation():
     """Verify compute_pcm_rms correctly measures silence vs loud audio."""
-    import struct
     # 1. Complete silence
     silence = b"\x00\x00" * 800
     assert compute_pcm_rms(silence) == 0.0
@@ -70,12 +79,9 @@ def test_pcm_rms_calculation():
 @pytest.mark.anyio
 async def test_local_zero_latency_barge_in():
     """Verify local high-energy speech immediately purges active speaker buffer."""
-    import struct
-
-    session = GeminiLiveVoiceSession(api_key="AIzaTestKey")
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY", barge_in_rms_threshold=300.0)
     session._active = True
 
-    # High energy audio chunk (simulating user speaking "Hey!")
     loud_pcm = struct.pack("<800h", *[2000] * 800)
     mic = MockMicrophoneStream(chunks=[loud_pcm])
     mic.start()
@@ -105,7 +111,7 @@ async def test_server_side_interruption_and_memory_coherence():
     agent_mock = mock.MagicMock()
     agent_mock.memory = mock.MagicMock()
 
-    session = GeminiLiveVoiceSession(api_key="AIzaTestKey", agent=agent_mock)
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY", agent=agent_mock)
     session._active = True
 
     spk = MockSpeakerStream(sample_rate=24000)
@@ -160,7 +166,7 @@ async def test_spoken_stop_backup_command():
     agent_mock = mock.MagicMock()
     agent_mock.memory = mock.MagicMock()
 
-    session = GeminiLiveVoiceSession(api_key="AIzaTestKey", agent=agent_mock)
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY", agent=agent_mock)
     session._active = True
 
     spk = MockSpeakerStream(sample_rate=24000)
@@ -182,3 +188,116 @@ async def test_spoken_stop_backup_command():
 
     assert spk.interrupted_count == 1
     assert recorded_turns[0] == ("stop", "[Stopped by user]")
+
+
+@pytest.mark.anyio
+async def test_rapid_followup_dialogue():
+    """Verify rapid consecutive conversational turns execute seamlessly without state leakage."""
+    agent_mock = mock.MagicMock()
+    agent_mock.memory = mock.MagicMock()
+
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY", agent=agent_mock)
+    session._active = True
+
+    # Turn 1
+    turn1 = MockGenAIServerMessage(
+        server_content=MockGenAIServerContent(
+            turn_complete=True,
+            input_tx="Hello FRIDAY",
+            output_tx="Hello!",
+        )
+    )
+    # Turn 2 (Rapid follow-up)
+    turn2 = MockGenAIServerMessage(
+        server_content=MockGenAIServerContent(
+            turn_complete=True,
+            input_tx="What is 1 + 1?",
+            output_tx="2.",
+        )
+    )
+
+    mock_ws = MockAsyncSession(receive_messages=[turn1, turn2])
+    spk = MockSpeakerStream()
+    stop_event = asyncio.Event()
+
+    recorded = []
+    await session._audio_receiver_loop(mock_ws, spk, lambda u, a: recorded.append((u, a)), stop_event)
+
+    assert len(recorded) == 2
+    assert recorded[0] == ("Hello FRIDAY", "Hello!")
+    assert recorded[1] == ("What is 1 + 1?", "2.")
+    assert agent_mock.memory.add_message.call_count == 4
+
+
+@pytest.mark.anyio
+async def test_silence_input_no_spurious_playback():
+    """Verify that silent microphone frames do not trigger local barge-in false positives."""
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY", barge_in_rms_threshold=350.0)
+    session._active = True
+
+    silence = b"\x00\x00" * 800
+    mic = MockMicrophoneStream(chunks=[silence, silence])
+    mic.start()
+
+    spk = SpeakerStream(sample_rate=24000)
+    spk._active = True
+    spk.play_chunk(b"active_speech" * 20)
+    assert spk.is_playing
+
+    mock_ws = MockAsyncSession()
+    stop_event = asyncio.Event()
+
+    task = asyncio.create_task(session._audio_sender_loop(mock_ws, mic, spk, stop_event))
+    await asyncio.sleep(0.05)
+    stop_event.set()
+    await task
+
+    # Silence must NOT purge speaker stream
+    assert spk.is_playing
+    assert spk.queue_size == 1
+
+
+@pytest.mark.anyio
+async def test_short_utterance_quick_response():
+    """Verify short single-word utterances produce clean turn completion."""
+    agent_mock = mock.MagicMock()
+    agent_mock.memory = mock.MagicMock()
+
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY", agent=agent_mock)
+    session._active = True
+
+    msg = MockGenAIServerMessage(
+        server_content=MockGenAIServerContent(
+            turn_complete=True,
+            input_tx="Time?",
+            output_tx="11:15 AM.",
+        )
+    )
+
+    mock_ws = MockAsyncSession(receive_messages=[msg])
+    spk = MockSpeakerStream()
+    stop_event = asyncio.Event()
+
+    recorded = []
+    await session._audio_receiver_loop(mock_ws, spk, lambda u, a: recorded.append((u, a)), stop_event)
+
+    assert len(recorded) == 1
+    assert recorded[0] == ("Time?", "11:15 AM.")
+
+
+@pytest.mark.anyio
+async def test_programmatic_cancellation():
+    """Verify stop_event immediately halts audio loops cleanly."""
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY")
+    session._active = True
+
+    stop_event = asyncio.Event()
+    stop_event.set()  # Immediately cancelled
+
+    mic = MockMicrophoneStream(chunks=[b"chunk_1"])
+    spk = MockSpeakerStream()
+    mock_ws = MockAsyncSession()
+
+    # Loops should return immediately without processing
+    await session._audio_sender_loop(mock_ws, mic, spk, stop_event)
+    assert len(mock_ws.sent_realtime_chunks) == 0

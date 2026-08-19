@@ -43,6 +43,11 @@ class GeminiLiveVoiceSession:
         reconnect_delay: float = 1.0,
         enable_session_resumption: bool = True,
         enable_context_compression: bool = True,
+        vad_start_sensitivity: Optional[str] = None,
+        vad_end_sensitivity: Optional[str] = None,
+        vad_prefix_padding_ms: Optional[int] = None,
+        vad_silence_duration_ms: Optional[int] = None,
+        barge_in_rms_threshold: Optional[float] = None,
     ):
         settings = get_settings()
         self.api_key = api_key or settings.gemini_api_key or settings.llm_api_key
@@ -57,6 +62,13 @@ class GeminiLiveVoiceSession:
         self.reconnect_delay = reconnect_delay
         self.enable_session_resumption = enable_session_resumption
         self.enable_context_compression = enable_context_compression
+
+        # VAD & Barge-in settings
+        self.vad_start_sensitivity = vad_start_sensitivity or getattr(settings, "voice_vad_start_sensitivity", "HIGH")
+        self.vad_end_sensitivity = vad_end_sensitivity or getattr(settings, "voice_vad_end_sensitivity", "HIGH")
+        self.vad_prefix_padding_ms = vad_prefix_padding_ms if vad_prefix_padding_ms is not None else getattr(settings, "voice_vad_prefix_padding_ms", 200)
+        self.vad_silence_duration_ms = vad_silence_duration_ms if vad_silence_duration_ms is not None else getattr(settings, "voice_vad_silence_duration_ms", 400)
+        self.barge_in_rms_threshold = barge_in_rms_threshold if barge_in_rms_threshold is not None else getattr(settings, "voice_barge_in_rms_threshold", 350.0)
 
         self._active = False
         self._session: Optional[Any] = None
@@ -163,6 +175,29 @@ class GeminiLiveVoiceSession:
             config_kwargs["output_audio_transcription"] = genai_types.AudioTranscriptionConfig()
         except Exception as e:
             logger.debug(f"Transcription config not supported: {e}")
+
+        # VAD & Activity Detection
+        try:
+            start_sens = (
+                genai_types.StartSensitivity.START_SENSITIVITY_HIGH
+                if str(self.vad_start_sensitivity).upper() == "HIGH"
+                else genai_types.StartSensitivity.START_SENSITIVITY_LOW
+            )
+            end_sens = (
+                genai_types.EndSensitivity.END_SENSITIVITY_HIGH
+                if str(self.vad_end_sensitivity).upper() == "HIGH"
+                else genai_types.EndSensitivity.END_SENSITIVITY_LOW
+            )
+            config_kwargs["realtime_input_config"] = genai_types.RealtimeInputConfig(
+                automatic_activity_detection=genai_types.AutomaticActivityDetection(
+                    start_of_speech_sensitivity=start_sens,
+                    end_of_speech_sensitivity=end_sens,
+                    prefix_padding_ms=self.vad_prefix_padding_ms,
+                    silence_duration_ms=self.vad_silence_duration_ms,
+                )
+            )
+        except Exception as e:
+            logger.debug(f"Realtime VAD config error: {e}")
 
         # Session resumption
         if self.enable_session_resumption and self._resumption_handle:
@@ -365,7 +400,7 @@ class GeminiLiveVoiceSession:
                     # Zero-latency local barge-in: If user speaks while speaker buffer is active, purge playback immediately
                     if getattr(spk, "is_playing", False) or getattr(spk, "queue_size", 0) > 0:
                         rms = compute_pcm_rms(chunk)
-                        if rms > 350.0:  # User voice energy threshold
+                        if rms > self.barge_in_rms_threshold:  # User voice energy threshold
                             logger.info(f"Local barge-in: user speech energy detected (RMS: {rms:.1f}), purging speaker buffer")
                             spk.stop()
 

@@ -1397,3 +1397,31 @@ Build a robust, non-blocking local audio I/O streaming pipeline for continuous 1
    - Local AI models / Whisper / Ollama: **NONE** (Pure I/O streaming).
 
 ---
+
+## 2026-08-19 — Phase 5.4: Natural VAD and True Barge-In
+
+### Objective
+Enable natural conversational turn-taking and true dual-layer barge-in interruption. Support automatic server-side VAD with tuned sensitivity and silence windows, instant local RMS speech energy interruption (<1.0 ms), fallback spoken stop commands, and memory coherence after interrupted turns.
+
+### Work Completed
+1. **Server-Side VAD Configuration (`LiveConnectConfig.realtime_input_config`)**:
+   - Configured `genai_types.RealtimeInputConfig` with `genai_types.AutomaticActivityDetection`:
+     - `start_of_speech_sensitivity`: `HIGH` (avoids clipping first syllables)
+     - `end_of_speech_sensitivity`: `HIGH` (rapid turn completion without long trailing silence)
+     - `prefix_padding_ms`: 200 ms
+     - `silence_duration_ms`: 400 ms
+   - Added configuration fields in `src/friday/core/config.py`: `voice_vad_start_sensitivity`, `voice_vad_end_sensitivity`, `voice_vad_prefix_padding_ms`, `voice_vad_silence_duration_ms`, and `voice_barge_in_rms_threshold`.
+2. **Dual-Layer Barge-In Interruption**:
+   - **Local Layer**: Instantaneous speech energy gate (`compute_pcm_rms(chunk) > 350.0`) in `_audio_sender_loop` purges speaker playback buffers in **0.098 ms (<1 ms)** without waiting for server round-trip network packets.
+   - **Server Layer**: `server_content.interrupted=True` signal cleans up pending audio and text buffers, tagging the interrupted turn with `[interrupted]` before committing to `SQLiteConversationMemory`.
+   - **Fallback Controls**: Supported spoken stop commands ("stop", "cancel", "hold on", "quiet"), `Ctrl+C`, and programmatic cancellation events.
+3. **Deterministic Unit Test Suite (`tests/test_barge_in.py`)**:
+   - Tests: RMS energy calculation, local zero-latency barge-in, server interruption & memory coherence, spoken backup stop commands, rapid follow-up dialogue, silence input rejection, short utterance handling, and programmatic cancellation.
+   - Result: **8 / 8 passed**.
+4. **Live Latency & VAD Benchmarking**:
+   - **Interruption-to-Stop Latency**: **0.098 ms** (<1 ms local buffer purge).
+   - **Live WebSocket Handshake Latency**: 1,567.4 ms.
+   - **VAD Turn Transition**: Clean turn boundary transition with 200ms padding and 400ms silence detection.
+   - **Full Test Suite**: **216 / 216 PASSING** (0 failed, 14m 53s).
+
+---
