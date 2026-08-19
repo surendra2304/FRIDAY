@@ -8,12 +8,12 @@ FRIDAY is a modular, extensible, autonomous personal AI assistant built with a c
 
 ## 🌟 Real-Time Voice Architecture (Phase 5 Complete)
 
-- **Full-Duplex Gemini Live Streaming (`gemini-2.5-flash-native-audio-latest`)** `[IMPLEMENTED | REAL-TESTED]`:
+- **Full-Duplex Gemini Live Streaming (`gemini-3.1-flash-live-preview`)** `[IMPLEMENTED | REAL-TESTED]`:
   - Bidirectional WebSocket session handling live audio input and output turns simultaneously.
   - Non-blocking 16 kHz 16-bit linear PCM microphone capture streaming in 40ms frames.
   - Immediate 24 kHz 16-bit linear PCM speaker playback starting on the first response chunk without waiting for turn completion.
   - Dual-layer instant barge-in: local RMS energy detection (**1.935 ms** speaker queue flush) and server-side interruption handling.
-  - Server-side VAD with high sensitivity, 200ms prefix padding, and 400ms silence detection.
+  - Server-side VAD with automatic speech activity detection.
   - Zero local AI model overhead: 0% GPU, < 1% CPU, < 5 MB RAM (Strictly cloud-first: no Ollama, no local Whisper, no local TTS).
 - **Unified Single-Brain Intelligence Layer** `[IMPLEMENTED | REAL-TESTED]`:
   - Voice directly dispatches functions through `ToolRegistry` and commits turns to `SQLiteConversationMemory`.
@@ -28,7 +28,7 @@ FRIDAY is a modular, extensible, autonomous personal AI assistant built with a c
 | Subsystem / Capability | Implementation | Mock Tested | Real Tested | Status |
 | :--- | :--- | :---: | :---: | :---: |
 | **Core FridayAgent & Reasoning Loop** | `src/friday/agent/` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
-| **Google Gemini Text Provider (`gemini-2.5-flash`)** | `src/friday/llm/gemini_provider.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Google Gemini Text Provider (`gemini-3.6-flash`)** | `src/friday/llm/gemini_provider.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Function Calling & Tool Execution** | `src/friday/tools/` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Tiered Authorization & Safety Gating** | `src/friday/core/auth.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Persistent SQLite Memory (WAL + ACID)** | `src/friday/memory/sqlite.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
