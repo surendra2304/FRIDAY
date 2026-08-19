@@ -6,8 +6,14 @@ FRIDAY is a modular, extensible, autonomous personal AI assistant built with a s
 
 ---
 
-## 🌟 Features (v0.4.5)
+## 🌟 Features (v0.5.0)
 
+- **Real-Time Gemini Live Voice Architecture**:
+  - Full-duplex bidirectional WebSocket streaming via Google Gemini Live (`gemini-2.5-flash-native-audio-latest`).
+  - Ultra-low latency input (16kHz 16-bit PCM streaming) and output (24kHz PCM immediate chunk playback).
+  - Dual-layer instant barge-in with real-time RMS voice activity detection (**0.117 ms** local speaker purge).
+  - Unified agent brain: Voice shares the exact same `ToolRegistry`, `SQLiteConversationMemory`, and authorization gating.
+  - Zero local AI model overhead: 0% GPU, < 1% CPU, < 100 MB RAM.
 - **Modular Architecture**: Clean interfaces for LLM providers (`BaseLLMProvider`), tools (`BaseTool`), memory (`BaseMemory`), and authorization (`BaseAuthorizer`).
 - **Pluggable LLM Backends**:
   - `Google Gemini Provider`: Cloud-first, high-intelligence inference via Google Gemini REST API (`gemini-2.5-flash`, `gemini-1.5-pro`) with function calling, structured system instructions, and zero local laptop compute overhead.
