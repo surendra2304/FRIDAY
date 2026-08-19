@@ -360,6 +360,10 @@ class MockSpeakerStream:
         self.interrupted_count += 1
         self.played_chunks.clear()
 
+    @property
+    def is_playing(self) -> bool:
+        return len(self.played_chunks) > 0
+
     def close(self) -> None:
         self._active = False
 

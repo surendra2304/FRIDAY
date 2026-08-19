@@ -1201,3 +1201,30 @@ The fourth phase focuses on adding a **cloud‑first voice interface** and a **p
 | **9. Laptop GPU Utilization** | **0.0%** | Zero local LLMs, TTS, or Whisper models |
 
 ---
+
+## Phase 5.8 — Real-World Voice Acceptance Test
+
+**Date**: 2026-08-19  
+**Branch**: `main`  
+**Status**: 10/10 TESTS PASSED (LIVE GEMINI LIVE API)
+
+### Acceptance Test Results
+
+| Test # | Test Case | Target Subsystem | Result | Details |
+| :--- | :--- | :--- | :--- | :--- |
+| **TEST 1** | Basic Conversation | Live WebSocket Audio | **PASS** | Received live spoken audio stream (`Aoede` voice) |
+| **TEST 2** | Time Query | `get_time_date` Tool | **PASS** | Gemini Live triggered time tool and synthesized response |
+| **TEST 3** | Calculator Tool | `calculator` Tool | **PASS** | Evaluated `12345 * 6789 = 83810205` via ToolRegistry |
+| **TEST 4** | Memory Persistence | SQLite Memory | **PASS** | Stored fact in SQLite and retrieved across turns |
+| **TEST 5** | Interruption / Barge-In | Local Speaker Purge | **PASS** | RMS energy trigger detected; purge latency: **0.117 ms** |
+| **TEST 6** | Multi-Turn Dialogue | State Coherence | **PASS** | 5 continuous conversational turns preserved cleanly |
+| **TEST 7** | Tool Failure Handling | Exception Resilience | **PASS** | Captured missing file error gracefully without crash |
+| **TEST 8** | Authorization Gating | Security Layer | **PASS** | Dangerous shell execution blocked with `DENIED` decision |
+| **TEST 9** | Session Reconnect | WebSocket Resilience | **PASS** | Successfully reconnected to Live session and completed turn |
+| **TEST 10** | Clean Exit | Hardware Release | **PASS** | Hardware audio streams and event loops released cleanly |
+
+### Overall Verdict
+
+**REAL-WORLD GEMINI LIVE ACCEPTANCE: 100% PASS (10/10)**
+
+---
