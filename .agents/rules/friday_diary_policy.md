@@ -1,95 +1,62 @@
---------------------------------------------------
-FRIDAY DIARY POLICY
---------------------------------------------------
+# FRIDAY Permanent Project Memory Rule: Diary Maintenance
 
-Before beginning any meaningful task:
+FRIDAY DIARY:
+- master file: FRIDAY_DIARY.md
+- daily directory: diary/
+- specification: FRIDAY_DIARY_SPEC.md
+- helper: scripts/update_friday_diary.py
 
-1. Read:
-   - .agents/rules/github_sync_policy.md
-   - .agents/rules/friday_diary_policy.md
-   - relevant existing project instructions
+DAY-WISE:
+mandatory
 
-2. Inspect the latest relevant diary entry.
+HISTORICAL RECONSTRUCTION:
+mandatory
 
-During a task:
+DAILY UPDATE:
+mandatory after every meaningful completed task
 
-3. Keep track of:
-   - work performed
-   - problems discovered
-   - root causes
-   - fixes
-   - tests
-   - verification
-   - security
-   - Git commits
-   - known limitations
+HISTORICAL DAYS:
+immutable except additive corrections
 
-After a meaningful task is completed:
+SECRETS:
+never store
 
-4. Automatically update:
-   docs/FRIDAY_DIARY.md
+## AUTOMATIC DAILY MAINTENANCE
 
-5. Diary MUST be day-wise:
-   ## YYYY-MM-DD
+BEFORE EVERY MEANINGFUL TASK:
+read FRIDAY_DIARY_SPEC.md and current diary state.
 
-6. Within each day, use sections such as:
-   ### Work Completed
-   ### Problems Found
-   ### Root Cause
-   ### Fixes Implemented
-   ### Verification
-   ### Tests
-   ### Security
-   ### Git / GitHub
-   ### Known Limitations
-   ### Next Planned Work
+DURING EVERY MEANINGFUL TASK:
+track work, decisions, bugs, tests, verification, and commits.
 
-7. Never fabricate test results.
+AFTER EVERY MEANINGFUL COMPLETED TASK:
+update today's diary/YYYY-MM-DD.md
+update FRIDAY_DIARY.md master index
+then commit/push according to GitHub policy.
 
-8. Never change:
-   NOT VERIFIED
-   PARTIAL
-   BLOCKED
-   MOCK
-   PLACEHOLDER
+At the end of each work session:
+verify today's diary exists.
 
-   into VERIFIED unless real evidence exists.
+PROJECT MEMORY:
+PERSISTENT
 
-9. Historical failures MUST remain preserved.
+MASTER DIARY:
+FRIDAY_DIARY.md
 
-10. If a later fix supersedes an earlier failure, preserve both entries and
-    clearly record the correction.
+DAILY DIARY:
+diary/YYYY-MM-DD.md
 
-11. Never store API keys, passwords, tokens, private keys, or other secrets
-    in the diary or project memory.
+DIARY SPEC:
+FRIDAY_DIARY_SPEC.md
 
-12. Never store .env contents in project memory.
+DIARY MODE:
+DAY-WISE
 
-13. Never print secrets in reports.
+HISTORY:
+APPEND-ONLY / ADDITIVE CORRECTIONS
 
-14. After a meaningful completed task:
-    - update diary
-    - inspect git diff
-    - commit according to github_sync_policy
-    - push according to github_sync_policy
-    - verify HEAD == origin/main
-    - verify worktree clean
+AUTOMATIC DAILY UPDATE:
+REQUIRED
 
-15. For documentation-only or tiny exploratory tasks:
-    do NOT create unnecessary commits.
-
-16. Before giving a final response to the user:
-    verify that the diary reflects the actual completed state.
-
-17. The diary is the canonical human-readable engineering history.
-
-18. Project memory/rules store the permanent operating policies.
-
-19. Never confuse project memory with diary history.
-
-20. Never claim "automatic diary update" unless this policy file exists and is
-    being followed in the current task.
-
---------------------------------------------------
-END FRIDAY DIARY POLICY
---------------------------------------------------
+PHASE 6:
+NOT STARTED
