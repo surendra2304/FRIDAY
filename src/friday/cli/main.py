@@ -158,15 +158,18 @@ def main() -> None:
 
     # Voice interface initialization (optional)
     if getattr(settings, "voice_enabled", False):
-        from friday.voice.session import VoiceSession
+        import asyncio
         if settings.voice_provider == "gemini":
             try:
-                from friday.voice.gemini_provider import GeminiVoiceProvider
-                provider = GeminiVoiceProvider()
+                from friday.voice.gemini_live_session import GeminiLiveVoiceSession
+                logger.info("Starting REAL Gemini Live voice session...")
+                voice_session = GeminiLiveVoiceSession(agent=agent)
+                asyncio.run(voice_session.run_live_loop())
+                logger.info("Live Voice session ended.")
             except Exception as e:
-                logger.error(f"Failed to initialize GeminiVoiceProvider: {e}")
-                provider = None
+                logger.error(f"Gemini Live session failed: {e}")
         else:
+            from friday.voice.session import VoiceSession
             from friday.voice.mock_provider import MockVoiceProvider
             # Example mock transcripts; replace with real data as needed
             provider = MockVoiceProvider([
@@ -174,11 +177,10 @@ def main() -> None:
                 "Remember my favorite editor is VS Code.",
                 "What editor did I just tell you about?",
             ])
-        if provider:
             voice_session = VoiceSession(provider, agent)
-            logger.info("Starting voice session (blocking until finished)")
+            logger.info("Starting mock voice session (blocking until finished)")
             voice_session.start()
-            logger.info("Voice session ended")
+            logger.info("Mock Voice session ended")
 
     print(BANNER)
     print(f"FRIDAY initialized. Provider: [{agent.llm.provider_name}], Model: [{agent.llm.model}].\n")

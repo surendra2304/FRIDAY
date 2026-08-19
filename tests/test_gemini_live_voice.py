@@ -293,5 +293,5 @@ async def test_live_session_tool_execution(mock_agent):
 def test_provider_adapter_instantiation():
     """Verify GeminiVoiceProvider instantiates cleanly without hardware dependencies."""
     provider = GeminiVoiceProvider(api_key="TEST_GEMINI_API_KEY")
-    assert provider.model == "gemini-2.5-flash-native-audio-latest"
+    assert provider.model == "gemini-2.5-flash"
     assert provider.api_key == "TEST_GEMINI_API_KEY"

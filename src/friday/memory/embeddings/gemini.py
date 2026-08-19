@@ -134,8 +134,16 @@ class GeminiEmbeddingProvider(BaseEmbeddingProvider):
                 code = getattr(e, "code", None) or getattr(e, "status_code", 500)
                 status_str = f"status {code}: {err_msg}"
                 if code == 429:
-                    GeminiEmbeddingProvider._circuit_breaker_cooldown_until = time.time() + 60.0
-                    logger.error(f"Gemini embedding quota exhausted (429). Opening circuit breaker for 60s.")
+                    cooldown = 60.0
+                    if hasattr(e, "response") and hasattr(e.response, "headers"):
+                        retry_after = e.response.headers.get("retry-after") or e.response.headers.get("Retry-After")
+                        if retry_after:
+                            try:
+                                cooldown = float(retry_after)
+                            except ValueError:
+                                pass
+                    GeminiEmbeddingProvider._circuit_breaker_cooldown_until = time.time() + cooldown
+                    logger.error(f"Gemini embedding quota exhausted (429). Opening circuit breaker for {cooldown}s.")
                     raise LLMProviderError(f"Gemini embedding rate-limited: {err_msg}")
                 if code in (500, 502, 503, 504) and attempt < self.max_retries:
                     wait = 1.0 * (self.backoff_factor ** attempt)

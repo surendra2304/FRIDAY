@@ -323,7 +323,11 @@ class SQLiteConversationMemory(BaseMemory):
                 conn.commit()
                 logger.debug(f"Saved message '{msg_id}' [Role: {message.role.value}] to conversation '{conv_id}'")
 
-        if auto_embed and self.embedding_provider and message.content and len(message.content.strip()) > 15:
+        text = message.content.strip() if message.content else ""
+        word_count = len(text.split())
+        is_trivial = len(text) < 20 or word_count < 4
+        
+        if auto_embed and self.embedding_provider and text and not is_trivial:
             try:
                 existing_emb = None
                 with self._get_connection() as conn:
@@ -707,7 +711,16 @@ class SQLiteConversationMemory(BaseMemory):
         # 1. Gather lexical results from FTS5
         lexical_results = self.search(query=query, conversation_id=conversation_id, limit=limit * 2)
 
-        # 2. Gather semantic results if embedding provider is available
+        # 2. FTS-First Bypass: skip semantic search for simple, short queries
+        clean_query = query.strip()
+        word_count = len(clean_query.split())
+        is_simple_query = len(clean_query) < 20 or word_count < 4
+        
+        if is_simple_query:
+            logger.debug(f"Skipping semantic embedding for simple query: '{clean_query}'")
+            return lexical_results[:limit]
+
+        # 3. Gather semantic results if embedding provider is available
         semantic_results: List[SemanticSearchResult] = []
         if self.embedding_provider:
             try:

@@ -156,7 +156,7 @@ class Settings(BaseSettings):
     )
     voice_playback_buffer_ms: int = Field(default=100, description="Playback buffer size in milliseconds for non‑blocking audio")
     voice_live_model: str = Field(
-        default="gemini-2.5-flash-native-audio-latest",
+        default="gemini-2.5-flash",
         validation_alias=AliasChoices("FRIDAY_VOICE_LIVE_MODEL", "VOICE_LIVE_MODEL", "voice_live_model"),
         description="Gemini Live multimodal voice model",
     )
