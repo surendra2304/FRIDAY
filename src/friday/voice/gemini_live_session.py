@@ -19,6 +19,8 @@ from typing import Any, Callable, Dict, List, Optional
 from google import genai
 from google.genai import types as genai_types
 
+from enum import Enum
+
 from friday.core.config import get_settings
 from friday.core.exceptions import LLMProviderError
 from friday.core.logging import get_logger, redact_tool_args
@@ -26,6 +28,21 @@ from friday.core.types import Message, Role, SafetyLevel, ToolCall
 from friday.voice.audio_io import MicrophoneStream, SpeakerStream, compute_pcm_rms
 
 logger = get_logger("voice.live_session")
+
+
+class LiveSessionState(str, Enum):
+    """Observable states of the real-time bidirectional Gemini Live session."""
+    IDLE = "IDLE"
+    CONNECTING = "CONNECTING"
+    CONNECTED = "CONNECTED"
+    USER_SPEAKING = "USER_SPEAKING"
+    FRIDAY_SPEAKING = "FRIDAY_SPEAKING"
+    INTERRUPTED = "INTERRUPTED"
+    TOOL_CALL = "TOOL_CALL"
+    RECONNECTING = "RECONNECTING"
+    STOPPING = "STOPPING"
+    STOPPED = "STOPPED"
+    FAILED = "FAILED"
 
 
 class GeminiLiveVoiceSession:
@@ -75,9 +92,22 @@ class GeminiLiveVoiceSession:
         self.thinking_budget = thinking_budget if thinking_budget is not None else getattr(settings, "voice_thinking_budget", None)
 
         self._active = False
+        self._state = LiveSessionState.IDLE
         self._session: Optional[Any] = None
         self._resumption_handle: Optional[str] = None
         self._connected_event = asyncio.Event()
+
+    def _set_state(self, new_state: LiveSessionState) -> None:
+        """Atomically transition state with audit logging."""
+        if self._state != new_state:
+            old = self._state
+            self._state = new_state
+            logger.debug(f"LiveSession state transition: {old.value} -> {new_state.value}")
+
+    @property
+    def state(self) -> LiveSessionState:
+        """Return the current observable turn state."""
+        return self._state
 
     @property
     def is_active(self) -> bool:
@@ -380,12 +410,14 @@ class GeminiLiveVoiceSession:
         try:
             while self._active and not stop.is_set():
                 config = self._build_live_config()
+                self._set_state(LiveSessionState.CONNECTING if reconnect_attempts == 0 else LiveSessionState.RECONNECTING)
                 logger.info(f"Connecting to Gemini Live WebSocket (model: {self.model})...")
 
                 try:
                     async with client.aio.live.connect(model=self.model, config=config) as session:
                         self._session = session
                         self._connected_event.set()
+                        self._set_state(LiveSessionState.CONNECTED)
                         reconnect_attempts = 0  # Reset retry counter on successful connection
                         logger.info("Gemini Live WebSocket session established.")
 
@@ -419,9 +451,11 @@ class GeminiLiveVoiceSession:
 
                     reconnect_attempts += 1
                     if reconnect_attempts > self.max_retries:
+                        self._set_state(LiveSessionState.FAILED)
                         logger.error(f"Gemini Live session failed after {self.max_retries} reconnection attempts: {e}")
                         raise LLMProviderError(f"Gemini Live session error: {e}") from e
 
+                    self._set_state(LiveSessionState.RECONNECTING)
                     delay = self.reconnect_delay * (2 ** (reconnect_attempts - 1))
                     logger.warning(
                         f"Gemini Live session disconnected: {e}. Reconnecting in {delay:.1f}s "
@@ -430,12 +464,14 @@ class GeminiLiveVoiceSession:
                     await asyncio.sleep(delay)
 
         finally:
+            self._set_state(LiveSessionState.STOPPING)
             self._active = False
             self._session = None
             self._connected_event.clear()
             mic.stop()
             spk.stop()
             spk.close()
+            self._set_state(LiveSessionState.STOPPED)
             logger.info("Gemini Live session closed.")
 
     async def _audio_sender_loop(
@@ -451,11 +487,14 @@ class GeminiLiveVoiceSession:
                 chunk = await mic.read_chunk()
                 if chunk and len(chunk) > 0:
                     # Zero-latency local barge-in: If user speaks while speaker buffer is active, purge playback immediately
+                    rms = compute_pcm_rms(chunk)
                     if getattr(spk, "is_playing", False) or getattr(spk, "queue_size", 0) > 0:
-                        rms = compute_pcm_rms(chunk)
                         if rms > self.barge_in_rms_threshold:  # User voice energy threshold
                             logger.info(f"Local barge-in: user speech energy detected (RMS: {rms:.1f}), purging speaker buffer")
+                            self._set_state(LiveSessionState.INTERRUPTED)
                             spk.stop()
+                    elif rms > self.barge_in_rms_threshold and self._state == LiveSessionState.CONNECTED:
+                        self._set_state(LiveSessionState.USER_SPEAKING)
 
                     blob = genai_types.Blob(
                         data=chunk,
@@ -513,6 +552,7 @@ class GeminiLiveVoiceSession:
                     # Instant barge-in / Interruption from Live API
                     if getattr(server_content, "interrupted", False) is True:
                         logger.info("Server barge-in signal: interrupting local speaker playback")
+                        self._set_state(LiveSessionState.INTERRUPTED)
                         turn_interrupted = True
                         spk.stop()
                         agent_text_parts.clear()
@@ -521,6 +561,8 @@ class GeminiLiveVoiceSession:
                     # Stream model audio turn parts
                     model_turn = getattr(server_content, "model_turn", None)
                     if model_turn and getattr(model_turn, "parts", None):
+                        if not turn_interrupted:
+                            self._set_state(LiveSessionState.FRIDAY_SPEAKING)
                         for part in model_turn.parts:
                             # Stream raw 24kHz PCM audio chunk immediately
                             inline_data = getattr(part, "inline_data", None)
@@ -542,6 +584,7 @@ class GeminiLiveVoiceSession:
 
                     # Turn completion
                     if getattr(server_content, "turn_complete", False):
+                        self._set_state(LiveSessionState.CONNECTED)
                         user_text = "".join(user_transcript_accum).strip()
                         raw_agent_text = ("".join(agent_output_tx).strip() or "".join(agent_text_parts).strip())
                         agent_text = f"{raw_agent_text} [interrupted]" if (turn_interrupted and raw_agent_text) else raw_agent_text
@@ -571,6 +614,7 @@ class GeminiLiveVoiceSession:
                 # 4. Server tool execution requests
                 tool_call = getattr(message, "tool_call", None)
                 if tool_call and getattr(tool_call, "function_calls", None):
+                    self._set_state(LiveSessionState.TOOL_CALL)
                     func_responses = []
                     for fc in tool_call.function_calls:
                         resp = await self._execute_tool_call(fc)
@@ -579,6 +623,7 @@ class GeminiLiveVoiceSession:
                     if func_responses:
                         logger.info(f"Sending {len(func_responses)} tool response(s) to Gemini Live")
                         await session.send_tool_response(function_responses=func_responses)
+                    self._set_state(LiveSessionState.CONNECTED)
 
                 # 5. Tool call cancellation
                 tool_cancel = getattr(message, "tool_call_cancellation", None)

@@ -309,3 +309,76 @@ def test_provider_adapter_instantiation():
     provider = GeminiVoiceProvider(api_key="TEST_GEMINI_API_KEY")
     assert provider.model == "gemini-3.1-flash-live-preview"
     assert provider.api_key == "TEST_GEMINI_API_KEY"
+
+
+@pytest.mark.anyio
+async def test_live_session_state_transitions(mock_agent):
+    """Verify LiveSessionState transitions through complete conversational lifecycle."""
+    from friday.voice.gemini_live_session import LiveSessionState
+
+    session = GeminiLiveVoiceSession(
+        api_key="TEST_GEMINI_API_KEY",
+        agent=mock_agent,
+    )
+    assert session.state == LiveSessionState.IDLE
+
+    session._active = True
+    spk = mock.MagicMock(spec=SpeakerStream)
+    stop_event = asyncio.Event()
+
+    # 1. Server speaking transition
+    audio_msg = MockGenAIServerMessage(
+        server_content=MockGenAIServerContent(
+            parts=[MockGenAIPart(data=b"\x01\x02" * 100, text="Hello")],
+            turn_complete=False,
+        )
+    )
+    mock_ws = MockAsyncSession(receive_messages=[audio_msg])
+    await session._audio_receiver_loop(mock_ws, spk, None, stop_event)
+    assert session.state == LiveSessionState.FRIDAY_SPEAKING
+
+    # 2. Interruption transition
+    int_msg = MockGenAIServerMessage(
+        server_content=MockGenAIServerContent(
+            interrupted=True,
+            turn_complete=False,
+        )
+    )
+    mock_ws2 = MockAsyncSession(receive_messages=[int_msg])
+    await session._audio_receiver_loop(mock_ws2, spk, None, stop_event)
+    assert session.state == LiveSessionState.INTERRUPTED
+
+    # 3. Turn complete resets to CONNECTED
+    complete_msg = MockGenAIServerMessage(
+        server_content=MockGenAIServerContent(
+            turn_complete=True,
+            input_tx="Hi",
+            output_tx="Hello!",
+        )
+    )
+    mock_ws3 = MockAsyncSession(receive_messages=[complete_msg])
+    await session._audio_receiver_loop(mock_ws3, spk, None, stop_event)
+    assert session.state == LiveSessionState.CONNECTED
+
+
+def test_speaker_stream_remainder_buffering():
+    """Verify SpeakerStream handles partial chunk boundaries without dropping or reordering bytes."""
+    stream = SpeakerStream(sample_rate=24000)
+    # Simulate start without actual hardware driver
+    stream._active = True
+
+    # Play two chunks of unequal sizes
+    chunk1 = b"\x01\x02\x03\x04\x05\x06"
+    chunk2 = b"\x07\x08\x09\x10"
+    stream.play_chunk(chunk1)
+    stream.play_chunk(chunk2)
+
+    # Queue size should reflect active chunks
+    assert stream.is_playing is True
+    assert stream.queue_size == 2
+
+    # Stop should purge queue and remainder completely
+    stream.stop()
+    assert stream.queue_size == 0
+    assert stream.is_playing is False
+

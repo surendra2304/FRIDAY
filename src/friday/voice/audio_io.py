@@ -249,6 +249,7 @@ class SpeakerStream:
         self._stream: Optional[Any] = None
         self._active = False
         self._queue: queue.Queue[bytes] = queue.Queue(maxsize=max_buffer_chunks)
+        self._remainder = bytearray()
         self._lock = threading.Lock()
         self._error: Optional[str] = None
 
@@ -275,21 +276,32 @@ class SpeakerStream:
             bytes_needed = frames * 2 * self.channels  # 2 bytes per 16-bit sample
             out_chunk = bytearray()
 
-            while len(out_chunk) < bytes_needed and self._active:
-                try:
-                    data = self._queue.get_nowait()
-                    out_chunk.extend(data)
-                except queue.Empty:
-                    break
+            with self._lock:
+                # 1. Drain any leftover remainder from previous partial chunk
+                if self._remainder:
+                    if len(self._remainder) <= bytes_needed:
+                        out_chunk.extend(self._remainder)
+                        self._remainder.clear()
+                    else:
+                        out_chunk.extend(self._remainder[:bytes_needed])
+                        del self._remainder[:bytes_needed]
 
+                # 2. Pull queued chunks if more bytes needed
+                while len(out_chunk) < bytes_needed and self._active:
+                    try:
+                        data = self._queue.get_nowait()
+                        needed = bytes_needed - len(out_chunk)
+                        if len(data) <= needed:
+                            out_chunk.extend(data)
+                        else:
+                            out_chunk.extend(data[:needed])
+                            self._remainder.extend(data[needed:])
+                    except queue.Empty:
+                        break
+
+            # 3. Pad with silence if underflow occurs
             if len(out_chunk) < bytes_needed:
-                # Pad with silence if buffer is empty
                 out_chunk.extend(b"\x00" * (bytes_needed - len(out_chunk)))
-            elif len(out_chunk) > bytes_needed:
-                # Put back excess bytes into front of queue
-                excess = bytes(out_chunk[bytes_needed:])
-                self._queue.put(excess)
-                out_chunk = out_chunk[:bytes_needed]
 
             outdata[:] = bytes(out_chunk)
             self.played_bytes += len(out_chunk)
@@ -330,8 +342,9 @@ class SpeakerStream:
                 self.played_chunks += 1
 
     def stop(self) -> None:
-        """Instantly purge all buffered playback chunks (barge-in interruption)."""
+        """Instantly purge all buffered playback chunks and remainder (barge-in interruption)."""
         with self._lock:
+            self._remainder.clear()
             while not self._queue.empty():
                 try:
                     self._queue.get_nowait()
@@ -357,11 +370,13 @@ class SpeakerStream:
 
     @property
     def queue_size(self) -> int:
-        return self._queue.qsize()
+        with self._lock:
+            return self._queue.qsize() + (1 if len(self._remainder) > 0 else 0)
 
     @property
     def is_playing(self) -> bool:
-        return self._active and self._queue.qsize() > 0
+        with self._lock:
+            return self._active and (self._queue.qsize() > 0 or len(self._remainder) > 0)
 
     @property
     def error(self) -> Optional[str]:
