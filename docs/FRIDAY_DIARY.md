@@ -48,6 +48,16 @@
 ## 2026-08-20
 
 ### Work Completed
+- **Phase 5 Voice — Final Human Verification Pending**:
+  - Voice Implementation: IMPLEMENTED
+  - Automated Tests: 272/272 PASSING
+  - Real Microphone Capture: PASS
+  - Real Live Audio Output: PASS
+  - Speaker Echo: FIXED (false interruptions are zero)
+  - Server VAD: STILL REQUIRES FINAL HUMAN ACCEPTANCE (server VAD interruption still occurred in real tests with empty agent transcription)
+  - Complete Natural Voice Response: NOT YET CONFIRMED BY FINAL HUMAN ACCEPTANCE
+  - Final human acceptance is still pending. Phase 6 not started.
+
 - **Phase 5.20 — Server VAD Turn-Taking & Telemetry Fix**:
   - Investigated premature server-side VAD interruptions during active assistant turns where Gemini Live cut off responses prematurely immediately after speech began.
   - Tuned `AutomaticActivityDetection` parameters in `src/friday/core/config.py` and `gemini_live_session.py`:

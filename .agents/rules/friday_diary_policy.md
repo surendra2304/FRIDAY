@@ -1,25 +1,95 @@
-# FRIDAY Permanent Project Memory Rule: Diary Maintenance
+--------------------------------------------------
+FRIDAY DIARY POLICY
+--------------------------------------------------
 
-**FRIDAY_DIARY.md is the permanent, chronological, authoritative history of the entire FRIDAY project.**
+Before beginning any meaningful task:
 
-For EVERY future FRIDAY development task, automatically follow this workflow:
+1. Read:
+   - .agents/rules/github_sync_policy.md
+   - .agents/rules/friday_diary_policy.md
+   - relevant existing project instructions
 
-1. **UNDERSTAND TASK**
-2. **INSPECT CURRENT STATE**
-3. **IMPLEMENT**
-4. **TEST**
-5. **RECORD IMPORTANT CHANGES IN FRIDAY_DIARY.md**
-6. **RECORD BUGS/FIXES/DECISIONS**
-7. **RECORD TEST RESULTS**
-8. **RECORD COMMIT**
-9. **RECORD GITHUB PUSH**
-10. **VERIFY DIARY IS CURRENT**
+2. Inspect the latest relevant diary entry.
 
-**Critical Rules:**
-- Do NOT wait for the user to tell you to update the diary.
-- Do NOT ask permission to update it.
-- Do NOT skip it because a task is small.
-- **Source of Truth**: Treat `docs/FRIDAY_DIARY.md` as the permanent project-history source of truth. `README.md` is for the CURRENT project overview.
-- **Security**: NEVER store secrets (API keys, passwords, access tokens, cookies, private credentials) in the diary or project memory. The Gemini API key remains only in the local `.env`. Use `[REDACTED]`.
-- **Accuracy**: Never claim a feature is implemented unless it is actually implemented. Always distinguish between `IMPLEMENTED`, `REAL-TESTED`, `MOCK-TESTED`, `PARTIAL`, `PLACEHOLDER`, `PLANNED`, and `FUTURE`.
-- **Permanence**: This is an INDEFINITE project. FRIDAY is never considered permanently finished. Continue maintaining the diary for every future phase and development session.
+During a task:
+
+3. Keep track of:
+   - work performed
+   - problems discovered
+   - root causes
+   - fixes
+   - tests
+   - verification
+   - security
+   - Git commits
+   - known limitations
+
+After a meaningful task is completed:
+
+4. Automatically update:
+   docs/FRIDAY_DIARY.md
+
+5. Diary MUST be day-wise:
+   ## YYYY-MM-DD
+
+6. Within each day, use sections such as:
+   ### Work Completed
+   ### Problems Found
+   ### Root Cause
+   ### Fixes Implemented
+   ### Verification
+   ### Tests
+   ### Security
+   ### Git / GitHub
+   ### Known Limitations
+   ### Next Planned Work
+
+7. Never fabricate test results.
+
+8. Never change:
+   NOT VERIFIED
+   PARTIAL
+   BLOCKED
+   MOCK
+   PLACEHOLDER
+
+   into VERIFIED unless real evidence exists.
+
+9. Historical failures MUST remain preserved.
+
+10. If a later fix supersedes an earlier failure, preserve both entries and
+    clearly record the correction.
+
+11. Never store API keys, passwords, tokens, private keys, or other secrets
+    in the diary or project memory.
+
+12. Never store .env contents in project memory.
+
+13. Never print secrets in reports.
+
+14. After a meaningful completed task:
+    - update diary
+    - inspect git diff
+    - commit according to github_sync_policy
+    - push according to github_sync_policy
+    - verify HEAD == origin/main
+    - verify worktree clean
+
+15. For documentation-only or tiny exploratory tasks:
+    do NOT create unnecessary commits.
+
+16. Before giving a final response to the user:
+    verify that the diary reflects the actual completed state.
+
+17. The diary is the canonical human-readable engineering history.
+
+18. Project memory/rules store the permanent operating policies.
+
+19. Never confuse project memory with diary history.
+
+20. Never claim "automatic diary update" unless this policy file exists and is
+    being followed in the current task.
+
+--------------------------------------------------
+END FRIDAY DIARY POLICY
+--------------------------------------------------
