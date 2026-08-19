@@ -2,7 +2,7 @@
 
 from typing import Any, Dict, List, Optional
 from friday.core.exceptions import ToolError
-from friday.core.logging import get_logger
+from friday.core.logging import get_logger, redact_tool_args
 from friday.core.types import SafetyLevel, ToolResult
 from friday.tools.base import BaseTool
 
@@ -118,7 +118,13 @@ class ToolRegistry:
                 k: v for k, v in arguments.items()
                 if v is not None or k in required_fields
             }
-            logger.info(f"Executing tool '{name}' (Safety: {tool.safety_level.value}) with args: {exec_args}")
+            logger.info(
+                "Executing tool '%s' [Safety: %s, arg_count: %d, args_meta: %s]",
+                name,
+                tool.safety_level.value,
+                len(exec_args),
+                redact_tool_args(exec_args),
+            )
             result = tool.execute(**exec_args)
             result.tool_call_id = tool_call_id
             return result

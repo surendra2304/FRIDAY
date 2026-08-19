@@ -1,11 +1,11 @@
-# FRIDAY Project Diary
+﻿# FRIDAY Project Diary
 
 > **Permanent, never-ending historical record and institutional memory of the FRIDAY project.**
 > **Started: 2026-08-18 | Current Version: v0.4.6 | Milestone: Phase 2 Complete (Persistent Memory Foundation)**
 
 ---
 
-## 2026-08-18 — Day 1
+## 2026-08-18 â€” Day 1
 
 ### Project state at start
 
@@ -18,12 +18,12 @@
 
 ### Work completed
 
-#### Session 1 — Architecture Specification & Project Setup
+#### Session 1 â€” Architecture Specification & Project Setup
 * Established foundational architectural principles: modularity, native interfaces, typed schemas, strict 3-tier safety model, and secret-safe logging.
 * Defined the permanent Project Diary structure in `docs/FRIDAY_DIARY.md` as the eternal source of truth.
 * Authored `pyproject.toml`, `requirements.txt`, `.env.example`, and `.gitignore`.
 
-#### Session 2 — Core Engine & Subsystem Implementation (V0.1)
+#### Session 2 â€” Core Engine & Subsystem Implementation (V0.1)
 * **`friday.core`**:
   * Implemented strongly-typed data structures (`Role`, `SafetyLevel`, `Message`, `ToolCall`, `ToolResult`, `AgentResponse`) in `src/friday/core/types.py`.
   * Built custom domain exception hierarchy (`FridayError`, `ConfigError`, `LLMProviderError`, `ToolError`, `SafetyError`, `MemoryError`) in `src/friday/core/exceptions.py`.
@@ -48,19 +48,19 @@
   * Built interactive console interface `src/friday/cli/main.py` with custom slash commands (`/help`, `/status`, `/history`, `/tools`, `/clear`, `/exit`).
   * Configured package entry points in `src/friday/__main__.py` and `pyproject.toml`.
 
-#### Session 3 — Test Suite & Initial Bug Fixes
+#### Session 3 â€” Test Suite & Initial Bug Fixes
 * Implemented 24 comprehensive pytest unit and integration tests across 6 test modules in `tests/`.
 * Discovered and resolved Windows console encoding issue (`UnicodeEncodeError` on `cp1252` terminal) by adopting ASCII-safe artwork and configuring UTF-8 stdout reconfiguration.
 * Discovered and resolved double-redaction assertion discrepancy in `test_logging.py`.
 * Validated 100% test pass rate (24/24 passed in 0.17s).
 
-#### Session 4 — GitHub Setup & Repository Publication
+#### Session 4 â€” GitHub Setup & Repository Publication
 * Initialized local Git repository on `main` branch.
 * Verified zero secret leakage in tracked files (`.gitignore` verified).
 * Created public remote repository `https://github.com/surendra2304/FRIDAY` via GitHub CLI.
 * Pushed initial foundation commit (`74bd226`) to GitHub.
 
-#### Session 5 — Milestone V0.2: Agent Brain & Multi-Step Tool-Calling Loop
+#### Session 5 â€” Milestone V0.2: Agent Brain & Multi-Step Tool-Calling Loop
 * **Schema-Driven Argument Validation**:
   * Added `validate_arguments(arguments)` method to `BaseTool` in `src/friday/tools/base.py` verifying required parameters and expected data types (`string`, `integer`, `number`, `boolean`, `array`, `object`).
   * Integrated schema validation into `ToolRegistry.execute()` in `src/friday/tools/registry.py` to intercept and return structured `ToolResult` error payloads if arguments are malformed.
@@ -79,7 +79,7 @@
   * Added comprehensive tests for direct response, single tool invocation, multi-step sequential tool chaining, unknown tool handling, schema argument validation errors, tool runtime exceptions, safety gating, max iteration guardrails, tool event callbacks, and multi-turn context retention.
   * Total test count increased to **35 tests (100% passing)**.
 
-#### Session 6 — Phase 1.1: Repository Audit and Architecture Stabilization
+#### Session 6 â€” Phase 1.1: Repository Audit and Architecture Stabilization
 * Checked and resolved key bugs and weak points identified during a targeted architectural audit:
   * **JSON Serialization Bug**: Replaced Python's default `str(tc.arguments)` in `Message.to_provider_dict()` (which produces invalid single-quoted Python dict representations) with standard `json.dumps()` output to comply with standard JSON parsing.
   * **Validation of Optional Parameters**: Modified `BaseTool.validate_arguments()` to skip type validation check on explicit `None` (null) values, permitting optional arguments to bypass strict checks and default cleanly.
@@ -88,7 +88,7 @@
 * Expanded test suite from 35 to **39 tests** covering optional `None` argument validation, safety filtering thresholds, JSON error parsing, and HTML truncation.
 * Confirmed 100% test pass rate (39/39 passed in 0.78s).
 
-#### Session 7 — Phase 1.1: Core Audit and Stabilization Updates
+#### Session 7 â€” Phase 1.1: Core Audit and Stabilization Updates
 * Checked and resolved key bugs, security, and extensibility issues during a targeted core architectural audit:
   * **Strict Rejection of Unexpected Parameters**: Upgraded `BaseTool.validate_arguments()` to strictly check for and reject any keys present in the arguments dictionary that are not defined in the tool's JSON schema properties. This prevents unexpected arguments from triggering runtime `TypeError` exceptions during execution.
   * **Null Gating for Optional Parameters**: Modified `ToolRegistry.execute()` to filter out optional parameters containing `None` values prior to tool invocation. This allows native Python default parameter values in method signatures to take over instead of being overwritten by `None`, preventing potential type crashes inside tool implementations.
@@ -97,7 +97,7 @@
 * Expanded test suite from 39 to **42 tests** covering unexpected parameter validation errors, null argument filtering default values, and agent multi-turn memory persistence of intermediate tool calls/results.
 * Confirmed 100% test pass rate (42/42 passed in 0.73s).
 
-#### Session 8 — Phase 1.2: Tool System Expansion
+#### Session 8 â€” Phase 1.2: Tool System Expansion
 * Added a robust and secure collection of built-in foundational tools:
   * **Time / Date Tool (`SAFE`)**: Implemented `TimeDateTool` retrieving local date, local time, day of the week, and Unix timestamp. Automatically uses system-local environment settings without hardcoding timezones.
   * **Safe Calculator Tool (`SAFE`)**: Implements `CalculatorTool` evaluating arithmetic expressions. Built with Python's `ast` parsing module to restrict execution strictly to `ast.Expression`, `ast.BinOp` (Add, Sub, Mult, Div, Pow), `ast.UnaryOp` (USub, UAdd), and `ast.Constant` / `ast.Num` values. Rejects any code injection (functions, attributes, imports) and caps max string length (500 chars) and exponentiation scale (max exponent 1000) to prevent CPU denial-of-service (DoS) locks.
@@ -108,7 +108,7 @@
 * Expanded test suite from 42 to **54 tests** covering all new built-in tools (arithmetic evaluations, security injection blockages, traversal blocks, file system operations, binary rejections) and natural language agent queries using Mock responders.
 * Confirmed 100% test pass rate (54/54 passed in 0.84s).
 
-#### Session 9 — Phase 1.2: Explicit Tool Authorization and Confirmation Flow
+#### Session 9 â€” Phase 1.2: Explicit Tool Authorization and Confirmation Flow
 * Introduced a robust tool authorization and confirmation mechanism:
   * **Permission Architecture**: Added strongly typed domain models `AuthorizationDecision` (APPROVED, DENIED, EXPIRED, CANCELLED), `AuthorizationRequest` (containing tool name, safety level, arguments, purpose, affected resource), and `AuthorizationResponse` in `src/friday/core/types.py`.
   * **Authorization Abstraction (`BaseAuthorizer` ABC)**: Created a core authorization boundary in `src/friday/core/auth.py` that decouples the agent from interface-specific confirmation mechanisms.
@@ -124,7 +124,7 @@
 * Expanded test suite from 54 to **63 tests** covering SAFE auto-execution, SENSITIVE approved/denied execution, DANGEROUS approved/denied execution, cancelled/expired confirmations, validation priority, and execution gating.
 * Confirmed 100% test pass rate (63/63 passed in 0.86s).
 
-#### Session 10 — Phase 1.2: Coordinated Multi-Tool Coordinated Execution
+#### Session 10 â€” Phase 1.2: Coordinated Multi-Tool Coordinated Execution
 * Enhanced the agent execution model to support handling multiple tool calls in a single response turn:
   * **Concurrently vs. Sequential Routing Heuristic**: If all tool calls requested in the turn are `SAFE` independent read-only tools, FRIDAY executes them concurrently in a thread pool (`concurrent.futures.ThreadPoolExecutor`) to minimize batch latency.
   * If any requested tool call is `SENSITIVE` or `DANGEROUS`, FRIDAY forces sequential execution to maintain safe execution ordering and confirmation prompt semantics.
@@ -133,7 +133,7 @@
 * Expanded test suite from 63 to **73 tests** in `tests/test_multi_tool.py` covering single tool calls, parallel execution latencies, multi-tool success/failure separation, mixed safety sequential routing, and result correlation order.
 * Confirmed 100% test pass rate (73/73 passed in 1.32s).
 
-#### Session 11 — Phase 1.2: Agent Reliability and Observability Hardening
+#### Session 11 â€” Phase 1.2: Agent Reliability and Observability Hardening
 * Hardened FRIDAY's execution model against external and internal exceptions, network transients, and timeout blocks:
   * **LLM Provider Retry & Backoff**: Upgraded `OpenAILLMProvider.generate()` to retry transient network request errors (`httpx.RequestError`), timeouts, and status codes `429` (Rate limits) and `5xx` (Internal server errors) up to 3 times using exponential backoff (1s, 2s, 4s). Parse and respect HTTP `Retry-After` header when rate-limited. Permanent errors (e.g. status code 401/403/400) fail immediately.
   * **Strict Tool Timeout Gating**: Added constructor parameter `tool_timeout` to `FridayAgent`. Wrapped sequential and parallel tool calls inside a `ThreadPoolExecutor` future request to enforce strict timeout boundaries (default: 30 seconds), preventing hangs and returning graceful error messages instead of blocking indefinitely.
@@ -143,7 +143,7 @@
 * Expanded test suite from 73 to **79 tests** in `tests/test_reliability.py` verifying transient network retries, rate limit Retry-After waits, auth errors rejection, tool timeouts, clean error translation, and response diagnostics.
 * Confirmed 100% test pass rate (79/79 passed in 12.98s).
 
-#### Session 12 — Phase 1.2: Security Hardening and Execution Boundary Audits
+#### Session 12 â€” Phase 1.2: Security Hardening and Execution Boundary Audits
 * Conducted a thorough security audit of configuration, environmental handling, logging, tool registry, built-in tools (calculator, time/date, filesystem tools), authorization policies, agent reasoning loops, and provider HTTP boundaries:
   * **Accidental Secret Logging and Traceback Sanitization**: Discovered that standard logging filters do not catch formatted exception tracebacks since `exc_info` is formatted by the Logger Formatter after the Filter is applied. Mitigated this by implementing `SanitizedFormatter` in `src/friday/core/logging.py` which intercepts and sanitizes the final formatted string output of Console and File handlers, protecting against credential leaks in all tracebacks.
   * **Absolute Path Traversal Protection**: Hardened `FileReaderTool` and `FileListingTool` to explicitly reject any absolute or drive-anchored paths (e.g. `/etc/passwd`, `C:\Windows`) inside input parameters prior to path combination and resolution, avoiding Windows UNC drive mapping bypasses and ensuring strict workspace containment.
@@ -152,7 +152,7 @@
 * Expanded test suite from 79 to **82 tests** in `tests/test_logging.py` and `tests/test_tools.py` verifying absolute path rejections (Unix/Windows format boundaries) and SanitizedFormatter traceback filtering.
 * Confirmed 100% test pass rate (82/82 passed in 13.30s).
 
-#### Session 13 — Phase 2: Memory Architecture Audit and Persistent Storage Design
+#### Session 13 â€” Phase 2: Memory Architecture Audit and Persistent Storage Design
 * Completed architectural audit and design for Phase 2 Persistent Memory:
   * **Layered Memory Model**: Formally delineated three memory layers:
     1. *Working Memory*: Active short-term conversational context window (system message + recent turns) held in memory for immediate agent decision iterations.
@@ -201,7 +201,7 @@ FRIDAY_EMBEDDING_SIMILARITY_THRESHOLD=0.6
 ```
   * **Documented ADR-007**: Added architectural decision record defining storage selection, decoupling strategy, and semantic memory integration roadmap.
 
-#### Session 14 — Phase 2: Implementation of SQLite Persistent Conversation Memory
+#### Session 14 â€” Phase 2: Implementation of SQLite Persistent Conversation Memory
 * Implemented `SQLiteConversationMemory` in `src/friday/memory/sqlite.py` implementing `BaseMemory`:
   * **Database & Schema Initialization**: Automatically initializes parent directories and creates `conversations` and `messages` tables with indexed foreign key relationships and WAL journaling for maximum crash resilience and fast concurrency.
   * **Session Isolation & Multi-Conversation CRUD**: Full CRUD support for creating, listing, loading, and deleting conversations with cascading message deletions. Fresh conversation sessions are initialized on instantiation if no `conversation_id` is supplied.
@@ -211,7 +211,7 @@ FRIDAY_EMBEDDING_SIMILARITY_THRESHOLD=0.6
 * Expanded test suite from 82 to **91 tests** in `tests/test_sqlite_memory.py` covering database auto-creation, schema integrity, conversation lifecycle, message CRUD, tool metadata preservation, sliding context window, multi-conversation isolation, persistence across re-instantiation, and multi-thread concurrency.
 * Confirmed 100% test pass rate (91/91 passed in 12.53s).
 
-#### Session 15 — Phase 2: Integration of Persistent Conversation Memory in Agent Core
+#### Session 15 â€” Phase 2: Integration of Persistent Conversation Memory in Agent Core
 * Integrated persistent conversation memory into `FridayAgent` through the decoupled memory factory:
   * **Memory Factory (`create_memory`)**: Implemented in `src/friday/memory/factory.py` to instantiate `SQLiteConversationMemory` or `InMemoryConversationMemory` based on `Settings.memory_backend`.
   * **Active Conversation Session Management**: Added explicit `conversation_id` parameter to `FridayAgent.__init__`, along with helper properties and methods (`agent.conversation_id`, `agent.switch_conversation(id)`, `agent.create_new_conversation(title)`).
@@ -221,21 +221,21 @@ FRIDAY_EMBEDDING_SIMILARITY_THRESHOLD=0.6
 * Expanded test suite from 91 to **98 tests** in `tests/test_agent_persistence.py` verifying agent operations with in-memory and SQLite backends, process restart simulation, tool call/result persistence, session switching, and context window slicing.
 * Confirmed 100% test pass rate (98/98 passed in 13.39s).
 
-#### Session 16 — Phase 2: Multi-Conversation Session Management & CLI Commands
+#### Session 16 â€” Phase 2: Multi-Conversation Session Management & CLI Commands
 * Implemented multi-conversation session management across memory backends and the interactive CLI:
   * **Core Lifecycle Abstractions**: Enhanced `BaseMemory`, `SQLiteConversationMemory`, and `FridayAgent` with session primitives: `create_conversation()`, `list_conversations()`, `get_conversation()`, `rename_conversation()`, `load_conversation()`, and `delete_conversation()`.
   * **Destructive Deletion Safety**: Added safety confirmation prompt `[y/N]` for `/delete` commands to prevent accidental loss of conversation logs.
   * **Interactive CLI Commands**:
-    - `/new [title]` — Create and immediately switch to a new conversation session.
-    - `/conversations` (or `/list`) — List all stored conversations with message counts and update timestamps.
-    - `/switch <id>` — Switch active context using full ID or unique ID prefixes.
-    - `/rename <title>` — Rename active conversation session.
-    - `/current` — Display metadata, ID, and message metrics for current active session.
-    - `/delete [id]` — Permanently delete a conversation session with explicit confirmation.
+    - `/new [title]` â€” Create and immediately switch to a new conversation session.
+    - `/conversations` (or `/list`) â€” List all stored conversations with message counts and update timestamps.
+    - `/switch <id>` â€” Switch active context using full ID or unique ID prefixes.
+    - `/rename <title>` â€” Rename active conversation session.
+    - `/current` â€” Display metadata, ID, and message metrics for current active session.
+    - `/delete [id]` â€” Permanently delete a conversation session with explicit confirmation.
 * Expanded test suite from 98 to **105 tests** in `tests/test_conversation_management.py` verifying new conversation creation, conversation isolation, renaming, active metadata inspection, delete lifecycle, invalid switching, and multi-conversation restart persistence.
 * Confirmed 100% test pass rate (105/105 passed in 13.76s).
 
-#### Session 17 — Phase 2: Searchable Historical Conversation Retrieval
+#### Session 17 â€” Phase 2: Searchable Historical Conversation Retrieval
 * Implemented searchable memory retrieval across persistent conversations:
   * **Memory Search Abstraction**: Added `search()` method to `BaseMemory` returning structured `MemorySearchResult` records with conversation title, message timestamp, author role, content snippet, and relevance ranking score.
   * **SQLite FTS5 Indexing & Triggers**:
@@ -249,7 +249,7 @@ FRIDAY_EMBEDDING_SIMILARITY_THRESHOLD=0.6
 * Expanded test suite from 105 to **113 tests** in `tests/test_memory_search.py` covering in-memory search, SQLite exact and prefix matching, conversation filtering, limit enforcement, date constraint filtering, tool execution, agent end-to-end tool loop, and synthetic performance benchmarks (500 messages searched in under 50ms).
 * Confirmed 100% test pass rate (113/113 passed in 15.35s).
 
-#### Session 18 — Phase 2: Security & Privacy Hardening of Persistent Memory
+#### Session 18 â€” Phase 2: Security & Privacy Hardening of Persistent Memory
 * Conducted a comprehensive privacy, security, and data lifecycle review of persistent SQLite conversation storage:
   * **Deletion Isolation & Privacy Guardrails**: Verified that deleting a conversation strictly cascade-deletes only associated messages and FTS5 index tokens without impacting other conversation records or bleeding across sessions.
   * **Search Scoping & Data Boundary Enforcement**: Enforced strict `conversation_id` parameter binding on FTS5 queries, preventing unauthorized cross-conversation keyword leaks when scoped to a specific thread.
@@ -259,7 +259,7 @@ FRIDAY_EMBEDDING_SIMILARITY_THRESHOLD=0.6
 * Expanded test suite from 113 to **119 tests** in `tests/test_memory_security.py` verifying deletion isolation, search scoping privacy, complete purge security, retention policy pruning, auto-pruning on agent startup, and secret masking in diagnostic endpoints.
 * Confirmed 100% test pass rate (119/119 passed in 15.57s).
 
-#### Session 19 — Phase 2: Performance, Scalability & Disaster Recovery of Persistent Memory
+#### Session 19 â€” Phase 2: Performance, Scalability & Disaster Recovery of Persistent Memory
 * Hardened persistent SQLite storage for long-term scalability and recovery:
   * **Database Tuning & Index Optimizations**:
     - Configured high-performance SQLite PRAGMAs: `PRAGMA busy_timeout = 20000;`, `PRAGMA synchronous = NORMAL;`, `PRAGMA cache_size = -64000;` (64MB memory cache) alongside existing `PRAGMA journal_mode = WAL;` and `PRAGMA foreign_keys = ON;`.
@@ -281,7 +281,7 @@ FRIDAY_EMBEDDING_SIMILARITY_THRESHOLD=0.6
 * Expanded test suite from 119 to **125 tests** in `tests/test_memory_performance_and_recovery.py` verifying auto-creation on missing paths, malformed row recovery, multi-threaded concurrent reads and writes, online backup integrity, conversation JSON export, and performance benchmarks.
 * Confirmed 100% test pass rate (125/125 passed in 17.90s).
 
-#### Session 20 — LLM Architecture: First-Class Google Gemini Cloud Provider
+#### Session 20 â€” LLM Architecture: First-Class Google Gemini Cloud Provider
 * Integrated native Google Gemini REST API provider (`GeminiLLMProvider`) into FRIDAY's cloud-first, low-laptop-compute architecture:
   * **Zero Local Model Overhead**: Heavy inference is offloaded to Gemini Cloud API (`gemini-2.5-flash`, `gemini-1.5-pro`), while the laptop handles FRIDAY agent orchestration, SQLite memory, tools, and UI.
   * **Contract & Message Translation**:
@@ -296,7 +296,7 @@ FRIDAY_EMBEDDING_SIMILARITY_THRESHOLD=0.6
 * Expanded test suite from 125 to **132 tests** in `tests/test_llm_providers.py` verifying factory instantiation, missing API key guard, request/response payload translation, tool call parsing, API key sanitization, and safety filter block recovery.
 * Confirmed 100% test pass rate (132/132 passed in 18.88s).
 
-#### Session 21 — Gemini Function Calling & FRIDAY Tool Trust Boundary
+#### Session 21 â€” Gemini Function Calling & FRIDAY Tool Trust Boundary
 * Integrated Google Gemini tool calling with FRIDAY's tiered tool execution and safety subsystem:
   * **Strict Trust Boundary**: Enforced the fundamental security principle:
     > **Gemini decides WHAT it wants.**
@@ -317,7 +317,7 @@ FRIDAY_EMBEDDING_SIMILARITY_THRESHOLD=0.6
 * Added comprehensive integration test suite `tests/test_gemini_tools.py` (9 tests).
 * Expanded total test count from 132 to **141 tests**, maintaining a 100% pass rate in 25.18s.
 
-#### Session 22 — Gemini Model & Cost Controls (Free-First Operation & Observability)
+#### Session 22 â€” Gemini Model & Cost Controls (Free-First Operation & Observability)
 * Hardened FRIDAY's Gemini cloud usage controls for predictable, low-cost/free operation:
   * **Free-First Cost Mode (`FRIDAY_COST_MODE=free_first`)**: Ensures FRIDAY operates with zero hidden or accidental cloud billings, relying on free-tier rate and quota parameters.
   * **Granular Model & Request Controls**:
@@ -335,7 +335,7 @@ FRIDAY_EMBEDDING_SIMILARITY_THRESHOLD=0.6
 * Added dedicated test suite `tests/test_gemini_cost_and_controls.py` (8 tests).
 * Expanded total test count from 141 to **149 tests**, maintaining a 100% pass rate in 26.74s.
 
-#### Session 23 — Provider-Independent Semantic Memory & Low-Laptop-Load Architecture
+#### Session 23 â€” Provider-Independent Semantic Memory & Low-Laptop-Load Architecture
 * Extended FRIDAY's memory subsystem to support 4 distinct operating layers:
   * **Layer 1 (Working Memory)**: Fast in-memory sliding window context buffer.
   * **Layer 2 (Persistent Conversation Memory)**: SQLite ACID storage with conversation lifecycle isolation.
@@ -357,7 +357,7 @@ FRIDAY_EMBEDDING_SIMILARITY_THRESHOLD=0.6
 * Added comprehensive test suite `tests/test_semantic_memory.py` (8 tests).
 * Expanded total test count from 149 to **157 tests**, maintaining a 100% pass rate in 27.25s.
 
-#### Session 24 — Gemini Semantic Embeddings, Safe Batching & Reciprocal Rank Fusion
+#### Session 24 â€” Gemini Semantic Embeddings, Safe Batching & Reciprocal Rank Fusion
 * Implemented Google Gemini cloud embedding provider with low-laptop-load architecture:
   * **Provider & Model**: `GeminiEmbeddingProvider` using official `models/text-embedding-004` endpoint.
   * **Configurable Dimensionality & Normalization**: Supports `outputDimensionality` payload parameter with L2 unit normalization.
@@ -378,77 +378,77 @@ FRIDAY_EMBEDDING_SIMILARITY_THRESHOLD=0.6
 
 ```text
 FRIDAY/
-├── .env.example                     # Environment configuration template
-├── .gitignore                       # Git ignore rules for virtualenvs, secrets, logs
-├── pyproject.toml                   # Modern packaging metadata & dependency specifications
-├── requirements.txt                 # Pinned dependencies
-├── README.md                        # Project documentation & usage guide
-├── docs/
-│   └── FRIDAY_DIARY.md              # Permanent Living Project Diary & ADRs
-├── logs/
-│   └── friday.log                   # Local sanitized runtime logs
-├── src/
-│   └── friday/
-│       ├── __init__.py
-│       ├── __main__.py              # Entrypoint for python -m friday
-│       ├── core/
-│       │   ├── __init__.py
-│       │   ├── auth.py              # BaseAuthorizer, DefaultSecureAuthorizer, and test mocks
-│       │   ├── config.py            # Pydantic Settings, env loading, secret masking
-│       │   ├── exceptions.py        # Domain exception hierarchy
-│       │   ├── logging.py           # Structured logging & secret sanitization filter
-│       │   └── types.py             # Role, SafetyLevel, Message, ToolCall, AgentResponse, Authorization
-│       ├── llm/
-│       │   ├── __init__.py
-│       │   ├── base.py              # BaseLLMProvider ABC
-│       │   ├── factory.py           # LLM Provider factory
-│       │   ├── gemini_provider.py   # Cloud-first Google Gemini Provider (HTTPX)
-│       │   ├── mock_provider.py     # Deterministic Mock Provider with post-tool synthesis
-│       │   └── openai_provider.py   # OpenAI-compatible Provider (HTTPX)
-│       ├── tools/
-│       │   ├── __init__.py
-│       │   ├── base.py              # BaseTool ABC with JSON schema validation & SafetyLevel
-│       │   ├── registry.py          # ToolRegistry with schema validation & safety gating
-│       │   └── builtin/
-│       │       ├── __init__.py
-│       │       ├── calculator.py    # Safe AST arithmetic expression evaluator (SAFE)
-│       │       ├── file_listing.py  # Sandboxed read-only workspace directory listing (SAFE)
-│       │       ├── file_reader.py   # Sandboxed read-only workspace file reader (SAFE)
-│       │       ├── memory_search.py # Searchable historical conversation retrieval tool (SAFE)
-│       │       ├── system_info.py   # Enriched System Diagnostics Tool (SAFE)
-│       │       └── time_date.py     # Local host system date and time details (SAFE)
-│       ├── memory/
-│       │   ├── __init__.py
-│       │   ├── base.py              # BaseMemory ABC
-│       │   ├── factory.py           # Memory factory (instantiates backend from settings)
-│       │   ├── in_memory.py         # Sliding window conversation memory buffer
-│       │   └── sqlite.py            # Persistent SQLite conversation memory
-│       ├── agent/
-│       │   ├── __init__.py
-│       │   ├── agent.py             # FridayAgent with multi-step sequential reasoning loop
-│       │   └── prompts.py           # Persona prompts & system messages
-│       └── cli/
-│           ├── __init__.py
-│           ├── auth.py              # Interactive CLIAuthorizer prompting y/N or CONFIRM
-│           └── main.py              # Interactive REPL with real-time tool progress feedback
-└── tests/
-    ├── __init__.py
-    ├── conftest.py                  # Pytest fixtures
-    ├── test_agent.py                # Agent dialog, multi-step tool loops & error handling tests
-    ├── test_agent_persistence.py    # Agent persistent memory integration & session tests
-    ├── test_auth.py                 # Authorization gating, validation priority, and CLI tests
-    ├── test_config.py               # Settings & masking tests
-    ├── test_conversation_management.py # Multi-conversation session management & CLI tests
-    ├── test_llm_providers.py        # Mock & OpenAI provider tests
-    ├── test_logging.py              # Logging & secret filter tests
-    ├── test_memory.py               # Memory buffer & sliding window tests
-    ├── test_memory_performance_and_recovery.py # Performance scaling & recovery tests
-    ├── test_memory_search.py        # Searchable historical conversation retrieval tests
-    ├── test_memory_security.py      # Memory privacy, deletion isolation & retention tests
-    ├── test_multi_tool.py           # Coordinated parallel and sequential execution tests
-    ├── test_reliability.py          # LLM retries, network errors, tool timeouts, and diagnostics tests
-    ├── test_sqlite_memory.py        # Persistent SQLite storage, lifecycle & isolation tests
-    └── test_tools.py                # Tool registry, schema validation & safety tier tests
+â”œâ”€â”€ .env.example                     # Environment configuration template
+â”œâ”€â”€ .gitignore                       # Git ignore rules for virtualenvs, secrets, logs
+â”œâ”€â”€ pyproject.toml                   # Modern packaging metadata & dependency specifications
+â”œâ”€â”€ requirements.txt                 # Pinned dependencies
+â”œâ”€â”€ README.md                        # Project documentation & usage guide
+â”œâ”€â”€ docs/
+â”‚   â””â”€â”€ FRIDAY_DIARY.md              # Permanent Living Project Diary & ADRs
+â”œâ”€â”€ logs/
+â”‚   â””â”€â”€ friday.log                   # Local sanitized runtime logs
+â”œâ”€â”€ src/
+â”‚   â””â”€â”€ friday/
+â”‚       â”œâ”€â”€ __init__.py
+â”‚       â”œâ”€â”€ __main__.py              # Entrypoint for python -m friday
+â”‚       â”œâ”€â”€ core/
+â”‚       â”‚   â”œâ”€â”€ __init__.py
+â”‚       â”‚   â”œâ”€â”€ auth.py              # BaseAuthorizer, DefaultSecureAuthorizer, and test mocks
+â”‚       â”‚   â”œâ”€â”€ config.py            # Pydantic Settings, env loading, secret masking
+â”‚       â”‚   â”œâ”€â”€ exceptions.py        # Domain exception hierarchy
+â”‚       â”‚   â”œâ”€â”€ logging.py           # Structured logging & secret sanitization filter
+â”‚       â”‚   â””â”€â”€ types.py             # Role, SafetyLevel, Message, ToolCall, AgentResponse, Authorization
+â”‚       â”œâ”€â”€ llm/
+â”‚       â”‚   â”œâ”€â”€ __init__.py
+â”‚       â”‚   â”œâ”€â”€ base.py              # BaseLLMProvider ABC
+â”‚       â”‚   â”œâ”€â”€ factory.py           # LLM Provider factory
+â”‚       â”‚   â”œâ”€â”€ gemini_provider.py   # Cloud-first Google Gemini Provider (HTTPX)
+â”‚       â”‚   â”œâ”€â”€ mock_provider.py     # Deterministic Mock Provider with post-tool synthesis
+â”‚       â”‚   â””â”€â”€ openai_provider.py   # OpenAI-compatible Provider (HTTPX)
+â”‚       â”œâ”€â”€ tools/
+â”‚       â”‚   â”œâ”€â”€ __init__.py
+â”‚       â”‚   â”œâ”€â”€ base.py              # BaseTool ABC with JSON schema validation & SafetyLevel
+â”‚       â”‚   â”œâ”€â”€ registry.py          # ToolRegistry with schema validation & safety gating
+â”‚       â”‚   â””â”€â”€ builtin/
+â”‚       â”‚       â”œâ”€â”€ __init__.py
+â”‚       â”‚       â”œâ”€â”€ calculator.py    # Safe AST arithmetic expression evaluator (SAFE)
+â”‚       â”‚       â”œâ”€â”€ file_listing.py  # Sandboxed read-only workspace directory listing (SAFE)
+â”‚       â”‚       â”œâ”€â”€ file_reader.py   # Sandboxed read-only workspace file reader (SAFE)
+â”‚       â”‚       â”œâ”€â”€ memory_search.py # Searchable historical conversation retrieval tool (SAFE)
+â”‚       â”‚       â”œâ”€â”€ system_info.py   # Enriched System Diagnostics Tool (SAFE)
+â”‚       â”‚       â””â”€â”€ time_date.py     # Local host system date and time details (SAFE)
+â”‚       â”œâ”€â”€ memory/
+â”‚       â”‚   â”œâ”€â”€ __init__.py
+â”‚       â”‚   â”œâ”€â”€ base.py              # BaseMemory ABC
+â”‚       â”‚   â”œâ”€â”€ factory.py           # Memory factory (instantiates backend from settings)
+â”‚       â”‚   â”œâ”€â”€ in_memory.py         # Sliding window conversation memory buffer
+â”‚       â”‚   â””â”€â”€ sqlite.py            # Persistent SQLite conversation memory
+â”‚       â”œâ”€â”€ agent/
+â”‚       â”‚   â”œâ”€â”€ __init__.py
+â”‚       â”‚   â”œâ”€â”€ agent.py             # FridayAgent with multi-step sequential reasoning loop
+â”‚       â”‚   â””â”€â”€ prompts.py           # Persona prompts & system messages
+â”‚       â””â”€â”€ cli/
+â”‚           â”œâ”€â”€ __init__.py
+â”‚           â”œâ”€â”€ auth.py              # Interactive CLIAuthorizer prompting y/N or CONFIRM
+â”‚           â””â”€â”€ main.py              # Interactive REPL with real-time tool progress feedback
+â””â”€â”€ tests/
+    â”œâ”€â”€ __init__.py
+    â”œâ”€â”€ conftest.py                  # Pytest fixtures
+    â”œâ”€â”€ test_agent.py                # Agent dialog, multi-step tool loops & error handling tests
+    â”œâ”€â”€ test_agent_persistence.py    # Agent persistent memory integration & session tests
+    â”œâ”€â”€ test_auth.py                 # Authorization gating, validation priority, and CLI tests
+    â”œâ”€â”€ test_config.py               # Settings & masking tests
+    â”œâ”€â”€ test_conversation_management.py # Multi-conversation session management & CLI tests
+    â”œâ”€â”€ test_llm_providers.py        # Mock & OpenAI provider tests
+    â”œâ”€â”€ test_logging.py              # Logging & secret filter tests
+    â”œâ”€â”€ test_memory.py               # Memory buffer & sliding window tests
+    â”œâ”€â”€ test_memory_performance_and_recovery.py # Performance scaling & recovery tests
+    â”œâ”€â”€ test_memory_search.py        # Searchable historical conversation retrieval tests
+    â”œâ”€â”€ test_memory_security.py      # Memory privacy, deletion isolation & retention tests
+    â”œâ”€â”€ test_multi_tool.py           # Coordinated parallel and sequential execution tests
+    â”œâ”€â”€ test_reliability.py          # LLM retries, network errors, tool timeouts, and diagnostics tests
+    â”œâ”€â”€ test_sqlite_memory.py        # Persistent SQLite storage, lifecycle & isolation tests
+    â””â”€â”€ test_tools.py                # Tool registry, schema validation & safety tier tests
 ```
 
 ---
@@ -640,7 +640,7 @@ END;
 
 #### Bug 1: Windows Console Unicode Encoding Error (`UnicodeEncodeError`)
 * **Symptoms**: Running `python -m friday` in standard Windows PowerShell resulted in `UnicodeEncodeError: 'charmap' codec can't encode characters in position 78-92`.
-* **Cause**: Windows console standard output default codepage (`cp1252`) cannot render unicode block characters (`█`) in the ASCII banner or unicode bullet dots (`•`).
+* **Cause**: Windows console standard output default codepage (`cp1252`) cannot render unicode block characters (`â–ˆ`) in the ASCII banner or unicode bullet dots (`â€¢`).
 * **Investigation**: Piped execution through PowerShell revealed terminal crash during banner print.
 * **Fix**: Replaced banner typography with pure standard ASCII art (`______ _____ ...`), replaced unicode bullets with `*`, and added `sys.stdout.reconfigure(encoding="utf-8", errors="replace")` safeguard.
 * **Verification**: Piped multi-command PowerShell execution and direct interactive CLI both executed cleanly without errors.
@@ -777,7 +777,7 @@ END;
 
 ### Next planned work
 
-* **Phase 3 — Local Voice Interface & Long-Term Semantic Vector Memory**:
+* **Phase 3 â€” Local Voice Interface & Long-Term Semantic Vector Memory**:
   - Local embedding models & vector similarity search (`sqlite-vss` / Chroma / FAISS).
   - Cross-session associative recall & automatic episodic fact extraction.
   - Local Voice Input/Output (Whisper STT & Kokoro/EdgeTTS audio synthesis).
@@ -788,32 +788,32 @@ END;
 ### Important notes
 
 * The project diary is permanent. All future development sessions must continue appending chronological entries under their respective dates without deleting historical entries.
-# 2026-08-18 — Phase 4
+# 2026-08-18 â€” Phaseâ€¯4
 
 ## Overview
 
-The fourth phase focuses on adding a **cloud‑first voice interface** and a **proactive task engine** while keeping the core FRIDAY architecture unchanged. All heavy AI work stays in Google Gemini cloud services; the local laptop only coordinates I/O, memory, and scheduling.
+The fourth phase focuses on adding a **cloudâ€‘first voice interface** and a **proactive task engine** while keeping the core FRIDAY architecture unchanged. All heavy AI work stays in Google Gemini cloud services; the local laptop only coordinates I/O, memory, and scheduling.
 
 ### Implemented Features
 
-- **Voice Subsystem** – `src/friday/voice/` contains abstract `VoiceInput`, `VoiceOutput`, `VoiceProvider`, a `VoiceSession` controller, and a concrete `GeminiVoiceProvider` (initially a placeholder) plus `MockVoiceProvider` for CI. The CLI can start a session with `--voice-enabled`.
-- **Interruption** – `VoiceSession.interrupt()` stops playback and cancels the current turn, allowing a spoken “stop” command or Ctrl+C.
-- **Personality** – System prompt updated to enforce a calm, concise tone, natural acknowledgments, and explicit confirmation for sensitive actions.
-- **Proactive Task Engine** – `src/friday/tasks/` includes data models, a SQLite‑backed task store, a background `TaskScheduler` (default 60 s interval), and a `ConsoleNotifier` (optional `VoiceNotifier`).
-- **Scheduler** – Executes enabled tasks at their scheduled time, respects daily/weekly/one‑time schedules, and runs with minimal CPU usage.
-- **Notifications** – Console‑based notifications are functional; voice notifications were stubbed initially and later replaced with real Gemini TTS synthesis in Phase 4 Recovery Pass.
-- **Authorization & Security** – Tasks have `SafetyLevel` (SAFE, SENSITIVE, DANGEROUS) with a persisted approval table; SENSITIVE/DANGEROUS actions require explicit admin confirmation.
-- **Tests** – Unit and integration tests for the voice session flow, task creation/execution, and scheduler behavior were added. After the real Gemini voice integration, the full test suite reports `168 passed`.
+- **Voice Subsystem** â€“ `src/friday/voice/` contains abstract `VoiceInput`, `VoiceOutput`, `VoiceProvider`, a `VoiceSession` controller, and a concrete `GeminiVoiceProvider` (initially a placeholder) plus `MockVoiceProvider` for CI. The CLI can start a session with `--voice-enabled`.
+- **Interruption** â€“ `VoiceSession.interrupt()` stops playback and cancels the current turn, allowing a spoken â€œstopâ€ command or Ctrl+C.
+- **Personality** â€“ System prompt updated to enforce a calm, concise tone, natural acknowledgments, and explicit confirmation for sensitive actions.
+- **Proactive Task Engine** â€“ `src/friday/tasks/` includes data models, a SQLiteâ€‘backed task store, a background `TaskScheduler` (default 60â€¯s interval), and a `ConsoleNotifier` (optional `VoiceNotifier`).
+- **Scheduler** â€“ Executes enabled tasks at their scheduled time, respects daily/weekly/oneâ€‘time schedules, and runs with minimal CPU usage.
+- **Notifications** â€“ Consoleâ€‘based notifications are functional; voice notifications were stubbed initially and later replaced with real Gemini TTS synthesis in Phaseâ€¯4â€¯Recovery Pass.
+- **Authorization & Security** â€“ Tasks have `SafetyLevel` (SAFE, SENSITIVE, DANGEROUS) with a persisted approval table; SENSITIVE/DANGEROUS actions require explicit admin confirmation.
+- **Tests** â€“ Unit and integration tests for the voice session flow, task creation/execution, and scheduler behavior were added. After the real Gemini voice integration, the full test suite reports `168 passed`.
 
 ### Partially Implemented / Placeholder Features
 
-- **Gemini Voice Integration** – The provider currently implements request/response calls only; real‑time streaming of audio input/output is **not yet implemented** (placeholder methods exist for future work).
-- **Voice Synthesis** – TTS functionality is stubbed; the mock provider returns silent MP3 data for CI. Real speech generation using Gemini TTS will be added later.
+- **Gemini Voice Integration** â€“ The provider currently implements request/response calls only; realâ€‘time streaming of audio input/output is **not yet implemented** (placeholder methods exist for future work).
+- **Voice Synthesis** â€“ TTS functionality is stubbed; the mock provider returns silent MP3 data for CI. Real speech generation using Gemini TTS will be added later.
 
 ### Failed Approaches
 
 - Attempted to implement live Gemini streaming during CI; hardware constraints made this impractical, so the architecture was kept modular for later addition.
-- Real‑time voice synthesis was deferred to avoid heavy local model dependencies.
+- Realâ€‘time voice synthesis was deferred to avoid heavy local model dependencies.
 
 ### Bugs & Fixes
 
@@ -827,14 +827,14 @@ The fourth phase focuses on adding a **cloud‑first voice interface** and a **p
 
 ### Repository State
 
-- Latest commit `8a5a6cd` – *feat(phase4): complete FRIDAY voice and proactive interaction foundation*.
+- Latest commit `8a5a6cd` â€“ *feat(phase4): complete FRIDAY voice and proactive interaction foundation*.
 - All changes are pushed to `origin/main`; the repository is clean.
 
 ### Known Limitations
 
 - No streaming audio support yet.
 - Voice output uses a silent placeholder; actual TTS not available.
-- Scheduler interval is fixed at 60 s (configurable via `Settings.task_check_interval_seconds`).
+- Scheduler interval is fixed at 60â€¯s (configurable via `Settings.task_check_interval_seconds`).
 
 ### Recommended Next Milestone
 
@@ -971,7 +971,7 @@ The fourth phase focuses on adding a **cloud‑first voice interface** and a **p
 
 ---
 
-## Phase 5.1 — Real-Time Gemini Live Voice Architecture Audit
+## Phase 5.1 â€” Real-Time Gemini Live Voice Architecture Audit
 
 **Date**: 2026-08-19  
 **Branch**: `main`  
@@ -1001,7 +1001,7 @@ The fourth phase focuses on adding a **cloud‑first voice interface** and a **p
 
 ---
 
-## Phase 5.2 — Real Gemini Live Session Implementation
+## Phase 5.2 â€” Real Gemini Live Session Implementation
 
 **Date**: 2026-08-19  
 **Branch**: `main`  
@@ -1038,7 +1038,7 @@ The fourth phase focuses on adding a **cloud‑first voice interface** and a **p
 
 ---
 
-## Phase 5.3 — Real-Time Audio Pipeline & Device Management
+## Phase 5.3 â€” Real-Time Audio Pipeline & Device Management
 
 **Date**: 2026-08-19  
 **Branch**: `main`  
@@ -1075,7 +1075,7 @@ The fourth phase focuses on adding a **cloud‑first voice interface** and a **p
 
 ---
 
-## Phase 5.4 — True Barge-in and Natural Conversational Flow
+## Phase 5.4 â€” True Barge-in and Natural Conversational Flow
 
 **Date**: 2026-08-19  
 **Branch**: `main`  
@@ -1102,7 +1102,7 @@ The fourth phase focuses on adding a **cloud‑first voice interface** and a **p
 
 ---
 
-## Phase 5.5 — Full Voice Agent Integration
+## Phase 5.5 â€” Full Voice Agent Integration
 
 **Date**: 2026-08-19  
 **Branch**: `main`  
@@ -1113,7 +1113,7 @@ The fourth phase focuses on adding a **cloud‑first voice interface** and a **p
 1. **Single Unified Intelligence Layer**:
    - Spoken interactions route directly through the central `FridayAgent` brain.
    - No separate `VoiceAgent` class or parallel tool routing:
-     `Microphone → Gemini Live → FRIDAY Agent → ToolRegistry → Memory → Gemini Live audio`.
+     `Microphone â†’ Gemini Live â†’ FRIDAY Agent â†’ ToolRegistry â†’ Memory â†’ Gemini Live audio`.
 
 2. **Unified Tool Calling & Safety Gating**:
    - Voice commands trigger the identical `ToolRegistry` (`get_time_date`, `calculator`, `system_info`, `memory_search`, `manage_directory`).
@@ -1133,7 +1133,7 @@ The fourth phase focuses on adding a **cloud‑first voice interface** and a **p
 
 ---
 
-## Phase 5.6 — Futuristic Voice Experience & Persona Refinement
+## Phase 5.6 â€” Futuristic Voice Experience & Persona Refinement
 
 **Date**: 2026-08-19  
 **Branch**: `main`  
@@ -1147,7 +1147,7 @@ The fourth phase focuses on adding a **cloud‑first voice interface** and a **p
    - For simple queries: *"Done."*, *"It is 11:15 AM."*, *"I found 12 files."*
    - For complex queries: direct conversational summary without massive monologues.
 
-2. **Strict Anti-Patterns Eliminating Robotic Clichés**:
+2. **Strict Anti-Patterns Eliminating Robotic ClichÃ©s**:
    - **No Repetitive Names**: Never repeats the user's name on every turn.
    - **No Filler Acknowledgements**: Banishes *"Sure!"*, *"Certainly!"*, *"I can help with that!"*.
    - **No Sycophancy**: Banishes excessive *"Boss"* and robotic filler phrases.
@@ -1166,7 +1166,7 @@ The fourth phase focuses on adding a **cloud‑first voice interface** and a **p
 
 ---
 
-## Phase 5.7 — Voice Latency Optimization & Resource Profiling
+## Phase 5.7 â€” Voice Latency Optimization & Resource Profiling
 
 **Date**: 2026-08-19  
 **Branch**: `main`  
@@ -1192,7 +1192,7 @@ The fourth phase focuses on adding a **cloud‑first voice interface** and a **p
 | :--- | :--- | :--- |
 | **1. Microphone Ready Latency** | **163.30 ms** | One-time device stream initialization at session start |
 | **2. Speaker Ready Latency** | **40.80 ms** | Low-latency RawOutputStream DAC hook |
-| **3. RMS Energy / VAD Calculation** | **1.50 ms** (1,498 µs) | Real-time numpy RMS calculation on 40ms PCM chunk |
+| **3. RMS Energy / VAD Calculation** | **1.50 ms** (1,498 Âµs) | Real-time numpy RMS calculation on 40ms PCM chunk |
 | **4. Time to First Audio Playback** | **0.027 ms** | Immediate non-blocking queue dispatch on first audio chunk |
 | **5. Interruption / Stop Purge Latency** | **0.018 ms** | Zero-lag local speaker buffer purge upon barge-in |
 | **6. SQLite In-Memory Insert** | **1.497 ms** | Lightweight transaction without blocking embedding API |
@@ -1202,7 +1202,7 @@ The fourth phase focuses on adding a **cloud‑first voice interface** and a **p
 
 ---
 
-## Phase 5.8 — Real-World Voice Acceptance Test
+## Phase 5.8 â€” Real-World Voice Acceptance Test
 
 **Date**: 2026-08-19  
 **Branch**: `main`  
@@ -1229,7 +1229,7 @@ The fourth phase focuses on adding a **cloud‑first voice interface** and a **p
 
 ---
 
-## Phase 5.9 — Final Voice Phase and Consolidated Closure
+## Phase 5.9 â€” Final Voice Phase and Consolidated Closure
 
 **Date**: 2026-08-19  
 **Branch**: `main`  
@@ -1253,13 +1253,13 @@ The fourth phase focuses on adding a **cloud‑first voice interface** and a **p
 
 ---
 
-## 2026-08-19 — Security: GitHub Secret Scanning False-Positive Remediation
+## 2026-08-19 â€” Security: GitHub Secret Scanning False-Positive Remediation
 
 ### Issue
 
 GitHub Secret Scanning opened a **Google API Key** alert against a tracked test file
 (`tests/test_gemini_semantic_search.py`).  The detected value was **synthetic test
-fixture data** — not the real FRIDAY Gemini API key.  The real key resides only in the
+fixture data** â€” not the real FRIDAY Gemini API key.  The real key resides only in the
 local untracked `.env` file and was never at risk.
 
 The root cause was that earlier test files contained realistic-format credential strings
@@ -1274,32 +1274,32 @@ config files for the following patterns:
 
 | Pattern | Source found in |
 |---|---|
-| `TEST_GEMINI_API_KEY_PLACEHOLDER_17` | `tests/test_gemini_semantic_search.py` (replaced); `src/friday/memory/embeddings/gemini.py` (regex definition — intentional, preserved) |
+| `TEST_GEMINI_API_KEY_PLACEHOLDER_17` | `tests/test_gemini_semantic_search.py` (replaced); `src/friday/memory/embeddings/gemini.py` (regex definition â€” intentional, preserved) |
 | `sk-` | Multiple test files (fixture values, replaced) |
 | `BEGIN RSA / OPENSSH PRIVATE KEY` | None found |
 | `GEMINI_API_KEY=`, `GOOGLE_API_KEY=`, `OPENAI_API_KEY=` | None in tracked files |
 
-**Replacements made** (credential-shaped fixtures → safe synthetic placeholders):
+**Replacements made** (credential-shaped fixtures â†’ safe synthetic placeholders):
 
 | File | Change |
 |---|---|
-| `tests/conftest.py` | `sk-test-secret-key-1234567890` → `TEST_OPENAI_API_KEY` |
-| `tests/test_config.py` | Env-file fixture keys → regex-matching local variables with explicit `# NOT real` comments |
-| `tests/test_gemini_cost_and_controls.py` | `sk-test` → `TEST_OPENAI_API_KEY` |
-| `tests/test_gemini_live_voice.py` | Realistic Gemini key → `TEST_GEMINI_API_KEY` |
+| `tests/conftest.py` | `sk-test-secret-key-1234567890` â†’ `TEST_OPENAI_API_KEY` |
+| `tests/test_config.py` | Env-file fixture keys â†’ regex-matching local variables with explicit `# NOT real` comments |
+| `tests/test_gemini_cost_and_controls.py` | `sk-test` â†’ `TEST_OPENAI_API_KEY` |
+| `tests/test_gemini_live_voice.py` | Realistic Gemini key â†’ `TEST_GEMINI_API_KEY` |
 | `tests/test_gemini_semantic_search.py` | Sanitizer test rewritten with clearly-commented local synthetic variables |
-| `tests/test_gemini_tools.py` | Realistic Gemini key → `TEST_GEMINI_API_KEY` |
-| `tests/test_llm_providers.py` | `sk-test` → `TEST_OPENAI_API_KEY`; masking test corrected |
-| `tests/test_reliability.py` | `sk-test` → `TEST_OPENAI_API_KEY` |
-| `tests/test_semantic_memory.py` | Realistic Gemini key → `TEST_GEMINI_API_KEY` |
+| `tests/test_gemini_tools.py` | Realistic Gemini key â†’ `TEST_GEMINI_API_KEY` |
+| `tests/test_llm_providers.py` | `sk-test` â†’ `TEST_OPENAI_API_KEY`; masking test corrected |
+| `tests/test_reliability.py` | `sk-test` â†’ `TEST_OPENAI_API_KEY` |
+| `tests/test_semantic_memory.py` | Realistic Gemini key â†’ `TEST_GEMINI_API_KEY` |
 
 **Intentionally preserved** (legitimate production code):
-- `src/friday/memory/embeddings/gemini.py` — `SECRET_PATTERNS` list containing `TEST_GEMINI_API_KEY_PLACEHOLDER_17` and `sk-` patterns (redaction regexes used by `sanitize_text_for_embedding()`).
-- `src/friday/core/logging.py` — `SecretMaskingFilter` regex containing `sk-`.
+- `src/friday/memory/embeddings/gemini.py` â€” `SECRET_PATTERNS` list containing `TEST_GEMINI_API_KEY_PLACEHOLDER_17` and `sk-` patterns (redaction regexes used by `sanitize_text_for_embedding()`).
+- `src/friday/core/logging.py` â€” `SecretMaskingFilter` regex containing `sk-`.
 
 ### .env Security Confirmation
 
-`git ls-files .env` → *(empty — .env is NOT tracked)*
+`git ls-files .env` â†’ *(empty â€” .env is NOT tracked)*
 
 The real Gemini API key was never printed, modified, copied, committed, or placed into any tracked file.
 
@@ -1313,7 +1313,7 @@ The real Gemini API key was never printed, modified, copied, committed, or place
 
 ---
 
-## 2026-08-19 — Phase 5.1: Real-Time Voice Architecture Audit
+## 2026-08-19 â€” Phase 5.1: Real-Time Voice Architecture Audit
 
 ### Audit Context & Objective
 FRIDAY's text Gemini provider, real Gemini function calling, Gemini embeddings, semantic memory, SQLite persistence, tools, authorization, and scheduler are fully functional and locked. Subsystem under design and reconstruction: **Real-Time Voice**.
@@ -1325,7 +1325,7 @@ Conducted an architecture audit of the current voice implementation (`src/friday
    - Migration from discrete turn-based request-response models to persistent bidirectional WebSocket sessions using `google-genai` (`client.aio.live.connect`).
    - Configurable Live Model: Defaults to `gemini-2.0-flash` (or `gemini-2.5-flash-native-audio-latest`).
 2. **Audio I/O Pipeline**:
-   - **Input**: 16 kHz 16-bit mono linear PCM (`int16`, little-endian) captured in 20–50ms chunks via `sounddevice.RawInputStream` and dispatched via `send_realtime_input(media_chunks=[genai_types.Blob(...)])`.
+   - **Input**: 16 kHz 16-bit mono linear PCM (`int16`, little-endian) captured in 20â€“50ms chunks via `sounddevice.RawInputStream` and dispatched via `send_realtime_input(media_chunks=[genai_types.Blob(...)])`.
    - **Output**: 24 kHz 16-bit mono linear PCM (`int16`, little-endian) delivered streaming via `server_content.model_turn.parts[].inline_data.data` to `sounddevice.RawOutputStream`.
    - Strictly avoid fake MP3 conversions, silent placeholders, or waiting for turn completions prior to streaming audio playback.
 3. **Voice Activity Detection (VAD) & Barge-In**:
@@ -1342,7 +1342,7 @@ Conducted an architecture audit of the current voice implementation (`src/friday
 
 ---
 
-## 2026-08-19 — Phase 5.2: Implement Real Gemini Live Session
+## 2026-08-19 â€” Phase 5.2: Implement Real Gemini Live Session
 
 ### Objective
 Implement the real Gemini Live session orchestrator using the official Google GenAI Python SDK (`google-genai` v2.18.1), streaming 16 kHz 16-bit linear PCM microphone input, playing streamed 24 kHz 16-bit linear PCM output, supporting dual-layer barge-in, session resumption, and automatic reconnection.
@@ -1371,10 +1371,10 @@ Implement the real Gemini Live session orchestrator using the official Google Ge
 
 ---
 
-## 2026-08-19 — Phase 5.3: Real-Time Microphone and Audio Playback Pipeline
+## 2026-08-19 â€” Phase 5.3: Real-Time Microphone and Audio Playback Pipeline
 
 ### Objective
-Build a robust, non-blocking local audio I/O streaming pipeline for continuous 16 kHz 16-bit mono linear PCM microphone input capture (20–40ms chunks) and low-latency 24 kHz 16-bit mono linear PCM speaker playback with instant queue purging and comprehensive hardware error handling. Zero local AI inference.
+Build a robust, non-blocking local audio I/O streaming pipeline for continuous 16 kHz 16-bit mono linear PCM microphone input capture (20â€“40ms chunks) and low-latency 24 kHz 16-bit mono linear PCM speaker playback with instant queue purging and comprehensive hardware error handling. Zero local AI inference.
 
 ### Work Completed
 1. **Audio I/O Pipeline Architecture (`src/friday/voice/audio_io.py`)**:
@@ -1398,7 +1398,7 @@ Build a robust, non-blocking local audio I/O streaming pipeline for continuous 1
 
 ---
 
-## 2026-08-19 — Phase 5.4: Natural VAD and True Barge-In
+## 2026-08-19 â€” Phase 5.4: Natural VAD and True Barge-In
 
 ### Objective
 Enable natural conversational turn-taking and true dual-layer barge-in interruption. Support automatic server-side VAD with tuned sensitivity and silence windows, instant local RMS speech energy interruption (<1.0 ms), fallback spoken stop commands, and memory coherence after interrupted turns.
@@ -1426,7 +1426,7 @@ Enable natural conversational turn-taking and true dual-layer barge-in interrupt
 
 ---
 
-## 2026-08-19 — Phase 5.5: Voice + Tools + Memory + Authorization Integration
+## 2026-08-19 â€” Phase 5.5: Voice + Tools + Memory + Authorization Integration
 
 ### Objective
 Integrate real-time Gemini Live voice streaming with the single unified FRIDAY intelligence stack (`FridayAgent`, `ToolRegistry`, `SQLiteConversationMemory`, `SemanticMemory`, `BaseAuthorizer`). Voice obeys the exact same security policies, tool registry, and memory persistence as the text interface without creating a separate agent brain.
@@ -1440,7 +1440,7 @@ Integrate real-time Gemini Live voice streaming with the single unified FRIDAY i
    - Safely catches runtime tool execution exceptions and returns structured errors without crashing the live stream.
 3. **Unified Security & Authorization Gating**:
    - Voice tool executions strictly adhere to `SafetyLevel` (SAFE, SENSITIVE, DANGEROUS).
-   - Sensitive and Dangerous tool calls route through `agent.authorizer.authorize()` — unauthorized actions return rejection errors to the model.
+   - Sensitive and Dangerous tool calls route through `agent.authorizer.authorize()` â€” unauthorized actions return rejection errors to the model.
 4. **Bidirectional Memory Synchronization**:
    - Text -> Save, Voice -> Retrieve: Facts saved in text sessions are queryable and recalled in voice sessions.
    - Voice -> Save, Text -> Retrieve: Transcribed turn completions commit directly to SQLite and semantic vector store upon turn completion. Tiny intermediate audio chunks are not embedded.
@@ -1455,7 +1455,7 @@ Integrate real-time Gemini Live voice streaming with the single unified FRIDAY i
 
 ---
 
-## 2026-08-19 — Phase 5.6: Premium Futuristic Voice Experience
+## 2026-08-19 â€” Phase 5.6: Premium Futuristic Voice Experience
 
 ### Objective
 Refine FRIDAY's voice personality and spoken system prompt into a fast, calm, intelligent, concise, and confident personal AI companion. Eliminate robotic filler, avoid unnecessary monologue, optimize spoken output for speed and naturalness, and ensure seamless interruptibility without changing underlying safety or tool execution architecture.
@@ -1475,7 +1475,7 @@ Refine FRIDAY's voice personality and spoken system prompt into a fast, calm, in
 
 ---
 
-## 2026-08-19 — Phase 5.7: Extreme Voice Latency Optimization
+## 2026-08-19 â€” Phase 5.7: Extreme Voice Latency Optimization
 
 ### Objective
 Maximize real-time conversational responsiveness and achieve sub-second perceived responsiveness across audio I/O streaming, network round-trips, and WebSocket lifecycle management. Minimize thinking overhead, eliminate file-based transcoding bottlenecks, and profile local laptop resource utilization.
@@ -1500,7 +1500,7 @@ Maximize real-time conversational responsiveness and achieve sub-second perceive
 
 ---
 
-## 2026-08-19 — Phase 5.8: Real-World Voice Acceptance Testing
+## 2026-08-19 â€” Phase 5.8: Real-World Voice Acceptance Testing
 
 ### Objective
 Execute an end-to-end acceptance test suite verifying all 11 real-world operational requirements using physical laptop audio hardware (Realtek Microphone & Speakers), real Gemini Live WebSocket streaming, real FRIDAY unified agent, ToolRegistry, SQLite persistent memory, and security authorization.
@@ -1531,7 +1531,7 @@ Execute an end-to-end acceptance test suite verifying all 11 real-world operatio
 
 ---
 
-## 2026-08-19 — Phase 5.9: Final Real-Time Voice Verification & Phase 5 Consolidated Sign-off
+## 2026-08-19 â€” Phase 5.9: Final Real-Time Voice Verification & Phase 5 Consolidated Sign-off
 
 ### Objective
 Provide comprehensive consolidation, capability auditing, security verification, automated regression testing, and final architectural sign-off for Phase 5 (Real-Time Gemini Live Voice System).
@@ -1540,22 +1540,22 @@ Provide comprehensive consolidation, capability auditing, security verification,
 
 | Capability / Subsystem | Implementation File | Mock Tested | Real Tested | Status |
 | :--- | :--- | :---: | :---: | :---: |
-| **Core FridayAgent & Reasoning Loop** | `src/friday/agent/agent.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
-| **Google Gemini Text (`gemini-2.5-flash`)** | `src/friday/llm/gemini_provider.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
-| **Real Function Calling & Tool Correlation** | `src/friday/tools/registry.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
-| **Tiered Authorization & Safety Gating** | `src/friday/core/auth.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
-| **Persistent SQLite Memory (WAL + ACID)** | `src/friday/memory/sqlite.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
-| **SQLite FTS5 Full-Text Keyword Search** | `src/friday/memory/sqlite.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
-| **Cloud-First Gemini Embeddings** | `src/friday/memory/embeddings/gemini.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
-| **Proactive Task Scheduler** | `src/friday/tasks/scheduler.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
-| **Real Gemini Live WebSocket Session** | `src/friday/voice/gemini_live_session.py` | ✅ PASS | ✅ PASS | **REAL-TESTED** |
-| **Continuous Streaming Microphone (16kHz)** | `src/friday/voice/audio_io.py` | ✅ PASS | ✅ PASS | **REAL-TESTED** |
-| **Immediate Streaming Speaker (24kHz)** | `src/friday/voice/audio_io.py` | ✅ PASS | ✅ PASS | **REAL-TESTED** |
-| **Automatic Server-Side VAD** | `src/friday/voice/gemini_live_session.py` | ✅ PASS | ✅ PASS | **REAL-TESTED** |
-| **Dual-Layer Instant Barge-In (<10ms)** | `src/friday/voice/gemini_live_session.py` | ✅ PASS | ✅ PASS | **REAL-TESTED** |
-| **Voice Tool Calling & Memory Recording** | `src/friday/voice/gemini_live_session.py` | ✅ PASS | ✅ PASS | **REAL-TESTED** |
-| **Voice Memory Persistence & Retrieval** | `src/friday/voice/gemini_live_session.py` | ✅ PASS | ✅ PASS | **REAL-TESTED** |
-| **Session Resumption & GoAway Reconnect** | `src/friday/voice/gemini_live_session.py` | ✅ PASS | ✅ PASS | **REAL-TESTED** |
+| **Core FridayAgent & Reasoning Loop** | `src/friday/agent/agent.py` | âœ… PASS | âœ… PASS | **IMPLEMENTED** |
+| **Google Gemini Text (`gemini-2.5-flash`)** | `src/friday/llm/gemini_provider.py` | âœ… PASS | âœ… PASS | **IMPLEMENTED** |
+| **Real Function Calling & Tool Correlation** | `src/friday/tools/registry.py` | âœ… PASS | âœ… PASS | **IMPLEMENTED** |
+| **Tiered Authorization & Safety Gating** | `src/friday/core/auth.py` | âœ… PASS | âœ… PASS | **IMPLEMENTED** |
+| **Persistent SQLite Memory (WAL + ACID)** | `src/friday/memory/sqlite.py` | âœ… PASS | âœ… PASS | **IMPLEMENTED** |
+| **SQLite FTS5 Full-Text Keyword Search** | `src/friday/memory/sqlite.py` | âœ… PASS | âœ… PASS | **IMPLEMENTED** |
+| **Cloud-First Gemini Embeddings** | `src/friday/memory/embeddings/gemini.py` | âœ… PASS | âœ… PASS | **IMPLEMENTED** |
+| **Proactive Task Scheduler** | `src/friday/tasks/scheduler.py` | âœ… PASS | âœ… PASS | **IMPLEMENTED** |
+| **Real Gemini Live WebSocket Session** | `src/friday/voice/gemini_live_session.py` | âœ… PASS | âœ… PASS | **REAL-TESTED** |
+| **Continuous Streaming Microphone (16kHz)** | `src/friday/voice/audio_io.py` | âœ… PASS | âœ… PASS | **REAL-TESTED** |
+| **Immediate Streaming Speaker (24kHz)** | `src/friday/voice/audio_io.py` | âœ… PASS | âœ… PASS | **REAL-TESTED** |
+| **Automatic Server-Side VAD** | `src/friday/voice/gemini_live_session.py` | âœ… PASS | âœ… PASS | **REAL-TESTED** |
+| **Dual-Layer Instant Barge-In (<10ms)** | `src/friday/voice/gemini_live_session.py` | âœ… PASS | âœ… PASS | **REAL-TESTED** |
+| **Voice Tool Calling & Memory Recording** | `src/friday/voice/gemini_live_session.py` | âœ… PASS | âœ… PASS | **REAL-TESTED** |
+| **Voice Memory Persistence & Retrieval** | `src/friday/voice/gemini_live_session.py` | âœ… PASS | âœ… PASS | **REAL-TESTED** |
+| **Session Resumption & GoAway Reconnect** | `src/friday/voice/gemini_live_session.py` | âœ… PASS | âœ… PASS | **REAL-TESTED** |
 
 ### Voice Subsystem Verification Summary
 - **REAL GEMINI LIVE**: `PASS`
@@ -1584,3 +1584,11 @@ Provide comprehensive consolidation, capability auditing, security verification,
 - **Automated Test Results**: **220 / 220 PASSED** (0 failed, 0 skipped, 36m 10s).
 
 ---
+
+### Phase 5.10: Final Voice Security and Tool Execution Hardening
+- Centralized Gemini Live tool execution through the canonical `FridayAgent._execute_single_tool_call` loop.
+- Fixed unsafe logging by introducing `redact_tool_args()` utility to emit structured metadata only.
+- Fake secrets and arbitrary strings passed via voice tools are now redacted from logging output.
+- Highly sensitive output from tools executed via Gemini Live are gated from automatic SQLite embedding.
+- Added 12 new test cases in `test_voice_tool_security.py` validating execution gating and logging.
+

@@ -111,3 +111,73 @@ def get_logger(name: str) -> logging.Logger:
     if name.startswith("friday."):
         return logging.getLogger(name)
     return logging.getLogger(f"friday.{name}")
+
+
+# ---------------------------------------------------------------------------
+# Safe argument redaction
+# ---------------------------------------------------------------------------
+
+# Scalar types that are safe to include verbatim in structured metadata logs.
+_SAFE_SCALAR_TYPES = (int, float, bool)
+
+# Argument key names that are explicitly safe to log as values.
+_SAFE_ARG_KEYS: frozenset = frozenset(
+    {
+        "expression",  # calculator expressions (arithmetic only, not secrets)
+        "query",       # search queries
+        "limit",
+        "offset",
+        "threshold",
+        "mode",
+        "action_name",
+    }
+)
+
+# Argument key names that must always be redacted regardless of value type.
+_SENSITIVE_ARG_KEYS: frozenset = frozenset(
+    {
+        "password", "passwd", "secret", "token", "key", "api_key",
+        "authorization", "credential", "credentials", "private",
+        "private_key", "access_token", "refresh_token", "auth", "bearer",
+        "content",   # arbitrary file contents
+        "text",      # arbitrary text blobs
+        "data",      # arbitrary binary / user data
+        "body",      # HTTP body payloads
+        "payload",
+    }
+)
+
+_MAX_SAFE_STRING_LEN = 120
+
+
+def redact_tool_args(args: dict, *, max_keys: int = 8) -> dict:
+    """Return a log-safe redacted copy of *args* containing only safe metadata.
+
+    Rules (applied per key in order):
+    1. Keys in ``_SENSITIVE_ARG_KEYS``  -> ``"[REDACTED]"``.
+    2. Values that are ``bool`` or ``int`` or ``float`` -> kept as-is (safe scalars).
+    3. Keys in ``_SAFE_ARG_KEYS`` with a **short** string value -> kept as-is.
+    4. Everything else (arbitrary strings, lists, dicts, bytes …) -> ``"[REDACTED]"``.
+
+    Only the first *max_keys* keys are included to prevent log-flooding.
+    """
+    if not isinstance(args, dict):
+        return {"_redacted": True}
+
+    out: dict = {}
+    for key in list(args.keys())[:max_keys]:
+        lower_key = str(key).lower()
+        val = args[key]
+
+        if lower_key in _SENSITIVE_ARG_KEYS:
+            out[key] = "[REDACTED]"
+        elif isinstance(val, _SAFE_SCALAR_TYPES):
+            out[key] = val
+        elif lower_key in _SAFE_ARG_KEYS and isinstance(val, str) and len(val) <= _MAX_SAFE_STRING_LEN:
+            out[key] = val
+        else:
+            out[key] = "[REDACTED]"
+
+    if len(args) > max_keys:
+        out["_truncated"] = f"{len(args) - max_keys} more key(s) omitted"
+    return out

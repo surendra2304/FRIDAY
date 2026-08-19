@@ -21,8 +21,8 @@ from google.genai import types as genai_types
 
 from friday.core.config import get_settings
 from friday.core.exceptions import LLMProviderError
-from friday.core.logging import get_logger
-from friday.core.types import Message, Role, SafetyLevel
+from friday.core.logging import get_logger, redact_tool_args
+from friday.core.types import Message, Role, SafetyLevel, ToolCall
 from friday.voice.audio_io import MicrophoneStream, SpeakerStream, compute_pcm_rms
 
 logger = get_logger("voice.live_session")
@@ -218,7 +218,18 @@ class GeminiLiveVoiceSession:
         return genai_types.LiveConnectConfig(**config_kwargs)
 
     async def _execute_tool_call(self, fc: Any) -> genai_types.FunctionResponse:
-        """Execute a tool requested by Gemini Live through the agent's ToolRegistry."""
+        """Execute a Gemini Live function call through the canonical FridayAgent tool path.
+
+        Uses agent._execute_single_tool_call which owns:
+        - tool lookup and registration check
+        - schema / argument validation
+        - SAFE / SENSITIVE / DANGEROUS classification
+        - authorization gating (authorizer.authorize)
+        - deduplication by call ID
+        - execution with timeout
+        - error normalization
+        - audit logging (metadata-only, no raw args)
+        """
         tool_name = getattr(fc, "name", "")
         tool_id = getattr(fc, "id", None) or f"call_{tool_name}"
         raw_args = getattr(fc, "args", {})
@@ -236,72 +247,97 @@ class GeminiLiveVoiceSession:
             except Exception:
                 args = {}
 
-        logger.info(f"Gemini Live requested tool: '{tool_name}' with args: {args}")
-
+        # --- SAFE structured metadata-only log (no raw argument values) ---
         registry = getattr(self.agent, "tools", getattr(self.agent, "tool_registry", None)) if self.agent else None
-        if not registry:
-            return genai_types.FunctionResponse(
-                name=tool_name,
-                id=tool_id,
-                response={"error": "Agent tool registry not available"},
-            )
+        tool_obj = registry.get(tool_name) if registry else None
+        safety_label = tool_obj.safety_level.value if tool_obj else "unknown"
+        logger.info(
+            "Voice tool request [name: %s, call_id: %s, safety: %s, arg_count: %d, args_meta: %s]",
+            tool_name,
+            tool_id,
+            safety_label,
+            len(args),
+            redact_tool_args(args),
+        )
 
-        tool = registry.get(tool_name)
-        if not tool:
-            return genai_types.FunctionResponse(
-                name=tool_name,
-                id=tool_id,
-                response={"error": f"Tool '{tool_name}' not found"},
-            )
-
-        # Check authorization gating
-        authorizer = getattr(self.agent, "authorizer", None)
-        if authorizer and tool.safety_level in (SafetyLevel.SENSITIVE, SafetyLevel.DANGEROUS):
-            from friday.core.types import AuthorizationRequest, AuthorizationDecision
+        # --- Delegate to canonical agent execution path ---
+        if self.agent is not None and hasattr(self.agent, "_execute_single_tool_call"):
+            tc = ToolCall(id=tool_id, name=tool_name, arguments=args)
             try:
-                auth_req = AuthorizationRequest(
-                    tool_name=tool.name,
-                    arguments=args,
-                    safety_level=tool.safety_level,
+                result = await asyncio.get_running_loop().run_in_executor(
+                    None, self.agent._execute_single_tool_call, tc
                 )
-                auth_resp = authorizer.authorize(auth_req)
-                is_approved = getattr(auth_resp, "decision", None) == AuthorizationDecision.APPROVED or getattr(auth_resp, "approved", False)
-                reason = getattr(auth_resp, "reason", "Action not approved")
-            except TypeError:
-                auth_resp = authorizer.authorize(tool.name, args, tool.safety_level)
-                is_approved = getattr(auth_resp, "approved", False) or getattr(auth_resp, "decision", None) == AuthorizationDecision.APPROVED
-                reason = getattr(auth_resp, "reason", "Action not approved")
-
-            if not is_approved:
-                logger.warning(f"Voice tool '{tool_name}' blocked by authorizer: {reason}")
+            except Exception as e:
+                logger.warning("Voice tool '%s' raised unexpected exception: %s", tool_name, type(e).__name__)
                 return genai_types.FunctionResponse(
                     name=tool_name,
                     id=tool_id,
-                    response={"error": f"Tool execution rejected: {reason}"},
+                    response={"error": f"Execution error: {type(e).__name__}"},
                 )
 
-        # Execute tool safely
-        try:
-            res = tool.execute(**args)
-            content = res.content if not res.is_error else f"Error: {res.content}"
-        except Exception as e:
-            content = f"Execution error: {str(e)}"
+            content = result.content if not result.is_error else f"Execution error: {result.content}"
+            is_sensitive = (
+                result.safety_level in (SafetyLevel.SENSITIVE, SafetyLevel.DANGEROUS)
+                if hasattr(result, "safety_level") else False
+            )
 
-        # Record tool execution in agent conversation memory
+            logger.info(
+                "Voice tool completed [name: %s, call_id: %s, success: %s]",
+                tool_name, tool_id, not result.is_error,
+            )
+        else:
+            # Fallback: no agent present — only safe tool execution without authorization
+            if not registry:
+                return genai_types.FunctionResponse(
+                    name=tool_name,
+                    id=tool_id,
+                    response={"error": "Agent tool registry not available"},
+                )
+            if not tool_obj:
+                return genai_types.FunctionResponse(
+                    name=tool_name,
+                    id=tool_id,
+                    response={"error": f"Tool '{tool_name}' not found"},
+                )
+            if tool_obj.safety_level != SafetyLevel.SAFE:
+                logger.warning(
+                    "Voice tool '%s' blocked in fallback path: safety=%s requires authorization",
+                    tool_name, tool_obj.safety_level.value,
+                )
+                return genai_types.FunctionResponse(
+                    name=tool_name,
+                    id=tool_id,
+                    response={"error": f"Tool '{tool_name}' blocked by authorizer: No interactive authorizer was configured."},
+                )
+            try:
+                res = tool_obj.execute(**args)
+                content = res.content if not res.is_error else f"Execution error: {res.content}"
+                is_sensitive = False
+            except Exception as e:
+                content = f"Execution error: {type(e).__name__}: {str(e)}"
+                is_sensitive = False
+
+        # --- Persist tool result to memory (sensitive output gated from auto-embedding) ---
         if self.agent is not None and getattr(self.agent, "memory", None) is not None:
             try:
-                conv_id = getattr(self.agent, "conversation_id", None) or getattr(self.agent.memory, "active_conversation_id", None)
+                conv_id = (
+                    getattr(self.agent, "conversation_id", None)
+                    or getattr(self.agent.memory, "active_conversation_id", None)
+                )
+                # Sensitive/dangerous tool results are stored to SQLite for audit purposes
+                # but must NOT be auto-embedded into the semantic vector index.
+                mem_content = "[SENSITIVE TOOL RESULT — content not embedded]" if is_sensitive else str(content)
                 self.agent.memory.add_message(
                     Message(
                         role=Role.TOOL,
-                        content=str(content),
+                        content=mem_content,
                         name=tool_name,
                         tool_call_id=tool_id,
                     ),
                     conversation_id=conv_id,
                 )
             except Exception as mem_err:
-                logger.debug(f"Error persisting live tool execution to memory: {mem_err}")
+                logger.debug("Error persisting live tool execution to memory: %s", type(mem_err).__name__)
 
         return genai_types.FunctionResponse(
             name=tool_name,
