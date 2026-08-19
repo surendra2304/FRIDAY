@@ -152,8 +152,8 @@ def test_gemini_schema_declaration_fidelity():
 
 def test_gemini_direct_response_no_tools():
     """Verify Gemini answers ordinary conversational queries directly without invoking tools."""
-    provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", model="gemini-2.5-flash")
-    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", embedding_provider="none")
+    provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY", model="gemini-2.5-flash")
+    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY", embedding_provider="none")
     memory = InMemoryConversationMemory()
     agent = FridayAgent(settings=settings, llm_provider=provider, memory=memory)
 
@@ -170,8 +170,8 @@ def test_gemini_direct_response_no_tools():
 
 def test_gemini_single_tool_call_round_trip():
     """Verify User -> Gemini function call -> FRIDAY validation & execution -> Gemini -> Final answer."""
-    provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", model="gemini-2.5-flash")
-    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", embedding_provider="none")
+    provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY", model="gemini-2.5-flash")
+    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY", embedding_provider="none")
     memory = InMemoryConversationMemory()
     agent = FridayAgent(settings=settings, llm_provider=provider, memory=memory)
 
@@ -194,8 +194,8 @@ def test_gemini_single_tool_call_round_trip():
 
 def test_gemini_multiple_parallel_safe_tool_calls():
     """Verify Gemini can request multiple independent SAFE tools that FRIDAY coordinates concurrently."""
-    provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", model="gemini-2.5-flash")
-    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", embedding_provider="none")
+    provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY", model="gemini-2.5-flash")
+    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY", embedding_provider="none")
     memory = InMemoryConversationMemory()
     agent = FridayAgent(settings=settings, llm_provider=provider, memory=memory)
 
@@ -217,8 +217,8 @@ def test_gemini_multiple_parallel_safe_tool_calls():
 
 def test_gemini_sequential_multi_step_tool_calls():
     """Verify Step 1 Tool -> Result -> Step 2 Tool -> Result -> Final Answer."""
-    provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", model="gemini-2.5-flash")
-    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", embedding_provider="none")
+    provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY", model="gemini-2.5-flash")
+    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY", embedding_provider="none")
     memory = InMemoryConversationMemory()
     agent = FridayAgent(settings=settings, llm_provider=provider, memory=memory)
 
@@ -239,8 +239,8 @@ def test_gemini_sequential_multi_step_tool_calls():
 
 def test_gemini_sensitive_tool_authorization_denied():
     """Verify that Gemini cannot execute SENSITIVE tools without approval and receives structured denial."""
-    provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", model="gemini-2.5-flash")
-    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", embedding_provider="none")
+    provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY", model="gemini-2.5-flash")
+    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY", embedding_provider="none")
     memory = InMemoryConversationMemory()
     registry = ToolRegistry()
     registry.register(SensitiveTestTool())
@@ -270,8 +270,8 @@ def test_gemini_sensitive_tool_authorization_denied():
 
 def test_gemini_dangerous_tool_authorization_approved():
     """Verify that DANGEROUS tools execute ONLY when explicitly authorized."""
-    provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", model="gemini-2.5-flash")
-    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", embedding_provider="none")
+    provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY", model="gemini-2.5-flash")
+    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY", embedding_provider="none")
     memory = InMemoryConversationMemory()
     registry = ToolRegistry()
     registry.register(DangerousTestTool())
@@ -301,8 +301,8 @@ def test_gemini_dangerous_tool_authorization_approved():
 
 def test_gemini_malformed_arguments_recovery():
     """Verify that FRIDAY validates schema before execution and Gemini recovers from argument errors."""
-    provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", model="gemini-2.5-flash")
-    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", embedding_provider="none")
+    provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY", model="gemini-2.5-flash")
+    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY", embedding_provider="none")
     memory = InMemoryConversationMemory()
     agent = FridayAgent(settings=settings, llm_provider=provider, memory=memory)
 
@@ -326,8 +326,8 @@ def test_gemini_malformed_arguments_recovery():
 
 def test_gemini_max_iteration_guardrail():
     """Verify FRIDAY halts execution if Gemini enters an infinite tool call loop."""
-    provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", model="gemini-2.5-flash")
-    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", embedding_provider="none")
+    provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY", model="gemini-2.5-flash")
+    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY", embedding_provider="none")
     memory = InMemoryConversationMemory()
     agent = FridayAgent(settings=settings, llm_provider=provider, memory=memory, max_tool_iterations=3)
 

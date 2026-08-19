@@ -33,7 +33,7 @@ def test_gemini_custom_configuration_and_model_override():
         llm_provider="gemini",
         llm_model="default-model",
         gemini_model="gemini-1.5-pro",
-        gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_17Test123",
+        gemini_api_key="TEST_GEMINI_API_KEY",
         gemini_timeout=30.0,
         gemini_max_retries=1,
         gemini_backoff_factor=1.5,
@@ -68,7 +68,7 @@ def test_gemini_retry_behavior_bounded_by_max_retries():
     from google.genai import errors as genai_errors
 
     provider = GeminiLLMProvider(
-        api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12",
+        api_key="TEST_GEMINI_API_KEY",
         model="gemini-2.5-flash",
         max_retries=2,
         backoff_factor=1.0,
@@ -96,7 +96,7 @@ def test_gemini_retry_behavior_bounded_by_max_retries():
 def test_gemini_timeout_handling():
     """Verify client timeouts are caught and converted to LLMProviderError without crashing."""
     provider = GeminiLLMProvider(
-        api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12",
+        api_key="TEST_GEMINI_API_KEY",
         model="gemini-2.5-flash",
         timeout=5.0,
         max_retries=1,
@@ -130,7 +130,7 @@ def test_provider_selection_validation():
     valid_gemini = Settings(llm_provider="gemini", gemini_api_key="key")
     assert isinstance(create_llm_provider(valid_gemini), GeminiLLMProvider)
 
-    valid_openai = Settings(llm_provider="openai", llm_api_key="sk-test")
+    valid_openai = Settings(llm_provider="openai", llm_api_key="TEST_OPENAI_API_KEY")
     assert isinstance(create_llm_provider(valid_openai), OpenAILLMProvider)
 
     invalid = Settings(llm_provider="unsupported_cloud")
@@ -143,8 +143,8 @@ def test_usage_observability_metadata_in_agent_response():
     """Verify non-secret metadata (latency, iterations, provider, model, request_count, cost_mode) is exposed."""
     from google.genai import types
 
-    provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", model="gemini-2.5-flash", cost_mode="free_first")
-    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", cost_mode="free_first", embedding_provider="none")
+    provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY", model="gemini-2.5-flash", cost_mode="free_first")
+    settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY", cost_mode="free_first", embedding_provider="none")
     memory = InMemoryConversationMemory()
     agent = FridayAgent(settings=settings, llm_provider=provider, memory=memory)
 
@@ -179,4 +179,4 @@ def test_usage_observability_metadata_in_agent_response():
     assert meta["success"] is True
     # Ensure no secrets or API keys are present in metadata
     assert "api_key" not in meta
-    assert "TEST_GEMINI_API_KEY_PLACEHOLDER_12" not in str(meta)
+    assert "TEST_GEMINI_API_KEY" not in str(meta)

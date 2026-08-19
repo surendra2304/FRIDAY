@@ -25,7 +25,7 @@ def mock_settings() -> Settings:
         log_file=None,
         llm_provider="mock",
         llm_model="mock-gpt",
-        llm_api_key="sk-test-secret-key-1234567890",
+        llm_api_key="TEST_OPENAI_API_KEY",
         embedding_provider="none",
         memory_backend="in_memory",
         memory_max_messages=10,

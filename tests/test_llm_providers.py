@@ -40,7 +40,7 @@ def test_factory_creation():
     provider = create_llm_provider(mock_settings)
     assert isinstance(provider, MockLLMProvider)
 
-    openai_settings = Settings(llm_provider="openai", llm_api_key="sk-test")
+    openai_settings = Settings(llm_provider="openai", llm_api_key="TEST_OPENAI_API_KEY")
     openai_provider = create_llm_provider(openai_settings)
     assert isinstance(openai_provider, OpenAILLMProvider)
 
@@ -53,27 +53,29 @@ def test_factory_invalid_provider():
 
 def test_openai_provider_error_handling_json():
     from unittest import mock
-    provider = OpenAILLMProvider(api_key="sk-test-key-12345", base_url="https://api.mock.com")
-    
-    # Mock status code 400 with structured JSON error
+    provider = OpenAILLMProvider(api_key="TEST_OPENAI_API_KEY", base_url="https://api.mock.com")
+
+    # Mock status code 400 — simulate the API echoing back the api_key in the error body.
+    # OpenAI provider masks self.api_key wherever it appears in error details.
+    api_key = provider.api_key  # "TEST_OPENAI_API_KEY"
     mock_resp = mock.Mock()
     mock_resp.status_code = 400
-    mock_resp.json.return_value = {"error": {"message": "Invalid API key sk-test-key-12345 provided."}}
-    
+    mock_resp.json.return_value = {"error": {"message": f"Invalid API key {api_key} provided."}}
+
     with mock.patch("httpx.Client.post", return_value=mock_resp):
         with pytest.raises(LLMProviderError) as exc_info:
             provider.generate([Message(role=Role.USER, content="Hello")])
-        
+
         # Verify JSON parsed error message is raised
         assert "Invalid API key" in str(exc_info.value)
-        # Verify API key is masked in the exception message
-        assert "sk-test-key-12345" not in str(exc_info.value)
+        # Verify the API key is masked in the exception message
+        assert api_key not in str(exc_info.value)
         assert "***" in str(exc_info.value)
 
 
 def test_openai_provider_error_handling_html_truncation():
     from unittest import mock
-    provider = OpenAILLMProvider(api_key="sk-test", base_url="https://api.mock.com")
+    provider = OpenAILLMProvider(api_key="TEST_OPENAI_API_KEY", base_url="https://api.mock.com")
 
     # Mock status 502 with massive HTML error page
     mock_resp = mock.Mock()
@@ -92,11 +94,11 @@ def test_openai_provider_error_handling_html_truncation():
 
 
 def test_factory_gemini_creation():
-    gemini_settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12-12345")
+    gemini_settings = Settings(llm_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY")
     gemini_provider = create_llm_provider(gemini_settings)
     assert isinstance(gemini_provider, GeminiLLMProvider)
     assert gemini_provider.provider_name == "gemini"
-    assert gemini_provider.api_key == "TEST_GEMINI_API_KEY_PLACEHOLDER_12-12345"
+    assert gemini_provider.api_key == "TEST_GEMINI_API_KEY"
 
 
 def test_gemini_missing_api_key():
@@ -176,7 +178,7 @@ def test_gemini_direct_response_generation():
     from unittest import mock
     from google.genai import types
 
-    provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", model="gemini-2.5-flash")
+    provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY", model="gemini-2.5-flash")
     mock_resp = types.GenerateContentResponse(
         candidates=[
             types.Candidate(
@@ -202,7 +204,7 @@ def test_gemini_tool_call_response_generation():
     from unittest import mock
     from google.genai import types
 
-    provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12", model="gemini-2.5-flash")
+    provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY", model="gemini-2.5-flash")
     mock_resp = types.GenerateContentResponse(
         candidates=[
             types.Candidate(
@@ -235,7 +237,7 @@ def test_gemini_tool_call_response_generation():
 
 def test_gemini_error_handling_and_secret_masking():
     from unittest import mock
-    secret_key = "TEST_GEMINI_API_KEY_PLACEHOLDER_09"
+    secret_key = "TEST_GEMINI_API_KEY"
     provider = GeminiLLMProvider(api_key=secret_key)
 
     provider._client = mock.Mock()

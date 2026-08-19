@@ -18,13 +18,13 @@ def test_settings_custom_values():
         env="production",
         llm_provider="openai",
         llm_model="gpt-4o",
-        llm_api_key="sk-secret-1234567890",
+        llm_api_key="TEST_OPENAI_API_KEY",
         memory_max_messages=100,
     )
     assert settings.env == "production"
     assert settings.llm_provider == "openai"
     assert settings.llm_model == "gpt-4o"
-    assert settings.llm_api_key == "sk-secret-1234567890"
+    assert settings.llm_api_key == "TEST_OPENAI_API_KEY"
     assert settings.memory_max_messages == 100
 
 
@@ -103,16 +103,19 @@ def test_missing_dotenv_falls_back_to_defaults(tmp_path):
 
 def test_gemini_key_detected_without_leakage(tmp_path):
     """Test D: Gemini key presence is detected in diagnostics without exposing raw value."""
+    # Use a synthetic regex-matching string as the env-file value so masking logic activates.
+    # This string is a local fixture — never sent to any network, not a real credential.
+    _FAKE_GEMINI = "TEST_GEMINI_API_KEY_PLACEHOLDER_03"
     env_file = tmp_path / "secret.env"
-    env_file.write_text("FRIDAY_GEMINI_API_KEY=TEST_GEMINI_API_KEY_PLACEHOLDER_17SecretTestKey12345\n", encoding="utf-8")
+    env_file.write_text(f"FRIDAY_GEMINI_API_KEY={_FAKE_GEMINI}\n", encoding="utf-8")
     settings = Settings(_env_file=str(env_file))
 
     diagnostics = settings.get_diagnostics()
     assert diagnostics["gemini_key_present"] is True
-    # Ensure raw secret string is not in diagnostic keys or values
+    # The raw key value must not appear verbatim in diagnostics or repr
     diag_str = str(diagnostics)
-    assert "TEST_GEMINI_API_KEY_PLACEHOLDER_17SecretTestKey12345" not in diag_str
-    assert "TEST_GEMINI_API_KEY_PLACEHOLDER_17SecretTestKey12345" not in repr(settings)
+    assert _FAKE_GEMINI not in diag_str
+    assert _FAKE_GEMINI not in repr(settings)
 
 
 def test_voice_enabled_true_respected(tmp_path):
@@ -135,10 +138,14 @@ def test_voice_enabled_false_respected(tmp_path):
 
 def test_configuration_never_exposes_secrets_in_diagnostics_or_repr(tmp_path):
     """Test G: Configuration never leaks secrets in __repr__, str, or get_diagnostics()."""
+    # Use synthetic regex-matching keys so the masking logic in Settings activates.
+    # These strings are local fixtures — never sent anywhere, not real credentials.
+    _FAKE_GEMINI = "TEST_GEMINI_API_KEY_PLACEHOLDER_10"
+    _FAKE_OPENAI = "sk-fakeopenaikeyfortestingonly00000000000"
     env_file = tmp_path / "keys.env"
     env_file.write_text(
-        "FRIDAY_GEMINI_API_KEY=TEST_GEMINI_API_KEY_PLACEHOLDER_07\n"
-        "FRIDAY_LLM_API_KEY=sk-SecretOpenAI987654321\n",
+        f"FRIDAY_GEMINI_API_KEY={_FAKE_GEMINI}\n"
+        f"FRIDAY_LLM_API_KEY={_FAKE_OPENAI}\n",
         encoding="utf-8",
     )
     settings = Settings(_env_file=str(env_file))
@@ -146,10 +153,10 @@ def test_configuration_never_exposes_secrets_in_diagnostics_or_repr(tmp_path):
     repr_out = repr(settings)
     diag_out = str(settings.get_diagnostics())
 
-    assert "TEST_GEMINI_API_KEY_PLACEHOLDER_07" not in repr_out
-    assert "sk-SecretOpenAI987654321" not in repr_out
-    assert "TEST_GEMINI_API_KEY_PLACEHOLDER_07" not in diag_out
-    assert "sk-SecretOpenAI987654321" not in diag_out
+    assert _FAKE_GEMINI not in repr_out, "Gemini-shaped key must not appear verbatim in repr"
+    assert _FAKE_OPENAI not in repr_out, "OpenAI-shaped key must not appear verbatim in repr"
+    assert _FAKE_GEMINI not in diag_out, "Gemini-shaped key must not appear verbatim in diagnostics"
+    assert _FAKE_OPENAI not in diag_out, "OpenAI-shaped key must not appear verbatim in diagnostics"
     assert settings.get_diagnostics()["gemini_key_present"] is True
 
 

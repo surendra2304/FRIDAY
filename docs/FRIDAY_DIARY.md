@@ -1252,3 +1252,63 @@ The fourth phase focuses on adding a **cloud‑first voice interface** and a **p
 - **Resource Footprint**: 0% GPU, < 1% CPU, < 100 MB RAM
 
 ---
+
+## 2026-08-19 — Security: GitHub Secret Scanning False-Positive Remediation
+
+### Issue
+
+GitHub Secret Scanning opened a **Google API Key** alert against a tracked test file
+(`tests/test_gemini_semantic_search.py`).  The detected value was **synthetic test
+fixture data** — not the real FRIDAY Gemini API key.  The real key resides only in the
+local untracked `.env` file and was never at risk.
+
+The root cause was that earlier test files contained realistic-format credential strings
+(matching `TEST_GEMINI_API_KEY_PLACEHOLDER_17[A-Za-z0-9_-]{33}` and `sk-[a-zA-Z0-9]{20,48}`) used as fixture
+values.  These strings triggered GitHub's pattern-matching scanner even though they were
+never real or functional credentials.
+
+### Action Taken
+
+**Full repository audit** performed across all tracked Python, Markdown, text, and
+config files for the following patterns:
+
+| Pattern | Source found in |
+|---|---|
+| `TEST_GEMINI_API_KEY_PLACEHOLDER_17` | `tests/test_gemini_semantic_search.py` (replaced); `src/friday/memory/embeddings/gemini.py` (regex definition — intentional, preserved) |
+| `sk-` | Multiple test files (fixture values, replaced) |
+| `BEGIN RSA / OPENSSH PRIVATE KEY` | None found |
+| `GEMINI_API_KEY=`, `GOOGLE_API_KEY=`, `OPENAI_API_KEY=` | None in tracked files |
+
+**Replacements made** (credential-shaped fixtures → safe synthetic placeholders):
+
+| File | Change |
+|---|---|
+| `tests/conftest.py` | `sk-test-secret-key-1234567890` → `TEST_OPENAI_API_KEY` |
+| `tests/test_config.py` | Env-file fixture keys → regex-matching local variables with explicit `# NOT real` comments |
+| `tests/test_gemini_cost_and_controls.py` | `sk-test` → `TEST_OPENAI_API_KEY` |
+| `tests/test_gemini_live_voice.py` | Realistic Gemini key → `TEST_GEMINI_API_KEY` |
+| `tests/test_gemini_semantic_search.py` | Sanitizer test rewritten with clearly-commented local synthetic variables |
+| `tests/test_gemini_tools.py` | Realistic Gemini key → `TEST_GEMINI_API_KEY` |
+| `tests/test_llm_providers.py` | `sk-test` → `TEST_OPENAI_API_KEY`; masking test corrected |
+| `tests/test_reliability.py` | `sk-test` → `TEST_OPENAI_API_KEY` |
+| `tests/test_semantic_memory.py` | Realistic Gemini key → `TEST_GEMINI_API_KEY` |
+
+**Intentionally preserved** (legitimate production code):
+- `src/friday/memory/embeddings/gemini.py` — `SECRET_PATTERNS` list containing `TEST_GEMINI_API_KEY_PLACEHOLDER_17` and `sk-` patterns (redaction regexes used by `sanitize_text_for_embedding()`).
+- `src/friday/core/logging.py` — `SecretMaskingFilter` regex containing `sk-`.
+
+### .env Security Confirmation
+
+`git ls-files .env` → *(empty — .env is NOT tracked)*
+
+The real Gemini API key was never printed, modified, copied, committed, or placed into any tracked file.
+
+### Final Audit Result
+
+- **REAL SECRET FOUND:** NO
+- **CREDENTIAL-SHAPED TEST KEYS REMAINING:** NO
+- **.ENV TRACKED:** NO
+- **AFFECTED TESTS:** ALL PASS
+- **COMMIT:** `security(tests): remove credential-shaped test fixtures`
+
+---

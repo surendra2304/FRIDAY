@@ -41,7 +41,7 @@ def test_gemini_embedding_provider_remote_call_and_api_key_check():
         provider_missing_key.embed_text("Test prompt")
     assert "Gemini API key is required" in str(exc_info.value)
 
-    provider = GeminiEmbeddingProvider(api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_17MockKey", model="gemini-embedding-2", dimension=768)
+    provider = GeminiEmbeddingProvider(api_key="TEST_GEMINI_API_KEY", model="gemini-embedding-2", dimension=768)
     mock_resp = types.EmbedContentResponse(
         embeddings=[types.ContentEmbedding(values=[0.123] * 768)]
     )
@@ -67,7 +67,7 @@ def test_embedding_factory_creation():
     assert isinstance(prov, MockEmbeddingProvider)
     assert prov.dimension == 256
 
-    gemini_settings = Settings(embedding_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_17Test")
+    gemini_settings = Settings(embedding_provider="gemini", gemini_api_key="TEST_GEMINI_API_KEY")
     prov_gemini = create_embedding_provider(gemini_settings)
     assert isinstance(prov_gemini, GeminiEmbeddingProvider)
 

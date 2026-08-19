@@ -82,7 +82,7 @@ def mock_agent():
 async def test_live_session_initialization():
     """Verify GeminiLiveVoiceSession initializes with proper defaults."""
     session = GeminiLiveVoiceSession(
-        api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12123",
+        api_key="TEST_GEMINI_API_KEY",
         model="gemini-2.0-flash",
         voice_name="Puck",
     )
@@ -96,7 +96,7 @@ async def test_live_session_initialization():
 async def test_live_session_tool_config_building(mock_agent):
     """Verify tool schemas are extracted and converted to GenAI declarations."""
     session = GeminiLiveVoiceSession(
-        api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12123",
+        api_key="TEST_GEMINI_API_KEY",
         agent=mock_agent,
     )
     tools_cfg = session._build_tools_config()
@@ -137,7 +137,7 @@ async def test_audio_sender_and_receiver_loop(mock_agent):
     mock_ws_session = MockAsyncSession(receive_messages=[msg1, msg2, msg3])
 
     live_session = GeminiLiveVoiceSession(
-        api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12123",
+        api_key="TEST_GEMINI_API_KEY",
         agent=mock_agent,
     )
     live_session._active = True
@@ -182,7 +182,7 @@ async def test_live_session_tool_execution(mock_agent):
     mock_ws_session = MockAsyncSession(receive_messages=[tool_call_msg])
 
     live_session = GeminiLiveVoiceSession(
-        api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12123",
+        api_key="TEST_GEMINI_API_KEY",
         agent=mock_agent,
     )
     live_session._active = True
@@ -202,6 +202,6 @@ async def test_live_session_tool_execution(mock_agent):
 
 def test_provider_adapter_instantiation():
     """Verify GeminiVoiceProvider instantiates cleanly without hardware dependencies."""
-    provider = GeminiVoiceProvider(api_key="TEST_GEMINI_API_KEY_PLACEHOLDER_12123", model="gemini-2.0-flash")
+    provider = GeminiVoiceProvider(api_key="TEST_GEMINI_API_KEY", model="gemini-2.0-flash")
     assert provider.model == "gemini-2.0-flash"
-    assert provider.api_key == "TEST_GEMINI_API_KEY_PLACEHOLDER_12123"
+    assert provider.api_key == "TEST_GEMINI_API_KEY"

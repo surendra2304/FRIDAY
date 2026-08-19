@@ -69,7 +69,7 @@ def test_retry_on_network_failure(mock_post):
         mock_response
     ]
 
-    provider = OpenAILLMProvider(api_key="sk-test", timeout=1.0)
+    provider = OpenAILLMProvider(api_key="TEST_OPENAI_API_KEY", timeout=1.0)
     messages = [Message(role=Role.USER, content="Hello")]
     
     # We patch time.sleep inside generate to avoid sleeping during tests
@@ -97,7 +97,7 @@ def test_retry_on_rate_limit(mock_post):
 
     mock_post.side_effect = [mock_rate_limit, mock_success]
 
-    provider = OpenAILLMProvider(api_key="sk-test", timeout=1.0)
+    provider = OpenAILLMProvider(api_key="TEST_OPENAI_API_KEY", timeout=1.0)
     messages = [Message(role=Role.USER, content="Hello")]
 
     with patch("time.sleep") as mock_sleep:
@@ -117,7 +117,7 @@ def test_no_retry_on_auth_error(mock_post):
 
     mock_post.return_value = mock_auth_error
 
-    provider = OpenAILLMProvider(api_key="sk-test", timeout=1.0)
+    provider = OpenAILLMProvider(api_key="TEST_OPENAI_API_KEY", timeout=1.0)
     messages = [Message(role=Role.USER, content="Hello")]
 
     with pytest.raises(LLMProviderError) as exc_info:
@@ -155,7 +155,7 @@ def test_agent_user_friendly_exceptions():
 
     agent = FridayAgent(
         settings=Settings(env="testing"),
-        llm_provider=FailingProvider(api_key="sk-test"),
+        llm_provider=FailingProvider(api_key="TEST_OPENAI_API_KEY"),
     )
 
     # When LLM connection fails, agent must catch and translate it
