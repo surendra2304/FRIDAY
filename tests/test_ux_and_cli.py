@@ -173,6 +173,43 @@ def test_trivial_turns_skip_memory_retrieval_and_embedding():
 
     assert not should_embed_message(Message(role=Role.USER, content="Hello"))
     assert not should_embed_message(Message(role=Role.USER, content="What time is it?"))
+
+
+# -----------------------------------------------------------------------------
+# TEST 15 & 16: CLI Mode Selection (--voice and --text)
+# -----------------------------------------------------------------------------
+def test_cli_voice_mode_flag_triggers_live_session(monkeypatch):
+    """Verify that --voice flag launches the real GeminiLiveVoiceSession."""
+    from friday.cli.main import main
+    import sys
+
+    monkeypatch.setattr(sys, "argv", ["friday", "--voice"])
+
+    voice_session_inst = mock.MagicMock()
+    mock_live_session_cls = mock.MagicMock(return_value=voice_session_inst)
+
+    with mock.patch("friday.auth.credential_pool.GeminiCredentialPool.preflight_check", return_value={"status": "HEALTHY", "active_project": "PRIMARY"}):
+        with mock.patch("friday.voice.gemini_live_session.GeminiLiveVoiceSession", mock_live_session_cls):
+            with mock.patch("asyncio.run") as mock_asyncio_run:
+                main()
+                assert mock_live_session_cls.called
+                assert mock_asyncio_run.called
+
+
+def test_cli_text_mode_override_suppresses_voice_mode(monkeypatch):
+    """Verify that --text flag suppresses voice mode even if voice_enabled setting is True."""
+    from friday.cli.main import main
+    import sys
+
+    monkeypatch.setattr(sys, "argv", ["friday", "--text"])
+    monkeypatch.setenv("FRIDAY_VOICE_ENABLED", "true")
+
+    with mock.patch("friday.auth.credential_pool.GeminiCredentialPool.preflight_check", return_value={"status": "HEALTHY", "active_project": "PRIMARY"}):
+        with mock.patch("builtins.input", side_effect=["/exit"]):
+            with mock.patch("friday.voice.gemini_live_session.GeminiLiveVoiceSession") as mock_voice:
+                main()
+                assert not mock_voice.called
+
     assert not should_embed_message(Message(role=Role.USER, content="2+2"))
 
     # Complex memory query should trigger recall

@@ -167,7 +167,19 @@ def on_tool_event(tool_call, tool_result) -> None:
 
 def main() -> None:
     """Main CLI entry point."""
-    parser = argparse.ArgumentParser(description="FRIDAY AI Assistant CLI")
+    parser = argparse.ArgumentParser(
+        description="FRIDAY - Fully Responsive Intelligent Digital Assistant for You",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Modes:
+  python -m friday           Start in default interactive text conversation mode
+  python -m friday --voice   Start direct Gemini Live real-time bidirectional voice mode
+  python -m friday --text    Start explicitly in interactive text conversation mode
+  python -m friday --debug   Enable verbose diagnostic logs in the console
+""",
+    )
+    parser.add_argument("--voice", action="store_true", help="Start in real-time Gemini Live bidirectional voice mode")
+    parser.add_argument("--text", action="store_true", help="Start explicitly in interactive text conversation mode")
     parser.add_argument("--debug", action="store_true", help="Enable verbose debug logging in terminal console")
     args, unknown = parser.parse_known_args()
 
@@ -200,30 +212,27 @@ def main() -> None:
         authorizer=CLIAuthorizer(),
     )
 
-    # Voice interface initialization (optional)
-    if getattr(settings, "voice_enabled", False):
+    # Voice interface initialization
+    # Activated either by --voice CLI flag or FRIDAY_VOICE_ENABLED=true in config (without --text override)
+    is_voice_mode = (args.voice or getattr(settings, "voice_enabled", False)) and not args.text
+    if is_voice_mode:
         import asyncio
-        if settings.voice_provider == "gemini":
-            try:
-                from friday.voice.gemini_live_session import GeminiLiveVoiceSession
-                logger.info("Starting REAL Gemini Live voice session...")
-                voice_session = GeminiLiveVoiceSession(agent=agent)
-                asyncio.run(voice_session.run_live_loop())
-                logger.info("Live Voice session ended.")
-            except Exception as e:
-                logger.error(f"Gemini Live session failed: {e}")
-        else:
-            from friday.voice.session import VoiceSession
-            from friday.voice.mock_provider import MockVoiceProvider
-            provider = MockVoiceProvider([
-                "Hello, FRIDAY.",
-                "Remember my favorite editor is VS Code.",
-                "What editor did I just tell you about?",
-            ])
-            voice_session = VoiceSession(provider, agent)
-            logger.info("Starting mock voice session (blocking until finished)")
-            voice_session.start()
-            logger.info("Mock Voice session ended")
+        print(render_friday_banner("0.4.6"))
+        print("  Starting Gemini Live Real-Time Voice Session...")
+        print("  Model: gemini-3.1-flash-live-preview | Input: 16kHz PCM | Output: 24kHz PCM")
+        print("  Press Ctrl+C to end voice session.\n")
+        try:
+            from friday.voice.gemini_live_session import GeminiLiveVoiceSession
+            logger.info("Starting REAL Gemini Live voice session...")
+            voice_session = GeminiLiveVoiceSession(agent=agent, credential_pool=credential_pool)
+            asyncio.run(voice_session.run_live_loop())
+            logger.info("Live Voice session ended.")
+        except KeyboardInterrupt:
+            print("\nVoice session stopped. Good day, Surendra.")
+        except Exception as e:
+            print(f"\n[Voice Error]: Gemini Live session failed: {e}")
+            logger.error(f"Gemini Live session failed: {e}")
+        return
 
     print(render_friday_banner("0.4.6"))
 

@@ -48,6 +48,14 @@
 ## 2026-08-20
 
 ### Work Completed
+- **CLI Mode Selection & Voice Launch (`--voice`, `--text`, `--help`)**:
+  - Added dedicated CLI argument flags in `src/friday/cli/main.py`:
+    - `python -m friday --voice`: Directly initiates the real-time Gemini Live bidirectional voice session (`gemini-3.1-flash-live-preview`, 16kHz in / 24kHz out) without requiring `.env` modifications.
+    - `python -m friday --text`: Explicitly enforces interactive text chat mode (overriding any ambient `FRIDAY_VOICE_ENABLED=true` env configurations).
+    - `python -m friday`: Starts in default interactive text conversation mode.
+    - `python -m friday --help`: Displays cleanly formatted CLI usage modes and options.
+  - Added unit test suite in `tests/test_ux_and_cli.py` validating mode flag triggers and text-mode overrides.
+
 - **CLI Banner Refinement**:
   - Replaced malformed FRIDAY ASCII logo with a clean, proportioned 3D block-letter design (`______ _____ _____ _____`).
   - Added responsive centering via `render_friday_banner()` dynamically scaling to terminal width.
