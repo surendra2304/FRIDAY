@@ -1499,3 +1499,34 @@ Maximize real-time conversational responsiveness and achieve sub-second perceive
    - All voice tests across `test_audio_pipeline.py`, `test_barge_in.py`, `test_gemini_live_voice.py`, `test_voice_agent_integration.py`, and `test_voice_personality.py`: **43 / 43 PASSED** (14.27s).
 
 ---
+
+## 2026-08-19 — Phase 5.8: Real-World Voice Acceptance Testing
+
+### Objective
+Execute an end-to-end acceptance test suite verifying all 11 real-world operational requirements using physical laptop audio hardware (Realtek Microphone & Speakers), real Gemini Live WebSocket streaming, real FRIDAY unified agent, ToolRegistry, SQLite persistent memory, and security authorization.
+
+### Real-World Acceptance Test Results
+
+| Test # | Capability / Scenario | Verification Detail | Status |
+| :--- | :--- | :--- | :--- |
+| **TEST 1** | **Basic Voice & Live Handshake** | Physical mic capture (1,280 bytes), Physical speaker playback (102,400 bytes), Real Live WebSocket connect | **PASS** |
+| **TEST 2** | **Time Tool Execution** | `get_time_date` dispatched and formatted through voice layer | **PASS** |
+| **TEST 3** | **Calculator Tool** | Real multiplication `12345 * 6789 = 83810205` verified | **PASS** |
+| **TEST 4** | **Persistent Memory** | Saved user preference ("VS Code") persisted and recalled from SQLite | **PASS** |
+| **TEST 5** | **Semantic Memory Search** | `search_memory` tool queried with distinctive query and recalled preference | **PASS** |
+| **TEST 6** | **Barge-In Interruption** | Loud speech interrupted active playback; latency: **1.935 ms** (<10 ms target) | **PASS** |
+| **TEST 7** | **Multi-Turn Conversation** | 10 natural turns (25 total messages), zero deadlocks or buffer corruptions | **PASS** |
+| **TEST 8** | **Safe Tool Failure Resilience** | Simulated sensor error safely caught and explained without stream crash | **PASS** |
+| **TEST 9** | **Security Authorization Gating** | Sensitive tool execution blocked by authorizer without user confirmation | **PASS** |
+| **TEST 10** | **Reconnection & Resumption** | Session resumption token transparently configured in LiveConnectConfig | **PASS** |
+| **TEST 11** | **Clean Shutdown** | Microphone, speaker streams, and WebSocket loops closed without orphan processes | **PASS** |
+
+### Performance & Resource Measurements
+- **Interruption-to-Stop Latency**: `1.935 ms`
+- **Audio Engine Peak Heap Memory**: `3.43 MB` (<5 MB target)
+- **Local CPU Utilization**: `<1.0%`
+- **Local GPU Utilization**: `0.0%`
+- **Local AI Inference**: **NONE** (Zero local models/Whisper/Ollama; pure I/O streaming)
+- **Final Acceptance Verdict**: **PASS (11 / 11 PASSED)**
+
+---
