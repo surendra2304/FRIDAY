@@ -116,6 +116,8 @@ class GeminiLiveVoiceSession:
         self._ambient_noise_floor: float = 50.0
         self._consecutive_speech_frames: int = 0
         self._last_interruption_time: float = 0.0
+        self._friday_speaking_start_time: float = 0.0
+        self._last_mic_rms: float = 0.0
 
         # Diagnostics counters
         self.user_interruptions: int = 0
@@ -128,6 +130,8 @@ class GeminiLiveVoiceSession:
         if self._state != new_state:
             old = self._state
             self._state = new_state
+            if new_state == LiveSessionState.FRIDAY_SPEAKING:
+                self._friday_speaking_start_time = time.time()
             logger.debug(f"LiveSession state transition: {old.value} -> {new_state.value}")
 
     @property
@@ -513,6 +517,7 @@ class GeminiLiveVoiceSession:
                 if chunk and len(chunk) > 0:
                     now = time.time()
                     rms = compute_pcm_rms(chunk)
+                    self._last_mic_rms = rms
                     is_speaker_active = getattr(spk, "is_playing", False) or getattr(spk, "queue_size", 0) > 0
 
                     # 1. Candidate speech threshold calculation
@@ -618,7 +623,12 @@ class GeminiLiveVoiceSession:
                     # Instant barge-in / Interruption from Live API
                     if getattr(server_content, "interrupted", False) is True:
                         if not turn_interrupted:
-                            logger.info("Server barge-in signal: interrupting local speaker playback")
+                            speaking_duration = (time.time() - self._friday_speaking_start_time) if self._friday_speaking_start_time > 0 else 0.0
+                            logger.info(
+                                f"Server barge-in signal: interrupting local speaker playback "
+                                f"(state: {self._state.value}, speaking_duration: {speaking_duration:.2f}s, "
+                                f"last_mic_rms: {self._last_mic_rms:.1f}, noise_floor: {self._ambient_noise_floor:.1f})"
+                            )
                             self.server_interruptions += 1
                             self.user_interruptions += 1
                             self._last_interruption_time = time.time()

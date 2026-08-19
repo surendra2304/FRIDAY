@@ -440,3 +440,66 @@ async def test_adaptive_noise_floor_updates_during_silence():
     # Adaptive noise floor must have adjusted upward toward 100
     assert session._ambient_noise_floor > 20.0
 
+
+@pytest.mark.anyio
+def test_server_vad_configuration_tuning():
+    """Verify LiveConnectConfig applies tuned VAD parameters for conversational voice."""
+    session = GeminiLiveVoiceSession(
+        api_key="TEST_GEMINI_API_KEY",
+        vad_start_sensitivity="LOW",
+        vad_end_sensitivity="HIGH",
+        vad_prefix_padding_ms=300,
+        vad_silence_duration_ms=800,
+    )
+    live_config = session._build_live_config()
+    realtime_cfg = live_config.realtime_input_config
+    assert realtime_cfg is not None
+    auto_vad = realtime_cfg.automatic_activity_detection
+    assert auto_vad is not None
+    assert auto_vad.prefix_padding_ms == 300
+    assert auto_vad.silence_duration_ms == 800
+
+
+@pytest.mark.anyio
+async def test_user_speech_then_silence_completes_full_response():
+    """Verify that when user finishes speaking and remains silent, model turn completes fully without interruption."""
+    agent_mock = mock.MagicMock()
+    agent_mock.memory = mock.MagicMock()
+
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY", agent=agent_mock)
+    session._active = True
+
+    # Multi-chunk complete model turn
+    msg1 = MockGenAIServerMessage(
+        server_content=MockGenAIServerContent(
+            parts=[MockGenAIPart(data=b"chunk1", text="Good morning. ")],
+            turn_complete=False,
+            input_tx="Hi FRIDAY",
+        )
+    )
+    msg2 = MockGenAIServerMessage(
+        server_content=MockGenAIServerContent(
+            parts=[MockGenAIPart(data=b"chunk2", text="How can I help you today?")],
+            turn_complete=True,
+            output_tx="Good morning. How can I help you today?",
+        )
+    )
+
+    mock_ws = MockAsyncSession(receive_messages=[msg1, msg2])
+    spk = MockSpeakerStream(sample_rate=24000)
+    spk.start()
+    stop_event = asyncio.Event()
+
+    recorded = []
+    await session._audio_receiver_loop(mock_ws, spk, lambda u, a: recorded.append((u, a)), stop_event)
+
+    # Must complete with 0 interruptions and complete text
+    assert len(recorded) == 1
+    user_tx, agent_tx = recorded[0]
+    assert user_tx == "Hi FRIDAY"
+    assert agent_tx == "Good morning. How can I help you today?"
+    assert "[interrupted]" not in agent_tx
+    assert session.server_interruptions == 0
+    assert session.user_interruptions == 0
+
+

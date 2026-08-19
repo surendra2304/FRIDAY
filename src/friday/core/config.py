@@ -195,10 +195,18 @@ class Settings(BaseSettings):
     voice_live_reconnect_delay: float = Field(default=1.0, ge=0.1, le=30.0, description="Initial reconnect delay in seconds")
     voice_session_resumption_enabled: bool = Field(default=True, description="Enable Gemini Live session resumption")
     voice_context_compression_enabled: bool = Field(default=True, description="Enable Gemini Live context window compression")
-    voice_vad_start_sensitivity: str = Field(default="HIGH", description="VAD start of speech sensitivity: HIGH, LOW, UNSPECIFIED")
-    voice_vad_end_sensitivity: str = Field(default="HIGH", description="VAD end of speech sensitivity: HIGH, LOW, UNSPECIFIED")
-    voice_vad_prefix_padding_ms: int = Field(default=200, ge=0, le=1000, description="VAD prefix audio padding (ms)")
-    voice_vad_silence_duration_ms: int = Field(default=400, ge=100, le=2000, description="VAD silence duration before turn complete (ms)")
+    voice_vad_start_sensitivity: str = Field(
+        default="LOW",
+        validation_alias=AliasChoices("FRIDAY_VOICE_VAD_START_SENSITIVITY", "VOICE_VAD_START_SENSITIVITY", "voice_vad_start_sensitivity"),
+        description="VAD start of speech sensitivity: HIGH, LOW, UNSPECIFIED (LOW prevents premature false turn starts on breath/ambient noise)",
+    )
+    voice_vad_end_sensitivity: str = Field(
+        default="HIGH",
+        validation_alias=AliasChoices("FRIDAY_VOICE_VAD_END_SENSITIVITY", "VOICE_VAD_END_SENSITIVITY", "voice_vad_end_sensitivity"),
+        description="VAD end of speech sensitivity: HIGH, LOW, UNSPECIFIED",
+    )
+    voice_vad_prefix_padding_ms: int = Field(default=300, ge=0, le=1000, description="VAD prefix audio padding (ms)")
+    voice_vad_silence_duration_ms: int = Field(default=800, ge=100, le=2000, description="VAD silence duration before turn complete (ms)")
     voice_barge_in_rms_threshold: float = Field(default=350.0, ge=50.0, le=5000.0, description="RMS energy threshold for local zero-latency barge-in")
     voice_barge_in_consecutive_frames: int = Field(default=4, ge=1, le=20, description="Consecutive frames exceeding threshold required to confirm user barge-in (debounce)")
     voice_barge_in_playback_factor: float = Field(default=3.0, ge=1.0, le=20.0, description="Multiplier for barge-in threshold when FRIDAY is actively playing audio (echo protection)")

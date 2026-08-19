@@ -48,6 +48,16 @@
 ## 2026-08-20
 
 ### Work Completed
+- **Phase 5.20 — Server VAD Turn-Taking & Telemetry Fix**:
+  - Investigated premature server-side VAD interruptions during active assistant turns where Gemini Live cut off responses prematurely immediately after speech began.
+  - Tuned `AutomaticActivityDetection` parameters in `src/friday/core/config.py` and `gemini_live_session.py`:
+    - `voice_vad_start_sensitivity = "LOW"`: Prevents background breath, microphone noise, and ambient transients from prematurely triggering false turn starts while FRIDAY is speaking.
+    - `voice_vad_end_sensitivity = "HIGH"`: Guarantees prompt turn completion once the user stops speaking.
+    - `voice_vad_prefix_padding_ms = 300`: Ensures natural conversational speech onsets are captured without clipping.
+    - `voice_vad_silence_duration_ms = 800`: Provides natural speech cadence pause tolerance before turn closure.
+  - Enhanced server interruption telemetry logging with structured duration, RMS energy, and ambient noise floor diagnostics.
+  - Added unit tests in `tests/test_barge_in.py` validating VAD configuration settings and full un-interrupted turn completion on user silence.
+
 - **CLI Mode Selection & Voice Launch (`--voice`, `--text`, `--help`)**:
   - Added dedicated CLI argument flags in `src/friday/cli/main.py`:
     - `python -m friday --voice`: Directly initiates the real-time Gemini Live bidirectional voice session (`gemini-3.1-flash-live-preview`, 16kHz in / 24kHz out) without requiring `.env` modifications.
