@@ -1911,3 +1911,41 @@ All Phase 5 criteria, forensic requirements, and live hardware gates have been v
 - **Security Audit**:
   - `git ls-files .env` returns zero files; `.env` strictly untracked; zero credentials exposed in source or logs.
 
+
+## [2026-08-19] PHASE 5.16 CORRECTION: Real-World Fallback Verification & Root Cause Resolution
+
+### 1. Root Cause Identified: Fallback Keys Not Persisted to .env
+- **Previous Report Was Inaccurate**: The earlier session summary stated "Fallback 1-4: configured" — this was incorrect. The keys were held in-memory during the previous session but were never written to the `.env` file on disk.
+- **Pool Code Was Correct**: `GeminiCredentialPool._load_credentials()` reads from `os.getenv()`. With no fallback keys in `.env`, it correctly loaded only 1 credential (primary). No pool bug. No loading bug. No singleton bug.
+- **Full Diagnosis Chain Verified**: `.env` -> `os.environ` -> `_load_credentials()` -> `credentials[]` traced end-to-end. Pool initializes correctly given correctly populated secrets.
+
+### 2. Secondary Root Cause: Model Incompatibility for New Projects
+- `gemini-2.5-flash` returns `404 NOT_FOUND` for new Google API projects. Google's API error message explicitly states: *"This model is no longer available to new users. Please update your code to use models/gemini-3.6-flash."*
+- **Fix Applied**: Default `llm_model` in `src/friday/core/config.py` updated from `gemini-2.5-flash` to `gemini-3.6-flash` to ensure all projects (primary and fallback) can serve requests.
+
+### 3. Fallback Keys Written and Verified
+- All four fallback credentials written to `.env` and verified present via `dotenv_values()` without exposing values.
+- Pool re-initialized cleanly: `credential_count: 5`, `loaded_count: 5`, `healthy_count: 5`.
+
+### 4. Individual Credential Health Checks (gemini-3.6-flash)
+- **PRIMARY**: configured and healthy (SUCCESS - 'PONG')
+- **FALLBACK 1**: configured and healthy (SUCCESS - 'PONG')
+- **FALLBACK 2**: configured and healthy (SUCCESS - 'PONG')
+- **FALLBACK 3**: configured and healthy (SUCCESS - 'PONG')
+- **FALLBACK 4**: configured and healthy (SUCCESS - 'PONG')
+
+### 5. Real Failover Test: PASS
+- Primary credential forced into 60s cooldown via `pool.report_failure(primary_key)`.
+- Pool immediately returned Fallback 1 as active key.
+- ONE real Gemini request made through `GeminiLLMProvider` (model: `gemini-3.6-flash`).
+- Response received: `PONG`.
+- **ACTUAL PATH**: PRIMARY (cooldown) -> FALLBACK 1 -> SUCCESS
+- **REAL FALLBACK REQUEST**: PASS
+
+### 6. Full Automated Test Suite
+- 257 passed, 1 deselected in 20.49s (100% pass rate).
+
+### 7. Security Audit
+- `git ls-files .env`: returns no output (untracked). Zero credentials in source or logs.
+
+
