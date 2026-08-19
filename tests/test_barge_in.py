@@ -41,8 +41,13 @@ class MockAsyncSession:
         self.sent_realtime_chunks = []
         self._receive_messages = receive_messages or []
 
-    async def send_realtime_input(self, media_chunks):
-        self.sent_realtime_chunks.extend(media_chunks)
+    async def send_realtime_input(self, audio=None, media=None, media_chunks=None):
+        if audio:
+            self.sent_realtime_chunks.append(audio)
+        elif media:
+            self.sent_realtime_chunks.append(media)
+        elif media_chunks:
+            self.sent_realtime_chunks.extend(media_chunks)
 
     async def receive(self):
         for msg in self._receive_messages:

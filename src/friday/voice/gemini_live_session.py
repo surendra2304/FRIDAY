@@ -2,18 +2,18 @@
 
 Utilizes official google-genai SDK (`client.aio.live.connect`) to provide:
 - Full-duplex asynchronous bidirectional audio streaming
-- Continuous 16 kHz 16-bit PCM input capture
-- Incremental 24 kHz 16-bit PCM output playback
-- Real-time barge-in / interruption handling
+- Continuous 16 kHz 16-bit mono PCM input capture
+- Incremental 24 kHz 16-bit mono PCM output playback
+- Real-time dual-layer barge-in / interruption handling
 - Native tool execution & authorization gating
-- Memory transcription commitment
+- Session resumption & GoAway reconnection lifecycle management
+- Automatic memory transcription commitment
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
-import uuid
 from typing import Any, Callable, Dict, List, Optional
 
 from google import genai
@@ -23,7 +23,7 @@ from friday.core.config import get_settings
 from friday.core.exceptions import LLMProviderError
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role, SafetyLevel
-from friday.voice.audio_io import MicrophoneStream, SpeakerStream
+from friday.voice.audio_io import MicrophoneStream, SpeakerStream, compute_pcm_rms
 
 logger = get_logger("voice.live_session")
 
@@ -40,6 +40,9 @@ class GeminiLiveVoiceSession:
         sample_rate_in: int = 16000,
         sample_rate_out: int = 24000,
         max_retries: int = 3,
+        reconnect_delay: float = 1.0,
+        enable_session_resumption: bool = True,
+        enable_context_compression: bool = True,
     ):
         settings = get_settings()
         self.api_key = api_key or settings.gemini_api_key or settings.llm_api_key
@@ -51,8 +54,26 @@ class GeminiLiveVoiceSession:
         self.sample_rate_in = sample_rate_in
         self.sample_rate_out = sample_rate_out
         self.max_retries = max_retries
+        self.reconnect_delay = reconnect_delay
+        self.enable_session_resumption = enable_session_resumption
+        self.enable_context_compression = enable_context_compression
+
         self._active = False
         self._session: Optional[Any] = None
+        self._resumption_handle: Optional[str] = None
+        self._connected_event = asyncio.Event()
+
+    @property
+    def is_active(self) -> bool:
+        return self._active
+
+    @property
+    def is_connected(self) -> bool:
+        return self._session is not None and self._active
+
+    @property
+    def resumption_handle(self) -> Optional[str]:
+        return self._resumption_handle
 
     def _build_tools_config(self) -> Optional[List[genai_types.Tool]]:
         """Extract tool schemas from agent registry and convert to GenAI tool declarations."""
@@ -120,6 +141,40 @@ class GeminiLiveVoiceSession:
                 logger.debug(f"Could not load historical context for Live system prompt: {e}")
 
         return genai_types.Content(parts=[genai_types.Part.from_text(text=base_prompt)])
+
+    def _build_live_config(self) -> genai_types.LiveConnectConfig:
+        """Construct standard LiveConnectConfig with audio, transcription, and resilience settings."""
+        config_kwargs: Dict[str, Any] = {
+            "response_modalities": ["AUDIO"],
+            "speech_config": genai_types.SpeechConfig(
+                voice_config=genai_types.VoiceConfig(
+                    prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
+                        voice_name=self.voice_name
+                    )
+                )
+            ),
+            "system_instruction": self._build_system_instruction(),
+            "tools": self._build_tools_config(),
+        }
+
+        # Transcriptions
+        try:
+            config_kwargs["input_audio_transcription"] = genai_types.AudioTranscriptionConfig()
+            config_kwargs["output_audio_transcription"] = genai_types.AudioTranscriptionConfig()
+        except Exception as e:
+            logger.debug(f"Transcription config not supported: {e}")
+
+        # Session resumption
+        if self.enable_session_resumption and self._resumption_handle:
+            try:
+                config_kwargs["session_resumption"] = genai_types.SessionResumptionConfig(
+                    handle=self._resumption_handle,
+                    transparent=True,
+                )
+            except Exception as e:
+                logger.debug(f"Session resumption config error: {e}")
+
+        return genai_types.LiveConnectConfig(**config_kwargs)
 
     async def _execute_tool_call(self, fc: Any) -> genai_types.FunctionResponse:
         """Execute a tool requested by Gemini Live through the agent's ToolRegistry."""
@@ -220,22 +275,9 @@ class GeminiLiveVoiceSession:
         on_turn_complete: Optional[Callable[[str, str], None]] = None,
         stop_event: Optional[asyncio.Event] = None,
     ) -> None:
-        """Run the full-duplex asynchronous bidirectional Gemini Live loop."""
+        """Run the full-duplex asynchronous bidirectional Gemini Live loop with reconnection management."""
         self._active = True
         client = genai.Client(api_key=self.api_key)
-
-        config = genai_types.LiveConnectConfig(
-            response_modalities=["AUDIO"],
-            speech_config=genai_types.SpeechConfig(
-                voice_config=genai_types.VoiceConfig(
-                    prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
-                        voice_name=self.voice_name
-                    )
-                )
-            ),
-            system_instruction=self._build_system_instruction(),
-            tools=self._tools_config if hasattr(self, "_tools_config") else self._build_tools_config(),
-        )
 
         mic = input_stream or MicrophoneStream(sample_rate=self.sample_rate_in)
         spk = output_stream or SpeakerStream(sample_rate=self.sample_rate_out)
@@ -245,41 +287,64 @@ class GeminiLiveVoiceSession:
         mic.start(loop=loop)
         spk.start()
 
-        logger.info(f"Connecting to Gemini Live WebSocket (model: {self.model})...")
+        reconnect_attempts = 0
 
         try:
-            async with client.aio.live.connect(model=self.model, config=config) as session:
-                self._session = session
-                logger.info("Gemini Live WebSocket session established.")
+            while self._active and not stop.is_set():
+                config = self._build_live_config()
+                logger.info(f"Connecting to Gemini Live WebSocket (model: {self.model})...")
 
-                sender_task = asyncio.create_task(
-                    self._audio_sender_loop(session, mic, spk, stop),
-                    name="gemini_live_audio_sender",
-                )
-                receiver_task = asyncio.create_task(
-                    self._audio_receiver_loop(session, spk, on_turn_complete, stop),
-                    name="gemini_live_audio_receiver",
-                )
+                try:
+                    async with client.aio.live.connect(model=self.model, config=config) as session:
+                        self._session = session
+                        self._connected_event.set()
+                        reconnect_attempts = 0  # Reset retry counter on successful connection
+                        logger.info("Gemini Live WebSocket session established.")
 
-                # Wait until interrupted or stopped
-                done, pending = await asyncio.wait(
-                    [sender_task, receiver_task, asyncio.create_task(stop.wait())],
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
+                        sender_task = asyncio.create_task(
+                            self._audio_sender_loop(session, mic, spk, stop),
+                            name="gemini_live_audio_sender",
+                        )
+                        receiver_task = asyncio.create_task(
+                            self._audio_receiver_loop(session, spk, on_turn_complete, stop),
+                            name="gemini_live_audio_receiver",
+                        )
 
-                for task in pending:
-                    task.cancel()
-                    try:
-                        await task
-                    except asyncio.CancelledError:
-                        pass
+                        # Wait until interrupted, stopped, or disconnected
+                        done, pending = await asyncio.wait(
+                            [sender_task, receiver_task, asyncio.create_task(stop.wait())],
+                            return_when=asyncio.FIRST_COMPLETED,
+                        )
 
-        except Exception as e:
-            logger.error(f"Gemini Live session error: {e}")
-            raise LLMProviderError(f"Gemini Live session error: {e}") from e
+                        for task in pending:
+                            task.cancel()
+                            try:
+                                await task
+                            except asyncio.CancelledError:
+                                pass
+
+                except Exception as e:
+                    self._session = None
+                    self._connected_event.clear()
+                    if stop.is_set() or not self._active:
+                        break
+
+                    reconnect_attempts += 1
+                    if reconnect_attempts > self.max_retries:
+                        logger.error(f"Gemini Live session failed after {self.max_retries} reconnection attempts: {e}")
+                        raise LLMProviderError(f"Gemini Live session error: {e}") from e
+
+                    delay = self.reconnect_delay * (2 ** (reconnect_attempts - 1))
+                    logger.warning(
+                        f"Gemini Live session disconnected: {e}. Reconnecting in {delay:.1f}s "
+                        f"(attempt {reconnect_attempts}/{self.max_retries})..."
+                    )
+                    await asyncio.sleep(delay)
+
         finally:
             self._active = False
             self._session = None
+            self._connected_event.clear()
             mic.stop()
             spk.stop()
             spk.close()
@@ -293,8 +358,6 @@ class GeminiLiveVoiceSession:
         stop_event: asyncio.Event,
     ) -> None:
         """Stream microphone PCM chunks continuously with local zero-latency barge-in."""
-        from friday.voice.audio_io import compute_pcm_rms
-
         try:
             while self._active and not stop_event.is_set():
                 chunk = await mic.read_chunk()
@@ -306,14 +369,17 @@ class GeminiLiveVoiceSession:
                             logger.info(f"Local barge-in: user speech energy detected (RMS: {rms:.1f}), purging speaker buffer")
                             spk.stop()
 
-                    await session.send_realtime_input(
-                        media_chunks=[
-                            genai_types.Blob(
-                                data=chunk,
-                                mime_type=f"audio/pcm;rate={self.sample_rate_in}",
-                            )
-                        ]
+                    blob = genai_types.Blob(
+                        data=chunk,
+                        mime_type=f"audio/pcm;rate={self.sample_rate_in}",
                     )
+                    try:
+                        await session.send_realtime_input(audio=blob)
+                    except TypeError:
+                        try:
+                            await session.send_realtime_input(media=blob)
+                        except TypeError:
+                            await session.send_realtime_input(media_chunks=[blob])
                 else:
                     await asyncio.sleep(0.02)
         except asyncio.CancelledError:
@@ -339,7 +405,21 @@ class GeminiLiveVoiceSession:
                 if stop_event.is_set() or not self._active:
                     break
 
-                # 1. Server content (Audio, Transcriptions, Interruption)
+                # 1. Session Resumption Update
+                resumption_update = getattr(message, "session_resumption_update", None)
+                if resumption_update:
+                    new_handle = getattr(resumption_update, "new_handle", None) or getattr(resumption_update, "resumption_token", None)
+                    if new_handle:
+                        self._resumption_handle = new_handle
+                        logger.debug("Gemini Live session resumption handle updated.")
+
+                # 2. Server GoAway Signal
+                go_away = getattr(message, "go_away", None)
+                if go_away:
+                    logger.warning("Gemini Live server sent GoAway signal; preparing for reconnection.")
+                    break
+
+                # 3. Server content (Audio, Transcriptions, Interruption)
                 server_content = getattr(message, "server_content", None)
                 if server_content:
                     # Instant barge-in / Interruption from Live API
@@ -400,7 +480,7 @@ class GeminiLiveVoiceSession:
                         agent_output_tx.clear()
                         turn_interrupted = False
 
-                # 2. Server tool execution requests
+                # 4. Server tool execution requests
                 tool_call = getattr(message, "tool_call", None)
                 if tool_call and getattr(tool_call, "function_calls", None):
                     func_responses = []
@@ -412,10 +492,10 @@ class GeminiLiveVoiceSession:
                         logger.info(f"Sending {len(func_responses)} tool response(s) to Gemini Live")
                         await session.send_tool_response(function_responses=func_responses)
 
-                # 3. Tool call cancellation
+                # 5. Tool call cancellation
                 tool_cancel = getattr(message, "tool_call_cancellation", None)
                 if tool_cancel:
-                    logger.debug(f"Gemini Live cancelled tool calls: {getattr(tool_cancel, 'ids', [])}")
+                    logger.info(f"Gemini Live cancelled tool calls: {getattr(tool_cancel, 'ids', [])}")
 
         except asyncio.CancelledError:
             pass

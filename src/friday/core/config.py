@@ -161,8 +161,10 @@ class Settings(BaseSettings):
         description="Gemini Live multimodal voice model",
     )
     voice_live_sample_rate: int = Field(default=24000, description="Audio sample rate for Gemini Live output (Hz)")
-    voice_live_output_format: str = Field(default="pcm", description="Audio format returned by Gemini Live (raw PCM)")
     voice_live_max_retries: int = Field(default=3, description="Max retries for live‑stream failures")
+    voice_live_reconnect_delay: float = Field(default=1.0, ge=0.1, le=30.0, description="Initial reconnect delay in seconds")
+    voice_session_resumption_enabled: bool = Field(default=True, description="Enable Gemini Live session resumption")
+    voice_context_compression_enabled: bool = Field(default=True, description="Enable Gemini Live context window compression")
     task_enabled: bool = Field(default=False, description="Enable proactive task automation")
     task_max_calls: int = Field(default=100, description="Maximum allowed LLM calls per task")
     task_retry_limit: int = Field(default=3, description="Maximum retry attempts for transient failures")
