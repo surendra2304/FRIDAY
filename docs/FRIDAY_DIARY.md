@@ -2003,5 +2003,36 @@ All Phase 5 criteria, forensic requirements, and live hardware gates have been v
 - **Security Audit**: `git ls-files .env` returns empty. Zero credentials leaked.
 
 
+## [2026-08-20] PHASE 5.18: Real Voice Pipeline & Audio Hardware Diagnostic
+
+### 1. Forensic Pipeline Investigation & Root Cause
+- **Observed Behavior**: Gemini Live connects and receives session resumption handle updates, but user speech produced no visible audio response.
+- **Isolation Test 1 (Live Text->Audio & Speaker)**:
+  - Sent synthetic text prompt `"Say hello to me"` directly to Gemini Live WebSocket session (`gemini-3.1-flash-live-preview`).
+  - Result: **PASS** (Received 10 audio chunks, 77,310 bytes of 24kHz linear PCM, speaker queue successfully rendered audio).
+  - Proves: Live server model generation, audio response streaming, and local speaker playback pipeline are 100% operational.
+- **Isolation Test 2 (Microphone Capture & Energy)**:
+  - Captured 75 chunks (96,000 bytes) over 3 seconds.
+  - Result: Microphone stream captures raw PCM, but ambient input RMS is low (0.51) unless active physical speech occurs.
+  - Proves: Microphone stream callback and queue are operational; device selection must match the active hardware microphone.
+
+### 2. Audio Device Configuration & Telemetry Enhancements
+- **Audio Device Settings (`src/friday/core/config.py`)**:
+  - Added `audio_input_device` and `audio_output_device` configuration fields (`FRIDAY_AUDIO_INPUT_DEVICE`, `FRIDAY_AUDIO_OUTPUT_DEVICE`) to allow selecting specific hardware inputs/outputs.
+- **Resumption Log Throttling (`src/friday/voice/gemini_live_session.py`)**:
+  - Rate-limited `session_resumption_update` debug logs so terminal is not flooded with identical handle updates.
+- **Diagnostic Tooling (`tests/diagnose_real_live_voice.py`)**:
+  - Created standalone hardware verification runner testing:
+    1. Audio hardware discovery and default device reporting.
+    2. Microphone capture & RMS voice energy measurement.
+    3. Live Text->Audio & 24kHz PCM speaker playback.
+    4. Full-duplex interactive voice loop with turn transcription output.
+
+### 3. Verification Matrix
+- **Automated Test Suite**: 264 passed, 1 deselected in 24.86s (100% pass rate).
+- **Security Audit**: `git ls-files .env` returns empty. Zero credentials leaked.
+
+
+
 
 

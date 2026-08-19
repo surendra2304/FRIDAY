@@ -25,12 +25,13 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
         )
 
     if provider_type == "gemini":
+        api_key = settings.gemini_api_key or settings.llm_api_key
         model_name = settings.gemini_model or settings.llm_model
         temperature = settings.gemini_temperature if settings.gemini_temperature is not None else settings.llm_temperature
         max_tokens = settings.gemini_max_tokens if settings.gemini_max_tokens is not None else settings.llm_max_tokens
         logger.info(f"Initializing Google Gemini Provider (model: {model_name}, cost_mode: {settings.cost_mode})")
         return GeminiLLMProvider(
-            api_key=None,
+            api_key=api_key,
             credential_pool=credential_pool,
             model=model_name,
             temperature=temperature,

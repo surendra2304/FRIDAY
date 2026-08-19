@@ -167,6 +167,16 @@ class Settings(BaseSettings):
         description="Enable voice interface",
     )
     voice_provider: str = Field(default="gemini", description="Voice provider: 'gemini' or 'mock'")
+    audio_input_device: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("FRIDAY_AUDIO_INPUT_DEVICE", "AUDIO_INPUT_DEVICE", "audio_input_device"),
+        description="Optional name or index of specific audio input device (microphone)",
+    )
+    audio_output_device: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("FRIDAY_AUDIO_OUTPUT_DEVICE", "AUDIO_OUTPUT_DEVICE", "audio_output_device"),
+        description="Optional name or index of specific audio output device (speaker)",
+    )
     voice_input_sample_rate: int = Field(default=16000, description="Audio sample rate for microphone input (Hz)")
     voice_output_format: str = Field(default="mp3", description="Audio format for synthesized speech")
     voice_name: str = Field(

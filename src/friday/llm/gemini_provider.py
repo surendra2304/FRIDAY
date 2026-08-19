@@ -284,9 +284,14 @@ class GeminiLLMProvider(BaseLLMProvider):
             if self.api_key is not None and not self.api_key.strip():
                 raise LLMProviderError("Gemini API key is required")
             try:
-                active_key = self.api_key if self.api_key else self.credential_pool.get_active_key()
+                if self.credential_pool and len(self.credential_pool.credentials) > 0:
+                    active_key = self.credential_pool.get_active_key()
+                else:
+                    active_key = self.api_key
             except (RuntimeError, Exception) as e:
-                raise LLMProviderError("Gemini API key is required") from e
+                active_key = self.api_key
+            if not active_key:
+                raise LLMProviderError("Gemini API key is required")
             
             # Ensure client is initialized/updated with the active key
             if self._client is None:

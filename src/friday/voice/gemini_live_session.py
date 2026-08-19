@@ -538,11 +538,11 @@ class GeminiLiveVoiceSession:
                 if stop_event.is_set() or not self._active:
                     break
 
-                # 1. Session Resumption Update
+                # 1. Session Resumption Update (rate-limited logging)
                 resumption_update = getattr(message, "session_resumption_update", None)
                 if resumption_update:
                     new_handle = getattr(resumption_update, "new_handle", None) or getattr(resumption_update, "resumption_token", None)
-                    if new_handle:
+                    if new_handle and new_handle != self._resumption_handle:
                         self._resumption_handle = new_handle
                         logger.debug("Gemini Live session resumption handle updated.")
 
