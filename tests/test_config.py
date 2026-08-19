@@ -131,3 +131,35 @@ def test_voice_enabled_false_respected(tmp_path):
     settings = Settings(_env_file=str(env_file))
     assert settings.voice_enabled is False
     assert settings.get_diagnostics()["voice_enabled"] is False
+
+
+def test_configuration_never_exposes_secrets_in_diagnostics_or_repr(tmp_path):
+    """Test G: Configuration never leaks secrets in __repr__, str, or get_diagnostics()."""
+    env_file = tmp_path / "keys.env"
+    env_file.write_text(
+        "FRIDAY_GEMINI_API_KEY=TEST_GEMINI_API_KEY_PLACEHOLDER_07\n"
+        "FRIDAY_LLM_API_KEY=sk-SecretOpenAI987654321\n",
+        encoding="utf-8",
+    )
+    settings = Settings(_env_file=str(env_file))
+
+    repr_out = repr(settings)
+    diag_out = str(settings.get_diagnostics())
+
+    assert "TEST_GEMINI_API_KEY_PLACEHOLDER_07" not in repr_out
+    assert "sk-SecretOpenAI987654321" not in repr_out
+    assert "TEST_GEMINI_API_KEY_PLACEHOLDER_07" not in diag_out
+    assert "sk-SecretOpenAI987654321" not in diag_out
+    assert settings.get_diagnostics()["gemini_key_present"] is True
+
+
+def test_get_settings_reload_avoids_stale_cache():
+    """Test H: get_settings(reload=True) reloads fresh settings when environment changes."""
+    # Ensure fresh initial settings
+    s1 = get_settings(reload=True)
+    with mock.patch.dict(os.environ, {"FRIDAY_USER_NAME": "TemporaryTester"}):
+        s_stale = get_settings(reload=False)
+        s_fresh = get_settings(reload=True)
+        assert s_fresh.user_name == "TemporaryTester"
+    # Clean up cache
+    get_settings(reload=True)

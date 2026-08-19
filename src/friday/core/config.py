@@ -4,7 +4,7 @@ import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Type
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import (
     BaseSettings,
     EnvSettingsSource,
@@ -92,9 +92,21 @@ class Settings(BaseSettings):
     # LLM Settings & Cost Controls
     llm_provider: str = Field(default="gemini", description="LLM provider name: 'mock', 'openai', 'gemini'")
     llm_model: str = Field(default="gemini-2.5-flash", description="Model identifier")
-    llm_api_key: Optional[str] = Field(default=None, description="API Key for the provider (OpenAI or general)")
-    gemini_api_key: Optional[str] = Field(default=None, description="API Key specifically for Google Gemini")
-    gemini_model: Optional[str] = Field(default=None, description="Optional Gemini-specific model name override")
+    llm_api_key: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("FRIDAY_LLM_API_KEY", "OPENAI_API_KEY", "LLM_API_KEY", "llm_api_key"),
+        description="API Key for the provider (OpenAI or general)",
+    )
+    gemini_api_key: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("FRIDAY_GEMINI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "gemini_api_key"),
+        description="API Key specifically for Google Gemini",
+    )
+    gemini_model: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("FRIDAY_GEMINI_MODEL", "GEMINI_MODEL", "gemini_model"),
+        description="Optional Gemini-specific model name override",
+    )
     gemini_timeout: float = Field(default=60.0, ge=1.0, le=600.0, description="Request timeout in seconds for Gemini API")
     gemini_max_retries: int = Field(default=3, ge=0, le=10, description="Max retry attempts for transient Gemini API errors")
     gemini_backoff_factor: float = Field(default=2.0, ge=1.0, le=10.0, description="Exponential backoff factor for retries")
@@ -129,7 +141,11 @@ class Settings(BaseSettings):
     backup_dir: str = Field(default="data/backups", description="Directory for SQLite hot backups")
 
     # Voice Interface Settings
-    voice_enabled: bool = Field(default=False, description="Enable voice interface")
+    voice_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("FRIDAY_VOICE_ENABLED", "VOICE_ENABLED", "voice_enabled"),
+        description="Enable voice interface",
+    )
     voice_provider: str = Field(default="gemini", description="Voice provider: 'gemini' or 'mock'")
     voice_input_sample_rate: int = Field(default=16000, description="Audio sample rate for microphone input (Hz)")
     voice_output_format: str = Field(default="mp3", description="Audio format for synthesized speech")
@@ -177,6 +193,12 @@ class Settings(BaseSettings):
 
 
 @lru_cache(maxsize=1)
-def get_settings() -> Settings:
-    """Retrieve cached global settings instance."""
+def _get_cached_settings() -> Settings:
     return Settings()
+
+
+def get_settings(reload: bool = False) -> Settings:
+    """Retrieve global settings instance with optional cache reload."""
+    if reload:
+        _get_cached_settings.cache_clear()
+    return _get_cached_settings()

@@ -887,7 +887,7 @@ The fourth phase focuses on adding a **cloud‑first voice interface** and a **p
 
 ---
 
-## Environment Configuration Loading Fix
+## Environment Configuration Loading Fix & Settings Forensics
 
 **Date**: 2026-08-19  
 **Branch**: `main`  
@@ -896,20 +896,24 @@ The fourth phase focuses on adding a **cloud‑first voice interface** and a **p
 ### Problem & Symptoms
 * Launching FRIDAY from different directories or environments failed to load the project's local `.env` configuration reliably due to fragile relative path resolution (`env_file=".env"` in Pydantic Settings resolves against `os.getcwd()` rather than the repository root).
 * Empty process environment variables were capable of accidentally wiping valid `.env` configuration values due to default Pydantic source precedence.
+* Standard Gemini key naming variants (`GEMINI_API_KEY`, `GOOGLE_API_KEY`) were ignored by Pydantic's strict `env_prefix="FRIDAY_"`.
 
 ### Root Cause
 1. `Settings.model_config` was configured with relative string `env_file=".env"`, which evaluates against the process working directory at runtime.
 2. Default Pydantic `EnvSettingsSource` treated empty string environment variables (`""`) as explicit values, overriding non-empty values defined in `.env`.
+3. Pydantic field resolution lacked `AliasChoices`, rejecting non-prefixed standard environment variable aliases.
 
 ### Fix
 1. **Dynamic Root Resolution**: Implemented `find_project_root()` and `resolve_env_file()` in `src/friday/core/config.py` to dynamically discover the project root via repository markers (`pyproject.toml`, `.git`) relative to the package location and safely resolve absolute `.env` paths across arbitrary execution directories.
 2. **Precedence Protection**: Implemented `NonEmptyEnvSettingsSource` via `Settings.settings_customise_sources` to ignore empty string environment variables, preserving the strict precedence hierarchy: `Explicit process variables > .env values > code defaults`.
-3. **Safe Diagnostics**: Added `Settings.get_diagnostics()` returning clean operational metadata (provider, model, embedding model, voice toggle, key presence boolean) without exposing raw API keys.
+3. **Flexible Alias Resolution**: Added `AliasChoices` for `gemini_api_key` (`FRIDAY_GEMINI_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`), `gemini_model` (`FRIDAY_GEMINI_MODEL`, `GEMINI_MODEL`), and `voice_enabled` (`FRIDAY_VOICE_ENABLED`, `VOICE_ENABLED`).
+4. **Deterministic Settings Cache**: Added `get_settings(reload=True)` cache invalidation support.
+5. **Safe Diagnostics**: Added `Settings.get_diagnostics()` returning clean operational metadata (provider, model, embedding model, voice toggle, key presence boolean) without exposing raw API keys.
 
 ### Verification & Tests
 * Tested Settings loading from project root and temporary external directories.
 * Verified CLI startup correctly detects configured model (`gemini-3.6-flash`) and respects `voice_enabled=false`.
-* Added 7 dedicated unit tests in `tests/test_config.py`.
-* Full test suite: **175 passed in 44.20s**.
+* Added 9 dedicated unit tests in `tests/test_config.py`.
+* Full test suite: **177 passed in 42.70s (100% pass rate)**.
 
 ---
