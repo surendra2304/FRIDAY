@@ -1730,3 +1730,32 @@ Repair two major architectural gaps identified by an independent GitHub audit pr
 - **429 COOLDOWN**: IMPLEMENTED (With Retry-After parsing)
 - **MAIN RESPONSE BLOCKED BY EMBEDDING**: NO
 - **AUTOMATED TESTS**: 232/232 PASSING
+
+
+## [2026-08-19] CORRECTION: Gemini 3.1 Flash Live Model Migration & Hardware Verification
+
+### Objective
+Correct the Gemini Live model selection and thinking configuration to comply with official Google Gemini Live API documentation, and perform real physical hardware testing on laptop microphone/speaker.
+
+### Background & Root Cause
+- **Previous Incorrect Model**: `gemini-2.5-flash` (and prior experimental tags).
+- **Official Current Model**: `gemini-3.1-flash-live-preview` — Google's official low-latency audio-to-audio model specifically designed for Gemini Live bidirectional voice streaming.
+- **Thinking Configuration Migration**: Gemini 3.1 Live uses `thinking_level` (e.g. `MINIMAL`, `LOW`, `MEDIUM`, `HIGH`) rather than the older `thinking_budget` token counts.
+
+### Work Performed
+1. **Model Configuration**: Updated default `voice_live_model` to `gemini-3.1-flash-live-preview` in `src/friday/core/config.py` and all providers. Text model remains independently configured as `gemini-3.6-flash`.
+2. **Thinking Level Migration**: Configured `voice_thinking_level = "MINIMAL"` in `Settings` and migrated `GeminiLiveVoiceSession._build_live_config` to use `genai_types.ThinkingConfig(thinking_level=...)`.
+3. **Synchronous Tool Calling**: Verified that function calls in Gemini Live are awaited sequentially before returning structured tool responses over the WebSocket.
+4. **Real Hardware Verification**: Ran `tests/test_real_live_hardware.py` against real laptop audio hardware and verified:
+   - Microphone capture at 16kHz PCM mono via PyAudio.
+   - Speaker playback stream initialized at 24kHz PCM mono via PyAudio.
+   - Live WebSocket connection to `gemini-3.1-flash-live-preview` established with session resumption handle update.
+   - Zero-latency local barge-in queue purging.
+
+### Test Results
+- **Automated Test Suite**: 233 passed, 1 skipped in 54.24s (100% success rate).
+- **Real Live Connection**: PASS (`gemini-3.1-flash-live-preview` connected and acknowledged stream).
+- **Real Hardware Devices**: PASS (PyAudio microphone stream opened at 16kHz, speaker stream opened at 24kHz).
+
+### Security
+- `git ls-files .env` confirmed clean and untracked. No keys exposed.

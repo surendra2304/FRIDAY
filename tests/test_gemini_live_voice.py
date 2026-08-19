@@ -3,6 +3,7 @@
 import asyncio
 from unittest import mock
 import pytest
+from google.genai import types as genai_types
 
 from friday.core.config import Settings
 from friday.core.exceptions import LLMProviderError
@@ -98,15 +99,28 @@ async def test_live_session_initialization():
     """Verify GeminiLiveVoiceSession initializes with proper defaults."""
     session = GeminiLiveVoiceSession(
         api_key="TEST_GEMINI_API_KEY",
-        model="gemini-2.5-flash-native-audio-latest",
+        model="gemini-3.1-flash-live-preview",
         voice_name="Puck",
     )
-    assert session.model == "gemini-2.5-flash-native-audio-latest"
+    assert session.model == "gemini-3.1-flash-live-preview"
     assert session.voice_name == "Puck"
     assert session.sample_rate_in == 16000
     assert session.sample_rate_out == 24000
     assert session.is_active is False
     assert session.resumption_handle is None
+    assert session.thinking_level == "MINIMAL"
+
+
+@pytest.mark.anyio
+async def test_live_session_thinking_config():
+    """Verify LiveConnectConfig builds ThinkingConfig with thinking_level."""
+    session = GeminiLiveVoiceSession(
+        api_key="TEST_GEMINI_API_KEY",
+        thinking_level="LOW",
+    )
+    config = session._build_live_config()
+    assert config.thinking_config is not None
+    assert getattr(config.thinking_config, "thinking_level", None) in ("LOW", genai_types.ThinkingLevel.LOW)
 
 
 @pytest.mark.anyio
@@ -293,5 +307,5 @@ async def test_live_session_tool_execution(mock_agent):
 def test_provider_adapter_instantiation():
     """Verify GeminiVoiceProvider instantiates cleanly without hardware dependencies."""
     provider = GeminiVoiceProvider(api_key="TEST_GEMINI_API_KEY")
-    assert provider.model == "gemini-2.5-flash"
+    assert provider.model == "gemini-3.1-flash-live-preview"
     assert provider.api_key == "TEST_GEMINI_API_KEY"

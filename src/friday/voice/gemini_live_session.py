@@ -48,13 +48,14 @@ class GeminiLiveVoiceSession:
         vad_prefix_padding_ms: Optional[int] = None,
         vad_silence_duration_ms: Optional[int] = None,
         barge_in_rms_threshold: Optional[float] = None,
+        thinking_level: Optional[str] = None,
         thinking_budget: Optional[int] = None,
     ):
         settings = get_settings()
         self.api_key = api_key or settings.gemini_api_key or settings.llm_api_key
         if not self.api_key:
             raise ValueError("Gemini API key is required for Gemini Live voice session")
-        self.model = model or getattr(settings, "voice_live_model", "gemini-2.5-flash-native-audio-latest")
+        self.model = model or getattr(settings, "voice_live_model", "gemini-3.1-flash-live-preview")
         self.agent = agent
         self.voice_name = voice_name or getattr(settings, "voice_name", "Aoede")
         self.sample_rate_in = sample_rate_in
@@ -70,7 +71,8 @@ class GeminiLiveVoiceSession:
         self.vad_prefix_padding_ms = vad_prefix_padding_ms if vad_prefix_padding_ms is not None else getattr(settings, "voice_vad_prefix_padding_ms", 200)
         self.vad_silence_duration_ms = vad_silence_duration_ms if vad_silence_duration_ms is not None else getattr(settings, "voice_vad_silence_duration_ms", 400)
         self.barge_in_rms_threshold = barge_in_rms_threshold if barge_in_rms_threshold is not None else getattr(settings, "voice_barge_in_rms_threshold", 350.0)
-        self.thinking_budget = thinking_budget if thinking_budget is not None else getattr(settings, "voice_thinking_budget", 0)
+        self.thinking_level = thinking_level or getattr(settings, "voice_thinking_level", "MINIMAL")
+        self.thinking_budget = thinking_budget if thinking_budget is not None else getattr(settings, "voice_thinking_budget", None)
 
         self._active = False
         self._session: Optional[Any] = None
@@ -198,12 +200,21 @@ class GeminiLiveVoiceSession:
         except Exception as e:
             logger.debug(f"Realtime VAD config error: {e}")
 
-        # Thinking configuration (0 = minimal thinking, lowest latency for live voice)
-        if self.thinking_budget is not None:
+        # Thinking configuration (Gemini 3.1 Live uses thinking_level)
+        if self.thinking_level is not None:
+            try:
+                level_str = str(self.thinking_level).upper()
+                if hasattr(genai_types, "ThinkingLevel") and hasattr(genai_types.ThinkingLevel, level_str):
+                    config_kwargs["thinking_config"] = genai_types.ThinkingConfig(thinking_level=getattr(genai_types.ThinkingLevel, level_str))
+                else:
+                    config_kwargs["thinking_config"] = genai_types.ThinkingConfig(thinking_level=level_str)
+            except Exception as e:
+                logger.debug(f"ThinkingConfig thinking_level error: {e}")
+        elif self.thinking_budget is not None:
             try:
                 config_kwargs["thinking_config"] = genai_types.ThinkingConfig(thinking_budget=self.thinking_budget)
             except Exception as e:
-                logger.debug(f"ThinkingConfig error: {e}")
+                logger.debug(f"ThinkingConfig thinking_budget error: {e}")
 
         # Session resumption
         if self.enable_session_resumption and self._resumption_handle:

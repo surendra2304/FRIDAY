@@ -29,7 +29,7 @@ logger = get_logger("test_live_hardware")
 async def test_live_hardware():
     settings = get_settings()
     # Force live model for testing
-    settings.voice_live_model = "gemini-2.5-flash"
+    settings.voice_live_model = "gemini-3.1-flash-live-preview"
     
     setup_logging(level="DEBUG")
     
@@ -52,8 +52,18 @@ async def test_live_hardware():
     print("Try interrupting it while it's speaking to test barge-in.")
     print("Press Ctrl+C to terminate the test.\n")
     
+    stop_event = asyncio.Event()
+    duration = os.environ.get("HARDWARE_TEST_DURATION")
+    if duration:
+        try:
+            dur_secs = float(duration)
+            print(f"Running automated hardware check for {dur_secs}s...")
+            asyncio.create_task(asyncio.sleep(dur_secs)).add_done_callback(lambda _: stop_event.set())
+        except ValueError:
+            pass
+
     try:
-        await session.run_live_loop()
+        await session.run_live_loop(stop_event=stop_event)
     except KeyboardInterrupt:
         print("\nTest terminated by user.")
     except Exception as e:
