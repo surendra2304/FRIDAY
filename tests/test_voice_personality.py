@@ -69,7 +69,7 @@ def test_voice_persona_system_prompt_guidelines(memory_db):
         memory=memory_db,
     )
     session = GeminiLiveVoiceSession(
-        api_key="AIzaTestKey",
+        api_key="TEST_GEMINI_API_KEY",
         agent=agent,
         voice_name="Aoede",
     )
@@ -78,27 +78,25 @@ def test_voice_persona_system_prompt_guidelines(memory_db):
     prompt_text = sys_inst.parts[0].text
 
     # Core personality checks
-    assert "Calm, intelligent, concise, confident, natural, professional" in prompt_text
-    assert "Do NOT repeat the user's name (Surendra) on every turn" in prompt_text
-    assert "Do NOT use repetitive acknowledgements" in prompt_text
-    assert "Do NOT use excessive 'Boss'" in prompt_text
-    assert "INTERRUPTION ADAPTATION" in prompt_text
+    assert "Calm, intelligent, concise, confident, natural" in prompt_text
+    assert "The user is Surendra" in prompt_text
+    assert "do NOT prepend or repeat it on every response" in prompt_text
+    assert "Never use sycophantic titles like 'Boss'" in prompt_text
+    assert "INTERRUPTION RECOVERY" in prompt_text
+    assert "Speech Optimization: Never speak raw JSON" in prompt_text
     assert "Done." in prompt_text
 
 
 def test_voice_name_configurability():
     """Verify voice_name is configurable via Settings or constructor."""
-    settings = Settings(env="testing", voice_name="Charon")
     session = GeminiLiveVoiceSession(
-        api_key="AIzaTestKey",
-        voice_name=None,
+        api_key="TEST_GEMINI_API_KEY",
+        voice_name="Charon",
     )
-    # Falls back to configured voice name
-    assert session.voice_name in ("Charon", "Aoede", "Puck")
+    assert session.voice_name == "Charon"
 
-    # Explicit constructor override
     custom_session = GeminiLiveVoiceSession(
-        api_key="AIzaTestKey",
+        api_key="TEST_GEMINI_API_KEY",
         voice_name="Fenrir",
     )
     assert custom_session.voice_name == "Fenrir"
@@ -111,15 +109,14 @@ async def test_short_question_spoken_response(memory_db):
         settings=Settings(env="testing", embedding_provider="none"),
         memory=memory_db,
     )
-    session = GeminiLiveVoiceSession(api_key="AIzaTestKey", agent=agent)
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY", agent=agent)
     session._active = True
 
-    # User: "What time is it?" -> Assistant: "It is 11:15 AM."
     server_turn = mock.MagicMock(
         turn_complete=True,
         interrupted=False,
         input_transcription=mock.MagicMock(text="What time is it?"),
-        output_transcription=mock.MagicMock(text="It is 11:15 AM."),
+        output_transcription=mock.MagicMock(text="It is 2:14 PM."),
         model_turn=None,
     )
     msg = MockGenAIServerMessage(server_content=server_turn)
@@ -131,7 +128,40 @@ async def test_short_question_spoken_response(memory_db):
     history = agent.memory.get_messages(agent.conversation_id)
     assert len(history) == 2
     assert history[0].content == "What time is it?"
-    assert history[1].content == "It is 11:15 AM."
+    assert history[1].content == "It is 2:14 PM."
+
+
+@pytest.mark.anyio
+async def test_complex_explanation_structured_and_concise(memory_db):
+    """Verify complex multi-sentence explanations remain concise without rambling."""
+    agent = FridayAgent(
+        settings=Settings(env="testing", embedding_provider="none"),
+        memory=memory_db,
+    )
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY", agent=agent)
+    session._active = True
+
+    server_turn = mock.MagicMock(
+        turn_complete=True,
+        interrupted=False,
+        input_transcription=mock.MagicMock(text="How does WebSocket streaming work?"),
+        output_transcription=mock.MagicMock(
+            text="WebSocket provides a persistent, full-duplex TCP connection allowing bidirectional streaming of audio packets with minimal overhead."
+        ),
+        model_turn=None,
+    )
+    msg = MockGenAIServerMessage(server_content=server_turn)
+    mock_ws = MockAsyncSession([msg])
+    spk = MockSpeakerStream()
+
+    await session._audio_receiver_loop(mock_ws, spk, None, asyncio.Event())
+
+    history = agent.memory.get_messages(agent.conversation_id)
+    assert len(history) == 2
+    assert "persistent, full-duplex" in history[1].content
+    # Does not contain filler
+    assert "As an AI" not in history[1].content
+    assert "Boss" not in history[1].content
 
 
 @pytest.mark.anyio
@@ -146,7 +176,7 @@ async def test_tool_request_concise_status_and_execution(memory_db):
         authorizer=AutoApproveAuthorizer(),
         memory=memory_db,
     )
-    session = GeminiLiveVoiceSession(api_key="AIzaTestKey", agent=agent)
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY", agent=agent)
     session._active = True
 
     fc = mock.MagicMock(name="get_time", id="call_time_001", args={})
@@ -176,7 +206,7 @@ async def test_tool_error_graceful_handling(memory_db):
         authorizer=AutoApproveAuthorizer(),
         memory=memory_db,
     )
-    session = GeminiLiveVoiceSession(api_key="AIzaTestKey", agent=agent)
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY", agent=agent)
     session._active = True
 
     fc = mock.MagicMock(name="broken_service", id="call_err_002", args={})
@@ -201,7 +231,7 @@ async def test_interruption_and_followup_dialogue(memory_db):
         settings=Settings(env="testing", embedding_provider="none"),
         memory=memory_db,
     )
-    session = GeminiLiveVoiceSession(api_key="AIzaTestKey", agent=agent)
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY", agent=agent)
     session._active = True
 
     # 1. Turn 1 interrupted
