@@ -5,7 +5,22 @@
 
 From this date forward, FRIDAY_DIARY.md is maintained continuously as the permanent chronological source of truth for the project.
 
+## Permanent Project Rules
+
+FRIDAY_DIARY.md is the permanent, chronological, authoritative history of the entire FRIDAY project.
+
+For EVERY future FRIDAY development task, automatically follow this workflow:
+UNDERSTAND TASK → INSPECT CURRENT STATE → IMPLEMENT → TEST → RECORD IMPORTANT CHANGES IN FRIDAY_DIARY.md → RECORD BUGS/FIXES/DECISIONS → RECORD TEST RESULTS → RECORD COMMIT → RECORD GITHUB PUSH → VERIFY DIARY IS CURRENT
+
+Do NOT wait for the user to tell you to update the diary. Do NOT ask permission to update it. Do NOT skip it because a task is small.
+
+- **Source of Truth**: `docs/FRIDAY_DIARY.md` is the complete chronological history. `README.md` is just the current overview.
+- **Security**: NEVER store API keys, tokens, or passwords in the diary.
+- **Accuracy**: Distinguish between IMPLEMENTED, REAL-TESTED, MOCK-TESTED, PARTIAL, PLACEHOLDER, PLANNED, FUTURE. Never claim something is tested or implemented unless it really is.
+- **Permanence**: FRIDAY is never permanently finished. The diary must grow indefinitely.
+
 ---
+
 
 
 ## 2026-08-18 â€” Day 1
