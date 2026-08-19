@@ -109,7 +109,13 @@ async def run_diagnostics():
     try:
         async with client.aio.live.connect(model=settings.voice_live_model, config=live_config) as session:
             print("  Connected to Live WebSocket. Dispatching prompt...")
-            await session.send(input="Say hello to me in one short sentence.", end_of_turn=True)
+            await session.send_client_content(
+                turns=genai_types.Content(
+                    role="user",
+                    parts=[genai_types.Part.from_text(text="Say hello to me in one short sentence.")]
+                ),
+                turn_complete=True
+            )
             
             async for msg in session.receive():
                 server_content = getattr(msg, "server_content", None)

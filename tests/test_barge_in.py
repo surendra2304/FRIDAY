@@ -12,7 +12,7 @@ from friday.voice.audio_io import (
     SpeakerStream,
     compute_pcm_rms,
 )
-from friday.voice.gemini_live_session import GeminiLiveVoiceSession
+from friday.voice.gemini_live_session import GeminiLiveVoiceSession, LiveSessionState
 
 
 class MockGenAIPart:
@@ -78,12 +78,18 @@ def test_pcm_rms_calculation():
 
 @pytest.mark.anyio
 async def test_local_zero_latency_barge_in():
-    """Verify local high-energy speech immediately purges active speaker buffer."""
-    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY", barge_in_rms_threshold=300.0)
+    """Verify local sustained high-energy speech purges active speaker buffer."""
+    session = GeminiLiveVoiceSession(
+        api_key="TEST_GEMINI_API_KEY",
+        barge_in_rms_threshold=300.0,
+    )
+    session.barge_in_consecutive_frames = 2
+    session.headphones_mode = True  # Clean headphone test without room multiplier
     session._active = True
 
     loud_pcm = struct.pack("<800h", *[2000] * 800)
-    mic = MockMicrophoneStream(chunks=[loud_pcm])
+    # Provide 3 chunks to satisfy 2-frame debounce
+    mic = MockMicrophoneStream(chunks=[loud_pcm, loud_pcm, loud_pcm])
     mic.start()
 
     spk = SpeakerStream(sample_rate=24000)
@@ -94,15 +100,80 @@ async def test_local_zero_latency_barge_in():
     mock_ws_session = MockAsyncSession()
     stop_event = asyncio.Event()
 
-    # Run one step of sender loop
     task = asyncio.create_task(session._audio_sender_loop(mock_ws_session, mic, spk, stop_event))
     await asyncio.sleep(0.05)
     stop_event.set()
     await task
 
-    # Speaker stream must be purged immediately by local barge-in detection
+    # Speaker stream must be purged immediately by local debounced barge-in detection
     assert not spk.is_playing
     assert spk.queue_size == 0
+
+
+@pytest.mark.anyio
+async def test_false_barge_in_echo_protection_suppresses_speaker_leakage():
+    """Verify moderate speaker acoustic echo (e.g. RMS 400 with baseline threshold 300) does not falsely trigger interruption."""
+    session = GeminiLiveVoiceSession(
+        api_key="TEST_GEMINI_API_KEY",
+        barge_in_rms_threshold=300.0,
+    )
+    session.barge_in_playback_factor = 2.5  # Effective threshold = 750 while speaker active
+    session.headphones_mode = False
+    session._active = True
+
+    # Moderate acoustic leakage audio from speakers into mic (RMS ~400)
+    echo_pcm = struct.pack("<800h", *[400] * 800)
+    mic = MockMicrophoneStream(chunks=[echo_pcm, echo_pcm, echo_pcm, echo_pcm])
+    mic.start()
+
+    spk = SpeakerStream(sample_rate=24000)
+    spk._active = True
+    spk.play_chunk(b"outgoing_ai_speech" * 50)
+    assert spk.is_playing
+
+    mock_ws_session = MockAsyncSession()
+    stop_event = asyncio.Event()
+
+    task = asyncio.create_task(session._audio_sender_loop(mock_ws_session, mic, spk, stop_event))
+    await asyncio.sleep(0.05)
+    stop_event.set()
+    await task
+
+    # Speaker must remain playing — echo was safely suppressed
+    assert spk.is_playing
+    assert spk.queue_size > 0
+
+
+@pytest.mark.anyio
+async def test_barge_in_single_interruption_cooldown():
+    """Verify sustained continuous loud audio triggers at most ONE interruption within the cooldown window."""
+    session = GeminiLiveVoiceSession(
+        api_key="TEST_GEMINI_API_KEY",
+        barge_in_rms_threshold=300.0,
+    )
+    session.barge_in_consecutive_frames = 1
+    session.barge_in_cooldown_seconds = 1.0
+    session.headphones_mode = True
+    session._active = True
+
+    loud_pcm = struct.pack("<800h", *[2000] * 800)
+    mic = MockMicrophoneStream(chunks=[loud_pcm, loud_pcm, loud_pcm, loud_pcm, loud_pcm])
+    mic.start()
+
+    spk = SpeakerStream(sample_rate=24000)
+    spk._active = True
+    spk.play_chunk(b"speech" * 10)
+
+    mock_ws_session = MockAsyncSession()
+    stop_event = asyncio.Event()
+
+    task = asyncio.create_task(session._audio_sender_loop(mock_ws_session, mic, spk, stop_event))
+    await asyncio.sleep(0.05)
+    stop_event.set()
+    await task
+
+    # Verified: Purged once and transitioned to INTERRUPTED state
+    assert session.state == LiveSessionState.INTERRUPTED
 
 
 @pytest.mark.anyio

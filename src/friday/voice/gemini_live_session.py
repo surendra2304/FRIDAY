@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from typing import Any, Callable, Dict, List, Optional
 
 from google import genai
@@ -95,6 +96,10 @@ class GeminiLiveVoiceSession:
         self.vad_prefix_padding_ms = vad_prefix_padding_ms if vad_prefix_padding_ms is not None else getattr(settings, "voice_vad_prefix_padding_ms", 200)
         self.vad_silence_duration_ms = vad_silence_duration_ms if vad_silence_duration_ms is not None else getattr(settings, "voice_vad_silence_duration_ms", 400)
         self.barge_in_rms_threshold = barge_in_rms_threshold if barge_in_rms_threshold is not None else getattr(settings, "voice_barge_in_rms_threshold", 350.0)
+        self.barge_in_consecutive_frames = getattr(settings, "voice_barge_in_consecutive_frames", 3)
+        self.barge_in_playback_factor = getattr(settings, "voice_barge_in_playback_factor", 2.5)
+        self.barge_in_cooldown_seconds = getattr(settings, "voice_barge_in_cooldown_seconds", 0.8)
+        self.headphones_mode = getattr(settings, "voice_headphones_mode", False)
         self.thinking_level = thinking_level or getattr(settings, "voice_thinking_level", "MINIMAL")
         self.thinking_budget = thinking_budget if thinking_budget is not None else getattr(settings, "voice_thinking_budget", None)
 
@@ -103,6 +108,10 @@ class GeminiLiveVoiceSession:
         self._session: Optional[Any] = None
         self._resumption_handle: Optional[str] = None
         self._connected_event = asyncio.Event()
+
+        # Barge-in debouncing & cooldown state
+        self._consecutive_speech_frames: int = 0
+        self._last_interruption_time: float = 0.0
 
     def _set_state(self, new_state: LiveSessionState) -> None:
         """Atomically transition state with audit logging."""
@@ -487,17 +496,44 @@ class GeminiLiveVoiceSession:
         spk: SpeakerStream,
         stop_event: asyncio.Event,
     ) -> None:
-        """Stream microphone PCM chunks continuously with local zero-latency barge-in."""
+        """Stream microphone PCM chunks continuously with robust debounced barge-in."""
         try:
             while self._active and not stop_event.is_set():
                 chunk = await mic.read_chunk()
                 if chunk and len(chunk) > 0:
-                    # Zero-latency local barge-in: If user speaks while speaker buffer is active, purge playback immediately
+                    now = time.time()
                     rms = compute_pcm_rms(chunk)
-                    if getattr(spk, "is_playing", False) or getattr(spk, "queue_size", 0) > 0:
-                        if rms > self.barge_in_rms_threshold:  # User voice energy threshold
-                            logger.info(f"Local barge-in: user speech energy detected (RMS: {rms:.1f}), purging speaker buffer")
+                    is_speaker_active = getattr(spk, "is_playing", False) or getattr(spk, "queue_size", 0) > 0
+
+                    # Dynamic threshold calculation based on output activity and headphone mode
+                    if is_speaker_active and not self.headphones_mode:
+                        # Speaker is playing into room: apply higher threshold to avoid acoustic echo trigger
+                        effective_threshold = self.barge_in_rms_threshold * self.barge_in_playback_factor
+                    else:
+                        effective_threshold = self.barge_in_rms_threshold
+
+                    # Debounced speech energy tracking
+                    if rms > effective_threshold:
+                        self._consecutive_speech_frames += 1
+                    else:
+                        self._consecutive_speech_frames = 0
+
+                    # Handle Barge-In Interruption while FRIDAY is speaking
+                    if is_speaker_active:
+                        # Check cooldown and required sustained consecutive frames (e.g. 3 frames = ~120ms)
+                        is_cooldown_active = (now - self._last_interruption_time) < self.barge_in_cooldown_seconds
+                        if (
+                            not is_cooldown_active
+                            and self._consecutive_speech_frames >= self.barge_in_consecutive_frames
+                            and self._state != LiveSessionState.INTERRUPTED
+                        ):
+                            logger.info(
+                                f"Local barge-in: sustained user speech detected (RMS: {rms:.1f}, "
+                                f"frames: {self._consecutive_speech_frames}), purging speaker buffer"
+                            )
                             self._set_state(LiveSessionState.INTERRUPTED)
+                            self._last_interruption_time = now
+                            self._consecutive_speech_frames = 0
                             spk.stop()
                     elif rms > self.barge_in_rms_threshold and self._state == LiveSessionState.CONNECTED:
                         self._set_state(LiveSessionState.USER_SPEAKING)

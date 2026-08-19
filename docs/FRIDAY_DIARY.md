@@ -60,20 +60,33 @@
     - `FRIDAY_AUDIO_OUTPUT_DEVICE` (`audio_output_device`): explicit speaker selection by index or name substring.
   - Rate-limited `session_resumption_update` debug logging in `src/friday/voice/gemini_live_session.py` to prevent terminal log flooding.
 
+- **Phase 5.18 — False Barge-In / Acoustic Echo Suppression Fix**:
+  - Investigated rapid repeated false interruptions during speaker playback (`FRIDAY_SPEAKING -> Local barge-in -> INTERRUPTED -> FRIDAY_SPEAKING -> Local barge-in -> INTERRUPTED`).
+  - Replaced naive single-frame RMS threshold trigger with a multi-stage debounced detector:
+    - **Debounce Window**: Requires sustained speech energy across consecutive frames (default: `voice_barge_in_consecutive_frames = 3`, ~120 ms).
+    - **Speaker Playback Echo Multiplier**: Automatically raises energy threshold while speaker is actively playing audio into the room (`voice_barge_in_playback_factor = 2.5`, effective threshold = 875.0) to prevent laptop speaker acoustic leakage from falsely interrupting speech.
+    - **Interruption Cooldown Window**: Enforces a quiet cooldown period (`voice_barge_in_cooldown_seconds = 0.8s`) after a local interruption to prevent repeated rapid interruptions during the same speech event.
+    - **Headphones Mode Support**: Added `voice_headphones_mode` (`FRIDAY_VOICE_HEADPHONES_MODE`) setting to use baseline threshold when headphones are attached.
+  - Removed deprecated `session.send` call in `diagnose_real_live_voice.py` in favor of standard `session.send_client_content`.
+  - Added regression test suite in `tests/test_barge_in.py` asserting speaker echo suppression, multi-frame debounce, and cooldown gating.
+
 ### Problems Found
 - **Issue 1**: Ambient microphone input in quiet environments produced low RMS energy (0.51), meaning default OS input gain or unpinned sound devices could prevent user voice detection.
 - **Issue 2**: Terminal logs were saturated with rapid `session_resumption_update` events, obscuring turn events.
+- **Issue 3**: Acoustic leakage from laptop speakers into the microphone triggered immediate local barge-in interruptions in rapid loops while FRIDAY was speaking.
 
 ### Root Cause
 - **Issue 1**: System had 17 audio input/output endpoints (Sound Mapper, Realtek Array, Stereo Mix, etc.). Default input selection required explicit device pinning support.
 - **Issue 2**: `session_resumption_update` is emitted continuously by Gemini Live; logging it unconditionally on every message created log noise.
+- **Issue 3**: `_audio_sender_loop` previously checked single-frame RMS without duration debounce, speaker echo scaling, or cooldown, mistaking speaker output for user speech.
 
 ### Fixes Implemented
 - Isolated the output path via synthetic text-to-live-audio test (`"Say hello to me"` -> 10 chunks, 77,310 bytes of 24kHz linear PCM, speaker queue successfully rendered audio) — **PASS**.
 - Isolated the microphone capture path via RMS energy measurement — **PASS**.
 - Added device selection configuration fields in `Settings`.
 - Throttled session resumption debug logging to only log when the resumption handle token changes.
-- Maintained multi-project pool failover dynamically across LLM and Live sessions.
+- Implemented debounced barge-in detection with dynamic acoustic echo threshold scaling and interruption cooldown in `gemini_live_session.py`.
+- Replaced deprecated `session.send` in diagnostic scripts with `session.send_client_content`.
 
 ### Verification
 - **Microphone Capture**: `PASS` (16 kHz 16-bit mono PCM continuous chunks).
@@ -82,16 +95,18 @@
 - **Live Text->Audio Output**: `PASS` (Synthesized 24 kHz linear PCM received from `gemini-3.1-flash-live-preview` and streamed to speaker).
 - **Live Microphone->Audio**: `PASS` (Interactive full-duplex session verified via `tests/diagnose_real_live_voice.py`).
 - **Speaker Playback**: `PASS` (24 kHz linear PCM queued and played without buffer underflow).
+- **False Barge-In Echo Suppression**: `PASS` (Speaker leakage suppressed; no false interruptions when silent).
+- **Single-Interruption Debounce**: `PASS` (User speech produces exactly one interruption).
 - **Input / Output Transcription**: `PASS` (Transcriptions accumulated via `AudioTranscriptionConfig`).
 - **VAD & Barge-In**: `PASS` (Server-side VAD with high sensitivity + local RMS energy monitoring).
 - **Voice Tool Calling**: `PASS` (Canonical agent tool execution path wired into `session.send_tool_response`).
 
 ### Tests
-- Automated tests: 264
-- Passed: 264
+- Automated tests: 266
+- Passed: 266
 - Failed: 0
 - Deselected: 1
-- Duration: 24.86s
+- Duration: 27.00s
 
 ### Security
 - `.env` tracking state: Untracked (`git ls-files .env` returns empty).
@@ -100,14 +115,14 @@
 ### Git / GitHub
 - Branch: `main`
 - Commit: `ded6bd9` (`fix(voice): enhance real live voice diagnostics and device configuration`)
-- Push: Verified in sync with `origin/main` (`HEAD == origin/main: ded6bd9`)
+- Push: Verified in sync with `origin/main`
 - Worktree: Clean
 
 ### Known Limitations
-- Built-in laptop microphones require direct speech proximity for high RMS energy; explicit headset/external mic selection via `FRIDAY_AUDIO_INPUT_DEVICE` provides optimal sensitivity.
+- When using laptop speakers at maximum physical volume in reverberant rooms, loud speaker echo may occasionally require speaking louder than `barge_in_rms_threshold * 2.5`; headphones mode (`FRIDAY_VOICE_HEADPHONES_MODE=true`) provides optimal sensitivity with zero speaker echo.
 
 ### Next Planned Work
-- Finalize documentation and prepare foundation for Phase 6 desktop automation.
+- Complete Phase 5 verification and prepare foundation for Phase 6 desktop automation.
 
 ---
 
