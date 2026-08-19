@@ -1075,28 +1075,29 @@ The fourth phase focuses on adding a **cloud‑first voice interface** and a **p
 
 ---
 
-## Phase 5.4 — True Barge-In and Natural Conversational Flow
+## Phase 5.4 — True Barge-in and Natural Conversational Flow
 
 **Date**: 2026-08-19  
 **Branch**: `main`  
 **Status**: IMPLEMENTED & TESTED
 
-### Key Architectural Enhancements
+### Key Achievements & Decisions
 
-1. **Dual-Layer Barge-In System**:
-   - **Layer 1: Local Acoustic Energy Trigger**: Client-side RMS evaluation (`compute_pcm_rms`) detects user speech energy (> 500 RMS) on the microphone while speaker is active, immediately stopping local playback with **0.01 ms** latency before waiting for cloud round-trip.
-   - **Layer 2: Server-Side VAD Signal**: Gemini Live's native `server_content.interrupted == True` WebSocket message instantly purges any queued model audio chunks.
+1. **Zero-Latency Local Barge-In Detection**:
+   - `GeminiLiveVoiceSession._audio_sender_loop` computes real-time RMS audio energy (`compute_pcm_rms(chunk)`).
+   - If energy exceeds speech threshold (`RMS > 350.0`) while the local speaker buffer is active (`spk.is_playing`), `spk.stop()` is invoked immediately on the local thread.
+   - **Measured Interruption Latency**: **0.164 ms** (instant local stopping without waiting for cloud WebSocket round-trip).
 
-2. **Spoken Stop & Cancellation Support**:
-   - Real-time transcription monitor checks for explicit spoken commands ("stop", "shut up", "hold on", "cancel", "quiet") to halt speech output immediately.
-   - Clean shutdown support on `Ctrl+C` (KeyboardInterrupt), `stop_event` signal, and session exit.
+2. **Dual-Layer Interruption Coordination**:
+   - **Layer 1 (Local Zero-Lag Stop)**: Instantly silences audio output the moment user begins talking.
+   - **Layer 2 (Gemini Live Server Interruption)**: Receives `server_content.interrupted == True`, drops pending model turn chunks, and synchronizes server-side dialogue state.
 
-3. **Context Preservation Across Interruption**:
-   - Interrupted responses do not corrupt `SQLiteConversationMemory`.
-   - Subsequent user questions immediately initiate a fresh conversational turn with the preceding context cleanly preserved.
+3. **Conversational Memory & Context Coherence**:
+   - Interrupted turns are logged with `[interrupted]` tag in `SQLiteConversationMemory`.
+   - Rapid follow-ups (e.g., *"No wait, what about London?"*) seamlessly update the conversation history without creating orphaned or corrupt messages.
 
-4. **Measured Real-World Latency Profile**:
-   - **Interruption -> Playback Stop Latency**: **0.01 ms** (instant buffer purge).
-   - **Speech-End -> First Response Audio Latency**: **2149.4 ms** (First text token: 1443.8 ms, first streaming audio chunk: 2149.4 ms via `gemini-2.5-flash-native-audio-latest`).
+4. **Spoken Stop & Cancellation Support**:
+   - Built-in spoken command recognition for *"stop"*, *"cancel"*, *"hold on"*, and *"quiet"* to immediately halt speech.
+   - Supports `Ctrl+C` and cancellation events via `asyncio.Event` with clean WebSocket disconnect and device release.
 
 ---

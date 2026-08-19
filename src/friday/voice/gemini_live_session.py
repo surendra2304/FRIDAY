@@ -23,7 +23,7 @@ from friday.core.config import get_settings
 from friday.core.exceptions import LLMProviderError
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role, SafetyLevel
-from friday.voice.audio_io import MicrophoneStream, SpeakerStream, compute_pcm_rms
+from friday.voice.audio_io import MicrophoneStream, SpeakerStream
 
 logger = get_logger("voice.live_session")
 
@@ -40,19 +40,17 @@ class GeminiLiveVoiceSession:
         sample_rate_in: int = 16000,
         sample_rate_out: int = 24000,
         max_retries: int = 3,
-        barge_in_threshold: float = 500.0,
     ):
         settings = get_settings()
         self.api_key = api_key or settings.gemini_api_key or settings.llm_api_key
         if not self.api_key:
             raise ValueError("Gemini API key is required for Gemini Live voice session")
-        self.model = model or getattr(settings, "voice_live_model", "gemini-2.5-flash-native-audio-latest")
+        self.model = model or getattr(settings, "voice_live_model", "gemini-2.0-flash")
         self.agent = agent
         self.voice_name = voice_name
         self.sample_rate_in = sample_rate_in
         self.sample_rate_out = sample_rate_out
         self.max_retries = max_retries
-        self.barge_in_threshold = barge_in_threshold
         self._active = False
         self._session: Optional[Any] = None
 
@@ -244,16 +242,18 @@ class GeminiLiveVoiceSession:
         spk: SpeakerStream,
         stop_event: asyncio.Event,
     ) -> None:
-        """Stream microphone PCM chunks continuously to Gemini Live with local acoustic barge-in."""
+        """Stream microphone PCM chunks continuously with local zero-latency barge-in."""
+        from friday.voice.audio_io import compute_pcm_rms
+
         try:
             while self._active and not stop_event.is_set():
                 chunk = await mic.read_chunk()
                 if chunk and len(chunk) > 0:
-                    # Instant local acoustic barge-in detection
-                    if getattr(spk, "is_playing", False):
+                    # Zero-latency local barge-in: If user speaks while speaker buffer is active, purge playback immediately
+                    if getattr(spk, "is_playing", False) or getattr(spk, "queue_size", 0) > 0:
                         rms = compute_pcm_rms(chunk)
-                        if rms > self.barge_in_threshold:
-                            logger.info(f"Local acoustic barge-in detected (RMS: {rms:.1f}) -> stopping speaker playback")
+                        if rms > 350.0:  # User voice energy threshold
+                            logger.info(f"Local barge-in: user speech energy detected (RMS: {rms:.1f}), purging speaker buffer")
                             spk.stop()
 
                     await session.send_realtime_input(
@@ -282,6 +282,7 @@ class GeminiLiveVoiceSession:
         user_transcript_accum = []
         agent_text_parts = []
         agent_output_tx = []
+        turn_interrupted = False
 
         try:
             async for message in session.receive():
@@ -291,9 +292,10 @@ class GeminiLiveVoiceSession:
                 # 1. Server content (Audio, Transcriptions, Interruption)
                 server_content = getattr(message, "server_content", None)
                 if server_content:
-                    # Instant barge-in / Interruption
+                    # Instant barge-in / Interruption from Live API
                     if getattr(server_content, "interrupted", False):
-                        logger.info("Barge-in detected: interrupting local speaker playback")
+                        logger.info("Server barge-in signal: interrupting local speaker playback")
+                        turn_interrupted = True
                         spk.stop()
                         agent_text_parts.clear()
                         agent_output_tx.clear()
@@ -311,14 +313,10 @@ class GeminiLiveVoiceSession:
                             if getattr(part, "text", None):
                                 agent_text_parts.append(part.text)
 
-                    # Accumulate transcriptions if provided and check for spoken stop words
+                    # Accumulate transcriptions if provided
                     in_tx = getattr(server_content, "input_transcription", None)
                     if in_tx and getattr(in_tx, "text", None):
                         user_transcript_accum.append(in_tx.text)
-                        tx_lower = in_tx.text.lower().strip()
-                        if any(stop_cmd in tx_lower for stop_cmd in ("stop", "shut up", "hold on", "cancel", "quiet")):
-                            logger.info(f"Spoken stop command detected ('{tx_lower}') -> halting playback")
-                            spk.stop()
 
                     out_tx = getattr(server_content, "output_transcription", None)
                     if out_tx and getattr(out_tx, "text", None):
@@ -327,12 +325,19 @@ class GeminiLiveVoiceSession:
                     # Turn completion
                     if getattr(server_content, "turn_complete", False):
                         user_text = "".join(user_transcript_accum).strip()
-                        agent_text = ("".join(agent_output_tx).strip() or "".join(agent_text_parts).strip())
+                        raw_agent_text = ("".join(agent_output_tx).strip() or "".join(agent_text_parts).strip())
+                        agent_text = f"{raw_agent_text} [interrupted]" if (turn_interrupted and raw_agent_text) else raw_agent_text
+
+                        # Check backup spoken stop command
+                        if user_text.lower() in ("stop", "stop.", "cancel", "cancel.", "hold on", "quiet"):
+                            logger.info(f"Spoken stop command recognized: '{user_text}'")
+                            spk.stop()
+                            agent_text = "[Stopped by user]"
 
                         if on_turn_complete:
                             on_turn_complete(user_text, agent_text)
 
-                        # Commit completed turn into SQLite conversation memory
+                        # Commit completed turn into SQLite conversation memory without corrupted state
                         if self.agent and getattr(self.agent, "memory", None):
                             if user_text:
                                 self.agent.memory.add_message(Message(role=Role.USER, content=user_text))
@@ -342,6 +347,7 @@ class GeminiLiveVoiceSession:
                         user_transcript_accum.clear()
                         agent_text_parts.clear()
                         agent_output_tx.clear()
+                        turn_interrupted = False
 
                 # 2. Server tool execution requests
                 tool_call = getattr(message, "tool_call", None)

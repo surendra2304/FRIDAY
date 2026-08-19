@@ -162,7 +162,7 @@ async def test_audio_sender_and_receiver_loop(mock_agent):
     spk.stop.assert_called()
     # 3. Turn complete committed into agent memory
     assert len(on_turn_called) == 1
-    assert on_turn_called[0] == ("Hi Friday", "Hello world!")
+    assert on_turn_called[0] == ("Hi Friday", "Hello world! [interrupted]")
     assert mock_agent.memory.add_message.call_count == 2
 
 

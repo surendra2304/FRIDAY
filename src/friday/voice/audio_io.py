@@ -10,9 +10,7 @@ Provides:
 from __future__ import annotations
 
 import asyncio
-import math
 import queue
-import struct
 import threading
 from typing import Any, AsyncIterator, Dict, List, Optional
 
@@ -24,19 +22,6 @@ try:
     import sounddevice as sd
 except ImportError:
     sd = None  # type: ignore
-
-
-def compute_pcm_rms(pcm_bytes: bytes) -> float:
-    """Compute Root Mean Square (RMS) energy of 16-bit signed PCM audio bytes."""
-    if not pcm_bytes or len(pcm_bytes) < 2:
-        return 0.0
-    num_samples = len(pcm_bytes) // 2
-    try:
-        samples = struct.unpack(f"<{num_samples}h", pcm_bytes[:num_samples * 2])
-        sum_sq = sum(s * s for s in samples)
-        return math.sqrt(sum_sq / num_samples)
-    except Exception:
-        return 0.0
 
 
 def get_audio_diagnostics() -> Dict[str, Any]:
@@ -303,7 +288,23 @@ class SpeakerStream:
 
     @property
     def is_playing(self) -> bool:
-        return self._active and not self._queue.empty()
+        return self._active and self._queue.qsize() > 0
+
+
+def compute_pcm_rms(pcm_bytes: bytes) -> float:
+    """Compute Root Mean Square (RMS) energy for 16-bit linear PCM audio."""
+    if not pcm_bytes:
+        return 0.0
+    import struct
+    count = len(pcm_bytes) // 2
+    if count == 0:
+        return 0.0
+    try:
+        samples = struct.unpack(f"<{count}h", pcm_bytes[: count * 2])
+        sum_sq = sum(s * s for s in samples)
+        return (sum_sq / count) ** 0.5
+    except Exception:
+        return 0.0
 
 
 class MockMicrophoneStream:
@@ -364,7 +365,3 @@ class MockSpeakerStream:
     @property
     def is_active(self) -> bool:
         return self._active
-
-    @property
-    def is_playing(self) -> bool:
-        return self._active and len(self.played_chunks) > 0
