@@ -970,3 +970,33 @@ The fourth phase focuses on adding a **cloud‑first voice interface** and a **p
 ```
 
 ---
+
+## Phase 5.1 — Real-Time Gemini Live Voice Architecture Audit
+
+**Date**: 2026-08-19  
+**Branch**: `main`  
+**Status**: ARCHITECTURE AUDIT COMPLETE
+
+### Decision & Scope
+* **Target Experience**: Full-duplex conversational voice with instant interruption (barge-in) and real-time audio streaming.
+* **Deprecating**: The legacy turn-based voice prototype (fixed 4-second chunk recording, batch transcription, and post-response TTS synthesis).
+* **Adopting**: Official Google GenAI Python SDK (`google-genai`) WebSocket session via `client.aio.live.connect(model=..., config=...)`.
+
+### Architecture Specifications Established
+1. **Audio Streams**:
+   - **Input**: 16-bit linear PCM, 16 kHz mono, little-endian chunks (`mime_type="audio/pcm;rate=16000"`).
+   - **Output**: 16-bit linear PCM, 24 kHz mono streaming chunks from `server_content.model_turn.parts[].inline_data.data`.
+2. **VAD & Barge-In**:
+   - Built-in server-side Voice Activity Detection.
+   - `server_content.interrupted == True` triggers immediate local speaker buffer purge and speech playback abortion.
+3. **Single Unified Brain**:
+   - Native WebSocket tool calling via `LiveServerMessage.tool_call` routed directly through FRIDAY's existing `ToolRegistry`, `AutoApproveAuthorizer`, and `BaseAuthorizer`.
+   - Tool execution results returned via `session.send_tool_response(function_responses=...)`.
+   - Turn transcripts committed to `SQLiteConversationMemory` with `gemini-embedding-2` auto-indexing upon `turn_complete=True`.
+4. **Security & Ephemeral Tokens**:
+   - Local execution loads `FRIDAY_GEMINI_API_KEY` from `.env`.
+   - Architecture prepared for ephemeral session token issuance for future remote client deployments.
+5. **Configurability**:
+   - Live model decoupled in `Settings` (`FRIDAY_VOICE_LIVE_MODEL=gemini-2.0-flash` or `gemini-2.0-flash-exp`).
+
+---
