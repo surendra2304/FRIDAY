@@ -1,6 +1,8 @@
-"""Interactive Command Line Interface for FRIDAY."""
-
+import json
 import sys
+from datetime import datetime
+from pathlib import Path
+
 from friday.agent.agent import FridayAgent
 from friday.cli.auth import CLIAuthorizer
 from friday.core.config import get_settings
@@ -8,15 +10,11 @@ from friday.core.logging import get_logger, setup_logging
 
 logger = get_logger("cli")
 
-BANNER = """
-  _____  _____   _____  _____         __   __
- |  ___||  _  \ |_   _||  _  \  /\    \ \ / /
- | |_   | |_| |   | |  | | | | /  \    \ V /
- |  _|  |  _  /   | |  | | | |/ /\ \    | |
- | |    | | \ \  _| |_ | |_| / ____ \   | |
- |_|    |_|  \_\|_____||____/_/    \_\  |_|
-  Fully Responsive Intelligent Digital Assistant for You
-  Version 0.4.1 — Persistent Memory
+BANNER = r"""
+================================================================================
+                                    FRIDAY
+             Fully Responsive Intelligent Digital Assistant for You
+================================================================================
 """
 
 
