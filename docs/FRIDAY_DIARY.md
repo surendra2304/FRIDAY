@@ -1672,3 +1672,17 @@ Ensure all 232 automated tests pass completely to clear the Phase 5 Final Gate.
 
 #### Security
 - `git ls-files .env` returns strictly empty output.
+
+---
+
+### Update GitHub Synchronization Policy
+
+#### Objective
+Strengthen the automatic GitHub synchronization workflow by adding mandatory push guards, security gates, and diary gates.
+
+#### Work Performed
+1. Updated `.agents/rules/github_sync_policy.md` to explicitly forbid pushing when tests fail (unless documentation-only).
+2. Embedded the security gate (`git ls-files .env` check) and diary gate directly into the project rule.
+
+#### Security
+- Verified `.env` remains untracked. No application code was modified.
