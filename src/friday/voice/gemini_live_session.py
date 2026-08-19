@@ -21,6 +21,7 @@ from google.genai import types as genai_types
 
 from enum import Enum
 
+from friday.auth.credential_pool import credential_pool, GeminiCredentialPool
 from friday.core.config import get_settings
 from friday.core.exceptions import LLMProviderError
 from friday.core.logging import get_logger, redact_tool_args
@@ -67,9 +68,15 @@ class GeminiLiveVoiceSession:
         barge_in_rms_threshold: Optional[float] = None,
         thinking_level: Optional[str] = None,
         thinking_budget: Optional[int] = None,
+        credential_pool: Optional[GeminiCredentialPool] = credential_pool,
     ):
         settings = get_settings()
-        self.api_key = api_key or settings.gemini_api_key or settings.llm_api_key
+        self.credential_pool = credential_pool
+        self._explicit_api_key = api_key
+        try:
+            self.api_key = api_key or (credential_pool.get_active_key() if credential_pool else None) or settings.gemini_api_key or settings.llm_api_key
+        except Exception:
+            self.api_key = api_key or settings.gemini_api_key or settings.llm_api_key
         if not self.api_key:
             raise ValueError("Gemini API key is required for Gemini Live voice session")
         self.model = model or getattr(settings, "voice_live_model", "gemini-3.1-flash-live-preview")

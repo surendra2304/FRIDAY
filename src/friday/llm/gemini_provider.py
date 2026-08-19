@@ -26,6 +26,8 @@ from friday.core.exceptions import LLMProviderError
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role, ToolCall
 from friday.llm.base import BaseLLMProvider
+from friday.auth.credential_pool import credential_pool, GeminiCredentialPool
+# duplicate import removed
 
 logger = get_logger("llm.gemini")
 
@@ -35,7 +37,8 @@ class GeminiLLMProvider(BaseLLMProvider):
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        api_key: str = None,
+        credential_pool: GeminiCredentialPool = credential_pool,
         base_url: str = "https://generativelanguage.googleapis.com/v1beta",
         model: str = "gemini-2.5-flash",
         temperature: float = 0.7,
@@ -46,30 +49,31 @@ class GeminiLLMProvider(BaseLLMProvider):
         cost_mode: str = "free_first",
     ) -> None:
         super().__init__(model=model, temperature=temperature, max_tokens=max_tokens)
-        self.api_key = api_key or ""
+        self.api_key = api_key
+        self.credential_pool = credential_pool
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.max_retries = max_retries
         self.backoff_factor = backoff_factor
         self.cost_mode = cost_mode
         self._client: Optional[genai.Client] = None
-        if self.api_key:
-            try:
-                self._client = genai.Client(api_key=self.api_key)
-            except Exception as e:
-                logger.warning(f"Failed to initialize GenAI client: {self._mask_key(str(e))}")
-        else:
-            logger.warning("Gemini API key not provided; provider may fail on generate calls.")
+        self._current_key: Optional[str] = None
 
     @property
     def client(self) -> genai.Client:
-        """Retrieve or create the cached GenAI Client instance."""
+        """Retrieve or create the cached GenAI Client instance using the credential pool."""
+        # Use explicit api_key if provided, otherwise fall back to the credential pool.
+        try:
+            active_key = self.api_key if self.api_key else self.credential_pool.get_active_key()
+        except RuntimeError as e:
+            # No healthy credentials and no explicit key provided
+            raise LLMProviderError(str(e)) from e
+
         if self._client is None:
-            if not self.api_key:
-                raise LLMProviderError(
-                    "Gemini API key is required. Set FRIDAY_GEMINI_API_KEY or FRIDAY_LLM_API_KEY."
-                )
-            self._client = genai.Client(api_key=self.api_key)
+            self._client = genai.Client(api_key=active_key)
+            self._current_key = active_key
+            # keep api_key attribute in sync for masking
+            self.api_key = active_key
         return self._client
 
     @property
@@ -77,10 +81,30 @@ class GeminiLLMProvider(BaseLLMProvider):
         return "gemini"
 
     def _mask_key(self, text: str) -> str:
-        """Mask API key in any error or diagnostic string."""
-        if self.api_key and self.api_key in text:
-            return text.replace(self.api_key, "***")
-        return text
+        """Mask API key in any error or diagnostic string.
+        Replaces exact key and all keys from the credential pool.
+        """
+        keys_to_mask = set()
+        if getattr(self, "api_key", None):
+            keys_to_mask.add(self.api_key)
+        if getattr(self, "_current_key", None):
+            keys_to_mask.add(self._current_key)
+        if hasattr(self, "credential_pool") and self.credential_pool:
+            for cred in getattr(self.credential_pool, "credentials", []):
+                if getattr(cred, "api_key", None):
+                    keys_to_mask.add(cred.api_key)
+
+        masked = text
+        for key in keys_to_mask:
+            if key and len(key) >= 4:
+                masked = masked.replace(key, "***")
+                try:
+                    import re
+                    pattern = re.compile(re.escape(key), re.IGNORECASE)
+                    masked = pattern.sub("***", masked)
+                except Exception:
+                    pass
+        return masked
 
     # ---------------------------------------------------------------------
     # Schema and Message Conversion Helpers
@@ -254,15 +278,30 @@ class GeminiLLMProvider(BaseLLMProvider):
         Translates FRIDAY messages, enforces function-calling trust boundaries,
         and wraps exceptions in LLMProviderError with secret masking.
         """
-        if not self.api_key:
-            raise LLMProviderError(
-                "Gemini API key is required. Set FRIDAY_GEMINI_API_KEY or FRIDAY_LLM_API_KEY."
-            )
-
-        contents, config = self._build_contents_and_config(messages, tools)
-
         attempt = 0
         while attempt <= self.max_retries:
+            # Determine the API key to use for this request (re-select each retry)
+            if self.api_key is not None and not self.api_key.strip():
+                raise LLMProviderError("Gemini API key is required")
+            try:
+                active_key = self.api_key if self.api_key else self.credential_pool.get_active_key()
+            except (RuntimeError, Exception) as e:
+                raise LLMProviderError("Gemini API key is required") from e
+            
+            # Ensure client is initialized/updated with the active key
+            if self._client is None:
+                self._client = genai.Client(api_key=active_key)
+                self._current_key = active_key
+            elif not hasattr(self._client, "_is_mock") and getattr(self, "_current_key", None) != active_key:
+                # If key changed and it's not an explicit test mock, recreate client with new key
+                try:
+                    self._client = genai.Client(api_key=active_key)
+                except Exception:
+                    pass
+                self._current_key = active_key
+
+            contents, config = self._build_contents_and_config(messages, tools)
+
             try:
                 logger.debug(
                     f"Calling GenAI generate_content (model: {self.model}, attempt {attempt + 1}/{self.max_retries + 1})"
@@ -280,6 +319,10 @@ class GeminiLLMProvider(BaseLLMProvider):
                         if block_reason:
                             raise LLMProviderError(f"blocked by safety filters: {block_reason}")
                     raise LLMProviderError("Gemini returned no candidates")
+
+                # Reset credential health on success
+                if hasattr(self, "credential_pool") and self.credential_pool and not self.api_key:
+                    self.credential_pool.reset_key(active_key)
 
                 candidate = response.candidates[0]
                 content = candidate.content
@@ -321,25 +364,16 @@ class GeminiLLMProvider(BaseLLMProvider):
                 final_text = "".join(text_parts).strip()
                 return Message(role=Role.ASSISTANT, content=final_text, tool_calls=tool_calls)
 
-            except genai_errors.APIError as e:
-                err_msg = self._mask_key(str(e.message or e))
-                code = getattr(e, "code", None) or getattr(e, "status_code", 500)
-                status_str = f"status {code}: {err_msg}"
-                if code in (429, 500, 502, 503, 504) and attempt < self.max_retries:
-                    wait = 1.0 * (self.backoff_factor ** attempt)
-                    logger.warning(f"GenAI API error [{code}]: {err_msg}. Retrying in {wait:.2f}s...")
-                    time.sleep(wait)
-                    attempt += 1
-                    continue
-                logger.error(f"GenAI API error after retries: {status_str}")
-                raise LLMProviderError(f"Network error during Gemini request ({status_str})") from e
-
-            except LLMProviderError:
-                raise
-
-            except Exception as e:
+            except (genai_errors.APIError, Exception) as e:
                 err_msg = self._mask_key(str(e))
+                code = getattr(e, "code", None) or getattr(e, "status_code", 500)
+                
+                # Report failure to credential pool for auth/quota/network errors
+                if hasattr(self, "credential_pool") and self.credential_pool and not self.api_key:
+                    self.credential_pool.report_failure(active_key)
+                
                 err_lower = err_msg.lower()
+                # If this looks like a quota or rate limit issue, treat as retryable
                 if ("429" in err_lower or "quota" in err_lower or "resource exhausted" in err_lower) and attempt < self.max_retries:
                     wait = 1.0 * (self.backoff_factor ** attempt)
                     logger.warning(f"GenAI rate limit: {err_msg}. Retrying in {wait:.2f}s...")

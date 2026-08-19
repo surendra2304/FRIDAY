@@ -1852,39 +1852,6 @@ Unified SQLite, FTS5 lexical indexing, Gemini semantic embeddings, and hybrid ra
   - Enforced a calm, confident, concise, and natural persona inspired by JARVIS / FRIDAY.
   - Strictly eliminated repetitive user addressing and sycophantic titles ("Boss").
   - Prohibited generic customer-service fillers ("Certainly!", "I would be happy to help with that", "As an AI...").
-  - Formatted voice responses to exclude raw markdown headers, internal timestamps, and tool IDs.
-
-### 2. CLI Architecture & Error UX
-- **CLI Commands Verified**: `startup`, `status`, `history`, `tools`, `search`, `conversations`, `new`, `switch`, `rename`, `clear`, `delete`, `backup`, `export`, `purge`, `exit`.
-- **Top-Level Import Hygiene**: Added explicit `datetime`, `json`, and `Path` module imports in `src/friday/cli/main.py` to prevent runtime NameErrors on backup/export commands.
-- **Error Sanitization**: Raw tracebacks are strictly logged to files while presenting user-friendly messages for rate limits, authentication, and network disconnects.
-- **Banner**: Clean, unambiguous ASCII art header reading "FRIDAY".
-
-### 3. Measured Operational Latencies
-- **Agent Startup**: 40.93 ms
-- **Simple Query Round-trip**: 3.00 ms
-- **Tool Call Round-trip**: 9.10 ms
-- **FTS Memory Lookup**: 9.07 ms
-
-### 4. Verification & Metrics
-- **Automated Tests**: 249 passed, 1 deselected in 52.65s (100% pass rate).
-- **Environment & Security**: `.env` untracked, zero credentials exposed.
-
-
-## [2026-08-19] PHASE 5 FINAL RELEASE GATE: Comprehensive Production Validation
-
-### 1. Verification Truth Matrix
-- **Automated Test Suite**: 249 passed, 1 deselected in 49.42s (100% pass rate).
-- **Real Gemini Text**: Verified with `gemini-3.6-flash` (One-sentence direct operational answer).
-- **Real Function Calling**: Verified with `get_time_date` declaration and structured argument routing.
-- **Real Embedding**: Verified `gemini-embedding-2` cloud provider integration and rate-limit circuit breaker failover.
-- **Real Persistent Memory**: Verified fact storage, SQLite instance destruction, agent restart, and FTS5/hybrid retrieval.
-- **Real Live Voice Hardware**:
-  - Live WebSocket session established (`gemini-3.1-flash-live-preview`).
-  - 16kHz microphone stream capture (40ms chunks).
-  - 24kHz speaker stream playback with atomic head remainder buffer.
-  - Automatic VAD and session resumption token reception.
-  - Zero-latency local RMS energy barge-in queue purging.
   - Voice tool declaration and execution routing.
 - **Security & Quota**: `.env` strictly untracked, zero credentials exposed, offline test quota protection active.
 - **Git & Worktree**: Clean worktree in sync with `origin/main`.
@@ -1905,3 +1872,42 @@ All Phase 5 criteria, forensic requirements, and live hardware gates have been v
 - **Circuit Breaker**: Opened cleanly for 60.0s upon receiving the 429 response without repeated retry loops.
 - **FTS5 Fallback**: 100% operational (`PASS`). All messages persisted unconditionally to SQLite and searchable via full-text keyword indexing.
 - **Main Gemini Response**: Unblocked (`NO`). Main conversational reasoning and tool execution continue with sub-second latency regardless of embedding quota status.
+
+
+## [2026-08-19] PHASE 5.16: Multi-Project Gemini Credential Failover & Automatic Pool Recovery
+
+### 1. Architectural Implementation
+- **`GeminiCredentialPool` (`src/friday/auth/credential_pool.py`)**:
+  - Implemented thread-safe singleton pool managing primary key (`FRIDAY_GEMINI_API_KEY`) and up to four fallback credentials (`FRIDAY_GEMINI_FALLBACK_API_KEY_1`..`_4`).
+  - Added health tracking with `max_failures=1`, automatic cooldown window (`cooldown_seconds=60`), failure tracking, timestamping, thread locks, `load_keys()`, `reload()`, `reset_all()`, and `reset_key()`.
+  - Added `get_active_key()` returning the first healthy credential in priority sequence (Primary -> FB 1 -> FB 2 -> FB 3 -> FB 4) or raising a clean `RuntimeError` if all are exhausted.
+- **`GeminiLLMProvider` (`src/friday/llm/gemini_provider.py`)**:
+  - Integrated dynamic active key selection inside the generation retry loop.
+  - Automatic failure reporting (`report_failure(active_key)`) on 429/quota/auth exceptions.
+  - Automatic client instance rotation upon failover.
+  - Automatic health reset (`reset_key(active_key)`) on successful generation.
+  - Comprehensive case-insensitive credential masking (`_mask_key`) for all pool credentials across logs and exception strings.
+- **`GeminiLiveVoiceSession` (`src/friday/voice/gemini_live_session.py`)**:
+  - Connected Live Voice WebSocket session initialization to `credential_pool.get_active_key()`.
+- **`Settings` Configuration (`src/friday/core/config.py`)**:
+  - Added `gemini_fallback_api_key_1` through `gemini_fallback_api_key_4` fields with environment variable alias mappings.
+- **Embedding Isolation**:
+  - `GeminiEmbeddingProvider` maintained on its dedicated single key and circuit breaker without triggering uncontrolled credential pool rotations.
+
+### 2. Verification & Test Matrix
+- **Deterministic Failover Tests (`tests/test_gemini_failover.py`)**:
+  - **TEST 1 (Primary Success)**: `PASS` — Primary used, fallbacks untouched.
+  - **TEST 2 (Primary 429 -> Fallback 1)**: `PASS` — Primary enters cooldown, Fallback 1 used, request succeeds.
+  - **TEST 3 (Primary + FB1 Fail -> Fallback 2)**: `PASS` — Fallback 2 used, request succeeds.
+  - **TEST 4 (Primary + FB1 + FB2 + FB3 Fail -> Fallback 4)**: `PASS` — Fallback 4 used, request succeeds.
+  - **TEST 5 (All 5 Fail)**: `PASS` — Clean user-facing `LLMProviderError`, zero infinite retry loops.
+  - **TEST 6 (Cooldown Expiry & Recovery)**: `PASS` — Primary restored to active status upon cooldown expiration.
+  - **TEST 7 (Concurrency & Thread-Safety)**: `PASS` — Thread-safe single active key per request.
+  - **TEST 8 (Secret Scrubbing)**: `PASS` — Zero credentials leaked in error strings or logs.
+- **Real Fallback Request Verification**:
+  - Primary configured; Fallback 1–4 not populated in local environment (`REAL FALLBACK REQUEST: NOT VERIFIED — NO HEALTHY FALLBACK AVAILABLE`).
+- **Full Automated Test Suite**:
+  - 257 passed, 1 deselected in 19.93s (100% pass rate).
+- **Security Audit**:
+  - `git ls-files .env` returns zero files; `.env` strictly untracked; zero credentials exposed in source or logs.
+

@@ -5,6 +5,7 @@ from friday.core.exceptions import ConfigError
 from friday.core.logging import get_logger
 from friday.llm.base import BaseLLMProvider
 from friday.llm.gemini_provider import GeminiLLMProvider
+from friday.auth.credential_pool import credential_pool
 from friday.llm.mock_provider import MockLLMProvider
 from friday.llm.openai_provider import OpenAILLMProvider
 
@@ -31,6 +32,7 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
         logger.info(f"Initializing Google Gemini Provider (model: {model_name}, cost_mode: {settings.cost_mode})")
         return GeminiLLMProvider(
             api_key=api_key,
+            credential_pool=credential_pool,
             model=model_name,
             temperature=temperature,
             max_tokens=max_tokens,

@@ -102,6 +102,26 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("FRIDAY_GEMINI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "gemini_api_key"),
         description="API Key specifically for Google Gemini",
     )
+    gemini_fallback_api_key_1: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("FRIDAY_GEMINI_FALLBACK_API_KEY_1", "GEMINI_FALLBACK_API_KEY_1"),
+        description="Fallback Gemini API Key 1",
+    )
+    gemini_fallback_api_key_2: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("FRIDAY_GEMINI_FALLBACK_API_KEY_2", "GEMINI_FALLBACK_API_KEY_2"),
+        description="Fallback Gemini API Key 2",
+    )
+    gemini_fallback_api_key_3: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("FRIDAY_GEMINI_FALLBACK_API_KEY_3", "GEMINI_FALLBACK_API_KEY_3"),
+        description="Fallback Gemini API Key 3",
+    )
+    gemini_fallback_api_key_4: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("FRIDAY_GEMINI_FALLBACK_API_KEY_4", "GEMINI_FALLBACK_API_KEY_4"),
+        description="Fallback Gemini API Key 4",
+    )
     gemini_model: Optional[str] = Field(
         default=None,
         validation_alias=AliasChoices("FRIDAY_GEMINI_MODEL", "GEMINI_MODEL", "gemini_model"),
