@@ -1370,3 +1370,30 @@ Implement the real Gemini Live session orchestrator using the official Google Ge
    - Zero local LLM/Whisper inference. Pure I/O streaming orchestration (<1% CPU, 0% GPU, <100MB RAM).
 
 ---
+
+## 2026-08-19 — Phase 5.3: Real-Time Microphone and Audio Playback Pipeline
+
+### Objective
+Build a robust, non-blocking local audio I/O streaming pipeline for continuous 16 kHz 16-bit mono linear PCM microphone input capture (20–40ms chunks) and low-latency 24 kHz 16-bit mono linear PCM speaker playback with instant queue purging and comprehensive hardware error handling. Zero local AI inference.
+
+### Work Completed
+1. **Audio I/O Pipeline Architecture (`src/friday/voice/audio_io.py`)**:
+   - `MicrophoneStream`: Continuous non-blocking streaming capture via `sounddevice.RawInputStream` (16 kHz, 16-bit signed mono PCM, default 40ms blocks = 640 samples / 1280 bytes).
+   - `SpeakerStream`: Low-latency streaming PCM playback via `sounddevice.RawOutputStream` (24 kHz, 16-bit signed mono PCM, blocksize: 512). Starts playback immediately as chunks arrive without waiting for complete model turns.
+   - `get_audio_diagnostics()` & `check_device_availability()`: Hardware device discovery, default input/output mapping, and channel verification.
+   - Overflow/Underflow Monitoring: Buffer metrics (`overflow_count`, `underflow_count`, `captured_chunks`, `played_chunks`) with automatic queue overflow protection.
+   - Device Error Resilience: Graceful error status tracking for unavailable devices, permission errors, and audio callback exceptions.
+2. **Comprehensive Unit Test Suite (`tests/test_audio_pipeline.py`)**:
+   - Tests: diagnostics structure, device availability queries, chunk sizing calculations, playback buffering & purge, overflow protection, mock async iteration, concurrent mic & speaker streaming, simulated device errors, device failure handling, and PCM RMS calculation accuracy.
+   - Result: **12 / 12 passed**.
+3. **Physical Hardware Verification**:
+   - **Default Input**: `Microphone Array (Realtek(R) Audio)` (2 input channels). Captured 15 streaming PCM chunks (19,200 bytes, avg RMS 52.6) without blocking -> **PASS**.
+   - **Default Output**: `Speakers (Realtek(R) Audio)` (2 output channels). Streamed 15 chunks (26,624 bytes) of 24 kHz 16-bit PCM test audio -> **PASS**.
+   - **Hardware & Resource Test Result**: **PASS**.
+4. **Resource Footprint**:
+   - Heap allocation: ~90.1 KB peak memory.
+   - CPU utilization: <1%.
+   - GPU utilization: 0%.
+   - Local AI models / Whisper / Ollama: **NONE** (Pure I/O streaming).
+
+---
