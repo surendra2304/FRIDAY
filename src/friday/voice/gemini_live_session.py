@@ -253,12 +253,11 @@ class GeminiLiveVoiceSession:
             except Exception as e:
                 logger.debug(f"ThinkingConfig thinking_budget error: {e}")
 
-        # Session resumption
+        # Session resumption (Developer API mode requires handle without transparent parameter)
         if self.enable_session_resumption and self._resumption_handle:
             try:
                 config_kwargs["session_resumption"] = genai_types.SessionResumptionConfig(
                     handle=self._resumption_handle,
-                    transparent=True,
                 )
             except Exception as e:
                 logger.debug(f"Session resumption config error: {e}")

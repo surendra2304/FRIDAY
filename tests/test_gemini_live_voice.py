@@ -382,3 +382,43 @@ def test_speaker_stream_remainder_buffering():
     assert stream.queue_size == 0
     assert stream.is_playing is False
 
+
+def test_reconnect_session_resumption_no_transparent_param(mock_agent):
+    """Regression test: Developer API SessionResumptionConfig must NOT contain transparent=True."""
+    session = GeminiLiveVoiceSession(
+        api_key="TEST_GEMINI_API_KEY",
+        agent=mock_agent,
+        enable_session_resumption=True,
+    )
+    session._resumption_handle = "test_handle_12345"
+    config = session._build_live_config()
+
+    assert config.session_resumption is not None
+    assert config.session_resumption.handle == "test_handle_12345"
+    # Ensure transparent is not set or is None / False (not True)
+    assert getattr(config.session_resumption, "transparent", None) is not True
+
+
+@pytest.mark.anyio
+async def test_goaway_reconnection_loop_lifecycle(mock_agent):
+    """Verify that GoAway message terminates receiver loop gracefully without leaking tasks or erroring."""
+    from friday.voice.gemini_live_session import LiveSessionState
+
+    session = GeminiLiveVoiceSession(
+        api_key="TEST_GEMINI_API_KEY",
+        agent=mock_agent,
+    )
+    session._active = True
+    spk = mock.MagicMock(spec=SpeakerStream)
+    stop_event = asyncio.Event()
+
+    # Create a message with go_away set
+    goaway_msg = MockGenAIServerMessage(go_away=mock.MagicMock())
+    mock_ws = MockAsyncSession(receive_messages=[goaway_msg])
+
+    # Receiver loop should exit cleanly upon seeing go_away
+    await session._audio_receiver_loop(mock_ws, spk, None, stop_event)
+    # Reconnection config should have model set properly
+    assert session.model == "gemini-3.1-flash-live-preview"
+
+

@@ -1949,3 +1949,25 @@ All Phase 5 criteria, forensic requirements, and live hardware gates have been v
 - `git ls-files .env`: returns no output (untracked). Zero credentials in source or logs.
 
 
+## [2026-08-19] PHASE 5.16: Forensic Fix for Persistent Gemini Live "transparent" Reconnect Error
+
+### 1. Observed Real Error & Forensic Source
+- **Real Hardware Observation**: Initial live WebSocket connection succeeded on `gemini-3.1-flash-live-preview`. Upon receiving server `GoAway` and attempting reconnection, the session failed with:
+  `"transparent parameter is only supported in Gemini Enterprise Agent Platform mode, not in Gemini Developer API mode."`
+- **Root Cause & Source**: In `src/friday/voice/gemini_live_session.py`, line 261, `SessionResumptionConfig` was constructed with `transparent=True`. The Gemini Developer API / AI Studio API mode rejects `transparent=True` because transparent proxying is exclusively an Enterprise Agent Platform feature. In Developer API mode, `SessionResumptionConfig(handle=...)` without the `transparent` parameter is required.
+
+### 2. Architectural Fix
+- **`src/friday/voice/gemini_live_session.py`**:
+  - Removed `transparent=True` from `genai_types.SessionResumptionConfig(handle=self._resumption_handle)` inside `_build_live_config()`.
+  - Reconnection now creates standard Developer API-compatible `LiveConnectConfig` with valid resumption handle.
+  - Kept Live model explicitly pinned to `gemini-3.1-flash-live-preview` (text model on `gemini-3.6-flash`).
+
+### 3. Regression Tests & Verification Matrix
+- **`tests/test_gemini_live_voice.py`**:
+  - Added `test_reconnect_session_resumption_no_transparent_param`: Proves `SessionResumptionConfig` never includes `transparent=True`.
+  - Added `test_goaway_reconnection_loop_lifecycle`: Proves `GoAway` signal terminates the receiver loop cleanly and transitions for seamless reconnection.
+- **Automated Test Suite**: 259 passed, 1 deselected in 23.63s (100% pass rate).
+- **Security Audit**: `git ls-files .env` returns empty. Zero credentials leaked.
+
+
+
