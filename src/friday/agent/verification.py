@@ -68,7 +68,7 @@ class StepVerifier:
             return custom_validator(step, step_result)
 
         # 1. If step execution failed or produced error content
-        if not step_result:
+        if step_result is None or (isinstance(step_result, str) and not step_result.strip()):
             return VerificationResult(
                 status=VerificationStatus.FAILED,
                 criterion=step.success_criteria or "Non-empty step output",
@@ -76,9 +76,9 @@ class StepVerifier:
             )
 
         result_str = str(step_result).strip()
+        lower_res = result_str.lower()
 
         # Check for obvious unhandled error markers in output
-        lower_res = result_str.lower()
         if lower_res.startswith("error:") or "traceback (most recent call last)" in lower_res or "exception:" in lower_res:
             return VerificationResult(
                 status=VerificationStatus.FAILED,
@@ -126,6 +126,84 @@ class StepVerifier:
                         evidence=result_str[:150],
                         diagnostics=f"Result missing expected substring: '{expected}'",
                         suggested_correction={"adjust_parameters": True},
+                    )
+
+            # Handle negative substring criteria syntax: "not_contains:<substr>"
+            if crit.startswith("not_contains:"):
+                forbidden = crit[13:].strip().lower()
+                if forbidden not in lower_res:
+                    return VerificationResult(
+                        status=VerificationStatus.PASSED,
+                        criterion=crit,
+                        evidence=result_str[:150],
+                    )
+                else:
+                    return VerificationResult(
+                        status=VerificationStatus.FAILED,
+                        criterion=crit,
+                        evidence=result_str[:150],
+                        diagnostics=f"Result unexpectedly contains forbidden substring: '{forbidden}'",
+                        suggested_correction={"adjust_parameters": True},
+                    )
+
+            # Handle JSON key existence criteria syntax: "json_key:<key>"
+            if crit.startswith("json_key:"):
+                key = crit[9:].strip()
+                import json
+                try:
+                    parsed = json.loads(result_str) if isinstance(step_result, str) else step_result
+                    if isinstance(parsed, dict) and key in parsed:
+                        return VerificationResult(
+                            status=VerificationStatus.PASSED,
+                            criterion=crit,
+                            evidence=f"Key '{key}' found in JSON output.",
+                        )
+                    else:
+                        return VerificationResult(
+                            status=VerificationStatus.FAILED,
+                            criterion=crit,
+                            diagnostics=f"Key '{key}' not found in structured JSON output.",
+                        )
+                except Exception as e:
+                    return VerificationResult(
+                        status=VerificationStatus.FAILED,
+                        criterion=crit,
+                        diagnostics=f"Failed to parse output as JSON for key check '{key}': {e}",
+                    )
+
+            # Handle minimum length criteria syntax: "min_length:<int>"
+            if crit.startswith("min_length:"):
+                try:
+                    min_len = int(crit[11:].strip())
+                    if len(result_str) >= min_len:
+                        return VerificationResult(
+                            status=VerificationStatus.PASSED,
+                            criterion=crit,
+                            evidence=f"Output length {len(result_str)} >= {min_len}",
+                        )
+                    else:
+                        return VerificationResult(
+                            status=VerificationStatus.FAILED,
+                            criterion=crit,
+                            diagnostics=f"Output length {len(result_str)} is less than required minimum {min_len}",
+                        )
+                except ValueError:
+                    pass
+
+            # Handle exact string match criteria syntax: "exact:<text>"
+            if crit.startswith("exact:"):
+                expected = crit[6:].strip()
+                if result_str == expected:
+                    return VerificationResult(
+                        status=VerificationStatus.PASSED,
+                        criterion=crit,
+                        evidence=result_str[:150],
+                    )
+                else:
+                    return VerificationResult(
+                        status=VerificationStatus.FAILED,
+                        criterion=crit,
+                        diagnostics=f"Result '{result_str[:50]}' does not exactly match expected '{expected[:50]}'",
                     )
 
             # Default text heuristic match

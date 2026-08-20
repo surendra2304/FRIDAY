@@ -25,7 +25,7 @@ Phase 9 upgrades FRIDAY's cognitive reasoning pipeline from low-level imperative
 Phase 9.1: Autonomous Goal Understanding & Decomposition [COMPLETE]
 Phase 9.2: Hierarchical Task Planning & Dependency DAG [COMPLETE]
 Phase 9.3: Intelligent Multi-Step Execution Orchestrator [COMPLETE]
-Phase 9.4: Multi-Agent Role Specialization & Subgoal Delegation [PENDING]
+Phase 9.4: Formal Verification, Self-Correction & Bounded Recovery [COMPLETE]
 Phase 9.5: Autonomous Hypothesis Testing & World-Model Calibration [PENDING]
 Phase 9.6: Phase 9 Full Autonomous Cognitive Acceptance Gate [PENDING]
 ```
@@ -87,5 +87,26 @@ Phase 9.6: Phase 9 Full Autonomous Cognitive Acceptance Gate [PENDING]
   - `tests/test_multi_step_orchestrator.py` (6/6 tests passing)
 - **Verification**:
   - Full automated suite: 509 passed, 5 deselected in 80.24s.
+
+---
+
+## 6. Subphase 9.4 Specifications & Verification [COMPLETE]
+
+- **Components Implemented**:
+  1. Formal Assertion Engine (`StepVerifier`):
+     - Added support for multiple structured assertion types: `regex:<pattern>`, `contains:<substr>`, `not_contains:<substr>`, `json_key:<key>`, `min_length:<int>`, and `exact:<str>`.
+     - Validates actual real-world outcome contracts instead of assuming successful tool return codes represent real-world goal completion.
+  2. Bounded Self-Correction & Diagnosis (`SelfCorrectionPolicy`, `FailureAnalyzer`, `AutonomousRecoveryManager`):
+     - Automatic classification into `FailureType` (transient errors, verification failures, tool errors, parameter schema issues).
+     - Adaptive strategy selection (`RETRY`, `ALTERNATIVE_TOOL`, `CREDENTIAL_FAILOVER`, `ADJUST_PARAMETERS`, `ABORT_TASK`).
+     - Strict execution bounds preventing retry storms and infinite loops (enforces per-step retry limits and global task budgets).
+     - Unconditional hard-block protection: Strictly forbids self-correcting around safety denials, authorization blocks, destructive actions, or policy restrictions.
+- **Files Created/Modified**:
+  - `src/friday/agent/verification.py`
+  - `src/friday/agent/recovery.py`
+  - `tests/test_verification_and_bounded_recovery.py` (4/4 tests passing)
+- **Verification**:
+  - Full automated suite: 513 passed, 5 deselected in 96.98s.
+
 
 
