@@ -27,6 +27,21 @@ from friday.core.logging import get_logger
 logger = get_logger("agent.checkpoint")
 
 
+from enum import Enum
+
+
+class InterruptionReason(str, Enum):
+    """Causes of task interruption."""
+    USER_PAUSE = "USER_PAUSE"
+    VOICE_BARGE_IN = "VOICE_BARGE_IN"
+    APPLICATION_SHUTDOWN = "APPLICATION_SHUTDOWN"
+    NETWORK_FAILURE = "NETWORK_FAILURE"
+    PROVIDER_FAILURE = "PROVIDER_FAILURE"
+    AUTHORIZATION_WAIT = "AUTHORIZATION_WAIT"
+    ENVIRONMENT_CHANGE = "ENVIRONMENT_CHANGE"
+    USER_CANCELLATION = "USER_CANCELLATION"
+
+
 @dataclass
 class TaskCheckpoint:
     """Safe, sanitized persistent snapshot of an executing task."""
@@ -40,6 +55,8 @@ class TaskCheckpoint:
     pending_steps: List[str]
     step_results: Dict[str, Any]
     environment_hash: str
+    interruption_reason: Optional[InterruptionReason] = None
+    recovery_state: Optional[Dict[str, Any]] = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -54,12 +71,15 @@ class TaskCheckpoint:
             "pending_steps": self.pending_steps,
             "step_results": self.step_results,
             "environment_hash": self.environment_hash,
+            "interruption_reason": self.interruption_reason.value if self.interruption_reason else None,
+            "recovery_state": self.recovery_state,
             "created_at": self.created_at.isoformat(),
         }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "TaskCheckpoint":
         state_val = data.get("state", TaskState.PAUSED.value)
+        int_reason = data.get("interruption_reason")
         return cls(
             checkpoint_id=data["checkpoint_id"],
             task_id=data["task_id"],
@@ -71,6 +91,8 @@ class TaskCheckpoint:
             pending_steps=data.get("pending_steps", []),
             step_results=data.get("step_results", {}),
             environment_hash=data.get("environment_hash", "default"),
+            interruption_reason=InterruptionReason(int_reason) if int_reason in InterruptionReason._value2member_map_ else None,
+            recovery_state=data.get("recovery_state"),
             created_at=datetime.fromisoformat(data["created_at"]) if "created_at" in data else datetime.now(timezone.utc),
         )
 
@@ -99,6 +121,8 @@ class TaskCheckpointStore:
                     pending_json TEXT NOT NULL,
                     results_json TEXT NOT NULL,
                     env_hash TEXT NOT NULL,
+                    interruption_reason TEXT,
+                    recovery_state_json TEXT,
                     created_at TEXT NOT NULL
                 )
             """)
@@ -113,6 +137,8 @@ class TaskCheckpointStore:
         active_step_id: Optional[str],
         step_results: Dict[str, Any],
         environment_hash: str = "default",
+        interruption_reason: Optional[InterruptionReason] = None,
+        recovery_state: Optional[Dict[str, Any]] = None,
     ) -> TaskCheckpoint:
         """Create and save a sanitized task checkpoint."""
         completed_steps = [s.step_id for s in plan.steps if s.status == StepStatus.COMPLETED]
@@ -124,7 +150,7 @@ class TaskCheckpointStore:
             res_str = str(res)
             if "data:image" in res_str or "base64" in res_str:
                 res_str = "[Visual screenshot sanitized]"
-            if "token=" in res_str or "key=" in res_str or "password=" in res_str:
+            if "token=" in res_str or "key=" in res_str or "password=" in res_str or "secret=" in res_str:
                 res_str = "[Sensitive credentials redacted]"
             clean_results[sid] = res_str
 
@@ -139,6 +165,8 @@ class TaskCheckpointStore:
             pending_steps=pending_steps,
             step_results=clean_results,
             environment_hash=environment_hash,
+            interruption_reason=interruption_reason,
+            recovery_state=recovery_state,
         )
 
         self._memory_store[task_id] = chk
@@ -148,8 +176,8 @@ class TaskCheckpointStore:
                 conn.execute(
                     """
                     INSERT OR REPLACE INTO task_checkpoints
-                    (checkpoint_id, task_id, goal, state, active_step_id, plan_json, completed_json, pending_json, results_json, env_hash, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (checkpoint_id, task_id, goal, state, active_step_id, plan_json, completed_json, pending_json, results_json, env_hash, interruption_reason, recovery_state_json, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         chk.checkpoint_id,
@@ -162,12 +190,14 @@ class TaskCheckpointStore:
                         json.dumps(chk.pending_steps),
                         json.dumps(chk.step_results),
                         chk.environment_hash,
+                        chk.interruption_reason.value if chk.interruption_reason else None,
+                        json.dumps(chk.recovery_state) if chk.recovery_state else None,
                         chk.created_at.isoformat(),
                     ),
                 )
                 conn.commit()
 
-        logger.info(f"Saved checkpoint '{chk.checkpoint_id}' for task '{task_id}' ({len(completed_steps)} completed, {len(pending_steps)} pending).")
+        logger.info(f"Saved checkpoint '{chk.checkpoint_id}' for task '{task_id}' ({len(completed_steps)} completed, {len(pending_steps)} pending). Reason: {interruption_reason}")
         return chk
 
     def get_latest_checkpoint(self, task_id: str) -> Optional[TaskCheckpoint]:
@@ -175,12 +205,14 @@ class TaskCheckpointStore:
         if self.db_path:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.execute(
-                    "SELECT checkpoint_id, task_id, goal, state, active_step_id, plan_json, completed_json, pending_json, results_json, env_hash, created_at "
+                    "SELECT checkpoint_id, task_id, goal, state, active_step_id, plan_json, completed_json, pending_json, results_json, env_hash, interruption_reason, recovery_state_json, created_at "
                     "FROM task_checkpoints WHERE task_id = ? ORDER BY created_at DESC LIMIT 1",
                     (task_id,),
                 )
                 row = cursor.fetchone()
                 if row:
+                    int_r = row[10]
+                    rec_s = json.loads(row[11]) if row[11] else None
                     return TaskCheckpoint(
                         checkpoint_id=row[0],
                         task_id=row[1],
@@ -192,10 +224,28 @@ class TaskCheckpointStore:
                         pending_steps=json.loads(row[7]),
                         step_results=json.loads(row[8]),
                         environment_hash=row[9],
-                        created_at=datetime.fromisoformat(row[10]),
+                        interruption_reason=InterruptionReason(int_r) if int_r and int_r in InterruptionReason._value2member_map_ else None,
+                        recovery_state=rec_s,
+                        created_at=datetime.fromisoformat(row[12]),
                     )
 
         return self._memory_store.get(task_id)
+
+    def validate_resumption(
+        self,
+        checkpoint: TaskCheckpoint,
+        current_environment_hash: str,
+    ) -> Dict[str, Any]:
+        """Validate if resumption is safe and whether environmental state changed."""
+        is_stale = checkpoint.environment_hash != "default" and checkpoint.environment_hash != current_environment_hash
+        requires_replan = is_stale
+
+        return {
+            "can_resume": True,
+            "environment_valid": not is_stale,
+            "requires_replan": requires_replan,
+            "message": "Environment changed since checkpoint. Re-verification/re-planning required." if requires_replan else "Checkpoint environment validated.",
+        }
 
     def delete_checkpoint(self, task_id: str) -> bool:
         """Remove checkpoint records for a completed or cancelled task."""
@@ -212,3 +262,4 @@ class TaskCheckpointStore:
                     deleted = True
 
         return deleted
+

@@ -28,7 +28,8 @@ Phase 9.3: Intelligent Multi-Step Execution Orchestrator [COMPLETE]
 Phase 9.4: Formal Verification, Self-Correction & Bounded Recovery [COMPLETE]
 Phase 9.5: Active Working Memory & Task Context [COMPLETE]
 Phase 9.6: Autonomous Failure Recovery & Strategy Adaptation [COMPLETE]
-Phase 9.7: Phase 9 Full Autonomous Cognitive Acceptance Gate [PENDING]
+Phase 9.7: Task Interruption, Checkpointing & Resumption [COMPLETE]
+Phase 9.8: Phase 9 Full Autonomous Cognitive Acceptance Gate [PENDING]
 ```
 
 ---
@@ -146,6 +147,29 @@ Phase 9.7: Phase 9 Full Autonomous Cognitive Acceptance Gate [PENDING]
   - `tests/test_failure_recovery.py` (6/6 tests passing)
 - **Verification**:
   - Full automated suite: 527 passed, 5 deselected in 85.01s.
+
+---
+
+## 9. Subphase 9.7 Specifications & Verification [COMPLETE]
+
+- **Components Implemented**:
+  1. Extended Interruption Taxonomy (`InterruptionReason`):
+     - `USER_PAUSE`, `VOICE_BARGE_IN`, `APPLICATION_SHUTDOWN`, `NETWORK_FAILURE`, `PROVIDER_FAILURE`, `AUTHORIZATION_WAIT`, `ENVIRONMENT_CHANGE`, `USER_CANCELLATION`.
+  2. Durable Checkpoint Storage (`TaskCheckpointStore` in Memory & SQLite):
+     - Persists task state, active step, plan structure, completed steps, safe outputs, environmental hash, interruption reason, and recovery state.
+     - Redacts passwords, API tokens, and raw base64 screenshots.
+  3. Environmental Revalidation on Resumption (`validate_resumption`):
+     - Compares snapshot environmental hashes against current UI / environment state.
+     - Flags stale screen state and triggers required re-verification or re-planning prior to resuming computer actions.
+  4. Non-Destructive Voice Interruption:
+     - Voice barge-in safely transitions task to `PAUSED` without state corruption or losing completed steps.
+- **Files Created/Modified**:
+  - `src/friday/agent/checkpoint.py`
+  - `tests/test_task_interruption_resumption_extended.py` (6/6 tests passing)
+  - `tests/test_task_checkpointing.py` (6/6 tests passing)
+- **Verification**:
+  - Full automated suite: 533 passed, 5 deselected in 83.31s.
+
 
 
 
