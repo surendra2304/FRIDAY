@@ -27,6 +27,11 @@ from friday.vision.temporal import (
     TemporalEnvironmentTracker,
     TemporalObservation,
 )
+from friday.vision.episodic_memory import (
+    EpisodicEnvironmentalFact,
+    EpisodicEnvironmentalMemoryManager,
+    MemoryImportance,
+)
 
 __all__ = [
     "BaseVisionProvider",
@@ -61,4 +66,7 @@ __all__ = [
     "EnvironmentalChangeType",
     "TemporalEnvironmentTracker",
     "TemporalObservation",
+    "EpisodicEnvironmentalFact",
+    "EpisodicEnvironmentalMemoryManager",
+    "MemoryImportance",
 ]

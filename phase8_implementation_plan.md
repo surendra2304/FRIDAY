@@ -92,13 +92,16 @@ Phase 8.10: Full Phase 8 Multimodal Perception Acceptance Gate
 - Implement heuristic OCR/text density estimators to categorize screen complexity before dispatching API requests.
 - Feed structured temporal deltas into `ActiveTaskContext` as verified visual observations.
 
-### Phase 8.5 — Grounded Visual Element Resolver
+### Phase 8.5 — Visual Memory & Episodic Environmental Memory [COMPLETE]
+- Implemented `EpisodicEnvironmentalMemoryManager`, `EpisodicEnvironmentalFact`, and `MemoryImportance` (LOW, MEDIUM, HIGH, CRITICAL) in `src/friday/vision/episodic_memory.py`.
+- Stored derived structured observations (application context, UI state changes, verified facts) without raw screenshots.
+- Implemented relevance ranking, duplicate suppression, fact correction/superseding, deactivation/forgetting, and cross-task isolation.
+- Integrated automatic fallback to SQLite memory search (FTS5 / Semantic) with secret/credential redaction.
+- **Files Created/Modified**: `src/friday/vision/episodic_memory.py`, `src/friday/vision/__init__.py`, `tests/test_episodic_environmental_memory.py` (7/7 tests passing).
+
+### Phase 8.6 — Grounded Visual Element Resolver
 - Bridge `ProposalBuilder` and structured perception: resolve natural language target ("Click the blue Deploy button") to verified `UIElement` coordinates `(x, y)`.
 - Enforce confidence thresholds and fallback strategies if target element is ambiguous or obscured.
-
-### Phase 8.6 — Visual Step Verification & State Assertion Engine
-- Enhance `StepVerifier` to support visual assertions (e.g., `visual_contains: "Build Succeeded"`, `element_gone: "Loading Spinner"`, `window_active: "Terminal"`).
-- Connect post-action visual inspection directly to Phase 7.4 self-correction loops.
 
 ### Phase 8.7 — Unified Multimodal Context Buffer
 - Implement `MultimodalContextBuffer` fusing voice transcriptions, visual element states, and task state machine events with synchronized monotonic timestamps.
