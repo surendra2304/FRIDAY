@@ -40,6 +40,7 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
             max_retries=settings.gemini_max_retries,
             backoff_factor=settings.gemini_backoff_factor,
             cost_mode=settings.cost_mode,
+            thinking_level=getattr(settings, "llm_thinking_level", "medium"),
         )
 
     if provider_type in ("openai", "groq", "ollama", "openrouter"):

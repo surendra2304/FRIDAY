@@ -91,7 +91,7 @@ class Settings(BaseSettings):
 
     # LLM Settings & Cost Controls
     llm_provider: str = Field(default="gemini", description="LLM provider name: 'mock', 'openai', 'gemini'")
-    llm_model: str = Field(default="gemini-3.6-flash", description="Model identifier")
+    llm_model: str = Field(default="gemini-3.7-flash", description="Model identifier")
     llm_api_key: Optional[str] = Field(
         default=None,
         validation_alias=AliasChoices("FRIDAY_LLM_API_KEY", "OPENAI_API_KEY", "LLM_API_KEY", "llm_api_key"),
@@ -136,6 +136,11 @@ class Settings(BaseSettings):
     max_daily_requests: Optional[int] = Field(default=None, ge=1, description="Optional safety limit on total daily LLM requests")
     llm_base_url: str = Field(default="https://api.openai.com/v1", description="Base URL for provider API")
     llm_temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="Sampling temperature")
+    llm_thinking_level: str = Field(
+        default="medium",
+        validation_alias=AliasChoices("FRIDAY_LLM_THINKING_LEVEL", "LLM_THINKING_LEVEL", "llm_thinking_level"),
+        description="Thinking level for Gemini 3.7 Flash: low, medium, high"
+    )
     llm_max_tokens: int = Field(default=2048, ge=1, le=32768, description="Max tokens per response")
 
     # Memory & Semantic Settings
@@ -232,7 +237,7 @@ class Settings(BaseSettings):
     
     # Vision & Multimodal Settings
     vision_model: str = Field(
-        default="gemini-3.6-flash",
+        default="gemini-3.7-flash",
         validation_alias=AliasChoices("FRIDAY_VISION_MODEL", "VISION_MODEL", "vision_model"),
         description="Multimodal Gemini vision model identifier",
     )

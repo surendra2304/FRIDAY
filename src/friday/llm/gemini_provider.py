@@ -47,6 +47,7 @@ class GeminiLLMProvider(BaseLLMProvider):
         max_retries: int = 3,
         backoff_factor: float = 2.0,
         cost_mode: str = "free_first",
+        thinking_level: Optional[str] = None,
     ) -> None:
         super().__init__(model=model, temperature=temperature, max_tokens=max_tokens)
         self._explicit_api_key = api_key
@@ -57,8 +58,11 @@ class GeminiLLMProvider(BaseLLMProvider):
         self.max_retries = max_retries
         self.backoff_factor = backoff_factor
         self.cost_mode = cost_mode
-        self._client: Optional[genai.Client] = None
-        self._current_key: Optional[str] = None
+        self.thinking_level = thinking_level or "medium"
+        # Validate thinking level
+        if self.thinking_level not in ("low", "medium", "high"):
+            logger.warning(f"Invalid thinking level '{self.thinking_level}' provided; defaulting to 'medium'.")
+            self.thinking_level = "medium"
 
     @property
     def client(self) -> genai.Client:
@@ -250,13 +254,25 @@ class GeminiLLMProvider(BaseLLMProvider):
                 )
             genai_tools = [genai_types.Tool(function_declarations=func_decls)]
 
-        config = genai_types.GenerateContentConfig(
-            temperature=self.temperature,
-            max_output_tokens=self.max_tokens,
-            system_instruction=system_instruction_text if system_instruction_text else None,
-            tools=genai_tools,
-            automatic_function_calling=genai_types.AutomaticFunctionCallingConfig(disable=True),
-        )
+        # Build config with temperature (ignored for Gemini 3.7) and optional thinking config
+        config_kwargs = {
+            "temperature": self.temperature,
+            "max_output_tokens": self.max_tokens,
+            "system_instruction": system_instruction_text if system_instruction_text else None,
+            "tools": genai_tools,
+            "automatic_function_calling": genai_types.AutomaticFunctionCallingConfig(disable=True),
+        }
+        # Add thinking_config if supported
+        if hasattr(genai_types, "ThinkingConfig") and hasattr(genai_types, "ThinkingLevel"):
+            try:
+                level_enum = getattr(genai_types, "ThinkingLevel")
+                # Map string to enum (case-insensitive)
+                level_val = getattr(level_enum, self.thinking_level.upper())
+            except Exception:
+                # Fallback to MEDIUM if mapping fails
+                level_val = getattr(genai_types, "ThinkingLevel").MEDIUM
+            config_kwargs["thinking_config"] = genai_types.ThinkingConfig(thinking_level=level_val)
+        config = genai_types.GenerateContentConfig(**config_kwargs)
 
         return contents, config
 

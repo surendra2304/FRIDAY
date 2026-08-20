@@ -65,7 +65,7 @@ class GeminiVisionProvider(BaseVisionProvider):
         settings = get_settings()
         self.credential_pool = credential_pool
         self._explicit_api_key = api_key
-        self.model = model or getattr(settings, "vision_model", "gemini-3.6-flash")
+        self.model = model or getattr(settings, "vision_model", "gemini-3.7-flash")
         self.timeout = timeout
         self.max_retries = max_retries
         self.backoff_factor = backoff_factor
