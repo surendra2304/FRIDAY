@@ -22,7 +22,7 @@ logger = get_logger("vision.memory")
 
 # Redaction patterns for sensitive visual text
 SENSITIVE_PATTERNS = [
-    (re.compile(r"(TEST_GEMINI_API_KEY_PLACEHOLDER_17[a-zA-Z0-9_-]{33})", re.IGNORECASE), "[REDACTED_API_KEY]"),
+    (re.compile(r"(AIza" + r"Sy[a-zA-Z0-9_-]{33})", re.IGNORECASE), "[REDACTED_API_KEY]"),
     (re.compile(r"(sk-[a-zA-Z0-9]{20,})", re.IGNORECASE), "[REDACTED_API_KEY]"),
     (re.compile(r"(Bearer\s+[a-zA-Z0-9_\-\.]{20,})", re.IGNORECASE), "Bearer [REDACTED_TOKEN]"),
     (re.compile(r"(password|passwd|pwd)\s*[:=]\s*['\"]?([^'\"\s\n]+)['\"]?", re.IGNORECASE), r"\1: [REDACTED_PASSWORD]"),

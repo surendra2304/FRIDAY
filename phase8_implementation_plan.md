@@ -87,10 +87,13 @@ Phase 8.10: Full Phase 8 Multimodal Perception Acceptance Gate
 - Integrated sliding window temporal history with configurable max entries to maintain memory bounds without persisting raw screenshots.
 - **Files Created/Modified**: `src/friday/vision/temporal.py`, `src/friday/vision/__init__.py`, `tests/test_temporal_environment.py` (7/7 tests passing).
 
-### Phase 8.4 — Local Text & Perceptual Region Pre-Filtering (Quota Saver)
-- Add local image slicing and region-of-interest (ROI) hashing to avoid full-screen re-analysis when only a subregion (e.g., terminal window) changes.
-- Implement heuristic OCR/text density estimators to categorize screen complexity before dispatching API requests.
-- Feed structured temporal deltas into `ActiveTaskContext` as verified visual observations.
+### Phase 8.4 — Local Text & Perceptual Region Pre-Filtering (Quota Saver) [COMPLETE]
+- Implemented `LocalRegionPreFilter`, `ROIAnalysisResult`, `TextDensityLevel`, and `VisualDeltaTaskContextFeeder` in `src/friday/vision/region_filter.py`.
+- Added offline lossless PNG sub-region slicing and cropping (`crop_image_region`, `decode_png_to_rgba`, `encode_rgba_to_png`) with normalized coordinate mappings.
+- Implemented perceptual region-of-interest (ROI) hashing to avoid full-screen re-analysis when only subregions (e.g. terminal window) change.
+- Implemented heuristic text-density and spatial complexity estimators (`estimate_local_text_density`) categorizing regions (EMPTY_OR_SOLID, LOW, MEDIUM, HIGH, CODE_OR_DENSE_TEXT).
+- Implemented direct visual delta feeder (`VisualDeltaTaskContextFeeder`) recording verified temporal deltas and ROI transitions into `ActiveTaskContext` with secret redaction and zero raw screenshot persistence.
+- **Files Created/Modified**: `src/friday/vision/region_filter.py`, `src/friday/vision/__init__.py`, `tests/test_region_prefilter.py` (7/7 tests passing).
 
 ### Phase 8.5 — Visual Memory & Episodic Environmental Memory [COMPLETE]
 - Implemented `EpisodicEnvironmentalMemoryManager`, `EpisodicEnvironmentalFact`, and `MemoryImportance` (LOW, MEDIUM, HIGH, CRITICAL) in `src/friday/vision/episodic_memory.py`.

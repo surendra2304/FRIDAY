@@ -49,6 +49,17 @@ from friday.vision.cache_manager import (
     PerceptionCacheTelemetry,
 )
 
+from friday.vision.region_filter import (
+    LocalRegionPreFilter,
+    ROIAnalysisResult,
+    TextDensityLevel,
+    VisualDeltaTaskContextFeeder,
+    crop_image_region,
+    decode_png_to_rgba,
+    encode_rgba_to_png,
+    estimate_local_text_density,
+)
+
 __all__ = [
     "BaseVisionProvider",
     "VisionAnalysisResult",
@@ -95,4 +106,12 @@ __all__ = [
     "CachedObservation",
     "PerceptionCacheManager",
     "PerceptionCacheTelemetry",
+    "LocalRegionPreFilter",
+    "ROIAnalysisResult",
+    "TextDensityLevel",
+    "VisualDeltaTaskContextFeeder",
+    "crop_image_region",
+    "decode_png_to_rgba",
+    "encode_rgba_to_png",
+    "estimate_local_text_density",
 ]

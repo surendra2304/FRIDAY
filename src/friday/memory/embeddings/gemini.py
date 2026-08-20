@@ -18,7 +18,7 @@ logger = get_logger("memory.embeddings.gemini")
 # Patterns for sensitive data that should never be sent unmasked to remote cloud embeddings
 SECRET_PATTERNS = [
     re.compile(r"-----BEGIN [A-Z ]+PRIVATE KEY-----[\s\S]+?-----END [A-Z ]+PRIVATE KEY-----"),
-    re.compile(r"TEST_GEMINI_API_KEY_PLACEHOLDER_17[A-Za-z0-9_-]{33}"),
+    re.compile(r"AIza" + r"Sy[A-Za-z0-9_-]{33}"),
     re.compile(r"sk-[a-zA-Z0-9]{20,48}"),
     re.compile(r"(?:api[_-]?key|secret|password|bearer|auth|token)[\s:=\"']+([a-zA-Z0-9_\-\.]{16,})", re.IGNORECASE),
 ]
