@@ -37,6 +37,12 @@ from friday.vision.active_perception import (
     ObservationDecision,
     ObservationNecessity,
 )
+from friday.vision.action_preparer import (
+    ActionPreparationResult,
+    GroundedElementTarget,
+    GroundingStatus,
+    PerceptionActionPreparer,
+)
 
 __all__ = [
     "BaseVisionProvider",
@@ -77,4 +83,8 @@ __all__ = [
     "ActivePerceptionEngine",
     "ObservationDecision",
     "ObservationNecessity",
+    "PerceptionActionPreparer",
+    "ActionPreparationResult",
+    "GroundedElementTarget",
+    "GroundingStatus",
 ]

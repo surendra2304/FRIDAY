@@ -113,11 +113,14 @@ Phase 8.10: Full Phase 8 Multimodal Perception Acceptance Gate
 - Verified task state preservation during voice barge-ins and hard safety authorization boundaries.
 - **Files Created/Modified**: `src/friday/voice/perception_resolver.py`, `tests/test_voice_vision_advanced.py` (7/7 tests passing).
 
-### Phase 8.8 — Grounded Visual Element Resolver
-- Bridge `ProposalBuilder` and structured perception: resolve natural language target ("Click the blue Deploy button") to verified `UIElement` coordinates `(x, y)`.
-- Enforce confidence thresholds and fallback strategies if target element is ambiguous or obscured.
+### Phase 8.8 — Perception-Driven Safe Action Preparation [COMPLETE]
+- Implemented `PerceptionActionPreparer`, `GroundedElementTarget`, `ActionPreparationResult`, and `GroundingStatus` (GROUNDED, AMBIGUOUS, NOT_FOUND, LOW_CONFIDENCE, MALICIOUS_REJECTED, STALE_SCREEN) in `src/friday/vision/action_preparer.py`.
+- Enforced perception -> candidate target -> structured proposal -> authorization -> execution -> verification pipeline.
+- Implemented ambiguity detection and user clarification prompts when multiple UI elements match semantic target.
+- Added stale-screen detection before action execution and strict defense against visual injection text commanding action execution.
+- **Files Created/Modified**: `src/friday/vision/action_preparer.py`, `src/friday/vision/__init__.py`, `tests/test_perception_action_preparation.py` (6/6 tests passing).
 
-### Phase 8.8 — Dynamic Multi-Resolution & ROI Cropping
+### Phase 8.9 — Dynamic Multi-Resolution & ROI Cropping
 - Support adaptive image scaling and targeted high-resolution crops for dense code or terminal text without sending 4K full-frame images repeatedly.
 - Reduce token consumption and latency by up to 60% on localized screen operations.
 
