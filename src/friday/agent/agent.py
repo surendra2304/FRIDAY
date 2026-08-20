@@ -36,6 +36,7 @@ from friday.tools.builtin import (
     ScreenSnapshotTool,
     ProposeComputerActionTool,
 )
+from friday.agent.state import TaskState, ReasoningStateMachine
 from friday.tools.registry import ToolRegistry
 
 logger = get_logger("agent.core")
@@ -66,6 +67,7 @@ class FridayAgent:
         self.tool_timeout = tool_timeout
         self.system_message = build_system_message(self.settings)
         self._processed_tool_ids: set = set()
+        self.state_machine: ReasoningStateMachine = ReasoningStateMachine()
 
         if self.settings.memory_retention_days:
             self.prune_memory(self.settings.memory_retention_days)
@@ -331,6 +333,11 @@ class FridayAgent:
 
         return filtered
 
+    @property
+    def current_state(self) -> TaskState:
+        """Return the current reasoning state of the agent."""
+        return self.state_machine.current_state
+
     def process_message(
         self,
         user_input: str,
@@ -339,15 +346,27 @@ class FridayAgent:
         start_time = time.perf_counter()
         clean_input = user_input.strip()
 
+        # Initialize fresh state machine for this turn/request
+        self.state_machine = ReasoningStateMachine()
+
         if not clean_input:
+            self.state_machine.transition_to(TaskState.UNDERSTANDING, reason="Received empty turn")
+            self.state_machine.transition_to(TaskState.PLANNING, reason="Synthesizing greeting prompt")
+            self.state_machine.transition_to(TaskState.VERIFYING, reason="Validating greeting response")
+            self.state_machine.transition_to(TaskState.COMPLETED, reason="Greeting ready")
             return AgentResponse(
                 content=f"I'm listening. How can I assist you today, {self.settings.user_name}?",
                 is_done=True,
+                metadata={
+                    "task_state": self.state_machine.current_state.value,
+                    "state_history": [r.to_dict() for r in self.state_machine.history],
+                }
             )
 
         logger.info(f"Processing user turn: '{clean_input[:60]}...'")
 
-        # 1. Retrieve relevant historical memories prior to appending current turn
+        # 1. State: UNDERSTANDING (interpreting user turn and retrieving relevant historical memories)
+        self.state_machine.transition_to(TaskState.UNDERSTANDING, reason="Interpreting user turn and retrieving memories")
         recalled = self._retrieve_relevant_memories(clean_input)
         if recalled:
             logger.info(f"Controlled Recall: Retrieved {len(recalled)} relevant historical memory item(s).")
@@ -373,7 +392,8 @@ class FridayAgent:
         else:
             base_sys_msg = self.system_message
 
-        # 4. Construct conversation context window (System Prompt + Memory Slice)
+        # 4. State: PLANNING (constructing working context and evaluating tool schemas)
+        self.state_machine.transition_to(TaskState.PLANNING, reason="Evaluating context and determining action plan")
         working_context: List[Message] = [base_sys_msg] + self.memory.get_context_window(
             self.settings.memory_max_messages
         )
@@ -400,6 +420,7 @@ class FridayAgent:
                 assistant_msg = self.llm.generate(messages=working_context, tools=tool_schemas)
             except Exception as e:
                 logger.exception(f"LLM generation failed at iteration {iterations}: {e}")
+                self.state_machine.fail(reason=f"LLM generation failed: {type(e).__name__}", metadata={"error_type": type(e).__name__})
                 
                 # User friendly translated error messages
                 err_text = "I encountered a transient network issue while communicating with my intelligence core. Please try again in a moment."
@@ -420,15 +441,21 @@ class FridayAgent:
                         "iterations": iterations,
                         "success": False,
                         "duration_seconds": time.perf_counter() - start_time,
+                        "task_state": self.state_machine.current_state.value,
+                        "state_history": [r.to_dict() for r in self.state_machine.history],
+                        "failure_reason": self.state_machine.failure_reason,
                     },
                 )
 
-            # If model returned direct answer without requesting tools -> finished turn
+            # If model returned direct answer without requesting tools -> proceed to verification
             if not assistant_msg.tool_calls:
                 final_content = assistant_msg.content or "Task completed."
                 break
 
-            # Model requested one or more tool calls
+            # Model requested one or more tool calls -> State: EXECUTING
+            if self.state_machine.current_state != TaskState.EXECUTING:
+                self.state_machine.transition_to(TaskState.EXECUTING, reason=f"Executing {len(assistant_msg.tool_calls)} requested tool call(s)")
+
             logger.info(f"Iteration {iterations}: Model requested {len(assistant_msg.tool_calls)} tool call(s)")
             
             # Persist assistant's tool call intent message to memory
@@ -513,12 +540,24 @@ class FridayAgent:
             else:
                 final_content = "I reached my reasoning iteration limit before completing the response."
 
+        # State: VERIFYING (checking outcome and ensuring response integrity)
+        self.state_machine.transition_to(TaskState.VERIFYING, reason="Verifying response content and execution integrity")
+
+        # Check if all tools succeeded or if any tool returned an unrecoverable failure
+        has_tool_errors = any(r.is_error for r in all_tool_results) if all_tool_results else False
+
+        # State: COMPLETED or FAILED
+        if has_tool_errors and not final_content:
+            self.state_machine.fail(reason="All tool operations failed during execution", metadata={"tool_errors": True})
+        else:
+            self.state_machine.transition_to(TaskState.COMPLETED, reason="Response verified and completed successfully")
+
         # 5. Persist final assistant turn in conversation memory
         final_msg = Message(role=Role.ASSISTANT, content=final_content)
         self.memory.add_message(final_msg)
 
         duration = time.perf_counter() - start_time
-        logger.info(f"Turn processed successfully in {duration:.2f}s across {iterations} iteration(s)")
+        logger.info(f"Turn processed successfully in {duration:.2f}s across {iterations} iteration(s) [Final State: {self.state_machine.current_state.value}]")
 
         recalled_info = [
             {
@@ -540,11 +579,14 @@ class FridayAgent:
                 "iterations": iterations,
                 "request_count": iterations,
                 "tools_used": list(set(tc.name for tc in all_tool_calls)),
-                "success": all(not r.is_error for r in all_tool_results) if all_tool_results else True,
+                "success": (not has_tool_errors) and (self.state_machine.current_state == TaskState.COMPLETED),
                 "provider": self.llm.provider_name,
                 "model": self.llm.model,
                 "cost_mode": getattr(self.settings, "cost_mode", "free_first"),
                 "recalled_memories": recalled_info,
+                "task_state": self.state_machine.current_state.value,
+                "state_history": [r.to_dict() for r in self.state_machine.history],
+                "failure_reason": self.state_machine.failure_reason,
             },
         )
 
@@ -575,6 +617,7 @@ class FridayAgent:
             "provider": self.llm.provider_name,
             "model": self.llm.model,
             "active_project": active_project,
+            "task_state": self.state_machine.current_state.value,
             "embedding_provider": self.settings.embedding_provider,
             "embedding_model": self.settings.embedding_model,
             "embedding_status": embedding_status,

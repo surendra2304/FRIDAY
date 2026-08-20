@@ -2,9 +2,13 @@
 
 from friday.agent.agent import FridayAgent
 from friday.agent.prompts import build_system_message, get_default_system_prompt
+from friday.agent.state import TaskState, ReasoningStateMachine, InvalidStateTransitionError
 
 __all__ = [
     "FridayAgent",
     "build_system_message",
     "get_default_system_prompt",
+    "TaskState",
+    "ReasoningStateMachine",
+    "InvalidStateTransitionError",
 ]

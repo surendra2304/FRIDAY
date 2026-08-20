@@ -1,0 +1,141 @@
+# -*- coding: utf-8 -*-
+"""Reasoning State Machine and Lifecycle Management for FRIDAY Tasks and Requests.
+
+Defines the explicit task states and validated state transitions:
+    NOT_STARTED -> UNDERSTANDING -> PLANNING -> EXECUTING -> VERIFYING -> COMPLETED
+    [Any active state] -> FAILED
+
+Completely provider-independent and zero-trust safe.
+"""
+
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from enum import Enum
+from typing import Any, Callable, Dict, List, Optional
+import uuid
+
+from friday.core.logging import get_logger
+
+logger = get_logger("agent.state")
+
+
+class TaskState(str, Enum):
+    """Enumeration of explicit task and request reasoning states."""
+    NOT_STARTED = "NOT_STARTED"
+    UNDERSTANDING = "UNDERSTANDING"
+    PLANNING = "PLANNING"
+    EXECUTING = "EXECUTING"
+    VERIFYING = "VERIFYING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
+# Valid deterministic transitions from each state
+VALID_TRANSITIONS: Dict[TaskState, List[TaskState]] = {
+    TaskState.NOT_STARTED: [TaskState.UNDERSTANDING, TaskState.FAILED],
+    TaskState.UNDERSTANDING: [TaskState.PLANNING, TaskState.FAILED],
+    TaskState.PLANNING: [TaskState.EXECUTING, TaskState.VERIFYING, TaskState.FAILED],
+    TaskState.EXECUTING: [TaskState.VERIFYING, TaskState.FAILED],
+    TaskState.VERIFYING: [TaskState.COMPLETED, TaskState.FAILED],
+    TaskState.COMPLETED: [],  # Terminal state
+    TaskState.FAILED: [],     # Terminal state
+}
+
+
+class InvalidStateTransitionError(ValueError):
+    """Raised when an illegal state transition is attempted."""
+    pass
+
+
+@dataclass
+class StateTransitionRecord:
+    """Audit record for a single state transition."""
+    from_state: TaskState
+    to_state: TaskState
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    reason: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "from_state": self.from_state.value,
+            "to_state": self.to_state.value,
+            "timestamp": self.timestamp.isoformat(),
+            "reason": self.reason,
+        }
+
+
+class ReasoningStateMachine:
+    """Manages explicit state progression and audit history for a single task or turn."""
+
+    def __init__(
+        self,
+        task_id: Optional[str] = None,
+        on_transition: Optional[Callable[[TaskState, TaskState, Optional[str]], None]] = None,
+    ) -> None:
+        self.task_id: str = task_id or str(uuid.uuid4())
+        self._current_state: TaskState = TaskState.NOT_STARTED
+        self._history: List[StateTransitionRecord] = []
+        self._on_transition = on_transition
+        self._failure_reason: Optional[str] = None
+        self._failure_metadata: Dict[str, Any] = {}
+
+    @property
+    def current_state(self) -> TaskState:
+        """Return the current state."""
+        return self._current_state
+
+    @property
+    def history(self) -> List[StateTransitionRecord]:
+        """Return the transition audit trail."""
+        return list(self._history)
+
+    @property
+    def failure_reason(self) -> Optional[str]:
+        """Return the safe failure reason if failed."""
+        return self._failure_reason
+
+    @property
+    def failure_metadata(self) -> Dict[str, Any]:
+        """Return failure metadata."""
+        return dict(self._failure_metadata)
+
+    def transition_to(self, new_state: TaskState, reason: Optional[str] = None) -> TaskState:
+        """Validate and execute a state transition."""
+        allowed = VALID_TRANSITIONS.get(self._current_state, [])
+        if new_state not in allowed:
+            err_msg = (
+                f"Invalid state transition from {self._current_state.value} to {new_state.value}. "
+                f"Allowed target states: {[s.value for s in allowed]}"
+            )
+            logger.error(err_msg)
+            raise InvalidStateTransitionError(err_msg)
+
+        old_state = self._current_state
+        self._current_state = new_state
+        record = StateTransitionRecord(from_state=old_state, to_state=new_state, reason=reason)
+        self._history.append(record)
+        logger.debug(f"Task '{self.task_id}': {old_state.value} -> {new_state.value} (reason: {reason})")
+
+        if self._on_transition:
+            try:
+                self._on_transition(old_state, new_state, reason)
+            except Exception as e:
+                logger.warning(f"Error in on_transition callback: {e}")
+
+        return self._current_state
+
+    def fail(self, reason: str, metadata: Optional[Dict[str, Any]] = None) -> TaskState:
+        """Transition task directly to FAILED with sanitized error metadata."""
+        self._failure_reason = reason
+        self._failure_metadata = metadata or {}
+        return self.transition_to(TaskState.FAILED, reason=reason)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize current state and audit trail to dictionary."""
+        return {
+            "task_id": self.task_id,
+            "current_state": self._current_state.value,
+            "history": [r.to_dict() for r in self._history],
+            "failure_reason": self._failure_reason,
+            "failure_metadata": self._failure_metadata,
+        }
