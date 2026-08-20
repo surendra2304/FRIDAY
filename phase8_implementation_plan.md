@@ -99,13 +99,16 @@ Phase 8.10: Full Phase 8 Multimodal Perception Acceptance Gate
 - Integrated automatic fallback to SQLite memory search (FTS5 / Semantic) with secret/credential redaction.
 - **Files Created/Modified**: `src/friday/vision/episodic_memory.py`, `src/friday/vision/__init__.py`, `tests/test_episodic_environmental_memory.py` (7/7 tests passing).
 
-### Phase 8.6 — Grounded Visual Element Resolver
+### Phase 8.6 — Active Perception & Information Seeking [COMPLETE]
+- Implemented `ActivePerceptionEngine`, `ObservationDecision`, and `ObservationNecessity` (SUFFICIENT, UNCERTAIN_STATE, ENVIRONMENT_CHANGED, ACTION_VERIFICATION, BOUND_EXCEEDED) in `src/friday/vision/active_perception.py`.
+- Evaluated context sufficiency before dispatching screen captures or vision model queries, skipping redundant calls.
+- Enforced strict consecutive observation bounds (`max_consecutive_observations`) preventing infinite loop cycles.
+- Hardened against visual prompt injection attempting to command continuous observation loops.
+- **Files Created/Modified**: `src/friday/vision/active_perception.py`, `src/friday/vision/__init__.py`, `tests/test_active_perception.py` (7/7 tests passing).
+
+### Phase 8.7 — Grounded Visual Element Resolver
 - Bridge `ProposalBuilder` and structured perception: resolve natural language target ("Click the blue Deploy button") to verified `UIElement` coordinates `(x, y)`.
 - Enforce confidence thresholds and fallback strategies if target element is ambiguous or obscured.
-
-### Phase 8.7 — Unified Multimodal Context Buffer
-- Implement `MultimodalContextBuffer` fusing voice transcriptions, visual element states, and task state machine events with synchronized monotonic timestamps.
-- Ensure context window budget is strictly preserved with sliding window eviction and token budgeting.
 
 ### Phase 8.8 — Dynamic Multi-Resolution & ROI Cropping
 - Support adaptive image scaling and targeted high-resolution crops for dense code or terminal text without sending 4K full-frame images repeatedly.

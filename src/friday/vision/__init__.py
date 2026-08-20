@@ -32,6 +32,11 @@ from friday.vision.episodic_memory import (
     EpisodicEnvironmentalMemoryManager,
     MemoryImportance,
 )
+from friday.vision.active_perception import (
+    ActivePerceptionEngine,
+    ObservationDecision,
+    ObservationNecessity,
+)
 
 __all__ = [
     "BaseVisionProvider",
@@ -69,4 +74,7 @@ __all__ = [
     "EpisodicEnvironmentalFact",
     "EpisodicEnvironmentalMemoryManager",
     "MemoryImportance",
+    "ActivePerceptionEngine",
+    "ObservationDecision",
+    "ObservationNecessity",
 ]
