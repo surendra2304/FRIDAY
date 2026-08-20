@@ -121,10 +121,12 @@ flowchart TD
 - Integrated into `TaskExecutionEngine` with dynamic argument validation and BaseAuthorizer enforcement.
 - **Files Created/Modified**: `src/friday/tools/orchestrator.py`, `src/friday/tools/__init__.py`, `src/friday/agent/executor.py`, `tests/test_advanced_tool_planning.py` (5/5 tests passing).
 
-#### Phase 7.9 — Long-Running Task Management & Background Progress
-- Integrate background execution with the CLI and Voice session notifications.
-- Enable non-blocking long-running goals with proactive milestone notifications and progress telemetry.
-- **Target Files**: `src/friday/tasks/manager.py`, `tests/test_long_running_tasks.py`.
+#### Phase 7.9 — Long-Running Task Management & Background Progress [COMPLETE]
+- Implement `LongRunningTaskManager`, `TaskLifecycleStatus`, and `TaskProgressReport`.
+- Support background task submission, concurrent worker limits, duplicate active task prevention, progress telemetry reporting, and thread-safe querying.
+- Enforce hard execution timeouts, pause/resume checkpoint integration, and safe immediate cancellation.
+- Preserve zero-trust security: Never bypasses `BaseAuthorizer` or auto-approves dangerous operations.
+- **Files Created/Modified**: `src/friday/tasks/manager.py`, `src/friday/tasks/__init__.py`, `src/friday/tasks/scheduler.py`, `tests/test_long_running_tasks.py` (5/5 tests passing).
 
 #### Phase 7.10 — Autonomous Capability Safety & Authorization Gate
 - Conduct comprehensive 10-vector security audit for autonomous multi-step execution.

@@ -7,7 +7,7 @@ from .models import Task, ScheduleType, SafetyLevel
 from .sqlite_store import get_all_tasks, save_task, delete_task, log_task_run, get_task_history
 from friday.core.config import get_settings
 from friday.agent.agent import FridayAgent
-from friday.security_check import CLIAuthorizer
+from friday.core.auth import DefaultSecureAuthorizer
 
 class TaskScheduler:
     """Background scheduler for proactive tasks.
@@ -19,7 +19,7 @@ class TaskScheduler:
         self._stop_event = threading.Event()
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
         self.settings = get_settings()
-        self.authorizer = CLIAuthorizer()
+        self.authorizer = DefaultSecureAuthorizer()
 
     def start(self) -> None:
         self._thread.start()
