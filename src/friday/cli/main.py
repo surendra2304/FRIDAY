@@ -15,19 +15,19 @@ import shutil
 logger = get_logger("cli")
 
 FRIDAY_LOGO_LINES = [
-    r" ______ _____  _____ _____            __     __ ",
-    r"|  ____|  __ \|_   _|  __ \     /\    \ \   / / ",
-    r"| |__  | |__) | | | | |  | |   /  \    \ \_/ /  ",
-    r"|  __| |  _  /  | | | |  | |  / /\ \    \   /   ",
-    r"| |    | | \ \ _| |_| |__| | / ____ \    | |    ",
-    r"|_|    |_|  \_\_____|_____/ /_/    \_\   |_|    ",
+    r"______ _____  _____ ______   ___  __   __",
+    r"|  ___| ___ \|_   _||  _  \ / _ \ \ \ / /",
+    r"| |_  | |_/ /  | |  | | | |/ /_\ \ \ V / ",
+    r"|  _| |    /   | |  | | | ||  _  |  \ /  ",
+    r"| |   | |\ \  _| |_ | |/ / | | | |  | |  ",
+    r"\_|   \_| \_| \___/ |___/  \_| |_/  \_/  ",
 ]
 
 
 def render_friday_banner(version: str = "0.4.6") -> str:
-    """Render a cleanly centered, futuristic 3D block-letter FRIDAY startup banner."""
+    """Render a cleanly centered, cohesive block-letter FRIDAY startup banner."""
     terminal_width = shutil.get_terminal_size((80, 20)).columns
-    # Ensure minimum width to avoid clipping logo lines
+    # Ensure minimum width so the 41-char logo is never clipped
     width = max(terminal_width, 60)
 
     lines = [""]
