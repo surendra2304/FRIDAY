@@ -38,6 +38,7 @@ from friday.tools.builtin import (
 )
 from friday.agent.state import TaskState, ReasoningStateMachine
 from friday.agent.planner import TaskPlan, PlanStep, StepStatus, GoalDecomposer
+from friday.agent.executor import TaskExecutionEngine, TaskExecutionResult, ExecutionProgress
 from friday.tools.registry import ToolRegistry
 
 logger = get_logger("agent.core")
@@ -355,6 +356,24 @@ class FridayAgent:
         plan.validate(tool_registry=self.tools)
         self._current_plan = plan
         return plan
+
+    def execute_plan(
+        self,
+        plan: Optional[TaskPlan] = None,
+        on_step_progress: Optional[Callable[[ExecutionProgress], None]] = None,
+    ) -> TaskExecutionResult:
+        """Execute a structured TaskPlan using the TaskExecutionEngine."""
+        target_plan = plan or self._current_plan
+        if not target_plan:
+            raise ValueError("No active TaskPlan provided or currently set on the agent.")
+
+        engine = TaskExecutionEngine(
+            tool_registry=self.tools,
+            authorizer=self.authorizer,
+            step_timeout_seconds=self.tool_timeout,
+            on_step_progress=on_step_progress,
+        )
+        return engine.execute_plan(target_plan, state_machine=self.state_machine)
 
     def process_message(
         self,
