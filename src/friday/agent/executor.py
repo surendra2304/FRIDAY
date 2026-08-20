@@ -37,6 +37,7 @@ from friday.core.types import (
     ToolCall,
     ToolResult,
 )
+from friday.tools.orchestrator import DataFlowResolver
 from friday.tools.registry import ToolRegistry
 
 logger = get_logger("agent.executor")
@@ -264,7 +265,7 @@ class TaskExecutionEngine:
                 step_start = time.perf_counter()
                 self._notify_progress(plan, step_results, current_step_target.step_id, step_start - start_time)
 
-                step_res = self._execute_step(current_step_target)
+                step_res = self._execute_step(current_step_target, step_results=step_results)
                 step_res.retries_used = retries_performed
 
                 # 3. Formal Step Verification
@@ -358,7 +359,7 @@ class TaskExecutionEngine:
             error=sm.failure_reason,
         )
 
-    def _execute_step(self, step: PlanStep) -> StepExecutionResult:
+    def _execute_step(self, step: PlanStep, step_results: Optional[Dict[str, Any]] = None) -> StepExecutionResult:
         """Execute a single PlanStep using the ToolRegistry and BaseAuthorizer."""
         step_start_time = datetime.now(timezone.utc)
         start_perf = time.perf_counter()
@@ -388,8 +389,29 @@ class TaskExecutionEngine:
                 duration_seconds=time.perf_counter() - start_perf,
             )
 
+        # 0. Resolve dynamic parameter templates from prior step results
+        resolved_params = step.parameters
+        if step_results:
+            results_dict = {k: (v.result if hasattr(v, "result") else v) for k, v in step_results.items()}
+            resolved_params, resolve_err = DataFlowResolver.resolve_parameters(
+                parameters=step.parameters,
+                step_results=results_dict,
+                target_safety_level=tool.safety_level,
+            )
+            if resolve_err:
+                err = f"Parameter resolution failed for step '{step.step_id}': {resolve_err}"
+                logger.error(err)
+                return StepExecutionResult(
+                    step_id=step.step_id,
+                    status=StepStatus.FAILED,
+                    error=err,
+                    start_time=step_start_time,
+                    end_time=datetime.now(timezone.utc),
+                    duration_seconds=time.perf_counter() - start_perf,
+                )
+
         # 1. Parameter Validation
-        valid, val_err = tool.validate_arguments(step.parameters)
+        valid, val_err = tool.validate_arguments(resolved_params)
         if not valid:
             err = f"Invalid arguments for tool '{step.tool_name}': {val_err}"
             logger.error(err)
@@ -406,9 +428,9 @@ class TaskExecutionEngine:
         auth_req = AuthorizationRequest(
             tool_name=step.tool_name,
             safety_level=tool.safety_level,
-            arguments=step.parameters,
+            arguments=resolved_params,
             purpose=step.description,
-            affected_resource=str(step.parameters.get("path", "")),
+            affected_resource=str(resolved_params.get("path", "")),
         )
         auth_resp = self.authorizer.authorize(auth_req)
 
@@ -429,7 +451,7 @@ class TaskExecutionEngine:
             call_id = f"call_{uuid.uuid4().hex[:8]}"
             tool_result: ToolResult = self.tools.execute(
                 name=step.tool_name,
-                arguments=step.parameters,
+                arguments=resolved_params,
                 tool_call_id=call_id,
                 allow_sensitive=True,
             )

@@ -114,10 +114,12 @@ flowchart TD
 - Integrated into `FridayAgent` (`pause_current_task`, `resume_task`, `cancel_task`) and `TaskExecutionEngine` with pre-completed step skipping to prevent duplicate action execution.
 - **Files Created/Modified**: `src/friday/agent/state.py`, `src/friday/agent/checkpoint.py`, `src/friday/agent/planner.py`, `src/friday/agent/agent.py`, `src/friday/agent/executor.py`, `src/friday/agent/__init__.py`, `tests/test_task_checkpointing.py` (6/6 tests passing).
 
-#### Phase 7.8 — Advanced Tool Orchestration & Multi-Tool Planning
-- Enhance tool selection with dependency chaining and parameter inference.
-- Support multi-tool workflows combining perception (`get_screen_snapshot`), data extraction, calculation, and safe proposal formulation in unified plans.
-- **Target Files**: `src/friday/tools/planner.py`, `tests/test_advanced_tool_planning.py`.
+#### Phase 7.8 — Advanced Tool Orchestration & Multi-Tool Planning [COMPLETE]
+- Implement `DataFlowResolver` resolving dynamic parameter templates (`{{step_id.key}}` and `{{step_id}}`) across chained tool steps.
+- Implement untrusted screen text / injection defense: blocks dangerous commands or malicious text in perceptual inputs from interpolating into sensitive/dangerous tool arguments.
+- Implement `ToolOrchestrator` computing DAG execution levels (waves) for independent parallel grouping vs. sequential chaining.
+- Integrated into `TaskExecutionEngine` with dynamic argument validation and BaseAuthorizer enforcement.
+- **Files Created/Modified**: `src/friday/tools/orchestrator.py`, `src/friday/tools/__init__.py`, `src/friday/agent/executor.py`, `tests/test_advanced_tool_planning.py` (5/5 tests passing).
 
 #### Phase 7.9 — Long-Running Task Management & Background Progress
 - Integrate background execution with the CLI and Voice session notifications.
