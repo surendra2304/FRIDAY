@@ -127,9 +127,12 @@ Phase 8.10: Full Phase 8 Multimodal Perception Acceptance Gate
 - Cost telemetry instrumentation tracking suppressed API calls, cache hit ratios, and quota protection.
 - **Files Created/Modified**: `src/friday/vision/cache_manager.py`, `src/friday/vision/__init__.py`, `tests/test_perception_caching.py` (7/7 tests passing).
 
-### Phase 8.10 — Full Phase 8 Multimodal Perception Acceptance Gate
-- Build end-to-end acceptance suite (`tests/test_phase8_acceptance_gate.py`).
-- Validate: Screen Capture → ROI Crop → Structured UI Grounding → Element Resolution → Action Proposal → Authorization Gate → Execution → Visual Verification → Memory Fusion.
+### Phase 8.10 — Advanced Multimodal Security & Perception Acceptance Gate [COMPLETE]
+- Implemented comprehensive Phase 8 Multimodal Perception Acceptance Gate (`tests/test_phase8_acceptance_gate.py` - 8/8 passing).
+- Verified end-to-end multimodal lifecycle: Capture -> UI Parsing -> Grounding -> Proposal -> Auth -> Exec -> Verify -> Memory.
+- Validated untrusted visual prompt injection defenses, secret redaction, zero raw screenshot persistence, and ambiguity clarification prompts.
+- Confirmed Proposal != Execution invariant and active perception loop bounds across all test vectors.
+- **Files Created/Modified**: `tests/test_phase8_acceptance_gate.py`, `phase8_final_report.md`.
 
 ---
 
@@ -137,5 +140,5 @@ Phase 8.10: Full Phase 8 Multimodal Perception Acceptance Gate
 
 1. **Proposal != Execution**: Grounded visual resolution generates `ComputerActionProposal` instances with verified coordinates, but NEVER auto-executes without confirmation.
 2. **Quota & Cost Guardrails**: Pre-filtering, perceptual hash diffing, and ROI cropping ensure Gemini Vision calls are dispatched ONLY when genuine visual state changes occur.
-3. **Offline Testability**: 100% of Phase 8 components must run offline with `MockVisionProvider`, `MockScreenCaptureProvider`, and `MockLLMProvider`. Real Gemini API calls are reserved for optional manual hardware smoke tests.
+3. **Offline Testability**: 100% of Phase 8 components run offline with `MockVisionProvider`, `MockScreenCaptureProvider`, and `MockLLMProvider`. Real Gemini API calls are reserved for optional manual hardware smoke tests.
 4. **IBM Quantum Status**: Reserved for Phase 9+. Zero quantum code or dependencies in Phase 8.
