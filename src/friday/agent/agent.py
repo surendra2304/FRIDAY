@@ -39,6 +39,7 @@ from friday.tools.builtin import (
 from friday.agent.state import TaskState, ReasoningStateMachine
 from friday.agent.planner import TaskPlan, PlanStep, StepStatus, GoalDecomposer
 from friday.agent.executor import TaskExecutionEngine, TaskExecutionResult, ExecutionProgress
+from friday.memory.task_context import ActiveTaskContext
 from friday.tools.registry import ToolRegistry
 
 logger = get_logger("agent.core")
@@ -71,6 +72,7 @@ class FridayAgent:
         self._processed_tool_ids: set = set()
         self.state_machine: ReasoningStateMachine = ReasoningStateMachine()
         self._current_plan: Optional[TaskPlan] = None
+        self.task_context: Optional[ActiveTaskContext] = None
 
         if self.settings.memory_retention_days:
             self.prune_memory(self.settings.memory_retention_days)
@@ -355,6 +357,7 @@ class FridayAgent:
         
         plan.validate(tool_registry=self.tools)
         self._current_plan = plan
+        self.task_context = ActiveTaskContext(task_id=plan.plan_id, goal=goal, plan=plan)
         return plan
 
     def execute_plan(
@@ -367,13 +370,25 @@ class FridayAgent:
         if not target_plan:
             raise ValueError("No active TaskPlan provided or currently set on the agent.")
 
+        if not self.task_context or self.task_context.task_id != target_plan.plan_id:
+            self.task_context = ActiveTaskContext(task_id=target_plan.plan_id, goal=target_plan.goal, plan=target_plan)
+
         engine = TaskExecutionEngine(
             tool_registry=self.tools,
             authorizer=self.authorizer,
             step_timeout_seconds=self.tool_timeout,
             on_step_progress=on_step_progress,
         )
-        return engine.execute_plan(target_plan, state_machine=self.state_machine)
+        res = engine.execute_plan(target_plan, state_machine=self.state_machine, task_context=self.task_context)
+
+        # Finalize working context and record high-level summary to long-term memory
+        if self.task_context:
+            self.task_context.set_state(res.state)
+            summary_msg = self.task_context.finalize_and_extract_long_term_summary(success=res.success)
+            if summary_msg:
+                self.memory.add_message(summary_msg)
+
+        return res
 
     def process_message(
         self,
@@ -663,6 +678,7 @@ class FridayAgent:
             "memory_capacity": self.settings.memory_max_messages,
             "max_tool_iterations": self.max_tool_iterations,
             "active_plan": self._current_plan.to_dict() if self._current_plan else None,
+            "active_task_context": self.task_context.to_dict() if self.task_context else None,
             "tools_registered": [f"{t.name} ({t.safety_level.value})" for t in self.tools.list_tools()],
         }
         if self.conversation_id:

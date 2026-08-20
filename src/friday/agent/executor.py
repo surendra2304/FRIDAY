@@ -156,12 +156,17 @@ class TaskExecutionEngine:
         self,
         plan: TaskPlan,
         state_machine: Optional[ReasoningStateMachine] = None,
+        task_context: Optional[Any] = None,
     ) -> TaskExecutionResult:
         """Execute a TaskPlan in validated dependency order with verification and bounded self-correction."""
         start_time = time.perf_counter()
 
         # Validate plan before execution if not already verified
         plan.validate(tool_registry=self.tools)
+
+        if task_context:
+            task_context.plan = plan
+            task_context.goal = plan.goal
 
         sm = state_machine or ReasoningStateMachine(task_id=plan.plan_id)
         if sm.current_state == TaskState.NOT_STARTED:
@@ -218,6 +223,9 @@ class TaskExecutionEngine:
             retries_performed = 0
             step_final_res: Optional[StepExecutionResult] = None
 
+            if task_context:
+                task_context.set_active_step(step.step_id)
+
             while True:
                 current_step_target.status = StepStatus.IN_PROGRESS
                 step_start = time.perf_counter()
@@ -263,6 +271,13 @@ class TaskExecutionEngine:
             step.status = step_final_res.status
             step.result = step_final_res.result
             step.error = step_final_res.error
+
+            if task_context:
+                task_context.record_step_result(
+                    step_id=step.step_id,
+                    result=step_final_res.result or step_final_res.error,
+                    verification=step_final_res.verification,
+                )
 
             self._notify_progress(plan, step_results, None, time.perf_counter() - start_time)
 

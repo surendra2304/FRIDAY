@@ -93,11 +93,12 @@ flowchart TD
 - Integrated into `TaskExecutionEngine` with preservation of `BaseAuthorizer` gating and Proposal != Execution.
 - **Files Created/Modified**: `src/friday/agent/verification.py`, `src/friday/agent/executor.py`, `src/friday/agent/__init__.py`, `tests/test_verification_and_correction.py` (6/6 tests passing).
 
-#### Phase 7.5 — Active Working Task Memory & Context Isolation
-- Implement `ActiveTaskContext` to hold temporary variables, intermediate tool results, and step outputs during task execution.
-- Only commit high-level task summaries and final verified results to long-term SQLite conversation memory upon completion.
-- Prevents context overflow and token bloat in multi-step dialogues.
-- **Target Files**: `src/friday/memory/task_context.py`, `tests/test_task_memory.py`.
+#### Phase 7.5 — Active Working Task Memory & Context Isolation [COMPLETE]
+- Implement `ActiveTaskContext` and `TaskObservation` to hold short-term variables, step outputs, observations, constraints, and user clarifications during execution.
+- Isolate working memory from long-term memory to prevent token bloat, raw screenshot leakage, and context contamination.
+- Implement size limits, observation FIFO sliding windows, secret redaction, and clean task finalization extraction into long-term memory.
+- Integrated into `FridayAgent` (`task_context`, `create_plan`, `execute_plan`, and `get_status()`).
+- **Files Created/Modified**: `src/friday/memory/task_context.py`, `src/friday/memory/__init__.py`, `src/friday/agent/agent.py`, `src/friday/agent/executor.py`, `tests/test_task_memory.py` (8/8 tests passing).
 
 #### Phase 7.6 — Autonomous Failure Recovery & Strategy Adaptation
 - Implement structured failure analysis (`FailureAnalyzer`): classifies failures into network, quota, tool syntax, missing dependency, or unexpected environment state.
