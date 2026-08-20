@@ -12,6 +12,13 @@ from friday.vision.screen_analyzer import ScreenAnalyzer, DEFAULT_ANALYSIS_PROMP
 from friday.vision.change_detector import ScreenChangeDetector, compute_image_difference_ratio
 from friday.vision.screen_awareness import ScreenAwarenessController
 from friday.vision.vision_memory import VisionMemoryManager, redact_sensitive_visual_text
+from friday.vision.actions import ActionType, ComputerActionProposal, ProposalBuilder
+from friday.vision.computer_control import (
+    ComputerActionExecutor,
+    ActionExecutionResult,
+    ExecutionStatus,
+    HARD_BLOCKED_INTENTS,
+)
 
 __all__ = [
     "BaseVisionProvider",
@@ -32,4 +39,11 @@ __all__ = [
     "ScreenAwarenessController",
     "VisionMemoryManager",
     "redact_sensitive_visual_text",
+    "ActionType",
+    "ComputerActionProposal",
+    "ProposalBuilder",
+    "ComputerActionExecutor",
+    "ActionExecutionResult",
+    "ExecutionStatus",
+    "HARD_BLOCKED_INTENTS",
 ]
