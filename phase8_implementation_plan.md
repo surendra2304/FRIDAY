@@ -120,13 +120,12 @@ Phase 8.10: Full Phase 8 Multimodal Perception Acceptance Gate
 - Added stale-screen detection before action execution and strict defense against visual injection text commanding action execution.
 - **Files Created/Modified**: `src/friday/vision/action_preparer.py`, `src/friday/vision/__init__.py`, `tests/test_perception_action_preparation.py` (6/6 tests passing).
 
-### Phase 8.9 — Dynamic Multi-Resolution & ROI Cropping
-- Support adaptive image scaling and targeted high-resolution crops for dense code or terminal text without sending 4K full-frame images repeatedly.
-- Reduce token consumption and latency by up to 60% on localized screen operations.
-
-### Phase 8.9 — Advanced Perception Security & Visual Injection Hardening
-- Audit and harden visual element resolution against visual prompt injection (e.g., deceptive buttons, invisible text, adversarial background patterns).
-- Strictly enforce `Proposal != Execution` and BaseAuthorizer confirmation gates across all grounded computer control proposals.
+### Phase 8.9 — Perception Reliability, Caching & Cost Optimization [COMPLETE]
+- Implemented `PerceptionCacheManager`, `CachedObservation`, and `PerceptionCacheTelemetry` in `src/friday/vision/cache_manager.py`.
+- Multi-level caching with TTL expiration, exact SHA256 byte matching, and Mean Absolute Difference (MAD) perceptual image hashing.
+- State-aware invalidations based on screen image differences, application focus switching, and task ID transitions.
+- Cost telemetry instrumentation tracking suppressed API calls, cache hit ratios, and quota protection.
+- **Files Created/Modified**: `src/friday/vision/cache_manager.py`, `src/friday/vision/__init__.py`, `tests/test_perception_caching.py` (7/7 tests passing).
 
 ### Phase 8.10 — Full Phase 8 Multimodal Perception Acceptance Gate
 - Build end-to-end acceptance suite (`tests/test_phase8_acceptance_gate.py`).

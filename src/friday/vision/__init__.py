@@ -43,6 +43,11 @@ from friday.vision.action_preparer import (
     GroundingStatus,
     PerceptionActionPreparer,
 )
+from friday.vision.cache_manager import (
+    CachedObservation,
+    PerceptionCacheManager,
+    PerceptionCacheTelemetry,
+)
 
 __all__ = [
     "BaseVisionProvider",
@@ -87,4 +92,7 @@ __all__ = [
     "ActionPreparationResult",
     "GroundedElementTarget",
     "GroundingStatus",
+    "CachedObservation",
+    "PerceptionCacheManager",
+    "PerceptionCacheTelemetry",
 ]
