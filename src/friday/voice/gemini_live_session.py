@@ -90,11 +90,11 @@ class GeminiLiveVoiceSession:
         self.enable_session_resumption = enable_session_resumption
         self.enable_context_compression = enable_context_compression
 
-        # VAD & Barge-in settings
-        self.vad_start_sensitivity = vad_start_sensitivity or getattr(settings, "voice_vad_start_sensitivity", "HIGH")
+        # VAD & Barge-in settings (Respect config.py defaults: start=LOW, end=HIGH, prefix=300ms, silence=800ms)
+        self.vad_start_sensitivity = vad_start_sensitivity or getattr(settings, "voice_vad_start_sensitivity", "LOW")
         self.vad_end_sensitivity = vad_end_sensitivity or getattr(settings, "voice_vad_end_sensitivity", "HIGH")
-        self.vad_prefix_padding_ms = vad_prefix_padding_ms if vad_prefix_padding_ms is not None else getattr(settings, "voice_vad_prefix_padding_ms", 200)
-        self.vad_silence_duration_ms = vad_silence_duration_ms if vad_silence_duration_ms is not None else getattr(settings, "voice_vad_silence_duration_ms", 400)
+        self.vad_prefix_padding_ms = vad_prefix_padding_ms if vad_prefix_padding_ms is not None else getattr(settings, "voice_vad_prefix_padding_ms", 300)
+        self.vad_silence_duration_ms = vad_silence_duration_ms if vad_silence_duration_ms is not None else getattr(settings, "voice_vad_silence_duration_ms", 800)
         self.barge_in_rms_threshold = barge_in_rms_threshold if barge_in_rms_threshold is not None else getattr(settings, "voice_barge_in_rms_threshold", 350.0)
         self.barge_in_consecutive_frames = getattr(settings, "voice_barge_in_consecutive_frames", 4)
         self.barge_in_playback_factor = getattr(settings, "voice_barge_in_playback_factor", 3.0)
@@ -115,6 +115,8 @@ class GeminiLiveVoiceSession:
         # Adaptive Noise & Barge-in state
         self._ambient_noise_floor: float = 50.0
         self._consecutive_speech_frames: int = 0
+        self._local_speech_candidate: bool = False
+        self._local_interruption_active: bool = False
         self._last_interruption_time: float = 0.0
         self._friday_speaking_start_time: float = 0.0
         self._last_mic_rms: float = 0.0
@@ -522,6 +524,8 @@ class GeminiLiveVoiceSession:
 
                     # 1. Candidate speech threshold calculation
                     candidate_threshold = max(self.barge_in_rms_threshold, self._ambient_noise_floor * self.adaptive_noise_multiplier)
+                    is_above_adaptive_thresh = rms > candidate_threshold
+                    self._local_speech_candidate = is_above_adaptive_thresh
 
                     # 2. Update adaptive ambient noise floor when speaker is silent and below speech threshold
                     if not is_speaker_active and rms < candidate_threshold:
@@ -552,6 +556,7 @@ class GeminiLiveVoiceSession:
                             and self._consecutive_speech_frames >= self.barge_in_consecutive_frames
                             and self._state != LiveSessionState.INTERRUPTED
                         ):
+                            self._local_interruption_active = True
                             logger.info(
                                 f"Local barge-in: sustained user speech detected (RMS: {rms:.1f}, "
                                 f"noise_floor: {self._ambient_noise_floor:.1f}, "
@@ -563,8 +568,12 @@ class GeminiLiveVoiceSession:
                             self.user_interruptions += 1
                             self.speaker_playback_interruptions += 1
                             spk.stop()
-                    elif rms > candidate_threshold and self._state == LiveSessionState.CONNECTED:
-                        self._set_state(LiveSessionState.USER_SPEAKING)
+                        else:
+                            self._local_interruption_active = False
+                    else:
+                        self._local_interruption_active = False
+                        if rms > candidate_threshold and self._state == LiveSessionState.CONNECTED:
+                            self._set_state(LiveSessionState.USER_SPEAKING)
 
                     # 4. Continuous Realtime Audio Dispatch to Gemini Live
                     blob = genai_types.Blob(
@@ -621,17 +630,22 @@ class GeminiLiveVoiceSession:
                 server_content = getattr(message, "server_content", None)
                 if server_content:
                     # Instant barge-in / Interruption from Live API
+                    # Strictly verify that interrupted is boolean True on serverContent
                     if getattr(server_content, "interrupted", False) is True:
                         if not turn_interrupted:
-                            speaking_duration = (time.time() - self._friday_speaking_start_time) if self._friday_speaking_start_time > 0 else 0.0
+                            now = time.time()
+                            speaking_duration = (now - self._friday_speaking_start_time) if self._friday_speaking_start_time > 0 else 0.0
+                            candidate_threshold = max(self.barge_in_rms_threshold, self._ambient_noise_floor * self.adaptive_noise_multiplier)
+                            energy_above_thresh = self._last_mic_rms > candidate_threshold
                             logger.info(
-                                f"Server barge-in signal: interrupting local speaker playback "
-                                f"(state: {self._state.value}, speaking_duration: {speaking_duration:.2f}s, "
-                                f"last_mic_rms: {self._last_mic_rms:.1f}, noise_floor: {self._ambient_noise_floor:.1f})"
+                                f"Server barge-in event [timestamp: {now:.3f}, speaking_duration: {speaking_duration:.2f}s, "
+                                f"last_mic_rms: {self._last_mic_rms:.1f}, current_noise_floor: {self._ambient_noise_floor:.1f}, "
+                                f"local_speech_candidate: {self._local_speech_candidate}, local_interruption_active: {self._local_interruption_active}, "
+                                f"current_state: {self._state.value}, energy_above_adaptive_thresh: {energy_above_thresh}]"
                             )
                             self.server_interruptions += 1
                             self.user_interruptions += 1
-                            self._last_interruption_time = time.time()
+                            self._last_interruption_time = now
                         self._set_state(LiveSessionState.INTERRUPTED)
                         turn_interrupted = True
                         spk.stop()

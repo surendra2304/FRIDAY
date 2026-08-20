@@ -43,8 +43,9 @@ A chronological list:
 **End-of-Day State**: Embedding model free-tier quota protected by circuit breaker.
 
 ### [DAY 3 — 2026-08-20](diary/2026-08-20.md)
-**Objectives**: Phase 5.18 Real Voice Pipeline Diagnostic & Device Selection. Tuned Server VAD Turn-Taking and Acoustic Echo Suppression.
-**Work Completed**: Implemented comprehensive VAD tuning, acoustic echo suppression, hierarchical barge-in, and specific hardware diagnostics. CLI UX polished with `--voice` and `--text` flags.
-**Bug Fixes**: Bug #10 (Low Ambient RMS), Bug #11 (Resumption Event Spam), Bug #12 (Acoustic Leakage triggering Barge-In), Bug #13 (Large Acoustic Spikes breaking Thresholds).
-**Verification**: 272/272 tests passed. Real Microphone Capture & Live Audio Output PASS. Speaker Echo FIXED.
+**Objectives**: Phase 5.18 Real Voice Pipeline Diagnostic & Device Selection. Tuned Server VAD Turn-Taking and Acoustic Echo Suppression. Phase 5 Final Server VAD / Interruption Investigation.
+**Work Completed**: Implemented comprehensive VAD tuning (LOW start sensitivity, HIGH end sensitivity, 300ms padding, 800ms silence), acoustic echo suppression, hierarchical barge-in, server VAD telemetry instrumentation, strict event mapping, and specific hardware diagnostics. CLI UX polished with `--voice` and `--text` flags.
+**Bug Fixes**: Bug #10 (Low Ambient RMS), Bug #11 (Resumption Event Spam), Bug #12 (Acoustic Leakage triggering Barge-In), Bug #13 (Large Acoustic Spikes breaking Thresholds), Bug #14 (Constructor VAD start sensitivity override).
+**Verification**: 275/275 tests passed. Real Microphone Capture & Live Audio Output PASS. Speaker Echo FIXED. Strict Interruption & Barge-in Continuity Verified.
 **End-of-Day State**: VOICE IMPLEMENTATION: IMPLEMENTED. VOICE HARDWARE: PASS. VOICE CONTINUITY: NOT YET ACCEPTED AS FINAL. HUMAN FINAL ACCEPTANCE: PENDING. Phase 6 NOT STARTED.
+

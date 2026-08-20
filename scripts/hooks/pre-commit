@@ -8,8 +8,8 @@ DIARY_PATH="docs/FRIDAY_DIARY.md"
 meaningful_changes=$(git diff --cached --name-only | grep -E "$WATCHED_PATHS" | grep -v "$DIARY_PATH")
 
 if [ -n "$meaningful_changes" ]; then
-    # Meaningful files are staged. Check if the diary is also staged.
-    diary_staged=$(git diff --cached --name-only | grep -x "$DIARY_PATH")
+    # Meaningful files are staged. Check if any diary file (diary/*.md or FRIDAY_DIARY.md) is also staged.
+    diary_staged=$(git diff --cached --name-only | grep -E "^(docs/FRIDAY_DIARY\.md|FRIDAY_DIARY\.md|diary/[0-9]{4}-[0-9]{2}-[0-9]{2}\.md)")
     
     if [ -z "$diary_staged" ]; then
         echo "================================================================="
