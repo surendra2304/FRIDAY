@@ -106,7 +106,14 @@ Phase 8.10: Full Phase 8 Multimodal Perception Acceptance Gate
 - Hardened against visual prompt injection attempting to command continuous observation loops.
 - **Files Created/Modified**: `src/friday/vision/active_perception.py`, `src/friday/vision/__init__.py`, `tests/test_active_perception.py` (7/7 tests passing).
 
-### Phase 8.7 — Grounded Visual Element Resolver
+### Phase 8.7 — Advanced Voice + Vision Interaction [COMPLETE]
+- Implemented `VoicePerceptionResolver`, `VoicePerceptionResolution`, and `SpokenVisualIntentType` (CURRENT_SCREEN, CHANGE_INQUIRY, ERROR_INVESTIGATION, ELEMENT_ACTION, HISTORICAL_REFERENCE, NON_VISUAL) in `src/friday/voice/perception_resolver.py`.
+- Resolved spoken contextual expressions against active context, `TemporalEnvironmentTracker`, and episodic memory to prevent redundant vision calls.
+- Preserved `gemini-3.1-flash-live-preview` Live voice model and turn stability.
+- Verified task state preservation during voice barge-ins and hard safety authorization boundaries.
+- **Files Created/Modified**: `src/friday/voice/perception_resolver.py`, `tests/test_voice_vision_advanced.py` (7/7 tests passing).
+
+### Phase 8.8 — Grounded Visual Element Resolver
 - Bridge `ProposalBuilder` and structured perception: resolve natural language target ("Click the blue Deploy button") to verified `UIElement` coordinates `(x, y)`.
 - Enforce confidence thresholds and fallback strategies if target element is ambiguous or obscured.
 
