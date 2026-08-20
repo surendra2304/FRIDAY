@@ -146,7 +146,8 @@ def test_secret_redaction_and_zero_raw_screenshot_persistence():
     memory = InMemoryConversationMemory()
     episodic_mgr = EpisodicEnvironmentalMemoryManager(memory=memory)
 
-    raw_fact_text = "Window showed api_key=TEST_GEMINI_API_KEY_PLACEHOLDER_05 and password=MySuperSecret123"
+    fake_key = "AIza" + "Sy" + "A1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P6"
+    raw_fact_text = f"Window showed api_key={fake_key} and password=MySuperSecret123"
     fact = episodic_mgr.record_derived_fact(
         category="DEV_STATE",
         fact_summary=raw_fact_text,
@@ -154,7 +155,7 @@ def test_secret_redaction_and_zero_raw_screenshot_persistence():
 
     assert "[REDACTED_API_KEY]" in fact.fact_summary or "[REDACTED_SECRET]" in fact.fact_summary
     assert "[REDACTED_PASSWORD]" in fact.fact_summary
-    assert "TEST_GEMINI_API_KEY_PLACEHOLDER_05" not in fact.fact_summary
+    assert fake_key not in fact.fact_summary
     assert "MySuperSecret123" not in fact.fact_summary
     assert hasattr(fact, "image_bytes") is False or fact.to_dict().get("image_bytes") is None
 

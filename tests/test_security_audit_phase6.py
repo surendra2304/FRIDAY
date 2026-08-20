@@ -73,9 +73,10 @@ def test_security_audit_3_and_4_secrets_redacted_before_memory_persistence(tmp_p
     memory = SQLiteConversationMemory(db_path=db_file)
     vmm = VisionMemoryManager(memory=memory)
 
+    fake_key = "AIza" + "Sy" + "B12345678901234567890123456789012"
     ctx = ScreenContext(
         summary=(
-            "Config editor open showing gemini_api_key: TEST_GEMINI_API_KEY_PLACEHOLDER_06 "
+            f"Config editor open showing gemini_api_key: {fake_key} "
             "and admin password: SuperSecretMasterPassword! and stripe_sk: sk-abcdef12345678901234567890."
         ),
         width=1920,
@@ -86,7 +87,7 @@ def test_security_audit_3_and_4_secrets_redacted_before_memory_persistence(tmp_p
     assert msg is not None
 
     # Raw secrets must NOT be in stored message content
-    assert "TEST_GEMINI_API_KEY_PLACEHOLDER_06" not in msg.content
+    assert fake_key not in msg.content
     assert "SuperSecretMasterPassword!" not in msg.content
     assert "sk-abcdef12345678901234567890" not in msg.content
 

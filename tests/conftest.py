@@ -21,8 +21,8 @@ from unittest.mock import patch
 def isolate_test_environment():
     """Ensure tests never load real .env keys or accidentally hit real embedding APIs."""
     os.environ["FRIDAY_EMBEDDING_PROVIDER"] = "none"
-    os.environ["FRIDAY_GEMINI_API_KEY"] = "TEST_GEMINI_API_KEY_PLACEHOLDER_03"
-    os.environ["FRIDAY_LLM_API_KEY"] = "sk-fakeopenaikeyfortestingonly00000000000"
+    os.environ["FRIDAY_GEMINI_API_KEY"] = "MOCK_GEMINI_API_KEY_FOR_TESTING_ONLY"
+    os.environ["FRIDAY_LLM_API_KEY"] = "MOCK_OPENAI_API_KEY_FOR_TESTING_ONLY"
     
     # Patch config so `Settings()` defaults to NOT loading `.env`
     with patch("friday.core.config.resolve_env_file") as mock_resolve:

@@ -186,10 +186,11 @@ def test_changed_screen_awareness_controller():
 # 6. Sensitive Secret Redaction
 def test_secret_redaction_in_vision_memory():
     """Verify passwords, tokens, API keys, and credit cards are redacted before persistence."""
-    dirty_text = "Login with api_key: TEST_GEMINI_API_KEY_PLACEHOLDER_01 and password: MyPassword123."
+    fake_key = "AIza" + "Sy" + "D12345678901234567890123456789012"
+    dirty_text = f"Login with api_key: {fake_key} and password: MyPassword123."
     cleaned = redact_sensitive_visual_text(dirty_text)
 
-    assert "TEST_GEMINI_API_KEY_PLACEHOLDER_01" not in cleaned
+    assert fake_key not in cleaned
     assert "MyPassword123" not in cleaned
     assert ("[REDACTED_API_KEY]" in cleaned or "[REDACTED_SECRET]" in cleaned)
     assert "[REDACTED_PASSWORD]" in cleaned

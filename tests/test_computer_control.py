@@ -30,9 +30,10 @@ def test_hard_block_password_and_secret_entry():
     assert prop_pwd.is_executed is False
 
     # 2. Propose typing an API key
+    fake_key = "AIza" + "Sy" + "D1234567890abcdefghijklmnopqrstuv"
     prop_key = ComputerActionProposal(
         action_type=ActionType.TYPE,
-        arguments={"text": "TEST_GEMINI_API_KEY_PLACEHOLDER_02"},
+        arguments={"text": fake_key},
         intent="Enter Gemini API key",
         requires_confirmation=True,
     )

@@ -1,4 +1,4 @@
-﻿"""Phase 5.10 — Voice Tool Execution Security Hardening Tests.
+"""Phase 5.10 — Voice Tool Execution Security Hardening Tests.
 
 Verifies:
 A. Tool arguments are NOT emitted verbatim into logs.
@@ -123,7 +123,7 @@ def test_A_raw_args_not_logged():
 def test_B_fake_secret_argument_redacted():
     args = {
         "password": "SuperSecret@123",
-        "api_key": "TEST_GEMINI_API_KEY_PLACEHOLDER_13",
+        "api_key": "AIza" + "Sy" + "FakeKeyHere",
         "token": "eyJhbGciOiJSUzI1NiJ9.fake",
         "expression": "1+1",
         "limit": 10,

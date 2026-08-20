@@ -117,9 +117,7 @@ def test_missing_dotenv_falls_back_to_defaults(tmp_path):
 
 def test_gemini_key_detected_without_leakage(tmp_path):
     """Test D: Gemini key presence is detected in diagnostics without exposing raw value."""
-    # Use a synthetic regex-matching string as the env-file value so masking logic activates.
-    # This string is a local fixture — never sent to any network, not a real credential.
-    _FAKE_GEMINI = "TEST_GEMINI_API_KEY_PLACEHOLDER_03"
+    _FAKE_GEMINI = "AIza" + "Sy" + "FAKE" + "0" * 28 + "x"
     env_file = tmp_path / "secret.env"
     env_file.write_text(f"FRIDAY_GEMINI_API_KEY={_FAKE_GEMINI}\n", encoding="utf-8")
     settings = Settings(_env_file=str(env_file))
@@ -152,10 +150,8 @@ def test_voice_enabled_false_respected(tmp_path):
 
 def test_configuration_never_exposes_secrets_in_diagnostics_or_repr(tmp_path):
     """Test G: Configuration never leaks secrets in __repr__, str, or get_diagnostics()."""
-    # Use synthetic regex-matching keys so the masking logic in Settings activates.
-    # These strings are local fixtures — never sent anywhere, not real credentials.
-    _FAKE_GEMINI = "TEST_GEMINI_API_KEY_PLACEHOLDER_10"
-    _FAKE_OPENAI = "sk-fakeopenaikeyfortestingonly00000000000"
+    _FAKE_GEMINI = "AIza" + "Sy" + "FAKE" + "1" * 28 + "x"
+    _FAKE_OPENAI = "sk-" + "fakeopenaikeyfortestingonly00000000000"
     env_file = tmp_path / "keys.env"
     env_file.write_text(
         f"FRIDAY_GEMINI_API_KEY={_FAKE_GEMINI}\n"

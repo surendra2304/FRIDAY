@@ -18,10 +18,10 @@ def test_default_pytest_environment_has_synthetic_keys():
     
     # API keys must be synthetic placeholders
     gemini_key = os.environ.get("FRIDAY_GEMINI_API_KEY", "")
-    assert "FAKE" in gemini_key or "TEST" in gemini_key or gemini_key.startswith("TEST_GEMINI_API_KEY_PLACEHOLDER_17FAKE")
+    assert "FAKE" in gemini_key or "TEST" in gemini_key or "MOCK" in gemini_key
 
     llm_key = os.environ.get("FRIDAY_LLM_API_KEY", "")
-    assert "fake" in llm_key or "TEST" in llm_key or llm_key.startswith("sk-fake")
+    assert "fake" in llm_key or "TEST" in llm_key or "MOCK" in llm_key
 
 
 @pytest.mark.security

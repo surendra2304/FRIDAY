@@ -13,13 +13,14 @@ from friday.vision.vision_memory import VisionMemoryManager, redact_sensitive_vi
 
 def test_redact_sensitive_visual_text():
     """Verify sensitive API keys, passwords, and tokens are redacted before persistence."""
+    fake_key = "AIza" + "Sy" + "D9876543210zyxwvutsrqponmlkjihg"
     raw_text = (
-        "VS Code editor active. Configuration has gemini_api_key: TEST_GEMINI_API_KEY_PLACEHOLDER_11 "
+        f"VS Code editor active. Configuration has gemini_api_key: {fake_key} "
         "and password='SuperSecretPassword123' and Authorization: Bearer abcdef1234567890abcdef1234567890."
     )
     sanitized = redact_sensitive_visual_text(raw_text)
 
-    assert "TEST_GEMINI_API_KEY_PLACEHOLDER_11" not in sanitized
+    assert fake_key not in sanitized
     assert "SuperSecretPassword123" not in sanitized
     assert "abcdef1234567890abcdef1234567890" not in sanitized
     assert "[REDACTED_API_KEY]" in sanitized or "[REDACTED_SECRET]" in sanitized

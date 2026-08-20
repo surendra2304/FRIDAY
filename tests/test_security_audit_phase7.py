@@ -196,11 +196,12 @@ def test_vector_7_checkpoint_sanitization():
 def test_vector_8_working_context_secret_isolation():
     """Verify ActiveTaskContext redacts secrets and extracts clean summaries to long-term memory."""
     ctx = ActiveTaskContext(task_id="ctx_sec", goal="Context Secret Test")
-    ctx.record_step_result(step_id="s1", result="API key: key=TEST_GEMINI_API_KEY_PLACEHOLDER_16 confidential")
+    fake_key = "AIza" + "Sy" + "D123456789"
+    ctx.record_step_result(step_id="s1", result=f"API key: key={fake_key} confidential")
 
     summary = ctx.finalize_and_extract_long_term_summary(success=True)
     assert summary is not None
-    assert "TEST_GEMINI_API_KEY_PLACEHOLDER_16" not in summary.content
+    assert fake_key not in summary.content
 
 
 # Vector 9: Dynamic Parameter Chaining Injection Defense

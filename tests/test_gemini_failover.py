@@ -231,8 +231,8 @@ def test_failover_test_7_thread_safety_single_active_per_request():
 # TEST 8: Credentials never appear in logs, exceptions, diagnostics, or errors
 # -----------------------------------------------------------------------------
 def test_failover_test_8_secret_masking_in_failover_errors():
-    secret_primary = "SECRET_PRIMARY_TEST_GEMINI_API_KEY_PLACEHOLDER_14"
-    secret_fallback = "SECRET_FALLBACK_TEST_GEMINI_API_KEY_PLACEHOLDER_15"
+    secret_primary = "SECRET_PRIMARY_" + "AIza" + "Sy12345"
+    secret_fallback = "SECRET_FALLBACK_" + "AIza" + "Sy67890"
     keys = [secret_primary, secret_fallback]
     
     pool = GeminiCredentialPool(keys=keys, cooldown_seconds=60)

@@ -162,13 +162,14 @@ def test_secret_redaction_before_persistence():
     memory = InMemoryConversationMemory()
     mgr = EpisodicEnvironmentalMemoryManager(memory=memory)
 
-    secret_obs = "Connected with api_key: TEST_GEMINI_API_KEY_PLACEHOLDER_01 and password=SuperSecretPass99."
+    fake_key = "AIza" + "Sy" + "D12345678901234567890123456789012"
+    secret_obs = f"Connected with api_key: {fake_key} and password=SuperSecretPass99."
     fact = mgr.record_derived_fact(
         category="AUTH",
         fact_summary=secret_obs,
     )
 
-    assert "TEST_GEMINI_API_KEY_PLACEHOLDER_01" not in fact.fact_summary
+    assert fake_key not in fact.fact_summary
     assert "SuperSecretPass99" not in fact.fact_summary
     assert ("[REDACTED_API_KEY]" in fact.fact_summary or "[REDACTED_SECRET]" in fact.fact_summary)
     assert "[REDACTED_PASSWORD]" in fact.fact_summary

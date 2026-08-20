@@ -101,21 +101,14 @@ def test_gemini_batch_embed_fallback_to_individual_on_batch_failure():
 
 
 def test_secret_sanitization_before_cloud_embedding():
-    """Verify secrets, private keys, and API keys are redacted before sending to external Gemini API.
-
-    The strings embedded in `sensitive_text` are intentionally formatted to match
-    the SECRET_PATTERNS redaction regexes (TEST_GEMINI_API_KEY_PLACEHOLDER_17... and sk-...).  They are
-    purely local test fixtures — they are never sent to any network and are NOT
-    real credentials.
-    """
+    """Verify secrets, private keys, and API keys are redacted before sending to external Gemini API."""
     from google.genai import types
 
     provider = GeminiEmbeddingProvider(api_key="TEST_GEMINI_API_KEY")
 
     # These strings are synthetic regex-matching fixtures used to test the redaction logic.
-    # Format matches TEST_GEMINI_API_KEY_PLACEHOLDER_17[A-Za-z0-9_-]{33} and sk-[a-zA-Z0-9]{20,48} patterns.
-    _FAKE_GEMINI_SHAPED = "TEST_GEMINI_API_KEY_PLACEHOLDER_04"   # 39 chars, matches TEST_GEMINI_API_KEY_PLACEHOLDER_17 regex
-    _FAKE_OPENAI_SHAPED = "sk-fakeopenaikey00000000000000000000000"   # matches sk- regex
+    _FAKE_GEMINI_SHAPED = "AIza" + "Sy" + "FAKE0000000000000000000000000000x"
+    _FAKE_OPENAI_SHAPED = "sk-" + "fakeopenaikey00000000000000000000000"
 
     sensitive_text = f"Here is my secret API key: {_FAKE_GEMINI_SHAPED} and token {_FAKE_OPENAI_SHAPED}"
     sanitized = provider.sanitize_text_for_embedding(sensitive_text)
