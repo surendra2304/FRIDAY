@@ -6,6 +6,7 @@ from friday.tools.builtin.calculator import CalculatorTool
 from friday.tools.builtin.file_reader import FileReaderTool
 from friday.tools.builtin.file_listing import FileListingTool
 from friday.tools.builtin.memory_search import MemorySearchTool
+from friday.tools.builtin.screen_snapshot import ScreenSnapshotTool
 
 __all__ = [
     "SystemInfoTool",
@@ -14,4 +15,5 @@ __all__ = [
     "FileReaderTool",
     "FileListingTool",
     "MemorySearchTool",
+    "ScreenSnapshotTool",
 ]

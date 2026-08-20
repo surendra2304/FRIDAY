@@ -245,6 +245,22 @@ class Settings(BaseSettings):
         default=20971520,  # 20 MB
         description="Maximum allowed image size in bytes for visual analysis",
     )
+    screen_capture_provider: str = Field(
+        default="windows",
+        validation_alias=AliasChoices("FRIDAY_SCREEN_CAPTURE_PROVIDER", "SCREEN_CAPTURE_PROVIDER", "screen_capture_provider"),
+        description="Screen capture provider backend: 'windows' or 'mock'",
+    )
+    screen_display: str = Field(
+        default="primary",
+        validation_alias=AliasChoices("FRIDAY_SCREEN_DISPLAY", "SCREEN_DISPLAY", "screen_display"),
+        description="Target display for capture: 'primary' or display index '0', '1', etc.",
+    )
+    screen_capture_timeout: float = Field(
+        default=5.0,
+        ge=0.5,
+        le=30.0,
+        description="Maximum timeout in seconds for screen capture operation",
+    )
 
     task_enabled: bool = Field(default=False, description="Enable proactive task automation")
     task_max_calls: int = Field(default=100, description="Maximum allowed LLM calls per task")
