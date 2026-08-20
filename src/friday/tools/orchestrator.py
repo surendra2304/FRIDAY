@@ -92,8 +92,25 @@ class DataFlowResolver:
                 # Substring interpolation
                 def _replacer(m):
                     sid = m.group(1)
+                    prop = m.group(2)
                     if sid in step_results:
-                        return str(step_results[sid])
+                        val = step_results[sid]
+                        if prop:
+                            if isinstance(val, str):
+                                try:
+                                    val = json.loads(val)
+                                except Exception:
+                                    pass
+                            if isinstance(val, dict):
+                                keys = prop.split(".")
+                                curr = val
+                                for k in keys:
+                                    if isinstance(curr, dict) and k in curr:
+                                        curr = curr[k]
+                                    else:
+                                        return m.group(0)
+                                return str(curr)
+                        return str(val)
                     return m.group(0)
 
                 return cls.TEMPLATE_PATTERN.sub(_replacer, val), None
