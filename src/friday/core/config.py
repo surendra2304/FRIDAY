@@ -229,6 +229,23 @@ class Settings(BaseSettings):
         description="Thinking level for Gemini 3.1 Live session: MINIMAL, LOW, MEDIUM, HIGH",
     )
     voice_thinking_budget: Optional[int] = Field(default=0, ge=0, le=2048, description="Deprecated: Thinking budget tokens for legacy models")
+    
+    # Vision & Multimodal Settings
+    vision_model: str = Field(
+        default="gemini-3.6-flash",
+        validation_alias=AliasChoices("FRIDAY_VISION_MODEL", "VISION_MODEL", "vision_model"),
+        description="Multimodal Gemini vision model identifier",
+    )
+    vision_provider: str = Field(
+        default="gemini",
+        validation_alias=AliasChoices("FRIDAY_VISION_PROVIDER", "VISION_PROVIDER", "vision_provider"),
+        description="Vision provider: 'gemini' or 'mock'",
+    )
+    vision_max_image_bytes: int = Field(
+        default=20971520,  # 20 MB
+        description="Maximum allowed image size in bytes for visual analysis",
+    )
+
     task_enabled: bool = Field(default=False, description="Enable proactive task automation")
     task_max_calls: int = Field(default=100, description="Maximum allowed LLM calls per task")
     task_retry_limit: int = Field(default=3, description="Maximum retry attempts for transient failures")
