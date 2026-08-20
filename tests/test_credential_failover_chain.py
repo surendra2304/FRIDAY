@@ -101,27 +101,77 @@ def test_failure_chain_primary_to_fb3():
     mock_sleep.assert_not_called()
 
 
-def test_all_five_credentials_exhausted_graceful_failure():
-    """Verify graceful immediate failure with clear error message when all 5 keys are exhausted."""
-    keys = ["KEY_PRIMARY", "KEY_FALLBACK_1", "KEY_FALLBACK_2", "KEY_FALLBACK_3", "KEY_FALLBACK_4"]
-    pool = GeminiCredentialPool(keys=keys, cooldown_seconds=3600)
+def test_interactive_friday_agent_path_failover(tmp_path):
+    """Verify that FridayAgent -> create_llm_provider -> GeminiLLMProvider -> GeminiCredentialPool
+
+    fails over immediately when Primary returns 429 RESOURCE_EXHAUSTED.
+    """
+    from friday.agent.agent import FridayAgent
+    from friday.core.config import Settings
+    from friday.llm.factory import create_llm_provider
+
+    state_file = tmp_path / "pool_state.json"
+    keys = ["KEY_PRIMARY", "KEY_FALLBACK_1", "KEY_FALLBACK_2"]
+    pool = GeminiCredentialPool(keys=keys, cooldown_seconds=3600, state_file=state_file)
     pool.load_keys(keys)
     pool.reset_all()
 
-    provider = GeminiLLMProvider(api_key=None, credential_pool=pool, max_retries=5, backoff_factor=1.0)
+    settings = Settings(
+        llm_provider="gemini",
+        llm_model="gemini-3.6-flash",
+        gemini_api_key=None,
+        llm_api_key=None,
+    )
 
-    def fake_generate_content(model, contents, config):
-        raise Exception("429 RESOURCE_EXHAUSTED Quota Exceeded")
+    # Patch global credential_pool in factory/llm
+    with mock.patch("friday.llm.factory.credential_pool", pool), \
+         mock.patch("friday.auth.credential_pool.credential_pool", pool):
+        provider = create_llm_provider(settings)
+        # Verify provider received the credential pool and has no static api_key lock
+        assert provider.credential_pool is pool
+        assert provider._explicit_api_key is None
 
-    mock_client = mock.MagicMock()
-    mock_client._is_mock = True
-    mock_client.models.generate_content.side_effect = fake_generate_content
-    provider._client = mock_client
+        key_calls = {}
 
-    with mock.patch("time.sleep") as mock_sleep:
-        with pytest.raises(LLMProviderError) as exc_info:
-            provider.generate([Message(role=Role.USER, content="Test")])
+        def mock_generate(model, contents, config):
+            curr_key = provider._current_key
+            key_calls[curr_key] = key_calls.get(curr_key, 0) + 1
+            if curr_key == "KEY_PRIMARY":
+                raise Exception("429 RESOURCE_EXHAUSTED: generate_content_free_tier_requests limit: 20 model: gemini-3.6-flash")
+            return make_mock_response("Interactive agent response from Fallback 1")
 
-    assert "exhausted" in str(exc_info.value).lower() or "gemini" in str(exc_info.value).lower()
-    # No long blocking sleeps
-    mock_sleep.assert_not_called()
+        mock_client = mock.MagicMock()
+        mock_client._is_mock = True
+        mock_client.models.generate_content.side_effect = mock_generate
+        provider._client = mock_client
+
+        agent = FridayAgent(settings=settings, llm_provider=provider)
+        response = agent.process_message("Hello FRIDAY")
+
+        assert "Interactive agent response from Fallback 1" in response.content
+        assert key_calls["KEY_PRIMARY"] == 1
+        assert key_calls["KEY_FALLBACK_1"] == 1
+        assert pool.credentials[0].is_healthy(1) is False
+        assert pool.get_active_label() == "FALLBACK 1"
+
+
+def test_cooldown_expiry_restores_primary(tmp_path):
+    """Verify that when a cooldown expires, Primary becomes eligible again."""
+    state_file = tmp_path / "pool_state.json"
+    keys = ["KEY_PRIMARY", "KEY_FALLBACK_1"]
+    pool = GeminiCredentialPool(keys=keys, cooldown_seconds=60, state_file=state_file)
+    pool.load_keys(keys)
+    pool.reset_all()
+
+    # Fail primary
+    pool.report_failure("KEY_PRIMARY", Exception("429 Quota Exceeded"))
+    assert pool.get_active_label() == "FALLBACK 1"
+    assert pool.credentials[0].is_healthy(1) is False
+
+    # Simulate cooldown expiry
+    pool.credentials[0].cooldown_until = datetime.utcnow() - timedelta(seconds=5)
+    pool.credentials[0].failure_count = 0
+
+    assert pool.credentials[0].is_healthy(1) is True
+    assert pool.get_active_label() == "PRIMARY"
+

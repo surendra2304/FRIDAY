@@ -143,7 +143,8 @@ class GeminiVisionProvider(BaseVisionProvider):
         last_error = None
         attempt = 0
 
-        pool_size = len(self.credential_pool.credentials) if (self.credential_pool and hasattr(self.credential_pool, "credentials") and len(self.credential_pool.credentials) > 0) else None
+        pool_creds = getattr(self.credential_pool, "credentials", None) if self.credential_pool else None
+        pool_size = len(pool_creds) if (pool_creds is not None and isinstance(pool_creds, list) and len(pool_creds) > 0) else None
         max_attempts = pool_size if (pool_size is not None and not self._explicit_api_key) else (self.max_retries + 1)
 
         while attempt < max_attempts:
@@ -193,6 +194,23 @@ class GeminiVisionProvider(BaseVisionProvider):
                     FailureCategory.QUOTA_EXHAUSTED,
                     FailureCategory.AUTH_FAILED,
                 ):
+                    old_label = "key"
+                    try:
+                        c = self.credential_pool._find_by_key(active_key or self._current_key) if callable(getattr(self.credential_pool, "_find_by_key", None)) else None
+                        if c and hasattr(c, "project_label") and isinstance(c.project_label, str):
+                            old_label = c.project_label
+                    except Exception:
+                        pass
+
+                    next_label = "next available credential"
+                    try:
+                        next_c = self.credential_pool._find_by_key(active_key or self._current_key) if callable(getattr(self.credential_pool, "_find_by_key", None)) else None
+                    except Exception:
+                        pass
+
+                    logger.warning(
+                        f"Gemini credential {old_label} quota exhausted; switching to next available credential."
+                    )
                     continue
 
                 if attempt < max_attempts:
