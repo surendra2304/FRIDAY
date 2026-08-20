@@ -7,6 +7,8 @@ from friday.vision.mock_vision import MockVisionProvider
 from friday.vision.screen_base import BaseScreenCaptureProvider, ScreenSnapshot
 from friday.vision.windows_screen import WindowsScreenCaptureProvider
 from friday.vision.mock_screen import MockScreenCaptureProvider, create_synthetic_png
+from friday.vision.screen_context import ScreenContext
+from friday.vision.screen_analyzer import ScreenAnalyzer, DEFAULT_ANALYSIS_PROMPT
 
 __all__ = [
     "BaseVisionProvider",
@@ -19,4 +21,7 @@ __all__ = [
     "WindowsScreenCaptureProvider",
     "MockScreenCaptureProvider",
     "create_synthetic_png",
+    "ScreenContext",
+    "ScreenAnalyzer",
+    "DEFAULT_ANALYSIS_PROMPT",
 ]

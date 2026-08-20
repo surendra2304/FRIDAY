@@ -22,34 +22,71 @@ class ScreenSnapshotTool(BaseTool):
             "display": {
                 "type": "string",
                 "description": "Target display: 'primary', 'virtual', or numeric display index",
-            }
+            },
+            "query": {
+                "type": "string",
+                "description": "Optional question or visual analysis query (e.g. 'What is on my screen?', 'What error is visible?')",
+            },
         },
         "required": [],
     }
 
     def __init__(
         self,
+        capture_provider: Optional[BaseScreenCaptureProvider] = None,
+        vision_provider: Optional[Any] = None,
         provider: Optional[BaseScreenCaptureProvider] = None,
     ) -> None:
         super().__init__()
-        self._provider = provider
+        self._capture_provider = capture_provider or provider
+        self._vision_provider = vision_provider
         self.last_snapshot: Optional[ScreenSnapshot] = None
+        self.last_context: Optional[Any] = None
 
-    def _get_provider(self) -> BaseScreenCaptureProvider:
-        """Resolve active screen capture provider based on settings or injection."""
-        if self._provider is not None:
-            return self._provider
-
-        settings = get_settings()
-        prov_type = getattr(settings, "screen_capture_provider", "windows").lower()
-        if prov_type == "mock":
-            return MockScreenCaptureProvider()
-        return WindowsScreenCaptureProvider()
-
-    def execute(self, display: str = "primary", **kwargs: Any) -> ToolResult:
-        """Execute screen capture and return safe summary without exposing raw image data in output."""
+    def execute(self, display: str = "primary", query: Optional[str] = None, **kwargs: Any) -> ToolResult:
+        """Execute screen capture and optional multimodal vision analysis."""
         try:
-            provider = self._get_provider()
+            # 1. If query is provided or vision_provider is explicitly injected, perform multimodal analysis
+            if query or self._vision_provider is not None:
+                from friday.vision.screen_analyzer import ScreenAnalyzer
+
+                analyzer = ScreenAnalyzer(
+                    capture_provider=self._capture_provider,
+                    vision_provider=self._vision_provider,
+                )
+
+                context = analyzer.analyze_current_screen(display=display, user_query=query, **kwargs)
+                self.last_context = context
+
+                if context.is_error:
+                    return ToolResult(
+                        name=self.name,
+                        content=f"Screen observation failed: {context.error_message}",
+                        is_error=True,
+                        safety_level=self.safety_level,
+                    )
+
+                output = (
+                    f"Screen Snapshot ({context.width}x{context.height}, Display: {context.display_id}):\n"
+                    f"{context.summary}"
+                )
+                return ToolResult(
+                    name=self.name,
+                    content=output,
+                    is_error=False,
+                    safety_level=self.safety_level,
+                )
+
+            # 2. Otherwise perform fast safe capture and return metadata summary
+            from friday.vision.windows_screen import WindowsScreenCaptureProvider
+            from friday.vision.mock_screen import MockScreenCaptureProvider
+
+            provider = self._capture_provider
+            if provider is None:
+                settings = get_settings()
+                prov_type = getattr(settings, "screen_capture_provider", "windows").lower()
+                provider = MockScreenCaptureProvider() if prov_type == "mock" else WindowsScreenCaptureProvider()
+
             snapshot = provider.capture_screen(display=display)
             self.last_snapshot = snapshot
 
@@ -80,7 +117,7 @@ class ScreenSnapshotTool(BaseTool):
         except Exception as e:
             return ToolResult(
                 name=self.name,
-                content=f"Screen capture encountered an unexpected error: {e}",
+                content=f"Screen snapshot encountered an unexpected error: {e}",
                 is_error=True,
                 safety_level=self.safety_level,
             )
