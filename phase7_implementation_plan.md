@@ -86,10 +86,12 @@ flowchart TD
 - Integrated into `FridayAgent` (`execute_plan` method with progress tracking).
 - **Files Created/Modified**: `src/friday/agent/executor.py`, `src/friday/agent/agent.py`, `src/friday/agent/__init__.py`, `tests/test_multi_step_execution.py` (8/8 tests passing).
 
-#### Phase 7.4 — Verification, Assertions & Self-Correction Loops
-- Implement post-step verification (`StepVerifier`) to validate outcomes before declaring a step complete.
-- Enable bounded self-correction loops: if step fails verification, agent replans or attempts a corrective step (budgeted max 3 correction attempts).
-- **Target Files**: `src/friday/agent/verification.py`, `tests/test_verification_and_correction.py`.
+#### Phase 7.4 — Verification, Assertions & Self-Correction Loops [COMPLETE]
+- Implement post-step and task-level formal verification (`StepVerifier`, `VerificationResult`, and `VerificationStatus`).
+- Support explicit assertion criteria (`contains:<substr>`, `regex:<pattern>`, and semantic output heuristics).
+- Enable bounded self-correction loops (`SelfCorrectionPolicy`): diagnose failure, generate adjusted steps, retry within strict budget (max 3), and re-verify without infinite loops.
+- Integrated into `TaskExecutionEngine` with preservation of `BaseAuthorizer` gating and Proposal != Execution.
+- **Files Created/Modified**: `src/friday/agent/verification.py`, `src/friday/agent/executor.py`, `src/friday/agent/__init__.py`, `tests/test_verification_and_correction.py` (6/6 tests passing).
 
 #### Phase 7.5 — Active Working Task Memory & Context Isolation
 - Implement `ActiveTaskContext` to hold temporary variables, intermediate tool results, and step outputs during task execution.

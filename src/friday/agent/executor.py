@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Multi-Step Task Execution Engine & Progress Tracker for FRIDAY.
+"""Multi-Step Task Execution Engine, Progress Tracker & Self-Correction for FRIDAY.
 
 Consumes validated TaskPlan objects and executes plan steps in dependency order:
 - Dependency resolution: Prevents step execution until prerequisites succeed.
 - Step failure cascading: Skips or blocks dependent steps if prerequisites fail.
 - Safety & authorization gating: Enforces BaseAuthorizer and ToolRegistry policies.
+- Formal Verification: Asserts step and task success criteria via StepVerifier.
+- Bounded Self-Correction: Diagnoses verification failures and executes bounded retries.
 - Progress tracking: Telemetry on completed, failed, skipped, and pending steps.
 - Bounded execution: Enforces timeouts, step budgets, and loop limits.
 - Provider independence: Zero cloud lock-in, fully operable offline.
@@ -18,6 +20,7 @@ import uuid
 
 from friday.agent.planner import PlanStep, StepStatus, TaskPlan
 from friday.agent.state import ReasoningStateMachine, TaskState
+from friday.agent.verification import SelfCorrectionPolicy, StepVerifier, VerificationResult, VerificationStatus
 from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer
 from friday.core.logging import get_logger
 from friday.core.types import (
@@ -82,6 +85,8 @@ class StepExecutionResult:
     status: StepStatus
     result: Optional[Any] = None
     error: Optional[str] = None
+    verification: Optional[VerificationResult] = None
+    retries_used: int = 0
     start_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     end_time: Optional[datetime] = None
     duration_seconds: float = 0.0
@@ -92,6 +97,8 @@ class StepExecutionResult:
             "status": self.status.value,
             "result": self.result,
             "error": self.error,
+            "verification": self.verification.to_dict() if self.verification else None,
+            "retries_used": self.retries_used,
             "start_time": self.start_time.isoformat(),
             "end_time": self.end_time.isoformat() if self.end_time else None,
             "duration_seconds": round(self.duration_seconds, 3),
@@ -100,13 +107,14 @@ class StepExecutionResult:
 
 @dataclass
 class TaskExecutionResult:
-    """Overall outcome of executing a TaskPlan."""
+    """Overall outcome of executing a TaskPlan with verification status."""
 
     plan_id: str
     goal: str
     success: bool
     state: TaskState
     step_results: Dict[str, StepExecutionResult] = field(default_factory=dict)
+    plan_verification: Optional[VerificationResult] = None
     duration_seconds: float = 0.0
     error: Optional[str] = None
 
@@ -118,33 +126,38 @@ class TaskExecutionResult:
             "state": self.state.value,
             "duration_seconds": round(self.duration_seconds, 3),
             "step_results": {k: v.to_dict() for k, v in self.step_results.items()},
+            "plan_verification": self.plan_verification.to_dict() if self.plan_verification else None,
             "error": self.error,
         }
 
 
 class TaskExecutionEngine:
-    """Orchestrates structured step-by-step execution of TaskPlans."""
+    """Orchestrates structured step-by-step execution, verification, and self-correction of TaskPlans."""
 
     def __init__(
         self,
         tool_registry: ToolRegistry,
         authorizer: Optional[BaseAuthorizer] = None,
         max_step_limit: int = 50,
+        max_self_corrections_per_step: int = 3,
         step_timeout_seconds: float = 60.0,
         on_step_progress: Optional[Callable[[ExecutionProgress], None]] = None,
+        custom_corrector: Optional[Callable[[PlanStep, VerificationResult], Optional[PlanStep]]] = None,
     ) -> None:
         self.tools = tool_registry
         self.authorizer = authorizer or DefaultSecureAuthorizer()
         self.max_step_limit = max_step_limit
+        self.max_self_corrections_per_step = max_self_corrections_per_step
         self.step_timeout_seconds = step_timeout_seconds
         self.on_step_progress = on_step_progress
+        self.custom_corrector = custom_corrector
 
     def execute_plan(
         self,
         plan: TaskPlan,
         state_machine: Optional[ReasoningStateMachine] = None,
     ) -> TaskExecutionResult:
-        """Execute a TaskPlan in validated dependency order with safety gating."""
+        """Execute a TaskPlan in validated dependency order with verification and bounded self-correction."""
         start_time = time.perf_counter()
 
         # Validate plan before execution if not already verified
@@ -159,6 +172,7 @@ class TaskExecutionEngine:
             sm.transition_to(TaskState.EXECUTING, reason="Executing plan steps")
 
         step_results: Dict[str, StepExecutionResult] = {}
+        correction_policy = SelfCorrectionPolicy(max_correction_attempts=self.max_self_corrections_per_step)
         total_steps = len(plan.steps)
         executed_count = 0
 
@@ -199,39 +213,89 @@ class TaskExecutionEngine:
                 self._notify_progress(plan, step_results, step.step_id, time.perf_counter() - start_time)
                 continue
 
-            # 2. Execute Step
-            step.status = StepStatus.IN_PROGRESS
-            step_start = time.perf_counter()
-            self._notify_progress(plan, step_results, step.step_id, step_start - start_time)
+            # 2. Execute Step with Verification & Self-Correction Loop
+            current_step_target = step
+            retries_performed = 0
+            step_final_res: Optional[StepExecutionResult] = None
 
-            step_res = self._execute_step(step)
-            step_results[step.step_id] = step_res
-            step.status = step_res.status
-            step.result = step_res.result
-            step.error = step_res.error
+            while True:
+                current_step_target.status = StepStatus.IN_PROGRESS
+                step_start = time.perf_counter()
+                self._notify_progress(plan, step_results, current_step_target.step_id, step_start - start_time)
+
+                step_res = self._execute_step(current_step_target)
+                step_res.retries_used = retries_performed
+
+                # 3. Formal Step Verification
+                if step_res.status == StepStatus.COMPLETED:
+                    v_res = StepVerifier.verify_step_result(current_step_target, step_res.result)
+                    step_res.verification = v_res
+                    if not v_res.passed:
+                        logger.warning(f"Step '{step.step_id}' failed verification: {v_res.diagnostics}")
+                        step_res.status = StepStatus.FAILED
+                        step_res.error = f"Verification Failure: {v_res.diagnostics or v_res.evidence}"
+                else:
+                    v_res = VerificationResult(
+                        status=VerificationStatus.FAILED,
+                        criterion=step.success_criteria or "Execution Success",
+                        diagnostics=step_res.error or "Step execution failed",
+                    )
+                    step_res.verification = v_res
+
+                # Check if self-correction is possible
+                if step_res.status == StepStatus.FAILED and correction_policy.can_attempt_correction(step.step_id):
+                    retries_performed += 1
+                    corrected_step = correction_policy.generate_corrected_step(
+                        current_step_target,
+                        v_res,
+                        corrector_fn=self.custom_corrector,
+                    )
+                    if corrected_step:
+                        logger.info(f"Self-correcting step '{step.step_id}' (attempt {retries_performed})")
+                        current_step_target = corrected_step
+                        continue
+
+                # Finished with this step
+                step_final_res = step_res
+                break
+
+            step_results[step.step_id] = step_final_res
+            step.status = step_final_res.status
+            step.result = step_final_res.result
+            step.error = step_final_res.error
 
             self._notify_progress(plan, step_results, None, time.perf_counter() - start_time)
 
-        # 3. Assess overall plan outcome
+        # 4. Overall Plan Verification & Assessment
         overall_duration = time.perf_counter() - start_time
         all_completed = all(r.status == StepStatus.COMPLETED for r in step_results.values())
         any_failed = any(r.status in (StepStatus.FAILED, StepStatus.BLOCKED) for r in step_results.values())
 
-        if sm.current_state == TaskState.EXECUTING:
-            sm.transition_to(TaskState.VERIFYING, reason="Verifying step outcomes")
-            if all_completed and not any_failed:
-                sm.transition_to(TaskState.COMPLETED, reason="All plan steps completed successfully")
-            else:
-                sm.fail(reason="One or more plan steps failed during execution", metadata={"failed_steps": [k for k, v in step_results.items() if v.status == StepStatus.FAILED]})
+        # Collect verification results
+        step_v_map = {k: v.verification for k, v in step_results.items() if v.verification}
+        plan_verification = StepVerifier.verify_plan_completion(plan, step_v_map)
 
-        self._notify_progress(plan, step_results, None, overall_duration, is_done=True, success=all_completed)
+        if sm.current_state == TaskState.EXECUTING:
+            sm.transition_to(TaskState.VERIFYING, reason="Verifying overall plan outcome")
+            if all_completed and not any_failed and plan_verification.passed:
+                sm.transition_to(TaskState.COMPLETED, reason="All plan steps executed and formally verified")
+            else:
+                fail_reason = (
+                    f"Plan verification failed: {plan_verification.diagnostics}"
+                    if not plan_verification.passed
+                    else "One or more plan steps failed during execution"
+                )
+                sm.fail(reason=fail_reason, metadata={"failed_steps": [k for k, v in step_results.items() if v.status == StepStatus.FAILED]})
+
+        self._notify_progress(plan, step_results, None, overall_duration, is_done=True, success=(all_completed and plan_verification.passed))
 
         return TaskExecutionResult(
             plan_id=plan.plan_id,
             goal=plan.goal,
-            success=all_completed,
+            success=(all_completed and plan_verification.passed),
             state=sm.current_state,
             step_results=step_results,
+            plan_verification=plan_verification,
             duration_seconds=overall_duration,
             error=sm.failure_reason,
         )
