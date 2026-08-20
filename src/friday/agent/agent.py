@@ -34,6 +34,7 @@ from friday.tools.builtin import (
     FileListingTool,
     MemorySearchTool,
     ScreenSnapshotTool,
+    ProposeComputerActionTool,
 )
 from friday.tools.registry import ToolRegistry
 
@@ -164,6 +165,7 @@ class FridayAgent:
         registry.register(FileListingTool())
         registry.register(MemorySearchTool(self.memory))
         registry.register(ScreenSnapshotTool())
+        registry.register(ProposeComputerActionTool())
         return registry
 
     def _execute_single_tool_call_internal(self, tc: ToolCall) -> ToolResult:
