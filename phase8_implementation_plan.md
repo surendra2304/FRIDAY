@@ -74,10 +74,12 @@ Phase 8.10: Full Phase 8 Multimodal Perception Acceptance Gate
 
 ## 4. Detailed Subphase Specifications
 
-### Phase 8.2 — Structured UI Element Grounding & Bounding Box Models
-- Introduce structured models: `UIElement`, `ElementType` (BUTTON, INPUT, LINK, MODAL, MENU, CODE_EDITOR, TERMINAL), `BoundingBox` (normalized coordinates 0–1000).
-- Extend `BaseVisionProvider` and `GeminiVisionProvider` to support structured JSON element detection schemas.
-- Ensure 100% provider independence with `MockVisionProvider` element fixture generator.
+### Phase 8.2 — Structured UI Element Grounding & Bounding Box Models [COMPLETE]
+- Introduced `UIElement`, `ElementType` (BUTTON, INPUT_FIELD, TEXT_REGION, WINDOW, APPLICATION_REGION, DIALOG, MODAL, MENU, MENU_ITEM, TAB, TABLE, NOTIFICATION, ICON, CHECKBOX, DROPDOWN, CODE_EDITOR, TERMINAL, CHART, UNKNOWN), and `BoundingBox` normalized to 0–1000 coordinate scale with pixel conversions.
+- Upgraded `ScreenAnalyzer` to request structured JSON schemas from vision providers and parse UI elements, confidence ratings, and bounding coordinates.
+- Added confidence-aware element query methods on `ScreenContext` (`find_element_by_label`, `get_elements_by_type`).
+- Enforced untrusted visual data delimiters preventing visual text from overriding system policies.
+- **Files Created/Modified**: `src/friday/vision/ui_elements.py`, `src/friday/vision/screen_context.py`, `src/friday/vision/screen_analyzer.py`, `src/friday/vision/__init__.py`, `tests/test_advanced_screen_understanding.py` (7/7 tests passing).
 
 ### Phase 8.3 — Local Text & Perceptual Region Pre-Filtering
 - Add local image slicing and region-of-interest (ROI) hashing to avoid full-screen re-analysis when only a subregion (e.g., terminal window) changes.

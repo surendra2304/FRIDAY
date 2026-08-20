@@ -20,6 +20,8 @@ from friday.vision.computer_control import (
     HARD_BLOCKED_INTENTS,
 )
 
+from friday.vision.ui_elements import BoundingBox, ElementType, UIElement
+
 __all__ = [
     "BaseVisionProvider",
     "VisionAnalysisResult",
@@ -46,4 +48,7 @@ __all__ = [
     "ActionExecutionResult",
     "ExecutionStatus",
     "HARD_BLOCKED_INTENTS",
+    "BoundingBox",
+    "ElementType",
+    "UIElement",
 ]
