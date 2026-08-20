@@ -93,7 +93,11 @@ class PerceptionActionPreparer:
 
         # Defense against visual injection text commanding action execution
         query = target_description.lower().strip()
-        if any(bad in query for bad in ["system override", "execute shell", "format c:", "drop database", "ignore previous"]):
+        malicious_markers = [
+            "system override", "execute shell", "format c:", "drop database", "ignore previous",
+            "eval(", "exec(", "<script>", "document.cookie", "rmdir /s /q", "you are now",
+        ]
+        if any(bad in query for bad in malicious_markers):
             logger.warning(f"Rejected malicious visual target instruction: {query}")
             return GroundingStatus.MALICIOUS_REJECTED, None, "Target contains prohibited instruction pattern"
 

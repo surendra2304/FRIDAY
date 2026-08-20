@@ -191,7 +191,8 @@ class ActiveTaskContext:
             return
 
         # Redact secrets / binary payloads
-        if "key=" in clean or "token=" in clean or "password=" in clean or "secret=" in clean:
+        lower_clean = clean.lower()
+        if ("[redacted" not in lower_clean) and ("key=" in clean or "token=" in clean or "password=" in clean or "secret=" in clean or "aizasy" in lower_clean or "sk-" in clean):
             clean = "[Sensitive credentials redacted]"
 
         obs = TaskObservation(step_id=step_id, content=clean, source_tool=source_tool)
