@@ -21,6 +21,13 @@ import uuid
 from friday.agent.planner import PlanStep, StepStatus, TaskPlan
 from friday.agent.state import ReasoningStateMachine, TaskState
 from friday.agent.verification import SelfCorrectionPolicy, StepVerifier, VerificationResult, VerificationStatus
+from friday.agent.recovery import (
+    AutonomousRecoveryManager,
+    FailureAnalyzer,
+    FailureDiagnosis,
+    FailureType,
+    RecoveryStrategy,
+)
 from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer
 from friday.core.logging import get_logger
 from friday.core.types import (
@@ -143,6 +150,7 @@ class TaskExecutionEngine:
         step_timeout_seconds: float = 60.0,
         on_step_progress: Optional[Callable[[ExecutionProgress], None]] = None,
         custom_corrector: Optional[Callable[[PlanStep, VerificationResult], Optional[PlanStep]]] = None,
+        tool_fallbacks: Optional[Dict[str, str]] = None,
     ) -> None:
         self.tools = tool_registry
         self.authorizer = authorizer or DefaultSecureAuthorizer()
@@ -151,6 +159,7 @@ class TaskExecutionEngine:
         self.step_timeout_seconds = step_timeout_seconds
         self.on_step_progress = on_step_progress
         self.custom_corrector = custom_corrector
+        self.tool_fallbacks = tool_fallbacks or {}
 
     def execute_plan(
         self,
@@ -177,7 +186,11 @@ class TaskExecutionEngine:
             sm.transition_to(TaskState.EXECUTING, reason="Executing plan steps")
 
         step_results: Dict[str, StepExecutionResult] = {}
-        correction_policy = SelfCorrectionPolicy(max_correction_attempts=self.max_self_corrections_per_step)
+        recovery_mgr = AutonomousRecoveryManager(
+            max_retries_per_step=self.max_self_corrections_per_step,
+            max_global_task_retries=self.max_step_limit,
+            tool_fallbacks=getattr(self, "tool_fallbacks", {}),
+        )
         total_steps = len(plan.steps)
         executed_count = 0
 
@@ -218,7 +231,7 @@ class TaskExecutionEngine:
                 self._notify_progress(plan, step_results, step.step_id, time.perf_counter() - start_time)
                 continue
 
-            # 2. Execute Step with Verification & Self-Correction Loop
+            # 2. Execute Step with Verification & Autonomous Recovery Loop
             current_step_target = step
             retries_performed = 0
             step_final_res: Optional[StepExecutionResult] = None
@@ -250,18 +263,28 @@ class TaskExecutionEngine:
                     )
                     step_res.verification = v_res
 
-                # Check if self-correction is possible
-                if step_res.status == StepStatus.FAILED and correction_policy.can_attempt_correction(step.step_id):
-                    retries_performed += 1
-                    corrected_step = correction_policy.generate_corrected_step(
-                        current_step_target,
-                        v_res,
-                        corrector_fn=self.custom_corrector,
+                # 4. Failure Diagnosis & Autonomous Recovery
+                if step_res.status == StepStatus.FAILED:
+                    diagnosis = FailureAnalyzer.diagnose(
+                        step=current_step_target,
+                        error_msg=step_res.error or "",
+                        verification=v_res,
+                        tool_fallbacks=recovery_mgr.tool_fallbacks,
                     )
-                    if corrected_step:
-                        logger.info(f"Self-correcting step '{step.step_id}' (attempt {retries_performed})")
-                        current_step_target = corrected_step
-                        continue
+                    logger.info(
+                        f"Step '{step.step_id}' failure diagnosed as {diagnosis.failure_type.value}: "
+                        f"{diagnosis.reason} (Strategy: {diagnosis.recommended_strategy.value})"
+                    )
+
+                    if recovery_mgr.can_recover(step.step_id, diagnosis):
+                        recovered_step = recovery_mgr.record_and_generate_recovery_step(
+                            current_step_target,
+                            diagnosis,
+                        )
+                        if recovered_step:
+                            retries_performed += 1
+                            current_step_target = recovered_step
+                            continue
 
                 # Finished with this step
                 step_final_res = step_res

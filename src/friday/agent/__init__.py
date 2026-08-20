@@ -6,6 +6,13 @@ from friday.agent.state import TaskState, ReasoningStateMachine, InvalidStateTra
 from friday.agent.planner import TaskPlan, PlanStep, StepStatus, PlanValidationError, GoalDecomposer
 from friday.agent.executor import TaskExecutionEngine, ExecutionProgress, StepExecutionResult, TaskExecutionResult
 from friday.agent.verification import StepVerifier, VerificationResult, VerificationStatus, SelfCorrectionPolicy
+from friday.agent.recovery import (
+    FailureType,
+    RecoveryStrategy,
+    FailureDiagnosis,
+    FailureAnalyzer,
+    AutonomousRecoveryManager,
+)
 
 __all__ = [
     "FridayAgent",
@@ -27,4 +34,9 @@ __all__ = [
     "VerificationResult",
     "VerificationStatus",
     "SelfCorrectionPolicy",
+    "FailureType",
+    "RecoveryStrategy",
+    "FailureDiagnosis",
+    "FailureAnalyzer",
+    "AutonomousRecoveryManager",
 ]

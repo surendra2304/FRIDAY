@@ -100,10 +100,12 @@ flowchart TD
 - Integrated into `FridayAgent` (`task_context`, `create_plan`, `execute_plan`, and `get_status()`).
 - **Files Created/Modified**: `src/friday/memory/task_context.py`, `src/friday/memory/__init__.py`, `src/friday/agent/agent.py`, `src/friday/agent/executor.py`, `tests/test_task_memory.py` (8/8 tests passing).
 
-#### Phase 7.6 — Autonomous Failure Recovery & Strategy Adaptation
-- Implement structured failure analysis (`FailureAnalyzer`): classifies failures into network, quota, tool syntax, missing dependency, or unexpected environment state.
-- Provide automatic alternative path exploration (e.g. fallback tools or alternative query formulations) without infinite retry loops.
-- **Target Files**: `src/friday/agent/recovery.py`, `tests/test_failure_recovery.py`.
+#### Phase 7.6 — Autonomous Failure Recovery & Strategy Adaptation [COMPLETE]
+- Implement structured failure classification (`FailureType`) and recovery strategy selection (`RecoveryStrategy`, `FailureDiagnosis`).
+- Implement deterministic failure analyzer (`FailureAnalyzer`) detecting transient network timeouts, quota limits, argument errors, authorization denials, and unrecoverable safety hard-blocks.
+- Implement `AutonomousRecoveryManager` enforcing per-step retry limits and global task retry budgets to prevent retry storms and infinite loops.
+- Integrated into `TaskExecutionEngine` with tool fallback substitution and strict authorization gating.
+- **Files Created/Modified**: `src/friday/agent/recovery.py`, `src/friday/agent/executor.py`, `src/friday/agent/__init__.py`, `tests/test_failure_recovery.py` (6/6 tests passing).
 
 #### Phase 7.7 — Interruption, Checkpointing & Resumption
 - Add ACID SQLite task checkpointing (`TaskCheckpointStore`).
