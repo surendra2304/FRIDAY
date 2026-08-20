@@ -37,6 +37,7 @@ from friday.tools.builtin import (
     ProposeComputerActionTool,
 )
 from friday.agent.state import TaskState, ReasoningStateMachine
+from friday.agent.planner import TaskPlan, PlanStep, StepStatus, GoalDecomposer
 from friday.tools.registry import ToolRegistry
 
 logger = get_logger("agent.core")
@@ -68,6 +69,7 @@ class FridayAgent:
         self.system_message = build_system_message(self.settings)
         self._processed_tool_ids: set = set()
         self.state_machine: ReasoningStateMachine = ReasoningStateMachine()
+        self._current_plan: Optional[TaskPlan] = None
 
         if self.settings.memory_retention_days:
             self.prune_memory(self.settings.memory_retention_days)
@@ -337,6 +339,22 @@ class FridayAgent:
     def current_state(self) -> TaskState:
         """Return the current reasoning state of the agent."""
         return self.state_machine.current_state
+
+    @property
+    def current_plan(self) -> Optional[TaskPlan]:
+        """Return the active TaskPlan if one exists."""
+        return self._current_plan
+
+    def create_plan(self, goal: str, steps: Optional[List[Dict[str, Any]]] = None) -> TaskPlan:
+        """Create and validate a structured TaskPlan for a given user goal."""
+        if steps:
+            plan = GoalDecomposer.create_multi_step_plan(goal=goal, step_definitions=steps)
+        else:
+            plan = GoalDecomposer.create_single_step_plan(goal=goal, description=f"Process goal: {goal}")
+        
+        plan.validate(tool_registry=self.tools)
+        self._current_plan = plan
+        return plan
 
     def process_message(
         self,
@@ -625,6 +643,7 @@ class FridayAgent:
             "memory_messages": len(self.memory.get_messages()),
             "memory_capacity": self.settings.memory_max_messages,
             "max_tool_iterations": self.max_tool_iterations,
+            "active_plan": self._current_plan.to_dict() if self._current_plan else None,
             "tools_registered": [f"{t.name} ({t.safety_level.value})" for t in self.tools.list_tools()],
         }
         if self.conversation_id:

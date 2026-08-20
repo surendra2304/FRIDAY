@@ -71,11 +71,12 @@ flowchart TD
 - Integrated seamlessly into `FridayAgent` (`current_state`, `state_machine`, `get_status()`, and lifecycle logging in `process_message`).
 - **Files Created/Modified**: `src/friday/agent/state.py`, `src/friday/agent/agent.py`, `src/friday/agent/__init__.py`, `tests/test_reasoning_state.py` (10/10 tests passing).
 
-#### Phase 7.2 — Structured Task Planning & Goal Decomposition
-- Implement `TaskPlan`, `PlanStep`, and `GoalDecomposer`.
-- Define step dependencies, expected inputs/outputs, and safety requirements.
-- Prevent arbitrary shell or destructive generation in plans.
-- **Target Files**: `src/friday/agent/planner.py`, `tests/test_task_planner.py`.
+#### Phase 7.2 — Structured Task Planning & Goal Decomposition [COMPLETE]
+- Implement `TaskPlan`, `PlanStep`, `StepStatus`, `PlanValidationError`, and `GoalDecomposer`.
+- Define step dependencies, expected inputs/outputs, safety requirements, and pre-execution validation.
+- Prevent arbitrary shell or destructive generation in plans via strict schema & safety elevation validation.
+- Integrated into `FridayAgent` (`create_plan`, `current_plan`, and active plan status tracking in `get_status()`).
+- **Files Created/Modified**: `src/friday/agent/planner.py`, `src/friday/agent/agent.py`, `src/friday/agent/__init__.py`, `tests/test_task_planner.py` (10/10 tests passing).
 
 #### Phase 7.3 — Multi-Step Task Execution Engine & Progress Tracker
 - Build execution orchestrator that executes `PlanStep` items sequentially or in validated DAG order.
