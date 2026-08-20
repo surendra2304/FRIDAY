@@ -31,7 +31,8 @@ Phase 9.6: Autonomous Failure Recovery & Strategy Adaptation [COMPLETE]
 Phase 9.7: Task Interruption, Checkpointing & Resumption [COMPLETE]
 Phase 9.8: Advanced Tool Orchestration & Capability Routing [COMPLETE]
 Phase 9.9: Long-Running Task Management & Background Goals [COMPLETE]
-Phase 9.10: Phase 9 Full Autonomous Cognitive Acceptance Gate [PENDING]
+Phase 9.10: Autonomous Safety & Authorization Gate [COMPLETE]
+Phase 9.11: Phase 9 Full Autonomous Cognitive Acceptance Gate [PENDING]
 ```
 
 ---
@@ -213,6 +214,25 @@ Phase 9.10: Phase 9 Full Autonomous Cognitive Acceptance Gate [PENDING]
   - `tests/test_long_running_tasks.py` (5/5 tests passing)
 - **Verification**:
   - Full automated suite: 544 passed, 5 deselected in 90.33s.
+
+---
+
+## 12. Subphase 9.10 Specifications & Verification [COMPLETE]
+
+- **Components Implemented**:
+  1. Centralized Safety & Authorization Gate (`AutonomousSafetyGate`):
+     - Risk levels: `SAFE`, `LOW_RISK_CONFIRMATION`, `HIGH_RISK_CONFIRMATION`, `BLOCKED`.
+     - Unconditional hard-block enforcement for destructive operations (`format c:`, `rm -rf`, `drop table`, `del /f`, `kill -9`, financial transactions/funds transfers, credential dumps, and security bypasses).
+     - Untrusted data & prompt injection defense evaluating descriptions, tool parameters, and screen text before execution.
+     - Environment freshness revalidation detecting stale UI states across checkpoints.
+- **Files Created/Modified**:
+  - `src/friday/agent/safety_gate.py`
+  - `src/friday/agent/__init__.py`
+  - `tests/test_autonomous_safety_gate.py` (13/13 tests passing)
+  - `tests/test_security_audit_phase7.py` (10/10 tests passing)
+- **Verification**:
+  - Full automated suite: 557 passed, 5 deselected in 85.43s.
+
 
 
 

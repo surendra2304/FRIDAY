@@ -21,6 +21,11 @@ from friday.agent.goal import (
     GoalUnderstandingEngine,
     SubGoal,
 )
+from friday.agent.safety_gate import (
+    AutonomousSafetyGate,
+    GateEvaluationResult,
+    TaskRiskLevel,
+)
 
 __all__ = [
     "FridayAgent",
@@ -54,4 +59,7 @@ __all__ = [
     "GoalRiskLevel",
     "GoalUnderstandingEngine",
     "SubGoal",
+    "AutonomousSafetyGate",
+    "GateEvaluationResult",
+    "TaskRiskLevel",
 ]
