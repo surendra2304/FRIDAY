@@ -30,7 +30,8 @@ Phase 9.5: Active Working Memory & Task Context [COMPLETE]
 Phase 9.6: Autonomous Failure Recovery & Strategy Adaptation [COMPLETE]
 Phase 9.7: Task Interruption, Checkpointing & Resumption [COMPLETE]
 Phase 9.8: Advanced Tool Orchestration & Capability Routing [COMPLETE]
-Phase 9.9: Phase 9 Full Autonomous Cognitive Acceptance Gate [PENDING]
+Phase 9.9: Long-Running Task Management & Background Goals [COMPLETE]
+Phase 9.10: Phase 9 Full Autonomous Cognitive Acceptance Gate [PENDING]
 ```
 
 ---
@@ -193,6 +194,26 @@ Phase 9.9: Phase 9 Full Autonomous Cognitive Acceptance Gate [PENDING]
   - `tests/test_advanced_tool_planning.py` (5/5 tests passing)
 - **Verification**:
   - Full automated suite: 539 passed, 5 deselected in 90.38s.
+
+---
+
+## 11. Subphase 9.9 Specifications & Verification [COMPLETE]
+
+- **Components Implemented**:
+  1. Long-Running Task Manager Extensions (`LongRunningTaskManager`):
+     - Added retry budgets (`retry_budget`, `retries_used`), deadline tracking, and completion listener callbacks.
+     - Enforces deadline expiration and execution timeouts in background worker loops.
+     - Thread-safe pause, resume, and cancellation mechanics.
+     - Prevents duplicate active execution for identical goals.
+  2. Structured Telemetry (`TaskProgressReport`):
+     - Reports task status, completion percentage, elapsed time, current step ID, retry counts, and deadlines.
+- **Files Created/Modified**:
+  - `src/friday/tasks/manager.py`
+  - `tests/test_long_running_tasks_extended.py` (5/5 tests passing)
+  - `tests/test_long_running_tasks.py` (5/5 tests passing)
+- **Verification**:
+  - Full automated suite: 544 passed, 5 deselected in 90.33s.
+
 
 
 

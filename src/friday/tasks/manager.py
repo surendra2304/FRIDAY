@@ -52,6 +52,9 @@ class TaskProgressReport:
     current_step_id: Optional[str]
     progress_percentage: float
     elapsed_seconds: float
+    retry_budget: int = 3
+    retries_used: int = 0
+    deadline: Optional[datetime] = None
     error: Optional[str] = None
     last_updated: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -65,6 +68,9 @@ class TaskProgressReport:
             "current_step_id": self.current_step_id,
             "progress_percentage": round(self.progress_percentage, 1),
             "elapsed_seconds": round(self.elapsed_seconds, 2),
+            "retry_budget": self.retry_budget,
+            "retries_used": self.retries_used,
+            "deadline": self.deadline.isoformat() if self.deadline else None,
             "error": self.error,
             "last_updated": self.last_updated.isoformat(),
         }
@@ -78,21 +84,32 @@ class LongRunningTaskManager:
         agent: FridayAgent,
         default_timeout_seconds: float = 300.0,
         max_concurrent_tasks: int = 5,
+        default_retry_budget: int = 3,
     ) -> None:
         self.agent = agent
         self.default_timeout_seconds = default_timeout_seconds
         self.max_concurrent_tasks = max_concurrent_tasks
+        self.default_retry_budget = default_retry_budget
         self._tasks: Dict[str, Dict[str, Any]] = {}
+        self._completion_listeners: List[Callable[[TaskProgressReport], None]] = []
         self._lock = threading.RLock()
+
+    def add_completion_listener(self, listener: Callable[[TaskProgressReport], None]) -> None:
+        """Register a notification callback for background task completion or failure."""
+        with self._lock:
+            if listener not in self._completion_listeners:
+                self._completion_listeners.append(listener)
 
     def submit_task(
         self,
         goal: str,
         steps: Optional[List[Dict[str, Any]]] = None,
         timeout_seconds: Optional[float] = None,
+        retry_budget: Optional[int] = None,
+        deadline: Optional[datetime] = None,
         on_progress: Optional[Callable[[TaskProgressReport], None]] = None,
     ) -> str:
-        """Submit and launch a new long-running task in the background."""
+        """Submit and launch a new long-running task in the background with explicit safety bounds."""
         with self._lock:
             active_count = sum(
                 1 for t in self._tasks.values()
@@ -112,6 +129,7 @@ class LongRunningTaskManager:
             plan = self.agent.create_plan(goal=goal, steps=steps)
             task_id = plan.plan_id
             timeout = timeout_seconds or self.default_timeout_seconds
+            budget = retry_budget if retry_budget is not None else self.default_retry_budget
 
             cancel_event = threading.Event()
             pause_event = threading.Event()
@@ -122,6 +140,9 @@ class LongRunningTaskManager:
                 "plan": plan,
                 "status": TaskLifecycleStatus.SUBMITTED,
                 "timeout_seconds": timeout,
+                "retry_budget": budget,
+                "retries_used": 0,
+                "deadline": deadline,
                 "created_at": datetime.now(timezone.utc),
                 "started_at": None,
                 "finished_at": None,
@@ -172,6 +193,9 @@ class LongRunningTaskManager:
                 current_step_id=t["current_step_id"],
                 progress_percentage=t["progress_percentage"],
                 elapsed_seconds=elapsed,
+                retry_budget=t.get("retry_budget", 3),
+                retries_used=t.get("retries_used", 0),
+                deadline=t.get("deadline"),
                 error=t["error"],
             )
 
@@ -222,7 +246,19 @@ class LongRunningTaskManager:
             t["finished_at"] = time.time()
             self.agent.cancel_task(reason=reason)
             logger.info(f"Cancelled task '{task_id}': {reason}")
+            self._notify_completion(task_id)
             return True
+
+    def _notify_completion(self, task_id: str) -> None:
+        """Notify all registered listeners about task conclusion."""
+        report = self.get_task_status(task_id)
+        if not report:
+            return
+        for listener in list(self._completion_listeners):
+            try:
+                listener(report)
+            except Exception as ex:
+                logger.error(f"Error in completion listener for task '{task_id}': {ex}")
 
     def list_tasks(self) -> List[TaskProgressReport]:
         """List all managed background tasks."""
@@ -230,7 +266,7 @@ class LongRunningTaskManager:
             return [self.get_task_status(tid) for tid in self._tasks.keys() if self.get_task_status(tid)]
 
     def _task_worker(self, task_id: str, is_resumption: bool = False) -> None:
-        """Background execution worker thread with timeout enforcement."""
+        """Background execution worker thread with timeout & deadline enforcement."""
         with self._lock:
             t = self._tasks.get(task_id)
             if not t:
@@ -239,6 +275,7 @@ class LongRunningTaskManager:
             t["started_at"] = t["started_at"] or time.time()
             plan: TaskPlan = t["plan"]
             timeout = t["timeout_seconds"]
+            deadline = t.get("deadline")
 
         start_time = time.time()
 
@@ -248,10 +285,10 @@ class LongRunningTaskManager:
                 if not task_rec:
                     return
 
-                # Timeout check
-                if time.time() - start_time > timeout:
+                # Timeout & Deadline checks
+                if time.time() - start_time > timeout or (deadline and datetime.now(timezone.utc) > deadline):
                     task_rec["status"] = TaskLifecycleStatus.TIMED_OUT
-                    task_rec["error"] = f"Task exceeded execution timeout ({timeout}s)."
+                    task_rec["error"] = f"Task exceeded execution timeout ({timeout}s) or deadline."
                     task_rec["cancel_event"].set()
                     self.agent.cancel_task(reason=task_rec["error"])
                     return
@@ -299,6 +336,8 @@ class LongRunningTaskManager:
 
                 logger.info(f"Task '{task_id}' concluded with status '{task_rec['status'].value}'.")
 
+            self._notify_completion(task_id)
+
         except Exception as e:
             logger.error(f"Exception in worker for task '{task_id}': {e}", exc_info=True)
             with self._lock:
@@ -307,3 +346,4 @@ class LongRunningTaskManager:
                     task_rec["status"] = TaskLifecycleStatus.FAILED
                     task_rec["error"] = str(e)
                     task_rec["finished_at"] = time.time()
+            self._notify_completion(task_id)
