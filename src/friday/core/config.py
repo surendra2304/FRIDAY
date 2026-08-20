@@ -261,6 +261,25 @@ class Settings(BaseSettings):
         le=30.0,
         description="Maximum timeout in seconds for screen capture operation",
     )
+    screen_aware: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("FRIDAY_SCREEN_AWARE", "SCREEN_AWARE", "screen_aware"),
+        description="Whether background periodic screen awareness is enabled (default False)",
+    )
+    screen_interval_seconds: float = Field(
+        default=10.0,
+        ge=1.0,
+        le=3600.0,
+        validation_alias=AliasChoices("FRIDAY_SCREEN_INTERVAL_SECONDS", "SCREEN_INTERVAL_SECONDS", "screen_interval_seconds"),
+        description="Minimum interval in seconds between periodic screen captures",
+    )
+    screen_change_threshold: float = Field(
+        default=0.05,
+        ge=0.001,
+        le=1.0,
+        validation_alias=AliasChoices("FRIDAY_SCREEN_CHANGE_THRESHOLD", "SCREEN_CHANGE_THRESHOLD", "screen_change_threshold"),
+        description="Minimum image difference ratio (0.0 to 1.0) required to trigger visual analysis for changed screens",
+    )
 
     task_enabled: bool = Field(default=False, description="Enable proactive task automation")
     task_max_calls: int = Field(default=100, description="Maximum allowed LLM calls per task")

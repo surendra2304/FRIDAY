@@ -9,6 +9,8 @@ from friday.vision.windows_screen import WindowsScreenCaptureProvider
 from friday.vision.mock_screen import MockScreenCaptureProvider, create_synthetic_png
 from friday.vision.screen_context import ScreenContext
 from friday.vision.screen_analyzer import ScreenAnalyzer, DEFAULT_ANALYSIS_PROMPT
+from friday.vision.change_detector import ScreenChangeDetector, compute_image_difference_ratio
+from friday.vision.screen_awareness import ScreenAwarenessController
 
 __all__ = [
     "BaseVisionProvider",
@@ -24,4 +26,7 @@ __all__ = [
     "ScreenContext",
     "ScreenAnalyzer",
     "DEFAULT_ANALYSIS_PROMPT",
+    "ScreenChangeDetector",
+    "compute_image_difference_ratio",
+    "ScreenAwarenessController",
 ]
