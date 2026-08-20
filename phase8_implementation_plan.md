@@ -81,13 +81,15 @@ Phase 8.10: Full Phase 8 Multimodal Perception Acceptance Gate
 - Enforced untrusted visual data delimiters preventing visual text from overriding system policies.
 - **Files Created/Modified**: `src/friday/vision/ui_elements.py`, `src/friday/vision/screen_context.py`, `src/friday/vision/screen_analyzer.py`, `src/friday/vision/__init__.py`, `tests/test_advanced_screen_understanding.py` (7/7 tests passing).
 
-### Phase 8.3 — Local Text & Perceptual Region Pre-Filtering
+### Phase 8.3 — Temporal & Environmental Context [COMPLETE]
+- Implemented `TemporalEnvironmentTracker`, `TemporalObservation`, `EnvironmentalChange`, and `EnvironmentalChangeType` (APPLICATION_FOCUS_SWITCH, WINDOW_TITLE_CHANGED, DIALOG_OPENED, DIALOG_CLOSED, ERROR_APPEARED, ERROR_RESOLVED, UI_ELEMENTS_MODIFIED, INSIGNIFICANT_NOISE, NO_CHANGE).
+- Supported tracking of CURRENT_STATE vs PREVIOUS_STATE, meaningful change identification, confidence handling, task context association, and prompt formatting.
+- Integrated sliding window temporal history with configurable max entries to maintain memory bounds without persisting raw screenshots.
+- **Files Created/Modified**: `src/friday/vision/temporal.py`, `src/friday/vision/__init__.py`, `tests/test_temporal_environment.py` (7/7 tests passing).
+
+### Phase 8.4 — Local Text & Perceptual Region Pre-Filtering (Quota Saver)
 - Add local image slicing and region-of-interest (ROI) hashing to avoid full-screen re-analysis when only a subregion (e.g., terminal window) changes.
 - Implement heuristic OCR/text density estimators to categorize screen complexity before dispatching API requests.
-
-### Phase 8.4 — Temporal Visual State & UI Delta Tracker
-- Implement `VisualStateDelta` comparing consecutive `ScreenContext` snapshots.
-- Track application window transitions, active focus shifts, and appearing/disappearing UI elements.
 - Feed structured temporal deltas into `ActiveTaskContext` as verified visual observations.
 
 ### Phase 8.5 — Grounded Visual Element Resolver

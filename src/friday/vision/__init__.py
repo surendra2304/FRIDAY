@@ -21,6 +21,12 @@ from friday.vision.computer_control import (
 )
 
 from friday.vision.ui_elements import BoundingBox, ElementType, UIElement
+from friday.vision.temporal import (
+    EnvironmentalChange,
+    EnvironmentalChangeType,
+    TemporalEnvironmentTracker,
+    TemporalObservation,
+)
 
 __all__ = [
     "BaseVisionProvider",
@@ -51,4 +57,8 @@ __all__ = [
     "BoundingBox",
     "ElementType",
     "UIElement",
+    "EnvironmentalChange",
+    "EnvironmentalChangeType",
+    "TemporalEnvironmentTracker",
+    "TemporalObservation",
 ]
