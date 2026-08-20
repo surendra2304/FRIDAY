@@ -14,6 +14,13 @@ from friday.agent.recovery import (
     AutonomousRecoveryManager,
 )
 from friday.agent.checkpoint import TaskCheckpoint, TaskCheckpointStore
+from friday.agent.goal import (
+    Goal,
+    GoalRequestType,
+    GoalRiskLevel,
+    GoalUnderstandingEngine,
+    SubGoal,
+)
 
 __all__ = [
     "FridayAgent",
@@ -42,4 +49,9 @@ __all__ = [
     "AutonomousRecoveryManager",
     "TaskCheckpoint",
     "TaskCheckpointStore",
+    "Goal",
+    "GoalRequestType",
+    "GoalRiskLevel",
+    "GoalUnderstandingEngine",
+    "SubGoal",
 ]
