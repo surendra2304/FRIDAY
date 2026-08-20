@@ -24,7 +24,7 @@ Phase 9 upgrades FRIDAY's cognitive reasoning pipeline from low-level imperative
 ```
 Phase 9.1: Autonomous Goal Understanding & Decomposition [COMPLETE]
 Phase 9.2: Hierarchical Task Planning & Dependency DAG [COMPLETE]
-Phase 9.3: Dynamic Plan Optimization & Strategy Selection [PENDING]
+Phase 9.3: Intelligent Multi-Step Execution Orchestrator [COMPLETE]
 Phase 9.4: Multi-Agent Role Specialization & Subgoal Delegation [PENDING]
 Phase 9.5: Autonomous Hypothesis Testing & World-Model Calibration [PENDING]
 Phase 9.6: Phase 9 Full Autonomous Cognitive Acceptance Gate [PENDING]
@@ -67,4 +67,25 @@ Phase 9.6: Phase 9 Full Autonomous Cognitive Acceptance Gate [PENDING]
   - `tests/test_task_planner.py`
 - **Verification**:
   - Full automated suite: 503 passed, 5 deselected in 71.52s.
+
+---
+
+## 5. Subphase 9.3 Specifications & Verification [COMPLETE]
+
+- **Components Implemented**:
+  1. Explicit Step Lifecycle States:
+     - `StepStatus`: `PENDING`, `READY`, `RUNNING`, `WAITING`, `COMPLETED` / `SUCCEEDED`, `FAILED`, `SKIPPED`, `BLOCKED`, `CANCELLED`, `ROLLED_BACK`.
+  2. Multi-Step Execution Orchestration:
+     - Dependency waiting & cascading: Prerequisite checks verify completion prior to executing downstream steps; failed prerequisites skip downstream tasks cleanly.
+     - Idempotency protection: Deduplicates state-modifying actions via execution fingerprinting to prevent accidental double-execution during retries.
+     - Bounded timeout & thread isolation: Enforces per-step timeouts (`ThreadPoolExecutor` timeout handling) preventing hangs.
+     - Computer Control & Authorization Gating: Directly routes through `BaseAuthorizer` and proposal verification before any sensitive/dangerous action executes.
+     - Perception Integration: Visual and screen tasks verified against `StepVerifier` success criteria.
+- **Files Created/Modified**:
+  - `src/friday/agent/planner.py`
+  - `src/friday/agent/executor.py`
+  - `tests/test_multi_step_orchestrator.py` (6/6 tests passing)
+- **Verification**:
+  - Full automated suite: 509 passed, 5 deselected in 80.24s.
+
 

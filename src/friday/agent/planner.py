@@ -26,11 +26,17 @@ logger = get_logger("agent.planner")
 class StepStatus(str, Enum):
     """Execution status of an individual plan step."""
     PENDING = "PENDING"
-    IN_PROGRESS = "IN_PROGRESS"
+    READY = "READY"
+    RUNNING = "RUNNING"
+    IN_PROGRESS = "IN_PROGRESS"  # Alias
+    WAITING = "WAITING"
     COMPLETED = "COMPLETED"
+    SUCCEEDED = "COMPLETED"      # Phase 9.3 standard status mapped to COMPLETED for complete backward compatibility
     FAILED = "FAILED"
     SKIPPED = "SKIPPED"
     BLOCKED = "BLOCKED"
+    CANCELLED = "CANCELLED"
+    ROLLED_BACK = "ROLLED_BACK"
 
 
 class PlanValidationError(ValueError):

@@ -168,7 +168,7 @@ class TaskExecutionEngine:
         state_machine: Optional[ReasoningStateMachine] = None,
         task_context: Optional[Any] = None,
     ) -> TaskExecutionResult:
-        """Execute a TaskPlan in validated dependency order with verification and bounded self-correction."""
+        """Execute a TaskPlan in validated dependency order with verification, idempotency, and self-correction."""
         start_time = time.perf_counter()
 
         # Validate plan before execution if not already verified
@@ -188,10 +188,10 @@ class TaskExecutionEngine:
 
         step_results: Dict[str, StepExecutionResult] = {}
         for s in plan.steps:
-            if s.status == StepStatus.COMPLETED and s.result:
+            if s.status in (StepStatus.COMPLETED, StepStatus.SUCCEEDED) and s.result is not None:
                 step_results[s.step_id] = StepExecutionResult(
                     step_id=s.step_id,
-                    status=StepStatus.COMPLETED,
+                    status=StepStatus.SUCCEEDED,
                     result=s.result,
                 )
 
@@ -202,6 +202,7 @@ class TaskExecutionEngine:
         )
         total_steps = len(plan.steps)
         executed_count = 0
+        executed_action_fingerprints: Set[str] = set()
 
         logger.info(f"TaskExecutionEngine: Beginning execution of plan '{plan.plan_id}' with {total_steps} step(s).")
 
@@ -220,23 +221,23 @@ class TaskExecutionEngine:
                 sm.fail(reason=err_msg, metadata={"limit_exceeded": True})
                 break
 
-            # 0. Check if step is already COMPLETED (e.g. during resumed execution)
-            if step.status == StepStatus.COMPLETED:
-                logger.info(f"Step '{step.step_id}': Already verified and completed in prior checkpoint. Skipping re-execution.")
+            # 0. Check if step is already COMPLETED / SUCCEEDED (idempotency guard)
+            if step.status in (StepStatus.COMPLETED, StepStatus.SUCCEEDED):
+                logger.info(f"Step '{step.step_id}': Already verified and completed in prior checkpoint. Skipping duplicate execution.")
                 if step.step_id not in step_results:
                     step_results[step.step_id] = StepExecutionResult(
                         step_id=step.step_id,
-                        status=StepStatus.COMPLETED,
+                        status=StepStatus.SUCCEEDED,
                         result=step.result,
                     )
                 self._notify_progress(plan, step_results, step.step_id, time.perf_counter() - start_time)
                 continue
 
-            # 1. Dependency Resolution Check
+            # 1. Dependency Resolution & Waiting Check
             missing_or_failed_deps = []
             for dep_id in step.depends_on:
                 dep_res = step_results.get(dep_id)
-                if not dep_res or dep_res.status != StepStatus.COMPLETED:
+                if not dep_res or dep_res.status not in (StepStatus.COMPLETED, StepStatus.SUCCEEDED):
                     missing_or_failed_deps.append(dep_id)
 
             if missing_or_failed_deps:
@@ -252,7 +253,8 @@ class TaskExecutionEngine:
                 self._notify_progress(plan, step_results, step.step_id, time.perf_counter() - start_time)
                 continue
 
-            # 2. Execute Step with Verification & Autonomous Recovery Loop
+            # 2. Step is READY -> RUNNING
+            step.status = StepStatus.READY
             current_step_target = step
             retries_performed = 0
             step_final_res: Optional[StepExecutionResult] = None
@@ -261,21 +263,40 @@ class TaskExecutionEngine:
                 task_context.set_active_step(step.step_id)
 
             while True:
-                current_step_target.status = StepStatus.IN_PROGRESS
+                current_step_target.status = StepStatus.RUNNING
                 step_start = time.perf_counter()
                 self._notify_progress(plan, step_results, current_step_target.step_id, step_start - start_time)
+
+                # Idempotency duplicate execution guard for state-modifying actions
+                action_fp = f"{current_step_target.tool_name}:{current_step_target.parameters}"
+                if current_step_target.safety_level in (SafetyLevel.SENSITIVE, SafetyLevel.DANGEROUS):
+                    if action_fp in executed_action_fingerprints and retries_performed == 0:
+                        err_msg = f"Duplicate state-modifying action blocked by idempotency guard: {action_fp}"
+                        logger.warning(err_msg)
+                        step_res = StepExecutionResult(
+                            step_id=current_step_target.step_id,
+                            status=StepStatus.FAILED,
+                            error=err_msg,
+                        )
+                        step_final_res = step_res
+                        break
 
                 step_res = self._execute_step(current_step_target, step_results=step_results)
                 step_res.retries_used = retries_performed
 
-                # 3. Formal Step Verification
-                if step_res.status == StepStatus.COMPLETED:
+                if current_step_target.safety_level in (SafetyLevel.SENSITIVE, SafetyLevel.DANGEROUS) and step_res.status in (StepStatus.COMPLETED, StepStatus.SUCCEEDED):
+                    executed_action_fingerprints.add(action_fp)
+
+                # 3. Formal Step Verification & Visual Inspection
+                if step_res.status in (StepStatus.COMPLETED, StepStatus.SUCCEEDED):
                     v_res = StepVerifier.verify_step_result(current_step_target, step_res.result)
                     step_res.verification = v_res
                     if not v_res.passed:
                         logger.warning(f"Step '{step.step_id}' failed verification: {v_res.diagnostics}")
                         step_res.status = StepStatus.FAILED
                         step_res.error = f"Verification Failure: {v_res.diagnostics or v_res.evidence}"
+                    else:
+                        step_res.status = StepStatus.SUCCEEDED
                 else:
                     v_res = VerificationResult(
                         status=VerificationStatus.FAILED,
@@ -327,7 +348,7 @@ class TaskExecutionEngine:
 
         # 4. Overall Plan Verification & Assessment
         overall_duration = time.perf_counter() - start_time
-        all_completed = all(r.status == StepStatus.COMPLETED for r in step_results.values())
+        all_completed = all(r.status in (StepStatus.COMPLETED, StepStatus.SUCCEEDED) for r in step_results.values())
         any_failed = any(r.status in (StepStatus.FAILED, StepStatus.BLOCKED) for r in step_results.values())
 
         # Collect verification results
@@ -369,7 +390,7 @@ class TaskExecutionEngine:
             duration = time.perf_counter() - start_perf
             return StepExecutionResult(
                 step_id=step.step_id,
-                status=StepStatus.COMPLETED,
+                status=StepStatus.SUCCEEDED,
                 result="Milestone completed.",
                 start_time=step_start_time,
                 end_time=datetime.now(timezone.utc),
@@ -446,15 +467,24 @@ class TaskExecutionEngine:
                 duration_seconds=time.perf_counter() - start_perf,
             )
 
-        # 3. Tool Execution
-        try:
-            call_id = f"call_{uuid.uuid4().hex[:8]}"
-            tool_result: ToolResult = self.tools.execute(
+        # 3. Tool Execution with Timeout
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError
+        timeout_sec = self.step_timeout_seconds
+        call_id = f"call_{uuid.uuid4().hex[:8]}"
+
+        def _do_execute():
+            return self.tools.execute(
                 name=step.tool_name,
                 arguments=resolved_params,
                 tool_call_id=call_id,
                 allow_sensitive=True,
             )
+
+        try:
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(_do_execute)
+                tool_result: ToolResult = future.result(timeout=timeout_sec)
+
             duration = time.perf_counter() - start_perf
 
             if tool_result.is_error:
@@ -469,11 +499,22 @@ class TaskExecutionEngine:
 
             return StepExecutionResult(
                 step_id=step.step_id,
-                status=StepStatus.COMPLETED,
+                status=StepStatus.SUCCEEDED,
                 result=tool_result.content,
                 start_time=step_start_time,
                 end_time=datetime.now(timezone.utc),
                 duration_seconds=duration,
+            )
+        except TimeoutError:
+            err_msg = f"Step execution timed out after {timeout_sec} seconds."
+            logger.error(f"Step '{step.step_id}': {err_msg}")
+            return StepExecutionResult(
+                step_id=step.step_id,
+                status=StepStatus.FAILED,
+                error=err_msg,
+                start_time=step_start_time,
+                end_time=datetime.now(timezone.utc),
+                duration_seconds=time.perf_counter() - start_perf,
             )
         except Exception as e:
             logger.exception(f"Unexpected error executing step '{step.step_id}': {e}")
@@ -499,7 +540,7 @@ class TaskExecutionEngine:
         if not self.on_step_progress:
             return
 
-        completed = sum(1 for r in step_results.values() if r.status == StepStatus.COMPLETED)
+        completed = sum(1 for r in step_results.values() if r.status in (StepStatus.COMPLETED, StepStatus.SUCCEEDED))
         failed = sum(1 for r in step_results.values() if r.status in (StepStatus.FAILED, StepStatus.BLOCKED))
         skipped = sum(1 for r in step_results.values() if r.status == StepStatus.SKIPPED)
         pending = len(plan.steps) - (completed + failed + skipped)
@@ -522,3 +563,4 @@ class TaskExecutionEngine:
             self.on_step_progress(progress)
         except Exception as e:
             logger.warning(f"Error in on_step_progress callback: {e}")
+
