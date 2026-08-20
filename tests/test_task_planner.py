@@ -162,19 +162,18 @@ def test_task_plan_validation_duplicate_step_ids():
         plan.validate()
 
 
-# 6. Plan Validation: Missing Dependency or Forward Reference
+# 6. Plan Validation: Missing Dependency or Self-Dependency
 def test_task_plan_validation_invalid_dependency():
     # Non-existent dependency
     step1 = PlanStep(step_id="step_a", description="First", depends_on=["non_existent_step"])
     plan1 = TaskPlan(goal="Test deps", steps=[step1])
-    with pytest.raises(PlanValidationError, match="depends on 'non_existent_step' which does not exist"):
+    with pytest.raises(PlanValidationError, match="depends on 'non_existent_step' which does not exist in the plan"):
         plan1.validate()
 
-    # Forward dependency (B depends on C which is defined later)
-    step_b = PlanStep(step_id="step_b", description="B", depends_on=["step_c"])
-    step_c = PlanStep(step_id="step_c", description="C")
-    plan2 = TaskPlan(goal="Test forward deps", steps=[step_b, step_c])
-    with pytest.raises(PlanValidationError, match="depends on 'step_c' which does not exist or appears after"):
+    # Self-dependency
+    step_self = PlanStep(step_id="step_self", description="Self", depends_on=["step_self"])
+    plan2 = TaskPlan(goal="Test self dep", steps=[step_self])
+    with pytest.raises(PlanValidationError, match="cannot depend on itself"):
         plan2.validate()
 
 

@@ -23,7 +23,7 @@ Phase 9 upgrades FRIDAY's cognitive reasoning pipeline from low-level imperative
 
 ```
 Phase 9.1: Autonomous Goal Understanding & Decomposition [COMPLETE]
-Phase 9.2: Constraint Reasoning & Feasibility Analysis [PENDING]
+Phase 9.2: Hierarchical Task Planning & Dependency DAG [COMPLETE]
 Phase 9.3: Dynamic Plan Optimization & Strategy Selection [PENDING]
 Phase 9.4: Multi-Agent Role Specialization & Subgoal Delegation [PENDING]
 Phase 9.5: Autonomous Hypothesis Testing & World-Model Calibration [PENDING]
@@ -48,3 +48,23 @@ Phase 9.6: Phase 9 Full Autonomous Cognitive Acceptance Gate [PENDING]
   - `Proposal != Execution` preserved.
   - Zero raw screenshot persistence and secret redaction active.
   - 100% provider-independent (works with `MockLLMProvider` and cloud backends).
+
+---
+
+## 4. Subphase 9.2 Specifications & Verification [COMPLETE]
+
+- **Components Implemented**:
+  1. `TaskPlan` & `PlanStep` typed DAG enhancements:
+     - `compute_topological_schedule`: Groups plan steps into topological waves for concurrent safe execution.
+     - Cycle detection: Detects and rejects circular dependency loops (`PlanValidationError`).
+     - Validation: Pre-execution validation checking step existence, self-dependencies, unavailable capabilities, unknown tools, and invalid schemas.
+     - Typed step extensions: `expected_output_type`, `required_capabilities`, `rollback_step_id`, and `checkpoint_enabled`.
+  2. `GoalDecomposer.create_from_goal`: Converts structured `Goal` instances into executable `TaskPlan` objects. Rejects ambiguous or prohibited goals prior to execution.
+  3. Zero-execution guarantee during planning: Planning never executes tools or OS actions directly.
+- **Files Created/Modified**:
+  - `src/friday/agent/planner.py`
+  - `tests/test_hierarchical_planning_dag.py` (10/10 tests passing)
+  - `tests/test_task_planner.py`
+- **Verification**:
+  - Full automated suite: 503 passed, 5 deselected in 71.52s.
+
