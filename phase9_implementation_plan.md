@@ -27,7 +27,8 @@ Phase 9.2: Hierarchical Task Planning & Dependency DAG [COMPLETE]
 Phase 9.3: Intelligent Multi-Step Execution Orchestrator [COMPLETE]
 Phase 9.4: Formal Verification, Self-Correction & Bounded Recovery [COMPLETE]
 Phase 9.5: Active Working Memory & Task Context [COMPLETE]
-Phase 9.6: Phase 9 Full Autonomous Cognitive Acceptance Gate [PENDING]
+Phase 9.6: Autonomous Failure Recovery & Strategy Adaptation [COMPLETE]
+Phase 9.7: Phase 9 Full Autonomous Cognitive Acceptance Gate [PENDING]
 ```
 
 ---
@@ -124,6 +125,28 @@ Phase 9.6: Phase 9 Full Autonomous Cognitive Acceptance Gate [PENDING]
   - `tests/test_active_working_memory.py` (6/6 tests passing)
 - **Verification**:
   - Full automated suite: 519 passed, 5 deselected in 79.47s.
+
+---
+
+## 8. Subphase 9.6 Specifications & Verification [COMPLETE]
+
+- **Components Implemented**:
+  1. Expanded Failure Taxonomy (`FailureType`):
+     - `TRANSIENT_NETWORK`, `ENVIRONMENTAL`, `TOOL_ERROR`, `DEPENDENCY_FAILURE`, `PLANNING_ERROR`, `INVALID_PARAMETERS`, `UNAVAILABLE_RESOURCE`, `VERIFICATION_FAILURE`, `SCREEN_STATE_CHANGED`, `AUTHORIZATION_DENIED`, `SAFETY_VIOLATION`, `QUOTA_EXHAUSTED`, `PROVIDER_ERROR`, `UNRECOVERABLE_SAFETY_REJECTION`, `UNKNOWN_FAILURE`.
+  2. Bounded Recovery Strategies (`RecoveryStrategy`):
+     - `RETRY`, `CREDENTIAL_FAILOVER`, `ALTERNATIVE_TOOL`, `ADJUST_PARAMETERS`, `REPLAN`, `REQUEST_CLARIFICATION`, `ESCALATE_TO_USER`, `PAUSE_FOR_AUTHORIZATION`, `ABORT_TASK`.
+  3. Diagnostic Confidence & User Escalation Rules:
+     - `FailureDiagnosis` includes confidence score and `requires_user_escalation` flag.
+     - Authorization denials trigger `PAUSE_FOR_AUTHORIZATION` and escalation to the user (never auto-bypassed).
+     - Dangerous actions and security hard-blocks strictly trigger `ABORT_TASK` and cannot be retried or self-corrected.
+     - Quota failures and provider outages map cleanly to `CREDENTIAL_FAILOVER`.
+- **Files Created/Modified**:
+  - `src/friday/agent/recovery.py`
+  - `tests/test_autonomous_recovery_adaptation.py` (8/8 tests passing)
+  - `tests/test_failure_recovery.py` (6/6 tests passing)
+- **Verification**:
+  - Full automated suite: 527 passed, 5 deselected in 85.01s.
+
 
 
 

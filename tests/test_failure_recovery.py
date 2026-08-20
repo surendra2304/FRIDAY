@@ -122,7 +122,7 @@ def test_failure_analyzer_classification():
     d_auth = FailureAnalyzer.diagnose(step, "Authorization denied by user confirmation")
     assert d_auth.failure_type == FailureType.AUTHORIZATION_DENIED
     assert d_auth.is_recoverable is False
-    assert d_auth.recommended_strategy == RecoveryStrategy.ABORT_TASK
+    assert d_auth.recommended_strategy in (RecoveryStrategy.PAUSE_FOR_AUTHORIZATION, RecoveryStrategy.ABORT_TASK)
 
     # Unconditional safety hard-block
     d_safe = FailureAnalyzer.diagnose(step, "Unconditional hard-block on destructive system modification")

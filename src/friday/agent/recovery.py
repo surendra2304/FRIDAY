@@ -46,13 +46,18 @@ logger = get_logger("agent.recovery")
 class FailureType(str, Enum):
     """Categorized failure types during multi-step execution."""
     TRANSIENT_NETWORK = "TRANSIENT_NETWORK"
-    QUOTA_EXHAUSTED = "QUOTA_EXHAUSTED"
+    ENVIRONMENTAL = "ENVIRONMENTAL"
     TOOL_ERROR = "TOOL_ERROR"
+    DEPENDENCY_FAILURE = "DEPENDENCY_FAILURE"
+    PLANNING_ERROR = "PLANNING_ERROR"
     INVALID_PARAMETERS = "INVALID_PARAMETERS"
     UNAVAILABLE_RESOURCE = "UNAVAILABLE_RESOURCE"
     VERIFICATION_FAILURE = "VERIFICATION_FAILURE"
     SCREEN_STATE_CHANGED = "SCREEN_STATE_CHANGED"
     AUTHORIZATION_DENIED = "AUTHORIZATION_DENIED"
+    SAFETY_VIOLATION = "SAFETY_VIOLATION"
+    QUOTA_EXHAUSTED = "QUOTA_EXHAUSTED"
+    PROVIDER_ERROR = "PROVIDER_ERROR"
     UNRECOVERABLE_SAFETY_REJECTION = "UNRECOVERABLE_SAFETY_REJECTION"
     UNKNOWN_FAILURE = "UNKNOWN_FAILURE"
 
@@ -63,7 +68,10 @@ class RecoveryStrategy(str, Enum):
     CREDENTIAL_FAILOVER = "CREDENTIAL_FAILOVER"
     ALTERNATIVE_TOOL = "ALTERNATIVE_TOOL"
     ADJUST_PARAMETERS = "ADJUST_PARAMETERS"
+    REPLAN = "REPLAN"
     REQUEST_CLARIFICATION = "REQUEST_CLARIFICATION"
+    ESCALATE_TO_USER = "ESCALATE_TO_USER"
+    PAUSE_FOR_AUTHORIZATION = "PAUSE_FOR_AUTHORIZATION"
     ABORT_TASK = "ABORT_TASK"
 
 
@@ -75,8 +83,10 @@ class FailureDiagnosis:
     recommended_strategy: RecoveryStrategy
     reason: str
     diagnostics: str
+    confidence: float = 1.0
     suggested_tool: Optional[str] = None
     suggested_params: Optional[Dict[str, Any]] = None
+    requires_user_escalation: bool = False
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -86,7 +96,9 @@ class FailureDiagnosis:
             "recommended_strategy": self.recommended_strategy.value,
             "reason": self.reason,
             "diagnostics": self.diagnostics,
+            "confidence": self.confidence,
             "suggested_tool": self.suggested_tool,
+            "requires_user_escalation": self.requires_user_escalation,
             "timestamp": self.timestamp.isoformat(),
         }
 
@@ -103,6 +115,7 @@ class FailureAnalyzer:
         "denied by policy",
         "destructive system modification",
         "security constraint",
+        "prohibited request",
     ]
 
     # Quota exhaustion patterns
@@ -115,6 +128,15 @@ class FailureAnalyzer:
         "credits exhausted",
     ]
 
+    # Provider / LLM crash patterns
+    PROVIDER_PATTERNS = [
+        "model unavailable",
+        "503 service unavailable",
+        "bad gateway",
+        "provider connection refused",
+        "overloaded",
+    ]
+
     # Transient network patterns
     NETWORK_PATTERNS = [
         "connection reset",
@@ -123,6 +145,15 @@ class FailureAnalyzer:
         "remote end closed",
         "temporary connection timeout",
         "econnrefused",
+    ]
+
+    # Stale UI / Environmental patterns
+    SCREEN_PATTERNS = [
+        "stale screen",
+        "element not found",
+        "window not focused",
+        "ui shifted",
+        "screen changed",
     ]
 
     # Parameter error patterns
@@ -150,20 +181,24 @@ class FailureAnalyzer:
         # 1. Check Unrecoverable Security or Authorization Denials
         for pattern in cls.SECURITY_DENIAL_PATTERNS:
             if pattern in combined_err:
-                if "hard-block" in combined_err or "destructive" in combined_err:
+                if "hard-block" in combined_err or "destructive" in combined_err or "prohibited" in combined_err:
                     return FailureDiagnosis(
                         failure_type=FailureType.UNRECOVERABLE_SAFETY_REJECTION,
                         is_recoverable=False,
                         recommended_strategy=RecoveryStrategy.ABORT_TASK,
                         reason="Unrecoverable safety rule triggered: Action is strictly forbidden.",
                         diagnostics=error_msg,
+                        confidence=1.0,
+                        requires_user_escalation=False,
                     )
                 return FailureDiagnosis(
                     failure_type=FailureType.AUTHORIZATION_DENIED,
                     is_recoverable=False,
-                    recommended_strategy=RecoveryStrategy.ABORT_TASK,
+                    recommended_strategy=RecoveryStrategy.PAUSE_FOR_AUTHORIZATION,
                     reason="Authorization was denied by user or secure policy.",
                     diagnostics=error_msg,
+                    confidence=1.0,
+                    requires_user_escalation=True,
                 )
 
         # 2. Check Quota Exhaustion
@@ -175,9 +210,34 @@ class FailureAnalyzer:
                     recommended_strategy=RecoveryStrategy.CREDENTIAL_FAILOVER,
                     reason="API quota exhausted on active credential.",
                     diagnostics=error_msg,
+                    confidence=0.95,
                 )
 
-        # 3. Check Transient Network / Timeout
+        # 3. Check Provider Errors
+        for pattern in cls.PROVIDER_PATTERNS:
+            if pattern in combined_err:
+                return FailureDiagnosis(
+                    failure_type=FailureType.PROVIDER_ERROR,
+                    is_recoverable=True,
+                    recommended_strategy=RecoveryStrategy.CREDENTIAL_FAILOVER,
+                    reason="Model provider service unavailable or overloaded.",
+                    diagnostics=error_msg,
+                    confidence=0.9,
+                )
+
+        # 4. Check Stale UI / Environmental State
+        for pattern in cls.SCREEN_PATTERNS:
+            if pattern in combined_err:
+                return FailureDiagnosis(
+                    failure_type=FailureType.SCREEN_STATE_CHANGED,
+                    is_recoverable=True,
+                    recommended_strategy=RecoveryStrategy.RETRY,
+                    reason="Screen or UI environment changed during execution.",
+                    diagnostics=error_msg,
+                    confidence=0.85,
+                )
+
+        # 5. Check Transient Network / Timeout
         for pattern in cls.NETWORK_PATTERNS:
             if pattern in combined_err:
                 return FailureDiagnosis(
@@ -186,9 +246,10 @@ class FailureAnalyzer:
                     recommended_strategy=RecoveryStrategy.RETRY,
                     reason="Transient network or connection timeout encountered.",
                     diagnostics=error_msg,
+                    confidence=0.9,
                 )
 
-        # 4. Check Invalid Parameters
+        # 6. Check Invalid Parameters
         for pattern in cls.PARAM_PATTERNS:
             if pattern in combined_err:
                 return FailureDiagnosis(
@@ -197,11 +258,11 @@ class FailureAnalyzer:
                     recommended_strategy=RecoveryStrategy.ADJUST_PARAMETERS,
                     reason="Tool arguments violated parameter schema or missing required fields.",
                     diagnostics=error_msg,
+                    confidence=0.85,
                 )
 
-        # 5. Check Verification Failure
+        # 7. Check Verification Failure
         if verification and not verification.passed:
-            # Check if fallback tool exists for this tool
             fallback_tool = tool_fallbacks.get(step.tool_name) if tool_fallbacks else None
             strategy = RecoveryStrategy.ALTERNATIVE_TOOL if fallback_tool else RecoveryStrategy.RETRY
 
@@ -212,9 +273,10 @@ class FailureAnalyzer:
                 reason=f"Step output failed verification criteria: {verification.criterion}",
                 diagnostics=verification.diagnostics or error_msg,
                 suggested_tool=fallback_tool,
+                confidence=0.8,
             )
 
-        # 6. Fallback Tool Error
+        # 8. Fallback Tool Error
         fallback_tool = tool_fallbacks.get(step.tool_name) if tool_fallbacks else None
         if fallback_tool:
             return FailureDiagnosis(
@@ -224,6 +286,7 @@ class FailureAnalyzer:
                 reason=f"Tool '{step.tool_name}' failed. Alternative tool available.",
                 diagnostics=error_msg,
                 suggested_tool=fallback_tool,
+                confidence=0.85,
             )
 
         return FailureDiagnosis(
@@ -232,6 +295,7 @@ class FailureAnalyzer:
             recommended_strategy=RecoveryStrategy.RETRY,
             reason="Tool returned error during execution.",
             diagnostics=error_msg,
+            confidence=0.75,
         )
 
 
