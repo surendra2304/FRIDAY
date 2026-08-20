@@ -11,6 +11,7 @@ from friday.vision.screen_context import ScreenContext
 from friday.vision.screen_analyzer import ScreenAnalyzer, DEFAULT_ANALYSIS_PROMPT
 from friday.vision.change_detector import ScreenChangeDetector, compute_image_difference_ratio
 from friday.vision.screen_awareness import ScreenAwarenessController
+from friday.vision.vision_memory import VisionMemoryManager, redact_sensitive_visual_text
 
 __all__ = [
     "BaseVisionProvider",
@@ -29,4 +30,6 @@ __all__ = [
     "ScreenChangeDetector",
     "compute_image_difference_ratio",
     "ScreenAwarenessController",
+    "VisionMemoryManager",
+    "redact_sensitive_visual_text",
 ]
