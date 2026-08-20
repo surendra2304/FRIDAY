@@ -108,6 +108,10 @@ class ActiveTaskContext:
         if "data:image/" in res_str or "[image payload" in res_str.lower() or "base64" in res_str:
             res_str = "[Visual screenshot captured and processed safely]"
 
+        # Redact secrets, keys, and tokens
+        if "key=" in res_str or "token=" in res_str or "password=" in res_str or "secret=" in res_str:
+            res_str = "[Sensitive credentials redacted]"
+
         # Truncate large tool outputs according to context budget
         if len(res_str) > self.max_output_chars_per_step:
             res_str = res_str[:self.max_output_chars_per_step] + f"... [truncated {len(res_str) - self.max_output_chars_per_step} chars]"

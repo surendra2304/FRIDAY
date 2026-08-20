@@ -80,7 +80,11 @@ class DataFlowResolver:
                     # Untrusted screen/prompt injection defense: Check if dangerous action is receiving raw screen text
                     if target_safety_level in (SafetyLevel.SENSITIVE, SafetyLevel.DANGEROUS):
                         src_str = str(source_val).lower()
-                        if "format c:" in src_str or "rm -rf" in src_str or "drop database" in src_str:
+                        dangerous_patterns = [
+                            "format c:", "rm -rf", "drop database", "drop table", "system override",
+                            "grant full", "delete database", "kill process", "del /f", "sudo",
+                        ]
+                        if any(pat in src_str for pat in dangerous_patterns):
                             return None, "Untrusted or malicious command string blocked from parameter interpolation into high-safety tool."
 
                     return source_val, None
