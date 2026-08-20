@@ -29,7 +29,8 @@ Phase 9.4: Formal Verification, Self-Correction & Bounded Recovery [COMPLETE]
 Phase 9.5: Active Working Memory & Task Context [COMPLETE]
 Phase 9.6: Autonomous Failure Recovery & Strategy Adaptation [COMPLETE]
 Phase 9.7: Task Interruption, Checkpointing & Resumption [COMPLETE]
-Phase 9.8: Phase 9 Full Autonomous Cognitive Acceptance Gate [PENDING]
+Phase 9.8: Advanced Tool Orchestration & Capability Routing [COMPLETE]
+Phase 9.9: Phase 9 Full Autonomous Cognitive Acceptance Gate [PENDING]
 ```
 
 ---
@@ -169,6 +170,30 @@ Phase 9.8: Phase 9 Full Autonomous Cognitive Acceptance Gate [PENDING]
   - `tests/test_task_checkpointing.py` (6/6 tests passing)
 - **Verification**:
   - Full automated suite: 533 passed, 5 deselected in 83.31s.
+
+---
+
+## 10. Subphase 9.8 Specifications & Verification [COMPLETE]
+
+- **Components Implemented**:
+  1. Capability-Aware Tool Router (`CapabilityRouter`):
+     - Maps high-level capabilities (`search`, `read_file`, `write_file`, `execute_command`, `screen_capture`, `computer_control`) to registered tools.
+     - Computes deterministic selection scores based on capability match priority, safety ratings, and availability.
+     - Enforces strict safety disqualification when tool safety level exceeds `max_allowed_safety`.
+     - Supports alternative tool fallback substitution.
+  2. Parameter Inference & Data Flow (`DataFlowResolver`):
+     - Resolves dynamic step output templates (`{{step_id.key}}` and `{{step_id}}`).
+     - Blocks untrusted screen text / command injections from interpolating into sensitive/dangerous arguments.
+  3. Tool Orchestration Wave Scheduling (`ToolOrchestrator`):
+     - Computes DAG dependency levels for parallel and sequential batch scheduling.
+- **Files Created/Modified**:
+  - `src/friday/tools/orchestrator.py`
+  - `src/friday/tools/__init__.py`
+  - `tests/test_advanced_tool_orchestration_extended.py` (6/6 tests passing)
+  - `tests/test_advanced_tool_planning.py` (5/5 tests passing)
+- **Verification**:
+  - Full automated suite: 539 passed, 5 deselected in 90.38s.
+
 
 
 

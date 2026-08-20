@@ -170,3 +170,119 @@ class ToolOrchestrator:
                 remaining_steps.remove(s)
 
         return batches
+
+
+class CapabilityRouter:
+    """Capability-aware tool router with deterministic scoring and safety policy enforcement."""
+
+    def __init__(
+        self,
+        tool_registry: ToolRegistry,
+        tool_fallbacks: Optional[Dict[str, str]] = None,
+        capability_map: Optional[Dict[str, List[str]]] = None,
+    ) -> None:
+        self.registry = tool_registry
+        self.tool_fallbacks = tool_fallbacks or {}
+        # Map capability name (e.g. "search", "read_file", "execute_command") to list of tool names
+        self.capability_map = capability_map or {
+            "search": ["web_search", "local_search"],
+            "read_file": ["read_file"],
+            "write_file": ["write_file"],
+            "execute_command": ["execute_command", "run_bash"],
+            "screen_capture": ["capture_screen"],
+            "computer_control": ["propose_computer_action"],
+        }
+
+    def register_capability(self, capability: str, tool_names: List[str]) -> None:
+        """Map a logical capability to candidate tool implementations."""
+        self.capability_map[capability] = tool_names
+
+    def score_tool_candidate(
+        self,
+        tool: BaseTool,
+        required_capability: str,
+        max_allowed_safety: SafetyLevel = SafetyLevel.SAFE,
+        prefer_low_risk: bool = True,
+    ) -> float:
+        """Compute deterministic selection score (0.0 to 1.0) based on capability match, safety, and availability.
+
+        Higher score means better/safer match.
+        """
+        score = 0.5
+
+        # 1. Capability match
+        candidates = self.capability_map.get(required_capability, [])
+        if tool.name in candidates:
+            idx = candidates.index(tool.name)
+            # Preference given to higher priority candidates in list
+            score += 0.3 - (idx * 0.05)
+
+        # 2. Safety level scoring
+        safety_penalties = {
+            SafetyLevel.SAFE: 0.2,
+            SafetyLevel.SENSITIVE: 0.0 if not prefer_low_risk else -0.1,
+            SafetyLevel.DANGEROUS: -0.3,
+        }
+        score += safety_penalties.get(tool.safety_level, 0.0)
+
+        # 3. Check if tool exceeds maximum allowed safety
+        safety_order = {
+            SafetyLevel.SAFE: 0,
+            SafetyLevel.SENSITIVE: 1,
+            SafetyLevel.DANGEROUS: 2,
+        }
+        if safety_order.get(tool.safety_level, 0) > safety_order.get(max_allowed_safety, 0):
+            score = 0.0  # Disqualified due to safety policy
+
+        return max(0.0, min(1.0, score))
+
+    def route_capability(
+        self,
+        required_capability: str,
+        preferred_tool: Optional[str] = None,
+        max_allowed_safety: SafetyLevel = SafetyLevel.SAFE,
+        available_tools_override: Optional[List[str]] = None,
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """Route a capability to the best registered tool.
+
+        Returns (selected_tool_name, routing_rationale).
+        """
+        # Untrusted screen/prompt injection defense: Reject capability names with suspicious code/instructions
+        bad_patterns = ["system.", "eval(", "exec(", "drop ", "rm -rf", "format ", "import "]
+        if any(pat in required_capability.lower() for pat in bad_patterns):
+            logger.warning(f"Malicious or suspicious capability name rejected: {required_capability}")
+            return None, "Untrusted or invalid capability name rejected by capability router."
+
+        candidates = self.capability_map.get(required_capability, [])
+        if preferred_tool and preferred_tool not in candidates:
+            candidates = [preferred_tool] + candidates
+
+        valid_tools: List[Tuple[str, float]] = []
+
+        for tname in candidates:
+            if available_tools_override is not None and tname not in available_tools_override:
+                continue
+            tool = self.registry.get(tname)
+            if tool:
+                s = self.score_tool_candidate(tool, required_capability, max_allowed_safety)
+                if s > 0.0:
+                    valid_tools.append((tname, s))
+
+        if not valid_tools:
+            # Check if alternative fallback tool exists
+            if preferred_tool and preferred_tool in self.tool_fallbacks:
+                alt_name = self.tool_fallbacks[preferred_tool]
+                alt_tool = self.registry.get(alt_name)
+                if alt_tool:
+                    s = self.score_tool_candidate(alt_tool, required_capability, max_allowed_safety)
+                    if s > 0.0:
+                        return alt_name, f"Routed to alternative tool '{alt_name}' (fallback from '{preferred_tool}')."
+
+            return None, f"No available tool satisfied capability '{required_capability}' within safety limit '{max_allowed_safety.value}'."
+
+        # Sort by score descending
+        valid_tools.sort(key=lambda x: x[1], reverse=True)
+        best_tool, best_score = valid_tools[0]
+        return best_tool, f"Routed to '{best_tool}' (Capability match score: {best_score:.2f})."
+
+
