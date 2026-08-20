@@ -79,9 +79,12 @@ class GeminiVisionProvider(BaseVisionProvider):
             return self._explicit_api_key
 
         if self.credential_pool:
-            key = self.credential_pool.get_active_key()
-            if key:
-                return key
+            try:
+                key = self.credential_pool.get_active_key()
+                if key:
+                    return key
+            except RuntimeError as e:
+                raise LLMProviderError(str(e)) from e
 
         settings = get_settings()
         key = settings.gemini_api_key or settings.llm_api_key
@@ -92,13 +95,15 @@ class GeminiVisionProvider(BaseVisionProvider):
 
     def _get_client(self, api_key: str) -> genai.Client:
         """Instantiate or reuse genai.Client for the given API key."""
-        if self._client is None or self._current_key != api_key:
+        if self._client is None or getattr(self, "_current_key", None) != api_key:
             self._client = genai.Client(api_key=api_key)
             self._current_key = api_key
         return self._client
 
     def _classify_error(self, error: Exception) -> FailureCategory:
         """Classify exceptions into failure categories for pool cooldown tracking."""
+        if self.credential_pool:
+            return self.credential_pool.classify_error(error)
         msg = str(error).lower()
         if "429" in msg or "resource_exhausted" in msg or "quota" in msg:
             return FailureCategory.QUOTA_EXHAUSTED
@@ -138,12 +143,18 @@ class GeminiVisionProvider(BaseVisionProvider):
         last_error = None
         attempt = 0
 
-        pool_size = len(self.credential_pool.credentials) if (self.credential_pool and hasattr(self.credential_pool, "credentials")) else 1
-        max_attempts = pool_size if (self.credential_pool and not self._explicit_api_key) else self.max_retries
+        pool_size = len(self.credential_pool.credentials) if (self.credential_pool and hasattr(self.credential_pool, "credentials") and len(self.credential_pool.credentials) > 0) else None
+        max_attempts = pool_size if (pool_size is not None and not self._explicit_api_key) else (self.max_retries + 1)
 
-        while attempt <= max_attempts:
+        while attempt < max_attempts:
+            active_key = None
             try:
                 active_key = self._get_active_api_key()
+            except (LLMProviderError, RuntimeError, Exception) as e:
+                last_error = e
+                break
+
+            try:
                 self._current_key = active_key
                 client = self._get_client(active_key)
 
@@ -168,12 +179,13 @@ class GeminiVisionProvider(BaseVisionProvider):
                 last_error = e
                 attempt += 1
 
-                cat = self.credential_pool.classify_error(e) if self.credential_pool else FailureCategory.UNKNOWN
-                if self.credential_pool and not self._explicit_api_key and self._current_key:
-                    self.credential_pool.report_failure(self._current_key, e)
+                cat = self._classify_error(e)
+                if self.credential_pool and not self._explicit_api_key and (active_key or self._current_key):
+                    failed_key = active_key or self._current_key
+                    self.credential_pool.report_failure(failed_key, e)
 
                 logger.warning(
-                    f"Gemini Vision call failed (attempt {attempt}/{max_attempts + 1}): {type(e).__name__} ({cat.value})"
+                    f"Gemini Vision call failed (attempt {attempt}/{max_attempts}): {type(e).__name__} ({cat.value})"
                 )
 
                 # If quota exhausted or auth failed and pool is active, immediately fail over to next credential with 0 delay
@@ -183,7 +195,7 @@ class GeminiVisionProvider(BaseVisionProvider):
                 ):
                     continue
 
-                if attempt <= max_attempts:
+                if attempt < max_attempts:
                     delay = self.backoff_factor ** (attempt - 1)
                     time.sleep(delay)
 

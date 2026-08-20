@@ -71,7 +71,7 @@ def test_real_voice_vision():
 
         client = genai.Client(api_key=api_key)
         tts_resp = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.6-flash",
             contents=f"Convert this visual screen observation into a natural spoken reply from FRIDAY to Surendra: {res.content[:200]}",
             config=types.GenerateContentConfig(
                 response_modalities=["AUDIO"],
