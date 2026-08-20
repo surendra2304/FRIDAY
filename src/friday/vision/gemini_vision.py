@@ -138,7 +138,10 @@ class GeminiVisionProvider(BaseVisionProvider):
         last_error = None
         attempt = 0
 
-        while attempt <= self.max_retries:
+        pool_size = len(self.credential_pool.credentials) if (self.credential_pool and hasattr(self.credential_pool, "credentials")) else 1
+        max_attempts = pool_size if (self.credential_pool and not self._explicit_api_key) else self.max_retries
+
+        while attempt <= max_attempts:
             try:
                 active_key = self._get_active_api_key()
                 self._current_key = active_key
@@ -165,19 +168,26 @@ class GeminiVisionProvider(BaseVisionProvider):
                 last_error = e
                 attempt += 1
 
+                cat = self.credential_pool.classify_error(e) if self.credential_pool else FailureCategory.UNKNOWN
                 if self.credential_pool and not self._explicit_api_key and self._current_key:
                     self.credential_pool.report_failure(self._current_key, e)
 
-                cat = self.credential_pool.classify_error(e) if self.credential_pool else FailureCategory.UNKNOWN
                 logger.warning(
-                    f"Gemini Vision call failed (attempt {attempt}/{self.max_retries + 1}): {type(e).__name__} ({cat.value})"
+                    f"Gemini Vision call failed (attempt {attempt}/{max_attempts + 1}): {type(e).__name__} ({cat.value})"
                 )
 
-                if attempt <= self.max_retries:
+                # If quota exhausted or auth failed and pool is active, immediately fail over to next credential with 0 delay
+                if self.credential_pool and not self._explicit_api_key and cat in (
+                    FailureCategory.QUOTA_EXHAUSTED,
+                    FailureCategory.AUTH_FAILED,
+                ):
+                    continue
+
+                if attempt <= max_attempts:
                     delay = self.backoff_factor ** (attempt - 1)
                     time.sleep(delay)
 
-        error_msg = f"Gemini Vision analysis failed after {self.max_retries + 1} attempts: {last_error}"
+        error_msg = f"Gemini Vision analysis failed after {attempt} attempts: {last_error}"
         logger.error(error_msg)
         return VisionAnalysisResult(
             text="",

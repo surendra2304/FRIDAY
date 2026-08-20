@@ -26,7 +26,7 @@ from friday.core.exceptions import LLMProviderError
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role, ToolCall
 from friday.llm.base import BaseLLMProvider
-from friday.auth.credential_pool import credential_pool, GeminiCredentialPool
+from friday.auth.credential_pool import credential_pool, GeminiCredentialPool, FailureCategory
 # duplicate import removed
 
 logger = get_logger("llm.gemini")
@@ -279,37 +279,39 @@ class GeminiLLMProvider(BaseLLMProvider):
         and wraps exceptions in LLMProviderError with secret masking.
         """
         attempt = 0
-        while attempt <= self.max_retries:
+        pool_size = len(self.credential_pool.credentials) if (self.credential_pool and hasattr(self.credential_pool, "credentials")) else 1
+        max_attempts = pool_size if (self.credential_pool and not self.api_key) else self.max_retries
+
+        while attempt <= max_attempts:
             # Determine the API key to use for this request (re-select each retry)
             if self.api_key is not None and not self.api_key.strip():
                 raise LLMProviderError("Gemini API key is required")
             try:
-                if self.credential_pool and len(self.credential_pool.credentials) > 0:
+                if self.credential_pool and not self.api_key:
                     active_key = self.credential_pool.get_active_key()
                 else:
                     active_key = self.api_key
             except (RuntimeError, Exception) as e:
-                active_key = self.api_key
+                active_key = self.api_key if self.api_key else None
             if not active_key:
-                raise LLMProviderError("Gemini API key is required")
+                raise LLMProviderError("Gemini API key is required (all credentials exhausted or unavailable)")
             
             # Ensure client is initialized/updated with the active key
+            self._current_key = active_key
             if self._client is None:
                 self._client = genai.Client(api_key=active_key)
-                self._current_key = active_key
-            elif not hasattr(self._client, "_is_mock") and getattr(self, "_current_key", None) != active_key:
+            elif not getattr(self._client, "_is_mock", False):
                 # If key changed and it's not an explicit test mock, recreate client with new key
                 try:
                     self._client = genai.Client(api_key=active_key)
                 except Exception:
                     pass
-                self._current_key = active_key
 
             contents, config = self._build_contents_and_config(messages, tools)
 
             try:
                 logger.debug(
-                    f"Calling GenAI generate_content (model: {self.model}, attempt {attempt + 1}/{self.max_retries + 1})"
+                    f"Calling GenAI generate_content (model: {self.model}, attempt {attempt + 1}/{max_attempts + 1})"
                 )
                 response = self.client.models.generate_content(
                     model=self.model,
@@ -371,20 +373,41 @@ class GeminiLLMProvider(BaseLLMProvider):
 
             except (genai_errors.APIError, Exception) as e:
                 err_msg = self._mask_key(str(e))
-                code = getattr(e, "code", None) or getattr(e, "status_code", 500)
                 
-                # Report failure to credential pool for auth/quota/network errors with error classification
+                # Classify error
+                category = self.credential_pool.classify_error(e) if (self.credential_pool and not self.api_key) else None
+                
+                # Report failure to credential pool
                 if hasattr(self, "credential_pool") and self.credential_pool and not self.api_key:
                     self.credential_pool.report_failure(active_key, error=e)
-                
+
+                # If quota exhausted or auth failed and pool is available, IMMEDIATELY fail over to next credential with 0 backoff sleep
+                if self.credential_pool and not self.api_key and category in (
+                    FailureCategory.QUOTA_EXHAUSTED,
+                    FailureCategory.AUTH_FAILED,
+                ):
+                    logger.warning(
+                        f"Gemini credential {self.credential_pool._find_by_key(active_key).project_label if self.credential_pool._find_by_key(active_key) else 'key'} "
+                        f"received {category.value}. Immediately failing over to next healthy credential in pool."
+                    )
+                    attempt += 1
+                    try:
+                        # Test if there is another healthy key
+                        self.credential_pool.get_active_key()
+                        continue
+                    except RuntimeError:
+                        logger.error("All Gemini credentials in pool are exhausted or in cooldown.")
+                        raise LLMProviderError("All Gemini credentials in pool are exhausted or in cooldown.") from e
+
                 err_lower = err_msg.lower()
-                # If this looks like a quota or rate limit issue, treat as retryable
-                if ("429" in err_lower or "quota" in err_lower or "resource exhausted" in err_lower) and attempt < self.max_retries:
+                # For transient rate limit or service error, apply backoff retry
+                if ("429" in err_lower or "quota" in err_lower or "resource exhausted" in err_lower) and attempt < max_attempts:
                     wait = 1.0 * (self.backoff_factor ** attempt)
-                    logger.warning(f"GenAI rate limit: {err_msg}. Retrying in {wait:.2f}s...")
+                    logger.warning(f"GenAI transient rate limit: {err_msg}. Retrying in {wait:.2f}s...")
                     time.sleep(wait)
                     attempt += 1
                     continue
+
                 logger.error(f"Gemini provider error: {err_msg}")
                 raise LLMProviderError(f"Gemini provider error: {err_msg}") from e
 

@@ -140,6 +140,21 @@ class GeminiCredentialPool:
         fallbacks = [
             os.getenv(f"FRIDAY_GEMINI_FALLBACK_API_KEY_{i}") for i in range(1, 5)
         ]
+        if not primary and not any(fallbacks):
+            try:
+                from dotenv import dotenv_values
+                from friday.core.config import resolve_env_file
+                env_p = resolve_env_file()
+                if env_p and env_p.is_file():
+                    vals = dotenv_values(dotenv_path=env_p)
+                    primary = vals.get("FRIDAY_GEMINI_API_KEY") or vals.get("GEMINI_API_KEY")
+                    fallbacks = [
+                        vals.get(f"FRIDAY_GEMINI_FALLBACK_API_KEY_{i}") or vals.get(f"GEMINI_FALLBACK_API_KEY_{i}")
+                        for i in range(1, 5)
+                    ]
+            except Exception:
+                pass
+
         self.credentials = []
         if primary and primary.strip():
             self.credentials.append(
@@ -283,10 +298,17 @@ class GeminiCredentialPool:
         err_str = str(error).lower()
         if "401" in err_str or "api_key_invalid" in err_str or "invalid api key" in err_str or "api key not valid" in err_str:
             return FailureCategory.AUTH_FAILED
-        if "404" in err_str or "not_found" in err_str or "model" in err_str and "no longer available" in err_str:
+        if "404" in err_str or "not_found" in err_str or ("model" in err_str and "no longer available" in err_str):
             return FailureCategory.MODEL_NOT_FOUND
         if "429" in err_str or "resource_exhausted" in err_str or "quota" in err_str:
-            if "daily" in err_str or "quota exceeded" in err_str or "generate_content_free_tier" in err_str:
+            if (
+                "daily" in err_str
+                or "quota exceeded" in err_str
+                or "generate_content_free_tier" in err_str
+                or "limit:" in err_str
+                or "resource_exhausted" in err_str
+                or "free_tier" in err_str
+            ):
                 return FailureCategory.QUOTA_EXHAUSTED
             return FailureCategory.RATE_LIMIT
         if "500" in err_str or "503" in err_str or "504" in err_str or "unavailable" in err_str:
@@ -303,6 +325,22 @@ class GeminiCredentialPool:
                 return
             category = self.classify_error(error) if error else FailureCategory.RATE_LIMIT
             cooldown_dur = COOLDOWN_DURATIONS.get(category, float(self.cooldown_seconds))
+
+            # If Google API provided a specific retry delay in the error response, parse and respect it
+            if error:
+                err_str = str(error)
+                import re
+                m = re.search(r"retry in ([0-9]+(?:\.[0-9]+)?)s", err_str, re.IGNORECASE)
+                if not m:
+                    m = re.search(r"['\"]retryDelay['\"]:\s*['\"]([0-9]+)s['\"]", err_str, re.IGNORECASE)
+                if m:
+                    try:
+                        extracted_delay = float(m.group(1))
+                        if extracted_delay > 0:
+                            # Add a small 2-second buffer
+                            cooldown_dur = max(cooldown_dur if category != FailureCategory.QUOTA_EXHAUSTED else 0.0, extracted_delay + 2.0)
+                    except Exception:
+                        pass
 
             cred.failure_count += 1
             cred.last_failed_at = datetime.utcnow()

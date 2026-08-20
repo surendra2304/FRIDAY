@@ -76,6 +76,16 @@ class WindowsScreenCaptureProvider(BaseScreenCaptureProvider):
         self._gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
         self._gdi32.DeleteDC.restype = wintypes.BOOL
         self._gdi32.DeleteDC.argtypes = [wintypes.HDC]
+        self._gdi32.GetDIBits.restype = wintypes.INT
+        self._gdi32.GetDIBits.argtypes = [
+            wintypes.HDC,
+            wintypes.HBITMAP,
+            wintypes.UINT,
+            wintypes.UINT,
+            wintypes.LPVOID,
+            ctypes.c_void_p,
+            wintypes.UINT,
+        ]
 
     def list_displays(self) -> List[Dict[str, Any]]:
         """Enumerate display monitors on Windows."""
