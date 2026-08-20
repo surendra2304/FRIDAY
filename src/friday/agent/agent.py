@@ -39,6 +39,7 @@ from friday.tools.builtin import (
 from friday.agent.state import TaskState, ReasoningStateMachine
 from friday.agent.planner import TaskPlan, PlanStep, StepStatus, GoalDecomposer
 from friday.agent.executor import TaskExecutionEngine, TaskExecutionResult, ExecutionProgress
+from friday.agent.checkpoint import TaskCheckpoint, TaskCheckpointStore
 from friday.memory.task_context import ActiveTaskContext
 from friday.tools.registry import ToolRegistry
 
@@ -73,6 +74,7 @@ class FridayAgent:
         self.state_machine: ReasoningStateMachine = ReasoningStateMachine()
         self._current_plan: Optional[TaskPlan] = None
         self.task_context: Optional[ActiveTaskContext] = None
+        self.checkpoint_store: TaskCheckpointStore = TaskCheckpointStore()
 
         if self.settings.memory_retention_days:
             self.prune_memory(self.settings.memory_retention_days)
@@ -389,6 +391,61 @@ class FridayAgent:
                 self.memory.add_message(summary_msg)
 
         return res
+
+    def pause_current_task(self, reason: str = "Interrupted by user") -> Optional[TaskCheckpoint]:
+        """Pause active task, capture snapshot checkpoint, and transition state to PAUSED."""
+        if not self._current_plan or self.state_machine.current_state != TaskState.EXECUTING:
+            logger.warning("No active executing task to pause.")
+            return None
+
+        self.state_machine.pause(reason=reason)
+        step_results = self.task_context.step_outputs if self.task_context else {}
+        active_step = self.task_context.active_step_id if self.task_context else None
+
+        chk = self.checkpoint_store.save_checkpoint(
+            task_id=self._current_plan.plan_id,
+            goal=self._current_plan.goal,
+            plan=self._current_plan,
+            state=TaskState.PAUSED,
+            active_step_id=active_step,
+            step_results=step_results,
+        )
+        return chk
+
+    def resume_task(self, task_id: Optional[str] = None) -> TaskExecutionResult:
+        """Resume execution of a paused task from its last valid checkpoint."""
+        target_id = task_id or (self._current_plan.plan_id if self._current_plan else None)
+        if not target_id:
+            raise ValueError("No task ID provided or active to resume.")
+
+        chk = self.checkpoint_store.get_latest_checkpoint(target_id)
+        if not chk:
+            raise ValueError(f"No checkpoint found for task '{target_id}'.")
+
+        # Reconstruct TaskPlan from saved dictionary
+        plan = TaskPlan.from_dict(chk.plan_dict)
+        self._current_plan = plan
+
+        # Set up active working context with previous step results
+        self.task_context = ActiveTaskContext(task_id=plan.plan_id, goal=plan.goal, plan=plan)
+        for sid, res_str in chk.step_results.items():
+            self.task_context.record_step_result(sid, res_str)
+
+        # Initialize fresh state machine representing paused task state
+        self.state_machine = ReasoningStateMachine(task_id=plan.plan_id, initial_state=TaskState.PAUSED)
+        self.state_machine.resume(reason="Resuming task execution from checkpoint")
+
+        return self.execute_plan(plan=plan)
+
+    def cancel_task(self, reason: str = "Cancelled by user") -> bool:
+        """Cancel active task execution."""
+        if self.state_machine.current_state in (TaskState.COMPLETED, TaskState.CANCELLED, TaskState.FAILED):
+            return False
+
+        self.state_machine.cancel(reason=reason)
+        if self._current_plan:
+            self.checkpoint_store.delete_checkpoint(self._current_plan.plan_id)
+        return True
 
     def process_message(
         self,

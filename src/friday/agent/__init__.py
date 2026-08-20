@@ -13,6 +13,7 @@ from friday.agent.recovery import (
     FailureAnalyzer,
     AutonomousRecoveryManager,
 )
+from friday.agent.checkpoint import TaskCheckpoint, TaskCheckpointStore
 
 __all__ = [
     "FridayAgent",
@@ -39,4 +40,6 @@ __all__ = [
     "FailureDiagnosis",
     "FailureAnalyzer",
     "AutonomousRecoveryManager",
+    "TaskCheckpoint",
+    "TaskCheckpointStore",
 ]

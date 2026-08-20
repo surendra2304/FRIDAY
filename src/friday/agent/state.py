@@ -25,19 +25,23 @@ class TaskState(str, Enum):
     UNDERSTANDING = "UNDERSTANDING"
     PLANNING = "PLANNING"
     EXECUTING = "EXECUTING"
+    PAUSED = "PAUSED"
     VERIFYING = "VERIFYING"
     COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
     FAILED = "FAILED"
 
 
 # Valid deterministic transitions from each state
 VALID_TRANSITIONS: Dict[TaskState, List[TaskState]] = {
-    TaskState.NOT_STARTED: [TaskState.UNDERSTANDING, TaskState.FAILED],
-    TaskState.UNDERSTANDING: [TaskState.PLANNING, TaskState.FAILED],
-    TaskState.PLANNING: [TaskState.EXECUTING, TaskState.VERIFYING, TaskState.FAILED],
-    TaskState.EXECUTING: [TaskState.VERIFYING, TaskState.FAILED],
-    TaskState.VERIFYING: [TaskState.COMPLETED, TaskState.FAILED],
+    TaskState.NOT_STARTED: [TaskState.UNDERSTANDING, TaskState.CANCELLED, TaskState.FAILED],
+    TaskState.UNDERSTANDING: [TaskState.PLANNING, TaskState.CANCELLED, TaskState.FAILED],
+    TaskState.PLANNING: [TaskState.EXECUTING, TaskState.PAUSED, TaskState.VERIFYING, TaskState.CANCELLED, TaskState.FAILED],
+    TaskState.EXECUTING: [TaskState.PAUSED, TaskState.VERIFYING, TaskState.CANCELLED, TaskState.FAILED],
+    TaskState.PAUSED: [TaskState.EXECUTING, TaskState.CANCELLED, TaskState.FAILED],
+    TaskState.VERIFYING: [TaskState.COMPLETED, TaskState.CANCELLED, TaskState.FAILED],
     TaskState.COMPLETED: [],  # Terminal state
+    TaskState.CANCELLED: [],  # Terminal state
     TaskState.FAILED: [],     # Terminal state
 }
 
@@ -71,9 +75,10 @@ class ReasoningStateMachine:
         self,
         task_id: Optional[str] = None,
         on_transition: Optional[Callable[[TaskState, TaskState, Optional[str]], None]] = None,
+        initial_state: TaskState = TaskState.NOT_STARTED,
     ) -> None:
         self.task_id: str = task_id or str(uuid.uuid4())
-        self._current_state: TaskState = TaskState.NOT_STARTED
+        self._current_state: TaskState = initial_state
         self._history: List[StateTransitionRecord] = []
         self._on_transition = on_transition
         self._failure_reason: Optional[str] = None
@@ -123,6 +128,18 @@ class ReasoningStateMachine:
                 logger.warning(f"Error in on_transition callback: {e}")
 
         return self._current_state
+
+    def pause(self, reason: str = "Task execution paused") -> TaskState:
+        """Transition task to PAUSED state."""
+        return self.transition_to(TaskState.PAUSED, reason=reason)
+
+    def resume(self, reason: str = "Resuming task execution") -> TaskState:
+        """Transition task from PAUSED back to EXECUTING."""
+        return self.transition_to(TaskState.EXECUTING, reason=reason)
+
+    def cancel(self, reason: str = "Task execution cancelled by user") -> TaskState:
+        """Transition task to CANCELLED state."""
+        return self.transition_to(TaskState.CANCELLED, reason=reason)
 
     def fail(self, reason: str, metadata: Optional[Dict[str, Any]] = None) -> TaskState:
         """Transition task directly to FAILED with sanitized error metadata."""

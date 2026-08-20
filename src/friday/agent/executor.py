@@ -186,6 +186,14 @@ class TaskExecutionEngine:
             sm.transition_to(TaskState.EXECUTING, reason="Executing plan steps")
 
         step_results: Dict[str, StepExecutionResult] = {}
+        for s in plan.steps:
+            if s.status == StepStatus.COMPLETED and s.result:
+                step_results[s.step_id] = StepExecutionResult(
+                    step_id=s.step_id,
+                    status=StepStatus.COMPLETED,
+                    result=s.result,
+                )
+
         recovery_mgr = AutonomousRecoveryManager(
             max_retries_per_step=self.max_self_corrections_per_step,
             max_global_task_retries=self.max_step_limit,
@@ -210,6 +218,18 @@ class TaskExecutionEngine:
                 )
                 sm.fail(reason=err_msg, metadata={"limit_exceeded": True})
                 break
+
+            # 0. Check if step is already COMPLETED (e.g. during resumed execution)
+            if step.status == StepStatus.COMPLETED:
+                logger.info(f"Step '{step.step_id}': Already verified and completed in prior checkpoint. Skipping re-execution.")
+                if step.step_id not in step_results:
+                    step_results[step.step_id] = StepExecutionResult(
+                        step_id=step.step_id,
+                        status=StepStatus.COMPLETED,
+                        result=step.result,
+                    )
+                self._notify_progress(plan, step_results, step.step_id, time.perf_counter() - start_time)
+                continue
 
             # 1. Dependency Resolution Check
             missing_or_failed_deps = []

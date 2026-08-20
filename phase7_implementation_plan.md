@@ -107,10 +107,12 @@ flowchart TD
 - Integrated into `TaskExecutionEngine` with tool fallback substitution and strict authorization gating.
 - **Files Created/Modified**: `src/friday/agent/recovery.py`, `src/friday/agent/executor.py`, `src/friday/agent/__init__.py`, `tests/test_failure_recovery.py` (6/6 tests passing).
 
-#### Phase 7.7 — Interruption, Checkpointing & Resumption
-- Add ACID SQLite task checkpointing (`TaskCheckpointStore`).
-- Allow user or voice barge-in to pause an active execution plan, switch context, and subsequently resume the paused task from the last successful step checkpoint.
-- **Target Files**: `src/friday/agent/checkpoint.py`, `src/friday/tasks/sqlite_store.py`, `tests/test_task_resumption.py`.
+#### Phase 7.7 — Interruption, Checkpointing & Resumption [COMPLETE]
+- Extend `TaskState` with `PAUSED` and `CANCELLED` lifecycle states, supporting pause, resume, and cancel transitions.
+- Implement `TaskCheckpoint` and `TaskCheckpointStore` with memory and SQLite persistence backends.
+- Enforce strict checkpoint sanitization: excludes secrets, credentials, raw screenshots, and binary payload buffers.
+- Integrated into `FridayAgent` (`pause_current_task`, `resume_task`, `cancel_task`) and `TaskExecutionEngine` with pre-completed step skipping to prevent duplicate action execution.
+- **Files Created/Modified**: `src/friday/agent/state.py`, `src/friday/agent/checkpoint.py`, `src/friday/agent/planner.py`, `src/friday/agent/agent.py`, `src/friday/agent/executor.py`, `src/friday/agent/__init__.py`, `tests/test_task_checkpointing.py` (6/6 tests passing).
 
 #### Phase 7.8 — Advanced Tool Orchestration & Multi-Tool Planning
 - Enhance tool selection with dependency chaining and parameter inference.

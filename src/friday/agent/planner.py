@@ -71,6 +71,26 @@ class PlanStep:
             "created_at": self.created_at.isoformat(),
         }
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "PlanStep":
+        """Deserialize PlanStep from dictionary."""
+        status_val = data.get("status", StepStatus.PENDING.value)
+        safety_val = data.get("safety_level", SafetyLevel.SAFE.value)
+        return cls(
+            step_id=data["step_id"],
+            description=data.get("description", ""),
+            tool_name=data.get("tool_name"),
+            parameters=data.get("parameters", {}),
+            depends_on=data.get("depends_on", []),
+            safety_level=SafetyLevel(safety_val) if safety_val in SafetyLevel._value2member_map_ else SafetyLevel.SAFE,
+            requires_confirmation=data.get("requires_confirmation", False),
+            status=StepStatus(status_val) if status_val in StepStatus._value2member_map_ else StepStatus.PENDING,
+            success_criteria=data.get("success_criteria"),
+            result=data.get("result"),
+            error=data.get("error"),
+            created_at=datetime.fromisoformat(data["created_at"]) if "created_at" in data else datetime.now(timezone.utc),
+        )
+
 
 @dataclass
 class TaskPlan:
@@ -91,6 +111,18 @@ class TaskPlan:
             "created_at": self.created_at.isoformat(),
             "metadata": self.metadata,
         }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "TaskPlan":
+        """Deserialize TaskPlan and constituent PlanSteps from dictionary."""
+        steps = [PlanStep.from_dict(s) for s in data.get("steps", [])]
+        return cls(
+            goal=data.get("goal", ""),
+            steps=steps,
+            plan_id=data.get("plan_id", str(uuid.uuid4())),
+            created_at=datetime.fromisoformat(data["created_at"]) if "created_at" in data else datetime.now(timezone.utc),
+            metadata=data.get("metadata", {}),
+        )
 
     def get_step(self, step_id: str) -> Optional[PlanStep]:
         """Find a step by its ID."""
