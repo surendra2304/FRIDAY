@@ -26,7 +26,7 @@ Phase 9.1: Autonomous Goal Understanding & Decomposition [COMPLETE]
 Phase 9.2: Hierarchical Task Planning & Dependency DAG [COMPLETE]
 Phase 9.3: Intelligent Multi-Step Execution Orchestrator [COMPLETE]
 Phase 9.4: Formal Verification, Self-Correction & Bounded Recovery [COMPLETE]
-Phase 9.5: Autonomous Hypothesis Testing & World-Model Calibration [PENDING]
+Phase 9.5: Active Working Memory & Task Context [COMPLETE]
 Phase 9.6: Phase 9 Full Autonomous Cognitive Acceptance Gate [PENDING]
 ```
 
@@ -107,6 +107,24 @@ Phase 9.6: Phase 9 Full Autonomous Cognitive Acceptance Gate [PENDING]
   - `tests/test_verification_and_bounded_recovery.py` (4/4 tests passing)
 - **Verification**:
   - Full automated suite: 513 passed, 5 deselected in 96.98s.
+
+---
+
+## 7. Subphase 9.5 Specifications & Verification [COMPLETE]
+
+- **Components Implemented**:
+  1. Isolated Active Task Context (`ActiveTaskContext`):
+     - Tracks current objective, plan, active step, step outputs, verification results, failures, recovery attempts, temporary variables, authorization decisions, checkpoint references, and observations.
+     - Context compaction (`compact`): Enforces strict sliding windows and token budgeting to prevent LLM context bloat while preserving core task invariants.
+     - Prioritized working summary generation (`get_working_summary`): Injects prioritized task state into the prompt without contaminating long-term conversation memory.
+     - Ephemeral lifecycle and secure cleanup: Expiration check (`is_expired`), secure reset (`clear`), and extraction of high-level factual summaries for long-term memory (`finalize_and_extract_long_term_summary`).
+     - Data sanitization & security: Strips raw screenshots, base64 image data, and redacts sensitive credentials (tokens, passwords, keys).
+- **Files Created/Modified**:
+  - `src/friday/memory/task_context.py`
+  - `tests/test_active_working_memory.py` (6/6 tests passing)
+- **Verification**:
+  - Full automated suite: 519 passed, 5 deselected in 79.47s.
+
 
 
 

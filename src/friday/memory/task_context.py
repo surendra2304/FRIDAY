@@ -54,6 +54,7 @@ class ActiveTaskContext:
         plan: Optional[Any] = None,
         max_observations: int = 15,
         max_output_chars_per_step: int = 1000,
+        ttl_seconds: float = 3600.0,
     ) -> None:
         self.task_id: str = task_id or str(uuid.uuid4())
         self.goal: str = goal
@@ -62,14 +63,26 @@ class ActiveTaskContext:
         self.active_step_id: Optional[str] = None
         self.max_observations = max_observations
         self.max_output_chars_per_step = max_output_chars_per_step
+        self.ttl_seconds = ttl_seconds
 
         self.step_outputs: Dict[str, str] = {}
         self.step_verifications: Dict[str, VerificationResult] = {}
         self.constraints: List[str] = []
         self.user_clarifications: List[str] = []
         self.observations: List[TaskObservation] = []
+        self.failures: List[Dict[str, Any]] = []
+        self.recovery_attempts: List[Dict[str, Any]] = []
+        self.temp_variables: Dict[str, Any] = {}
+        self.authorization_decisions: List[Dict[str, Any]] = []
+        self.checkpoint_references: List[str] = []
         self.created_at: datetime = datetime.now(timezone.utc)
         self.updated_at: datetime = datetime.now(timezone.utc)
+
+    @property
+    def is_expired(self) -> bool:
+        """Check if task context has exceeded its time-to-live."""
+        age = (datetime.now(timezone.utc) - self.updated_at).total_seconds()
+        return age > self.ttl_seconds
 
     def set_state(self, state: TaskState) -> None:
         """Update active task state."""
@@ -94,6 +107,56 @@ class ActiveTaskContext:
         if clean:
             self.user_clarifications.append(clean)
             self.updated_at = datetime.now(timezone.utc)
+
+    def set_temp_variable(self, key: str, value: Any) -> None:
+        """Store a temporary working variable for intermediate computation."""
+        # Sanitize sensitive variable values
+        val_str = str(value)
+        if any(sec in val_str.lower() for sec in ("key=", "token=", "password=", "secret=")):
+            val_str = "[Sensitive credential redacted]"
+            value = val_str
+        self.temp_variables[key] = value
+        self.updated_at = datetime.now(timezone.utc)
+
+    def get_temp_variable(self, key: str, default: Any = None) -> Any:
+        """Retrieve an intermediate temporary variable."""
+        return self.temp_variables.get(key, default)
+
+    def record_authorization_decision(self, tool_name: str, decision: str, reason: str = "") -> None:
+        """Record an authorization check outcome."""
+        self.authorization_decisions.append({
+            "tool_name": tool_name,
+            "decision": decision,
+            "reason": reason,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+        self.updated_at = datetime.now(timezone.utc)
+
+    def record_checkpoint(self, checkpoint_id: str) -> None:
+        """Record a reference to a saved checkpoint."""
+        if checkpoint_id not in self.checkpoint_references:
+            self.checkpoint_references.append(checkpoint_id)
+            self.updated_at = datetime.now(timezone.utc)
+
+    def record_failure(self, step_id: str, error_msg: str, diagnosis: Optional[str] = None) -> None:
+        """Record a failure event during task execution."""
+        self.failures.append({
+            "step_id": step_id,
+            "error": error_msg[:300],
+            "diagnosis": diagnosis,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+        self.updated_at = datetime.now(timezone.utc)
+
+    def record_recovery_attempt(self, step_id: str, strategy: str, outcome: str) -> None:
+        """Record an autonomous self-correction or recovery attempt."""
+        self.recovery_attempts.append({
+            "step_id": step_id,
+            "strategy": strategy,
+            "outcome": outcome,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+        self.updated_at = datetime.now(timezone.utc)
 
     def record_step_result(
         self,
@@ -128,7 +191,7 @@ class ActiveTaskContext:
             return
 
         # Redact secrets / binary payloads
-        if "key=" in clean or "token=" in clean or "password=" in clean:
+        if "key=" in clean or "token=" in clean or "password=" in clean or "secret=" in clean:
             clean = "[Sensitive credentials redacted]"
 
         obs = TaskObservation(step_id=step_id, content=clean, source_tool=source_tool)
@@ -140,8 +203,25 @@ class ActiveTaskContext:
 
         self.updated_at = datetime.now(timezone.utc)
 
-    def get_working_summary(self) -> str:
-        """Synthesize a compact working prompt block for the LLM working context."""
+    def compact(self, max_step_outputs: int = 5, max_observations: int = 5) -> None:
+        """Compact the working context to fit strict token budgets without losing goal invariants."""
+        # Keep most recent step outputs
+        if len(self.step_outputs) > max_step_outputs:
+            recent_keys = list(self.step_outputs.keys())[-max_step_outputs:]
+            self.step_outputs = {k: self.step_outputs[k] for k in recent_keys}
+
+        # Keep most recent observations
+        if len(self.observations) > max_observations:
+            self.observations = self.observations[-max_observations:]
+
+        # Compact failures
+        if len(self.failures) > 3:
+            self.failures = self.failures[-3:]
+
+        self.updated_at = datetime.now(timezone.utc)
+
+    def get_working_summary(self, max_items: int = 5) -> str:
+        """Synthesize a compact, prioritized prompt block for the LLM working context."""
         state_str = self.state.value if hasattr(self.state, "value") else str(self.state)
         lines = [f"[Active Task Goal]: {self.goal}", f"[State]: {state_str}"]
         if self.active_step_id:
@@ -155,14 +235,20 @@ class ActiveTaskContext:
 
         if self.step_outputs:
             lines.append("[Completed Step Results]:")
-            for sid, out in self.step_outputs.items():
+            items = list(self.step_outputs.items())[-max_items:]
+            for sid, out in items:
                 v_stat = " (Verified)" if self.step_verifications.get(sid, getattr(self.step_verifications.get(sid), "passed", False)) else ""
                 lines.append(f"  - Step '{sid}'{v_stat}: {out[:120]}")
 
         if self.observations:
             lines.append("[Recent Observations]:")
-            for obs in self.observations[-5:]:
+            for obs in self.observations[-max_items:]:
                 lines.append(f"  - [{obs.step_id}] {obs.content[:100]}")
+
+        if self.failures:
+            lines.append("[Recent Failures]:")
+            for f in self.failures[-3:]:
+                lines.append(f"  - [{f['step_id']}] {f['error'][:80]}")
 
         return "\n".join(lines)
 
@@ -193,12 +279,17 @@ class ActiveTaskContext:
         )
 
     def clear(self) -> None:
-        """Clear all active working memory."""
+        """Clear all active working memory and reset state securely."""
         self.step_outputs.clear()
         self.step_verifications.clear()
         self.constraints.clear()
         self.user_clarifications.clear()
         self.observations.clear()
+        self.failures.clear()
+        self.recovery_attempts.clear()
+        self.temp_variables.clear()
+        self.authorization_decisions.clear()
+        self.checkpoint_references.clear()
         self.active_step_id = None
         self.state = "NOT_STARTED"
         self.updated_at = datetime.now(timezone.utc)
@@ -214,7 +305,45 @@ class ActiveTaskContext:
             "constraints": self.constraints,
             "user_clarifications": self.user_clarifications,
             "step_outputs": self.step_outputs,
+            "temp_variables": self.temp_variables,
+            "failures": self.failures,
+            "recovery_attempts": self.recovery_attempts,
+            "authorization_decisions": self.authorization_decisions,
+            "checkpoint_references": self.checkpoint_references,
             "observations": [o.to_dict() for o in self.observations],
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ActiveTaskContext":
+        """Deserialize an ActiveTaskContext instance from dictionary (e.g. from checkpoint restoration)."""
+        ctx = cls(
+            task_id=data.get("task_id"),
+            goal=data.get("goal", ""),
+        )
+        ctx.state = data.get("state", "NOT_STARTED")
+        ctx.active_step_id = data.get("active_step_id")
+        ctx.constraints = data.get("constraints", [])
+        ctx.user_clarifications = data.get("user_clarifications", [])
+        ctx.step_outputs = data.get("step_outputs", {})
+        ctx.temp_variables = data.get("temp_variables", {})
+        ctx.failures = data.get("failures", [])
+        ctx.recovery_attempts = data.get("recovery_attempts", [])
+        ctx.authorization_decisions = data.get("authorization_decisions", [])
+        ctx.checkpoint_references = data.get("checkpoint_references", [])
+        ctx.observations = [
+            TaskObservation(
+                step_id=o["step_id"],
+                content=o["content"],
+                source_tool=o.get("source_tool"),
+                timestamp=datetime.fromisoformat(o["timestamp"]) if "timestamp" in o else datetime.now(timezone.utc),
+            )
+            for o in data.get("observations", [])
+        ]
+        if "created_at" in data:
+            ctx.created_at = datetime.fromisoformat(data["created_at"])
+        if "updated_at" in data:
+            ctx.updated_at = datetime.fromisoformat(data["updated_at"])
+        return ctx
+
