@@ -271,13 +271,18 @@ class WindowsScreenCaptureProvider(BaseScreenCaptureProvider):
             )
 
         except Exception as e:
-            logger.error(f"Windows screen capture failed: {e}")
+            logger.error(f"Windows screen capture failed: {e}. Attempting PowerShell fallback...")
+            fallback_snapshot = self._capture_via_powershell(display)
+            if fallback_snapshot:
+                logger.info("PowerShell screen capture fallback succeeded.")
+                return fallback_snapshot
+
             return ScreenSnapshot(
                 image_data=b"",
                 mime_type="image/png",
                 display_id=display,
                 is_error=True,
-                error_message=str(e),
+                error_message=str(e) + " (PowerShell fallback also failed)",
             )
 
         finally:
