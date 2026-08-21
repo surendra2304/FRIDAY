@@ -85,6 +85,11 @@ class Settings(BaseSettings):
 
     # General
     env: str = Field(default="development", description="Environment (development, production, testing)")
+    # UI Automation flag – enabled by default on Windows, disabled otherwise
+    ui_automation_enabled: bool = Field(
+        default=bool(os.name == "nt"),
+        description="Enable Windows UI Automation provider (default true on Windows).",
+    )
     
     # Logging
     log_level: str = Field(default="INFO", description="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")

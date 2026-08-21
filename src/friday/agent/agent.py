@@ -46,6 +46,7 @@ from friday.agent.verification import StepVerifier, VerificationStatus
 from friday.routing.capability_router import CapabilityRouter, ExecutionCapabilityType
 from friday.vision.actions import ActionType
 from friday.vision.detector import DeterministicActionDetector, DeterministicActionIntent
+from friday.vision.intent_detector import IntentDetector, ActionIntent
 from friday.vision.computer_control import ComputerActionExecutor, ExecutionStatus
 from friday.vision.windows_input_driver import (
     BaseWindowsInputDriver,
@@ -76,6 +77,14 @@ class FridayAgent:
         conversation_id: Optional[str] = None,
     ) -> None:
         self.settings = settings or get_settings()
+        # Initialize UI Automation provider if enabled and on Windows
+        self.ui_provider = None
+        if self.settings.ui_automation_enabled:
+            try:
+                from friday.ui_automation.provider import WindowsUIAutomationProvider
+                self.ui_provider = WindowsUIAutomationProvider()
+            except Exception as e:
+                logger.warning(f"UI Automation provider could not be initialized: {e}")
         self.llm = llm_provider or create_llm_provider(self.settings)
         self.memory = memory if memory is not None else create_memory(self.settings, conversation_id=conversation_id)
         self.tools = tool_registry or self._create_default_registry()
@@ -532,6 +541,24 @@ class FridayAgent:
         )
         logger.info(f"Capability routed to: {routing_decision.selected_capability.value}")
 
+        # Intent detection for semantic UI actions
+        intent_result = IntentDetector.detect(clean_input)
+        if intent_result.intent == ActionIntent.SEMANTIC_UI_ACTION and intent_result.confidence >= 0.90:
+            logger.info(f"Semantic UI action detected with confidence {intent_result.confidence}")
+            if self.ui_provider:
+                element = self.ui_provider.find_element(intent_result.parsed_data.get('target', ''))
+                if element and getattr(element, "confidence", 0) >= intent_result.confidence:
+                    click_success = self.ui_provider.click(element)
+                    if click_success:
+                        resp_content = f"Clicked the {intent_result.parsed_data.get('target', '')} button via UI Automation."
+                        self.memory.add_message(Message(role=Role.ASSISTANT, content=resp_content))
+                        return AgentResponse(content=resp_content, is_done=True, metadata={"ui_automation": True, "action": "click", "target": intent_result.parsed_data.get('target'), "confidence": intent_result.confidence})
+                    else:
+                        logger.warning("UI Automation click failed.")
+                else:
+                    logger.warning("UI element not found or low confidence.")
+            else:
+                logger.warning("UI Automation provider not initialized.")
         # Evaluate Deterministic Computer Action Fast-Path (Bypasses LLM & Vision entirely)
         det_intent = DeterministicActionDetector.detect(clean_input)
         if det_intent and det_intent.confidence >= 0.95:
@@ -543,6 +570,24 @@ class FridayAgent:
             proposal = det_intent.to_proposal()
 
             # Record user turn in memory
+            # Intent detection for semantic UI actions
+            intent_result = IntentDetector.detect(clean_input)
+            if intent_result.intent == ActionIntent.SEMANTIC_UI_ACTION and intent_result.confidence >= 0.90:
+                logger.info(f"Semantic UI action detected with confidence {intent_result.confidence}")
+                # Use UI Automation provider to find element
+                if self.ui_provider:
+                    element = self.ui_provider.find_element(intent_result.parsed_data.get('target', ''))
+                    if element and getattr(element, "confidence", 0) >= intent_result.confidence:
+                        click_success = self.ui_provider.click(element)
+                        if click_success:
+                            resp_content = f"Clicked the {intent_result.parsed_data.get('target', '')} button via UI Automation."
+                            self.memory.add_message(Message(role=Role.ASSISTANT, content=resp_content))
+                            return AgentResponse(content=resp_content, is_done=True, metadata={"ui_automation": True, "action": "click", "target": intent_result.parsed_data.get('target'), "confidence": intent_result.confidence})
+                        else:
+                            logger.warning("UI Automation click failed.")
+                    else:
+                        logger.warning("UI element not found or low confidence.")
+            # Proceed with normal flow
             user_msg = Message(role=Role.USER, content=clean_input)
             self.memory.add_message(user_msg)
 
