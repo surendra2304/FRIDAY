@@ -61,3 +61,7 @@ class MockVisionProvider(BaseVisionProvider):
             visual_elements=[{"type": "window", "name": "Editor"}],
             is_error=False,
         )
+
+    @property
+    def call_count(self) -> int:
+        return len(self.call_history)

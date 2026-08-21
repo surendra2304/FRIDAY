@@ -102,17 +102,23 @@ def test_tool_argument_validation():
 
 
 def test_tool_registry_safety_blocking():
+    from friday.security.authorization import tool_authorizer
     reg = ToolRegistry()
     sensitive_tool = DummySensitiveTool()
     reg.register(sensitive_tool)
 
     # 1. Without permission -> should return safety block error
-    result = reg.execute("edit_file", {"path": "config.txt"}, allow_sensitive=False)
+    result = reg.execute("edit_file", {"path": "config.txt"})
     assert result.is_error
     assert "Safety Block" in result.content
 
-    # 2. With permission -> should execute cleanly
-    approved_result = reg.execute("edit_file", {"path": "config.txt", "lines": 3}, allow_sensitive=True)
+    # 2. With valid cryptographic capability -> should execute cleanly
+    cap = tool_authorizer.issue_capability(
+        tool_name="edit_file",
+        arguments={"path": "config.txt", "lines": 3},
+        safety_level=SafetyLevel.SENSITIVE,
+    )
+    approved_result = reg.execute("edit_file", {"path": "config.txt", "lines": 3}, authorization=cap)
     assert not approved_result.is_error
     assert "Edited file: config.txt with 3 lines" in approved_result.content
 
@@ -122,7 +128,7 @@ def test_tool_registry_argument_validation_error():
     tool = DummySensitiveTool()
     reg.register(tool)
 
-    result = reg.execute("edit_file", {"invalid_key": 123}, allow_sensitive=True)
+    result = reg.execute("edit_file", {"invalid_key": 123})
     assert result.is_error
     assert "Missing required parameter 'path'" in result.content
 

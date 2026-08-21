@@ -135,7 +135,7 @@ def test_tool_timeout_enforcement(slow_registry):
         settings=Settings(env="testing"),
         tool_registry=slow_registry,
         tool_timeout=0.1,
-        authorizer=AutoApproveAuthorizer()
+        authorizer=AutoApproveAuthorizer.create_for_testing()
     )
 
     tc = ToolCall(id="c1", name="slow_tool", arguments={"duration": 1.0})
@@ -182,7 +182,7 @@ def test_observability_metadata():
     agent = FridayAgent(
         settings=Settings(env="testing"),
         llm_provider=MockLLMProvider(custom_responder=mock_responder),
-        authorizer=AutoApproveAuthorizer()
+        authorizer=AutoApproveAuthorizer.create_for_testing()
     )
 
     response = agent.process_message("What time is it?")

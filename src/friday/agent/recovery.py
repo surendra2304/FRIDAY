@@ -357,7 +357,7 @@ class AutonomousRecoveryManager:
 
         recovered_step = PlanStep(
             step_id=step.step_id,
-            description=f"{step.description} (Recovered via {diagnosis.recommended_strategy.value} #{step_retry_num})",
+            description=f"{step.description} (Retry #{step_retry_num}: {diagnosis.reason})",
             tool_name=target_tool,
             parameters=new_params,
             depends_on=list(step.depends_on),
@@ -365,5 +365,10 @@ class AutonomousRecoveryManager:
             requires_confirmation=step.requires_confirmation,
             status=StepStatus.PENDING,
             success_criteria=step.success_criteria,
+            preconditions=list(step.preconditions),
+            postconditions=list(step.postconditions),
+            evidence_source=step.evidence_source,
+            confidence=step.confidence,
+            recovery_strategy=step.recovery_strategy,
         )
         return recovered_step

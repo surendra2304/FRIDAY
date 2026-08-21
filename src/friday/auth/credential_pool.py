@@ -105,9 +105,8 @@ class GeminiCredentialPool:
         keys: Optional[Sequence[str]] = None,
         state_file: Optional[Path] = None,
     ) -> None:
-        if getattr(self, "_initialized", False) and keys is None:
-            return
-        self.lock = threading.Lock()
+        if not hasattr(self, "lock"):
+            self.lock = threading.Lock()
         self.max_failures = max_failures
         self.cooldown_seconds = cooldown_seconds
         self.state_file = state_file or Path("data/gemini_pool_state.json")
@@ -193,70 +192,83 @@ class GeminiCredentialPool:
         except Exception:
             pass
 
-    def _save_persisted_state(self) -> None:
-        """Save non-sensitive health metadata to disk."""
+    def _write_persisted_state_snapshot(self, snapshot: Dict[str, Any]) -> None:
+        """Atomic write of non-sensitive health metadata to disk outside lock."""
         if not self.state_file:
             return
         try:
             self.state_file.parent.mkdir(parents=True, exist_ok=True)
-            data = {}
-            for cred in self.credentials:
-                data[cred.project_label] = cred.to_safe_dict()
-            with open(self.state_file, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
+            temp_path = self.state_file.with_suffix(".tmp")
+            with open(temp_path, "w", encoding="utf-8") as f:
+                json.dump(snapshot, f, indent=2)
+            temp_path.replace(self.state_file)
         except Exception:
             pass
 
+    def _save_persisted_state(self) -> None:
+        """Save non-sensitive health metadata to disk (internal helper)."""
+        snapshot = {cred.project_label: cred.to_safe_dict() for cred in self.credentials}
+        self._write_persisted_state_snapshot(snapshot)
+
     def reload(self) -> None:
-        """Reload credentials from current environment variables."""
+        """Reload credentials from current environment variables (thread-safe)."""
         with self.lock:
             self._load_credentials()
             self._load_persisted_state()
+            self._session_active_key = None
+
+    def _get_active_key_unlocked(self) -> str:
+        """Internal helper to resolve active API key while holding self.lock."""
+        # 1. If primary is healthy, always prioritize primary
+        if self.credentials and self.credentials[0].is_healthy(self.max_failures, self.cooldown_seconds):
+            self._session_active_key = self.credentials[0].api_key
+            return self.credentials[0].api_key
+
+        # 2. If we have a session active fallback key and it's healthy, stay on it
+        if self._session_active_key:
+            current_cred = self._find_by_key(self._session_active_key)
+            if current_cred and current_cred.is_healthy(self.max_failures, self.cooldown_seconds):
+                return current_cred.api_key
+
+        # 3. Find the first healthy credential in priority order
+        for cred in self.credentials:
+            if cred.is_healthy(self.max_failures, self.cooldown_seconds):
+                self._session_active_key = cred.api_key
+                return cred.api_key
+
+        raise RuntimeError("No healthy Gemini API key available for request")
 
     def get_active_key(self) -> str:
-        """Return the active healthy credential's API key.
+        """Return the active healthy credential's API key (thread-safe).
         
         Preserves session-level stickiness if the current session key is still healthy.
         """
         with self.lock:
-            # 1. If primary is healthy, always prioritize primary
-            if self.credentials and self.credentials[0].is_healthy(self.max_failures, self.cooldown_seconds):
-                self._session_active_key = self.credentials[0].api_key
-                return self.credentials[0].api_key
+            return self._get_active_key_unlocked()
 
-            # 2. If we have a session active fallback key and it's healthy, stay on it
-            if self._session_active_key:
-                current_cred = self._find_by_key(self._session_active_key)
-                if current_cred and current_cred.is_healthy(self.max_failures, self.cooldown_seconds):
-                    return current_cred.api_key
-
-            # 3. Find the first healthy credential in priority order
-            for cred in self.credentials:
-                if cred.is_healthy(self.max_failures, self.cooldown_seconds):
-                    self._session_active_key = cred.api_key
-                    return cred.api_key
-
-            raise RuntimeError("No healthy Gemini API key available for request")
-
-    def get_active_label(self) -> str:
-        """Return the safe project label for the active key."""
+    def _get_active_label_unlocked(self) -> str:
+        """Internal helper to resolve safe project label while holding self.lock."""
         try:
-            key = self.get_active_key()
-            with self.lock:
-                cred = self._find_by_key(key)
-                return cred.project_label if cred else "UNKNOWN"
+            key = self._get_active_key_unlocked()
+            cred = self._find_by_key(key)
+            return cred.project_label if cred else "UNKNOWN"
         except Exception:
             return "NONE AVAILABLE"
 
-    def preflight_check(self, model: str = "gemini-3.6-flash", force_probe: bool = False) -> Dict[str, Any]:
-        """Perform a one-time quota-conscious startup preflight check.
+    def get_active_label(self) -> str:
+        """Return the safe project label for the active key (thread-safe)."""
+        with self.lock:
+            return self._get_active_label_unlocked()
+
+    def preflight_check(self, model: str = "gemini-3.7-flash", force_probe: bool = False) -> Dict[str, Any]:
+        """Perform a one-time quota-conscious startup preflight check without deadlock.
         
         Checks persisted health first. Only performs a live probe if no healthy
         credential has known status.
         """
         with self.lock:
             if self._preflight_done and not force_probe:
-                active_lbl = self.get_active_label()
+                active_lbl = self._get_active_label_unlocked()
                 return {
                     "status": "cached",
                     "active_project": active_lbl,
@@ -318,7 +330,8 @@ class GeminiCredentialPool:
         return FailureCategory.UNKNOWN
 
     def report_failure(self, key: str, error: Optional[Exception] = None) -> None:
-        """Record a failure for the credential, applying category-specific cooldown."""
+        """Record a failure for the credential, applying category-specific cooldown (thread-safe)."""
+        snapshot = None
         with self.lock:
             cred = self._find_by_key(key)
             if not cred:
@@ -351,10 +364,14 @@ class GeminiCredentialPool:
             if self._session_active_key == key:
                 self._session_active_key = None
 
-            self._save_persisted_state()
+            snapshot = {c.project_label: c.to_safe_dict() for c in self.credentials}
+
+        if snapshot:
+            self._write_persisted_state_snapshot(snapshot)
 
     def reset_key(self, key: str) -> None:
-        """Reset the health state of a credential after a successful request."""
+        """Reset the health state of a credential after a successful request (thread-safe)."""
+        snapshot = None
         with self.lock:
             cred = self._find_by_key(key)
             if not cred:
@@ -364,10 +381,14 @@ class GeminiCredentialPool:
             cred.cooldown_until = None
             cred.last_failure_category = FailureCategory.HEALTHY
             cred.last_success_at = datetime.utcnow()
-            self._save_persisted_state()
+            snapshot = {c.project_label: c.to_safe_dict() for c in self.credentials}
+
+        if snapshot:
+            self._write_persisted_state_snapshot(snapshot)
 
     def reset_all(self) -> None:
-        """Reset the health state of all credentials in the pool."""
+        """Reset the health state of all credentials in the pool (thread-safe)."""
+        snapshot = None
         with self.lock:
             for cred in self.credentials:
                 cred.failure_count = 0
@@ -375,10 +396,13 @@ class GeminiCredentialPool:
                 cred.cooldown_until = None
                 cred.last_failure_category = FailureCategory.HEALTHY
             self._session_active_key = None
-            self._save_persisted_state()
+            snapshot = {c.project_label: c.to_safe_dict() for c in self.credentials}
+
+        if snapshot:
+            self._write_persisted_state_snapshot(snapshot)
 
     def get_diagnostics(self) -> List[Dict[str, Any]]:
-        """Return non-sensitive status report for all credentials in pool."""
+        """Return non-sensitive status report for all credentials in pool (thread-safe)."""
         with self.lock:
             return [cred.to_safe_dict() for cred in self.credentials]
 

@@ -14,8 +14,28 @@ from friday.llm.mock_provider import MockLLMProvider
 from friday.memory.in_memory import InMemoryConversationMemory
 from friday.tools.builtin.system_info import SystemInfoTool
 from friday.tools.registry import ToolRegistry
+from friday.auth.request_accounting import RequestAccountant, BudgetLimits, request_accountant
+from friday.auth.credential_pool import credential_pool
 import os
 from unittest.mock import patch
+
+
+@pytest.fixture(autouse=True)
+def reset_accounting_and_pool_state():
+    """Ensure clean accounting and credential pool state for every single test."""
+    request_accountant.reset()
+    request_accountant.limits = BudgetLimits(
+        max_requests_per_task=100,
+        max_requests_per_session=500,
+        max_requests_per_hour=1000,
+        max_requests_per_day=5000,
+        max_consecutive_failed_calls=10,
+        max_vision_perceptions_per_task=50,
+    )
+    yield
+    request_accountant.reset()
+    request_accountant.limits = BudgetLimits()
+
 
 @pytest.fixture(autouse=True, scope="session")
 def isolate_test_environment():

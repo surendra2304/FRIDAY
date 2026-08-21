@@ -42,9 +42,16 @@ class MockScreenCaptureProvider(BaseScreenCaptureProvider):
         self.call_history: List[Dict[str, Any]] = []
         self.should_fail: bool = False
         self.failure_error: str = "Mock screen capture simulated error"
+        self._custom_image_bytes: Optional[bytes] = None
+
+    def set_mock_image(self, image_data: bytes) -> None:
+        """Set explicit image bytes to return on capture."""
+        self._custom_image_bytes = image_data
 
     def list_displays(self) -> List[Dict[str, Any]]:
         """Return synthetic display list."""
+        if hasattr(self, "_displays") and self._displays is not None:
+            return self._displays
         return [
             {"id": "primary", "index": 0, "is_primary": True, "width": self.width, "height": self.height},
             {"id": "secondary", "index": 1, "is_primary": False, "width": 1920, "height": 1080},
@@ -67,7 +74,7 @@ class MockScreenCaptureProvider(BaseScreenCaptureProvider):
                 error_message=self.failure_error,
             )
 
-        png_bytes = create_synthetic_png(self.width, self.height, self.synthetic_color)
+        png_bytes = self._custom_image_bytes if self._custom_image_bytes is not None else create_synthetic_png(self.width, self.height, self.synthetic_color)
         return ScreenSnapshot(
             image_data=png_bytes,
             mime_type="image/png",

@@ -67,13 +67,15 @@ class CustomTestAuthorizer(BaseAuthorizer):
     """Authorizer with preset decisions for testing."""
 
     def __init__(self, decision: AuthorizationDecision, reason: str = "Test decision"):
+        super().__init__()
         self.decision = decision
         self.reason = reason
         self.requested: List[AuthorizationRequest] = []
 
     def authorize(self, request: AuthorizationRequest) -> AuthorizationResponse:
         self.requested.append(request)
-        return AuthorizationResponse(decision=self.decision, reason=self.reason)
+        cap = self.issue_capability_for_request(request) if self.decision == AuthorizationDecision.APPROVED else None
+        return AuthorizationResponse(decision=self.decision, reason=self.reason, capability=cap)
 
 
 # --- 1. SAFE automatic execution ---

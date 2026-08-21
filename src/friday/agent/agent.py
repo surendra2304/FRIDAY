@@ -40,6 +40,7 @@ from friday.agent.state import TaskState, ReasoningStateMachine
 from friday.agent.planner import TaskPlan, PlanStep, StepStatus, GoalDecomposer
 from friday.agent.executor import TaskExecutionEngine, TaskExecutionResult, ExecutionProgress
 from friday.agent.checkpoint import TaskCheckpoint, TaskCheckpointStore
+from friday.agent.cognitive import CognitiveIntelligenceEngine, CognitiveDecision, CognitivePhase
 from friday.memory.task_context import ActiveTaskContext
 from friday.tools.registry import ToolRegistry
 
@@ -75,6 +76,10 @@ class FridayAgent:
         self._current_plan: Optional[TaskPlan] = None
         self.task_context: Optional[ActiveTaskContext] = None
         self.checkpoint_store: TaskCheckpointStore = TaskCheckpointStore()
+        self.cognitive_engine: CognitiveIntelligenceEngine = CognitiveIntelligenceEngine(
+            llm_provider=self.llm,
+            authorizer=self.authorizer,
+        )
 
         if self.settings.memory_retention_days:
             self.prune_memory(self.settings.memory_retention_days)
@@ -223,6 +228,7 @@ class FridayAgent:
             tool_name=tc.name,
             safety_level=tool.safety_level,
             arguments=tc.arguments,
+            tool_call_id=tc.id,
             purpose=tool.description,
             affected_resource=affected_res,
         )
@@ -236,13 +242,13 @@ class FridayAgent:
             f"(Reason: {auth_resp.reason})"
         )
 
-        # 4. Execution happens ONLY after explicit authorization
+        # 4. Execution happens ONLY after explicit authorization capability
         if auth_resp.decision == AuthorizationDecision.APPROVED:
             return self.tools.execute(
                 name=tc.name,
                 arguments=tc.arguments,
                 tool_call_id=tc.id,
-                allow_sensitive=True,
+                authorization=auth_resp.capability,
             )
         
         err_msg = (
@@ -438,11 +444,13 @@ class FridayAgent:
         return self.execute_plan(plan=plan)
 
     def cancel_task(self, reason: str = "Cancelled by user") -> bool:
-        """Cancel active task execution."""
-        if self.state_machine.current_state in (TaskState.COMPLETED, TaskState.CANCELLED, TaskState.FAILED):
+        """Cancel active task execution and propagate cancellation to execution engine."""
+        if self.state_machine.is_terminal:
             return False
 
         self.state_machine.cancel(reason=reason)
+        if hasattr(self, "execution_engine") and self.execution_engine:
+            self.execution_engine.cancel(reason=reason)
         if self._current_plan:
             self.checkpoint_store.delete_checkpoint(self._current_plan.plan_id)
         return True

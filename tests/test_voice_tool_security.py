@@ -145,7 +145,7 @@ async def test_C_safe_tool_execution_works():
     from friday.core.auth import AutoApproveAuthorizer
     registry = ToolRegistry()
     registry.register(SafeEchoTool())
-    agent = _make_agent(registry, AutoApproveAuthorizer())
+    agent = _make_agent(registry, AutoApproveAuthorizer.create_for_testing())
     session = _make_session(agent=agent)
     fc = FakeFC("safe_echo", "call_echo_1", {"message": "hello world"})
     resp = await session._execute_tool_call(fc)
@@ -208,7 +208,7 @@ async def test_F_multiple_function_calls_correlated():
     from friday.core.auth import AutoApproveAuthorizer
     registry = ToolRegistry()
     registry.register(SafeEchoTool())
-    agent = _make_agent(registry, AutoApproveAuthorizer())
+    agent = _make_agent(registry, AutoApproveAuthorizer.create_for_testing())
     session = _make_session(agent=agent)
     fcs = [FakeFC("safe_echo", f"call_multi_{i}", {"message": f"msg-{i}"}) for i in range(5)]
     responses = await asyncio.gather(*[session._execute_tool_call(fc) for fc in fcs])
@@ -227,7 +227,7 @@ async def test_G_tool_failure_returns_safe_structured_error():
     from friday.core.auth import AutoApproveAuthorizer
     registry = ToolRegistry()
     registry.register(BurstFailTool())
-    agent = _make_agent(registry, AutoApproveAuthorizer())
+    agent = _make_agent(registry, AutoApproveAuthorizer.create_for_testing())
     session = _make_session(agent=agent)
     fc = FakeFC("burst_fail_tool", "call_fail_1", {})
     resp = await session._execute_tool_call(fc)

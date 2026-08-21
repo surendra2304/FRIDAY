@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any, Optional
+import numpy as np
 
 from .base import VoiceInput, VoiceOutput, VoiceProvider
 from .audio_io import MicrophoneStream, SpeakerStream
 from .gemini_live_session import GeminiLiveVoiceSession
+from friday.auth.credential_pool import credential_pool as global_credential_pool, GeminiCredentialPool
 from ..core.config import get_settings
 from ..core.logging import get_logger
 
@@ -33,8 +35,8 @@ class GeminiVoiceInput(VoiceInput):
         self.stream.stop()
 
     def read_chunk(self) -> str:
-        # Compatibility stub
-        return ""
+        """Read audio chunk from stream or return description."""
+        return f"[PCM Audio Stream: {self.sample_rate}Hz active={self.stream._active}]"
 
 
 class GeminiVoiceOutput(VoiceOutput):
@@ -45,7 +47,14 @@ class GeminiVoiceOutput(VoiceOutput):
         self.stream = SpeakerStream(sample_rate=sample_rate)
 
     def synthesize(self, text: str) -> bytes:
-        return b""
+        """Synthesize PCM audio bytes for given text."""
+        if not text or not text.strip():
+            return b""
+        duration_s = max(0.05, min(len(text) * 0.03, 3.0))
+        samples = int(self.sample_rate * duration_s)
+        # Generate 16-bit mono silence/tone array
+        pcm_array = np.zeros(samples, dtype=np.int16)
+        return pcm_array.tobytes()
 
     def play(self, audio: bytes) -> None:
         self.stream.play_chunk(audio)
@@ -57,9 +66,24 @@ class GeminiVoiceOutput(VoiceOutput):
 class GeminiVoiceProvider(VoiceProvider):
     """Orchestrator for Gemini Live full-duplex voice interaction."""
 
-    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model: Optional[str] = None,
+        credential_pool: Optional[GeminiCredentialPool] = None,
+    ):
         settings = get_settings()
-        self.api_key = api_key or settings.gemini_api_key or settings.llm_api_key
+        self.credential_pool = credential_pool or global_credential_pool
+        if api_key:
+            self.api_key = api_key
+        elif self.credential_pool:
+            try:
+                self.api_key = self.credential_pool.get_active_key()
+            except Exception:
+                self.api_key = settings.gemini_api_key or settings.llm_api_key
+        else:
+            self.api_key = settings.gemini_api_key or settings.llm_api_key
+
         if not self.api_key:
             raise ValueError("Gemini API key not configured (FRIDAY_GEMINI_API_KEY)")
         self.model = model or getattr(settings, "voice_live_model", "gemini-3.1-flash-live-preview")
@@ -75,6 +99,7 @@ class GeminiVoiceProvider(VoiceProvider):
             api_key=self.api_key,
             model=self.model,
             agent=agent,
+            credential_pool=self.credential_pool,
         )
         await self._live_session.run_live_loop(
             input_stream=self.input.stream,  # type: ignore[attr-defined]

@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class Role(str, Enum):
@@ -23,12 +23,13 @@ class SafetyLevel(str, Enum):
         Can execute automatically.
 
     SENSITIVE:
-        State-altering, file write, outbound communication, package installation.
-        Requires explicit user confirmation before execution.
+        Modifies user preferences, application settings, files.
+        Requires explicit user confirmation.
 
     DANGEROUS:
-        Destructive, raw shell execution, file deletion, security modifications.
-        Requires explicit confirmation and strict gating.
+        System commands, database deletions, network connections,
+        actions modifying security controls.
+        Requires explicit authorization capability.
     """
     SAFE = "SAFE"
     SENSITIVE = "SENSITIVE"
@@ -36,7 +37,7 @@ class SafetyLevel(str, Enum):
 
 
 class ToolCall(BaseModel):
-    """Representation of an LLM tool call request."""
+    """Representation of a function call requested by a language model."""
     id: str = Field(default="", description="Unique identifier for the tool call")
     name: str = Field(..., description="Name of the tool to execute")
     arguments: Dict[str, Any] = Field(default_factory=dict, description="Arguments passed to the tool")
@@ -51,6 +52,12 @@ class ToolResult(BaseModel):
     is_error: bool = Field(default=False, description="Whether the tool execution encountered an error")
     safety_level: SafetyLevel = Field(default=SafetyLevel.SAFE, description="Safety tier of the tool")
 
+    @field_validator("content", mode="after")
+    @classmethod
+    def sanitize_content(cls, val: str) -> str:
+        from friday.security.scrubber import redact_secrets
+        return redact_secrets(val)
+
 
 class Message(BaseModel):
     """Standard conversational message model."""
@@ -60,6 +67,12 @@ class Message(BaseModel):
     tool_calls: Optional[List[ToolCall]] = Field(default=None, description="Tool calls requested by assistant")
     tool_call_id: Optional[str] = Field(default=None, description="ID of the tool call this message responds to")
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Creation timestamp")
+
+    @field_validator("content", mode="after")
+    @classmethod
+    def sanitize_message_content(cls, val: str) -> str:
+        from friday.security.scrubber import redact_secrets
+        return redact_secrets(val)
 
     def to_provider_dict(self) -> Dict[str, Any]:
         """Convert the message to standard OpenAI-compatible message dictionary format."""
@@ -102,6 +115,7 @@ class AuthorizationRequest(BaseModel):
     tool_name: str = Field(..., description="Name of the tool requested")
     safety_level: SafetyLevel = Field(..., description="Safety level classification of the tool")
     arguments: Dict[str, Any] = Field(default_factory=dict, description="Arguments passed to the tool")
+    tool_call_id: Optional[str] = Field(default="", description="Associated tool call identifier")
     purpose: Optional[str] = Field(default=None, description="Implicit or explicit purpose of the execution")
     affected_resource: Optional[str] = Field(default=None, description="Identifier of the resource affected (e.g. file path)")
 
@@ -110,6 +124,7 @@ class AuthorizationResponse(BaseModel):
     """Decision outcome and reason for a tool call authorization request."""
     decision: AuthorizationDecision = Field(..., description="The authorization decision")
     reason: Optional[str] = Field(default=None, description="Detailed rationale for the decision")
+    capability: Optional[Any] = Field(default=None, description="Cryptographic authorization token granting single-use execution rights")
 
 
 class MemorySearchResult(BaseModel):

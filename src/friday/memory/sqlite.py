@@ -21,6 +21,20 @@ from friday.memory.policies import should_embed_message, should_retrieve_memory
 
 logger = get_logger("memory.sqlite")
 
+SECRET_REDACT_PATTERNS = [
+    re.compile(r"AIza" + r"Sy[A-Za-z0-9_-]{33}"),
+    re.compile(r"sk-[a-zA-Z0-9]{20,}"),
+    re.compile(r"Bearer\s+[a-zA-Z0-9_\-\.]{20,}", re.IGNORECASE),
+]
+
+
+def filter_secrets(text: Optional[str]) -> Optional[str]:
+    """Sanitize secret API keys or credentials from text before persistence."""
+    if not text or not isinstance(text, str):
+        return text
+    from friday.security.scrubber import redact_secrets
+    return redact_secrets(text)
+
 
 class SQLiteConversationMemory(BaseMemory):
     """Production-grade persistent conversation memory using SQLite."""
@@ -63,8 +77,13 @@ class SQLiteConversationMemory(BaseMemory):
         conn.execute("PRAGMA foreign_keys = ON;")
         conn.execute("PRAGMA busy_timeout = 20000;")
         if self.db_path != ":memory:":
-            conn.execute("PRAGMA journal_mode = WAL;")
-            conn.execute("PRAGMA synchronous = NORMAL;")
+            import sys
+            is_testing = os.getenv("FRIDAY_ENV") == "testing" or "pytest" in sys.modules
+            if not is_testing:
+                conn.execute("PRAGMA journal_mode = WAL;")
+                conn.execute("PRAGMA synchronous = NORMAL;")
+            else:
+                conn.execute("PRAGMA journal_mode = DELETE;")
             conn.execute("PRAGMA cache_size = -64000;")
         return conn
 
@@ -295,6 +314,21 @@ class SQLiteConversationMemory(BaseMemory):
         """Persist a message into the conversation store within a transaction."""
         conv_id = conversation_id or self._active_conversation_id
         msg_id = str(uuid.uuid4())
+        
+        # Filter secrets and handle content
+        content = filter_secrets(message.content)
+        
+        # Deduplication check
+        with self._lock:
+            with self._get_connection() as conn:
+                last_msg = conn.execute(
+                    "SELECT content FROM messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1",
+                    (conv_id,)
+                ).fetchone()
+                if last_msg and last_msg["content"] == content:
+                    logger.debug("Skipping duplicate message insertion.")
+                    return
+
         created_at = message.timestamp.isoformat()
         now = datetime.now(timezone.utc).isoformat()
         
@@ -320,7 +354,7 @@ class SQLiteConversationMemory(BaseMemory):
                     conn.execute("INSERT INTO conversations (id, title, created_at, updated_at, metadata) VALUES (?, ?, ?, ?, ?)",
                                  (conv_id, "Auto-created Conversation", created_at, now, "{}"))
                 conn.execute("INSERT INTO messages (id, conversation_id, role, content, name, tool_calls, tool_call_id, created_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                              (msg_id, conv_id, message.role.value, message.content, message.name, tool_calls_str, message.tool_call_id, created_at, "{}"))
+                              (msg_id, conv_id, message.role.value, content, message.name, tool_calls_str, message.tool_call_id, created_at, "{}"))
                 conn.execute("UPDATE conversations SET updated_at = ? WHERE id = ?", (now, conv_id))
                 conn.commit()
                 logger.debug(f"Saved message '{msg_id}' [Role: {message.role.value}] to conversation '{conv_id}'")
@@ -329,7 +363,7 @@ class SQLiteConversationMemory(BaseMemory):
             try:
                 existing_emb = None
                 with self._get_connection() as conn:
-                    row = conn.execute("SELECT embedding_blob FROM embeddings WHERE source_text = ? LIMIT 1", (message.content,)).fetchone()
+                    row = conn.execute("SELECT embedding_blob FROM embeddings WHERE source_text = ? LIMIT 1", (content,)).fetchone()
                     if row and row["embedding_blob"]:
                         try:
                             existing_emb = json.loads(row["embedding_blob"])
@@ -340,13 +374,13 @@ class SQLiteConversationMemory(BaseMemory):
                     emb = existing_emb
                     logger.debug("Reused existing semantic embedding from cache.")
                 else:
-                    emb = self.embedding_provider.embed_text(message.content)
+                    emb = self.embedding_provider.embed_text(content)
 
                 emb_rec = EmbeddingRecord(
                     id=str(uuid.uuid4()),
                     conversation_id=conv_id,
                     message_id=msg_id,
-                    source_text=message.content,
+                    source_text=content,
                     embedding=emb,
                     model=self.embedding_provider.model,
                     dimension=self.embedding_provider.dimension,

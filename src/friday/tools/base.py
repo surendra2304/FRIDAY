@@ -11,6 +11,15 @@ class BaseTool(ABC):
     name: str
     description: str
     safety_level: SafetyLevel = SafetyLevel.SAFE
+    # Additional metadata for robust tool orchestration
+    risk_level: str = "SAFE"  # Options: SAFE, SENSITIVE, DANGEROUS
+    auth_requirement: str = "NONE"  # NONE, USER, ADMIN
+    timeout: int = 30  # seconds, per‑tool execution timeout
+    retry_policy: Dict[str, Any] = {"max_attempts": 3, "backoff": 1}
+    idempotency: bool = False
+    side_effects: List[str] = []
+    verification_method: Any = None  # Callable[[Any], bool] – optional custom verification
+
     parameters: Dict[str, Any] = {
         "type": "object",
         "properties": {},

@@ -61,13 +61,19 @@ class PlanStep:
     required_capabilities: List[str] = field(default_factory=list)
     rollback_step_id: Optional[str] = None
     checkpoint_enabled: bool = False
+    preconditions: List[str] = field(default_factory=list)
+    postconditions: List[str] = field(default_factory=list)
+    evidence_source: Optional[str] = None
+    confidence: float = 1.0
+    recovery_strategy: Optional[str] = None
     result: Optional[Any] = None
     error: Optional[str] = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize plan step to audit-safe dictionary."""
-        return {
+        from friday.security.scrubber import recursive_sanitize
+        raw_dict = {
             "step_id": self.step_id,
             "description": self.description,
             "tool_name": self.tool_name,
@@ -81,33 +87,46 @@ class PlanStep:
             "required_capabilities": self.required_capabilities,
             "rollback_step_id": self.rollback_step_id,
             "checkpoint_enabled": self.checkpoint_enabled,
+            "preconditions": self.preconditions,
+            "postconditions": self.postconditions,
+            "evidence_source": self.evidence_source,
+            "confidence": self.confidence,
+            "recovery_strategy": self.recovery_strategy,
             "result": self.result,
             "error": self.error,
             "created_at": self.created_at.isoformat(),
         }
+        return recursive_sanitize(raw_dict)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PlanStep":
         """Deserialize PlanStep from dictionary."""
-        status_val = data.get("status", StepStatus.PENDING.value)
-        safety_val = data.get("safety_level", SafetyLevel.SAFE.value)
+        from friday.security.scrubber import recursive_sanitize
+        sanitized_data = recursive_sanitize(data)
+        status_val = sanitized_data.get("status", StepStatus.PENDING.value)
+        safety_val = sanitized_data.get("safety_level", SafetyLevel.SAFE.value)
         return cls(
-            step_id=data["step_id"],
-            description=data.get("description", ""),
-            tool_name=data.get("tool_name"),
-            parameters=data.get("parameters", {}),
-            depends_on=data.get("depends_on", []),
+            step_id=sanitized_data["step_id"],
+            description=sanitized_data.get("description", ""),
+            tool_name=sanitized_data.get("tool_name"),
+            parameters=sanitized_data.get("parameters", {}),
+            depends_on=sanitized_data.get("depends_on", []),
             safety_level=SafetyLevel(safety_val) if safety_val in SafetyLevel._value2member_map_ else SafetyLevel.SAFE,
-            requires_confirmation=data.get("requires_confirmation", False),
+            requires_confirmation=sanitized_data.get("requires_confirmation", False),
             status=StepStatus(status_val) if status_val in StepStatus._value2member_map_ else StepStatus.PENDING,
-            success_criteria=data.get("success_criteria"),
-            expected_output_type=data.get("expected_output_type"),
-            required_capabilities=data.get("required_capabilities", []),
-            rollback_step_id=data.get("rollback_step_id"),
-            checkpoint_enabled=data.get("checkpoint_enabled", False),
-            result=data.get("result"),
-            error=data.get("error"),
-            created_at=datetime.fromisoformat(data["created_at"]) if "created_at" in data else datetime.now(timezone.utc),
+            success_criteria=sanitized_data.get("success_criteria"),
+            expected_output_type=sanitized_data.get("expected_output_type"),
+            required_capabilities=sanitized_data.get("required_capabilities", []),
+            rollback_step_id=sanitized_data.get("rollback_step_id"),
+            checkpoint_enabled=sanitized_data.get("checkpoint_enabled", False),
+            preconditions=sanitized_data.get("preconditions", []),
+            postconditions=sanitized_data.get("postconditions", []),
+            evidence_source=sanitized_data.get("evidence_source"),
+            confidence=float(sanitized_data.get("confidence", 1.0)),
+            recovery_strategy=sanitized_data.get("recovery_strategy"),
+            result=sanitized_data.get("result"),
+            error=sanitized_data.get("error"),
+            created_at=datetime.fromisoformat(sanitized_data["created_at"]) if "created_at" in sanitized_data else datetime.now(timezone.utc),
         )
 
 
@@ -125,7 +144,8 @@ class TaskPlan:
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize plan to audit-safe dictionary."""
-        return {
+        from friday.security.scrubber import recursive_sanitize
+        raw_dict = {
             "plan_id": self.plan_id,
             "goal": self.goal,
             "goal_id": self.goal_id,
@@ -134,19 +154,22 @@ class TaskPlan:
             "created_at": self.created_at.isoformat(),
             "metadata": self.metadata,
         }
+        return recursive_sanitize(raw_dict)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "TaskPlan":
         """Deserialize TaskPlan and constituent PlanSteps from dictionary."""
-        steps = [PlanStep.from_dict(s) for s in data.get("steps", [])]
+        from friday.security.scrubber import recursive_sanitize
+        sanitized_data = recursive_sanitize(data)
+        steps = [PlanStep.from_dict(s) for s in sanitized_data.get("steps", [])]
         return cls(
-            goal=data.get("goal", ""),
+            goal=sanitized_data.get("goal", ""),
             steps=steps,
-            plan_id=data.get("plan_id", str(uuid.uuid4())),
-            goal_id=data.get("goal_id"),
-            risk_level=data.get("risk_level"),
-            created_at=datetime.fromisoformat(data["created_at"]) if "created_at" in data else datetime.now(timezone.utc),
-            metadata=data.get("metadata", {}),
+            plan_id=sanitized_data.get("plan_id", str(uuid.uuid4())),
+            goal_id=sanitized_data.get("goal_id"),
+            risk_level=sanitized_data.get("risk_level"),
+            created_at=datetime.fromisoformat(sanitized_data["created_at"]) if "created_at" in sanitized_data else datetime.now(timezone.utc),
+            metadata=sanitized_data.get("metadata", {}),
         )
 
     def get_step(self, step_id: str) -> Optional[PlanStep]:

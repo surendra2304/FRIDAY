@@ -126,7 +126,7 @@ async def test_voice_tool_calling_with_unified_registry(memory_db):
     agent = FridayAgent(
         settings=Settings(env="testing", embedding_provider="mock"),
         tool_registry=registry,
-        authorizer=AutoApproveAuthorizer(),
+        authorizer=AutoApproveAuthorizer.create_for_testing(),
         memory=memory_db,
     )
 
@@ -217,7 +217,7 @@ async def test_voice_multi_step_tool_calls(memory_db):
     agent = FridayAgent(
         settings=Settings(env="testing", embedding_provider="mock"),
         tool_registry=registry,
-        authorizer=AutoApproveAuthorizer(),
+        authorizer=AutoApproveAuthorizer.create_for_testing(),
         memory=memory_db,
     )
 
@@ -255,7 +255,7 @@ async def test_voice_tool_failure_resilience(memory_db):
     agent = FridayAgent(
         settings=Settings(env="testing", embedding_provider="mock"),
         tool_registry=registry,
-        authorizer=AutoApproveAuthorizer(),
+        authorizer=AutoApproveAuthorizer.create_for_testing(),
         memory=memory_db,
     )
 
@@ -297,7 +297,7 @@ async def test_voice_semantic_memory_retrieval(memory_db):
     agent = FridayAgent(
         settings=Settings(env="testing", embedding_provider="mock"),
         tool_registry=registry,
-        authorizer=AutoApproveAuthorizer(),
+        authorizer=AutoApproveAuthorizer.create_for_testing(),
         memory=memory_db,
     )
     agent.switch_conversation(conv_id)

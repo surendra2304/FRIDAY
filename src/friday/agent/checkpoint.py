@@ -60,7 +60,8 @@ class TaskCheckpoint:
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        from friday.security.scrubber import recursive_sanitize
+        raw_dict = {
             "checkpoint_id": self.checkpoint_id,
             "task_id": self.task_id,
             "goal": self.goal,
@@ -75,25 +76,28 @@ class TaskCheckpoint:
             "recovery_state": self.recovery_state,
             "created_at": self.created_at.isoformat(),
         }
+        return recursive_sanitize(raw_dict)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "TaskCheckpoint":
-        state_val = data.get("state", TaskState.PAUSED.value)
-        int_reason = data.get("interruption_reason")
+        from friday.security.scrubber import recursive_sanitize
+        sanitized_data = recursive_sanitize(data)
+        state_val = sanitized_data.get("state", TaskState.PAUSED.value)
+        int_reason = sanitized_data.get("interruption_reason")
         return cls(
-            checkpoint_id=data["checkpoint_id"],
-            task_id=data["task_id"],
-            goal=data["goal"],
+            checkpoint_id=sanitized_data["checkpoint_id"],
+            task_id=sanitized_data["task_id"],
+            goal=sanitized_data["goal"],
             state=TaskState(state_val) if state_val in TaskState._value2member_map_ else TaskState.PAUSED,
-            active_step_id=data.get("active_step_id"),
-            plan_dict=data.get("plan", {}),
-            completed_steps=data.get("completed_steps", []),
-            pending_steps=data.get("pending_steps", []),
-            step_results=data.get("step_results", {}),
-            environment_hash=data.get("environment_hash", "default"),
+            active_step_id=sanitized_data.get("active_step_id"),
+            plan_dict=sanitized_data.get("plan", {}),
+            completed_steps=sanitized_data.get("completed_steps", []),
+            pending_steps=sanitized_data.get("pending_steps", []),
+            step_results=sanitized_data.get("step_results", {}),
+            environment_hash=sanitized_data.get("environment_hash", "default"),
             interruption_reason=InterruptionReason(int_reason) if int_reason in InterruptionReason._value2member_map_ else None,
-            recovery_state=data.get("recovery_state"),
-            created_at=datetime.fromisoformat(data["created_at"]) if "created_at" in data else datetime.now(timezone.utc),
+            recovery_state=sanitized_data.get("recovery_state"),
+            created_at=datetime.fromisoformat(sanitized_data["created_at"]) if "created_at" in sanitized_data else datetime.now(timezone.utc),
         )
 
 
@@ -143,21 +147,26 @@ class TaskCheckpointStore:
         """Create and save a sanitized task checkpoint."""
         completed_steps = [s.step_id for s in plan.steps if s.status == StepStatus.COMPLETED]
         pending_steps = [s.step_id for s in plan.steps if s.status in (StepStatus.PENDING, StepStatus.IN_PROGRESS)]
+        from friday.security.scrubber import recursive_sanitize, redact_secrets
 
-        # Sanitize results (exclude raw screenshots/keys)
+        # Sanitize results and metadata recursively
         clean_results = {}
-        for sid, res in step_results.items():
-            res_str = str(res)
-            if "data:image" in res_str or "base64" in res_str:
-                res_str = "[Visual screenshot sanitized]"
-            if "token=" in res_str or "key=" in res_str or "password=" in res_str or "secret=" in res_str:
-                res_str = "[Sensitive credentials redacted]"
-            clean_results[sid] = res_str
+        for sid, sres in step_results.items():
+            sres_str = str(sres)
+            if "data:image/" in sres_str or "base64," in sres_str or "iVBORw0KGgo" in sres_str:
+                clean_results[sid] = "[Visual screenshot sanitized]"
+            elif any(k in sres_str.lower() for k in ("key=", "token=", "password=", "secret=")):
+                clean_results[sid] = "[Sensitive credentials redacted]"
+            else:
+                clean_results[sid] = recursive_sanitize(sres)
+
+        clean_recovery_state = recursive_sanitize(recovery_state) if recovery_state else None
+        clean_goal = redact_secrets(goal)
 
         chk = TaskCheckpoint(
             checkpoint_id=str(uuid.uuid4()),
             task_id=task_id,
-            goal=goal,
+            goal=clean_goal,
             state=state,
             active_step_id=active_step_id,
             plan_dict=plan.to_dict(),
@@ -166,7 +175,7 @@ class TaskCheckpointStore:
             step_results=clean_results,
             environment_hash=environment_hash,
             interruption_reason=interruption_reason,
-            recovery_state=recovery_state,
+            recovery_state=clean_recovery_state,
         )
 
         self._memory_store[task_id] = chk

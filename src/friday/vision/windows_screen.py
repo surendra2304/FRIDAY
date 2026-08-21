@@ -238,12 +238,7 @@ class WindowsScreenCaptureProvider(BaseScreenCaptureProvider):
                 h_capture_dc, 0, 0, width, height, h_desktop_dc, src_x, src_y, SRCCOPY
             )
             if not success:
-                # If Win32 GDI BitBlt fails in background context, attempt PowerShell fallback
-                logger.info("Win32 BitBlt failed; attempting PowerShell screen capture fallback...")
-                ps_snap = self._capture_via_powershell(display=display)
-                if ps_snap is not None:
-                    return ps_snap
-                raise RuntimeError("Win32 BitBlt screenshot transfer failed and fallback was unavailable")
+                raise RuntimeError("Win32 BitBlt screenshot transfer failed (desktop locked or non-interactive)")
 
             bmi = BITMAPINFOHEADER()
             bmi.biSize = ctypes.sizeof(BITMAPINFOHEADER)

@@ -42,8 +42,10 @@ addopts = "-m 'not live and not hardware'"
 markers = [
     "unit: Unit tests verifying isolated components and data models",
     "integration: Multi-component agent and memory integration tests",
+    "simulation: In-memory and offline simulated multi-stage workflow tests",
     "security: Authentication, authorization, and secret protection tests",
-    "performance: Benchmarks, reliability, and recovery resilience tests",
+    "performance: Benchmarks, latency, RSS, and CPU utilization tests",
+    "acceptance: End-to-end goal understanding and agent acceptance tests",
     "live: Real external Google Gemini API tests (opt-in only via pytest -m live)",
-    "hardware: Real physical microphone/speaker device tests (opt-in only via pytest -m hardware)",
+    "hardware: Real physical microphone, speaker, and display hardware tests (opt-in only via pytest -m hardware)",
 ]

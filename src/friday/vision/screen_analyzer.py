@@ -149,6 +149,9 @@ class ScreenAnalyzer:
                 f"The user specifically asked: \"{user_query.strip()}\"\n"
                 "Focus your visual analysis to answer their question based solely on what is visible."
             )
+        # 2b. Guard raw vision output for prompt‑injection patterns
+        from friday.security.prompt_injection import guard_content, SourceType, InjectionRisk
+        # Guard will be applied after vision result is obtained (see below)
 
         # 3. Request multimodal vision analysis
         result = vision_prov.analyze_image(
@@ -169,8 +172,22 @@ class ScreenAnalyzer:
             )
 
         # 4. Parse response into structured ScreenContext
+        # 4. Guard raw vision output for prompt‑injection patterns
         raw_text = result.text.strip() if result.text else ""
-        parsed_data = parse_vision_json_response(raw_text)
+        # Apply guard to detect malicious instructions
+        from friday.security.prompt_injection import guard_content, SourceType, InjectionRisk
+        guard_result = guard_content(SourceType.SCREEN, raw_text)
+        if guard_result.risk == InjectionRisk.BLOCKED:
+            return ScreenContext(
+                summary="Prompt injection detected and blocked",
+                width=snapshot.width,
+                height=snapshot.height,
+                display_id=display,
+                is_error=True,
+                error_message="Injection risk BLOCKED",
+            )
+        # Use the sanitized content for further parsing
+        parsed_data = parse_vision_json_response(guard_result.sanitized)
 
         summary_text = parsed_data.get("summary") or raw_text or "No content detected."
         active_app = parsed_data.get("active_application")

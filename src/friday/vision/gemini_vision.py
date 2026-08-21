@@ -13,6 +13,7 @@ from google.genai import errors as genai_errors
 from google.genai import types as genai_types
 
 from friday.auth.credential_pool import credential_pool, GeminiCredentialPool, FailureCategory
+from friday.auth.request_accounting import request_accountant
 from friday.core.config import get_settings
 from friday.core.exceptions import LLMProviderError
 from friday.core.logging import get_logger
@@ -125,23 +126,40 @@ class GeminiVisionProvider(BaseVisionProvider):
         **kwargs: Any,
     ) -> VisionAnalysisResult:
         """Analyze image bytes with Google Gemini multimodal API and credential failover."""
-        # 1. Validate payload boundaries and magic bytes
-        validate_image_data(image_data, mime_type=mime_type, max_bytes=self.max_image_bytes)
+        # 0. Check Request Accounting and Budget Limits
+        task_id = kwargs.get("task_id")
+        allowed, budget_reason = request_accountant.can_make_request(task_id=task_id, purpose="vision_perception")
+        if not allowed:
+            logger.warning(f"GeminiVisionProvider: Request blocked by budget limits: {budget_reason}")
+            return VisionAnalysisResult(
+                text="",
+                is_error=True,
+                error_message=f"Budget exceeded: {budget_reason}",
+                model=self.model,
+            )
+
+        # 1. Validate input payload
+        validate_image_data(image_data=image_data, mime_type=mime_type, max_bytes=self.max_image_bytes)
 
         # 2. Build multimodal contents part
         image_part = genai_types.Part.from_bytes(data=image_data, mime_type=mime_type)
         contents = [image_part, prompt]
 
         # 3. Configure generation options
-        temp = kwargs.get("temperature", 0.4)
         max_output_tokens = kwargs.get("max_tokens", 2048)
-        gen_config = genai_types.GenerateContentConfig(
-            temperature=temp,
-            max_output_tokens=max_output_tokens,
-        )
+        config_kwargs: Dict[str, Any] = {
+            "max_output_tokens": max_output_tokens,
+        }
+        # Only pass temperature for legacy non-3.7 models
+        if "3.7" not in (self.model or "").lower():
+            temp = kwargs.get("temperature", 0.4)
+            config_kwargs["temperature"] = temp
+
+        gen_config = genai_types.GenerateContentConfig(**config_kwargs)
 
         last_error = None
         attempt = 0
+        call_start = time.perf_counter()
 
         pool_creds = getattr(self.credential_pool, "credentials", None) if self.credential_pool else None
         pool_size = len(pool_creds) if (pool_creds is not None and isinstance(pool_creds, list) and len(pool_creds) > 0) else None
@@ -154,6 +172,15 @@ class GeminiVisionProvider(BaseVisionProvider):
             except (LLMProviderError, RuntimeError, Exception) as e:
                 last_error = e
                 break
+
+            label = "PRIMARY"
+            if self.credential_pool:
+                try:
+                    c = self.credential_pool._find_by_key(active_key)
+                    if c:
+                        label = c.project_label
+                except Exception:
+                    pass
 
             try:
                 self._current_key = active_key
@@ -169,6 +196,18 @@ class GeminiVisionProvider(BaseVisionProvider):
                     self.credential_pool.reset_key(active_key)
 
                 response_text = getattr(response, "text", "") or ""
+                elapsed_ms = (time.perf_counter() - call_start) * 1000.0
+
+                request_accountant.record_request(
+                    credential_label=label,
+                    model=self.model,
+                    purpose="vision_perception",
+                    task_id=task_id,
+                    retries_count=attempt,
+                    fallbacks_count=attempt if label != "PRIMARY" else 0,
+                    latency_ms=elapsed_ms,
+                )
+
                 return VisionAnalysisResult(
                     text=response_text,
                     description=response_text,
@@ -185,6 +224,16 @@ class GeminiVisionProvider(BaseVisionProvider):
                     failed_key = active_key or self._current_key
                     self.credential_pool.report_failure(failed_key, e)
 
+                request_accountant.record_request(
+                    credential_label=label,
+                    model=self.model,
+                    purpose="vision_perception",
+                    task_id=task_id,
+                    retries_count=attempt,
+                    failure_category=cat.value,
+                    latency_ms=(time.perf_counter() - call_start) * 1000.0,
+                )
+
                 logger.warning(
                     f"Gemini Vision call failed (attempt {attempt}/{max_attempts}): {type(e).__name__} ({cat.value})"
                 )
@@ -194,23 +243,6 @@ class GeminiVisionProvider(BaseVisionProvider):
                     FailureCategory.QUOTA_EXHAUSTED,
                     FailureCategory.AUTH_FAILED,
                 ):
-                    old_label = "key"
-                    try:
-                        c = self.credential_pool._find_by_key(active_key or self._current_key) if callable(getattr(self.credential_pool, "_find_by_key", None)) else None
-                        if c and hasattr(c, "project_label") and isinstance(c.project_label, str):
-                            old_label = c.project_label
-                    except Exception:
-                        pass
-
-                    next_label = "next available credential"
-                    try:
-                        next_c = self.credential_pool._find_by_key(active_key or self._current_key) if callable(getattr(self.credential_pool, "_find_by_key", None)) else None
-                    except Exception:
-                        pass
-
-                    logger.warning(
-                        f"Gemini credential {old_label} quota exhausted; switching to next available credential."
-                    )
                     continue
 
                 if attempt < max_attempts:

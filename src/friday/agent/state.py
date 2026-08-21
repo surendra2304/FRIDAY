@@ -34,12 +34,12 @@ class TaskState(str, Enum):
 
 # Valid deterministic transitions from each state
 VALID_TRANSITIONS: Dict[TaskState, List[TaskState]] = {
-    TaskState.NOT_STARTED: [TaskState.UNDERSTANDING, TaskState.CANCELLED, TaskState.FAILED],
+    TaskState.NOT_STARTED: [TaskState.UNDERSTANDING, TaskState.PLANNING, TaskState.CANCELLED, TaskState.FAILED],
     TaskState.UNDERSTANDING: [TaskState.PLANNING, TaskState.CANCELLED, TaskState.FAILED],
     TaskState.PLANNING: [TaskState.EXECUTING, TaskState.PAUSED, TaskState.VERIFYING, TaskState.CANCELLED, TaskState.FAILED],
     TaskState.EXECUTING: [TaskState.PAUSED, TaskState.VERIFYING, TaskState.CANCELLED, TaskState.FAILED],
     TaskState.PAUSED: [TaskState.EXECUTING, TaskState.CANCELLED, TaskState.FAILED],
-    TaskState.VERIFYING: [TaskState.COMPLETED, TaskState.CANCELLED, TaskState.FAILED],
+    TaskState.VERIFYING: [TaskState.COMPLETED, TaskState.EXECUTING, TaskState.CANCELLED, TaskState.FAILED],
     TaskState.COMPLETED: [],  # Terminal state
     TaskState.CANCELLED: [],  # Terminal state
     TaskState.FAILED: [],     # Terminal state
@@ -60,12 +60,13 @@ class StateTransitionRecord:
     reason: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        from friday.security.scrubber import recursive_sanitize, redact_secrets
+        return recursive_sanitize({
             "from_state": self.from_state.value,
             "to_state": self.to_state.value,
             "timestamp": self.timestamp.isoformat(),
-            "reason": self.reason,
-        }
+            "reason": redact_secrets(self.reason) if self.reason else None,
+        })
 
 
 class ReasoningStateMachine:
@@ -90,6 +91,16 @@ class ReasoningStateMachine:
         return self._current_state
 
     @property
+    def is_terminal(self) -> bool:
+        """Return True if the state machine is in a terminal state."""
+        return self._current_state in (TaskState.COMPLETED, TaskState.CANCELLED, TaskState.FAILED)
+
+    @property
+    def can_execute_tools(self) -> bool:
+        """Return True only if the state machine is in EXECUTING state."""
+        return self._current_state == TaskState.EXECUTING
+
+    @property
     def history(self) -> List[StateTransitionRecord]:
         """Return the transition audit trail."""
         return list(self._history)
@@ -106,6 +117,8 @@ class ReasoningStateMachine:
 
     def transition_to(self, new_state: TaskState, reason: Optional[str] = None) -> TaskState:
         """Validate and execute a state transition."""
+        from friday.security.scrubber import redact_secrets
+
         allowed = VALID_TRANSITIONS.get(self._current_state, [])
         if new_state not in allowed:
             err_msg = (
@@ -117,13 +130,14 @@ class ReasoningStateMachine:
 
         old_state = self._current_state
         self._current_state = new_state
-        record = StateTransitionRecord(from_state=old_state, to_state=new_state, reason=reason)
+        safe_reason = redact_secrets(reason) if reason else None
+        record = StateTransitionRecord(from_state=old_state, to_state=new_state, reason=safe_reason)
         self._history.append(record)
-        logger.debug(f"Task '{self.task_id}': {old_state.value} -> {new_state.value} (reason: {reason})")
+        logger.debug(f"Task '{self.task_id}': {old_state.value} -> {new_state.value} (reason: {safe_reason})")
 
         if self._on_transition:
             try:
-                self._on_transition(old_state, new_state, reason)
+                self._on_transition(old_state, new_state, safe_reason)
             except Exception as e:
                 logger.warning(f"Error in on_transition callback: {e}")
 
@@ -143,16 +157,22 @@ class ReasoningStateMachine:
 
     def fail(self, reason: str, metadata: Optional[Dict[str, Any]] = None) -> TaskState:
         """Transition task directly to FAILED with sanitized error metadata."""
-        self._failure_reason = reason
-        self._failure_metadata = metadata or {}
-        return self.transition_to(TaskState.FAILED, reason=reason)
+        from friday.security.scrubber import redact_secrets, recursive_sanitize
+
+        safe_reason = redact_secrets(reason) if reason else None
+        self._failure_reason = safe_reason
+        self._failure_metadata = recursive_sanitize(metadata or {})
+        return self.transition_to(TaskState.FAILED, reason=safe_reason)
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serialize current state and audit trail to dictionary."""
-        return {
+        """Serialize current state and audit trail to dictionary with recursive sanitization."""
+        from friday.security.scrubber import recursive_sanitize
+
+        raw_dict = {
             "task_id": self.task_id,
             "current_state": self._current_state.value,
             "history": [r.to_dict() for r in self._history],
             "failure_reason": self._failure_reason,
             "failure_metadata": self._failure_metadata,
         }
+        return recursive_sanitize(raw_dict)

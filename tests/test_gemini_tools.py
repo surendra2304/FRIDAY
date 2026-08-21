@@ -71,7 +71,8 @@ class DangerousTestTool(BaseTool):
 
 class AutoApproveAuthorizer(BaseAuthorizer):
     def authorize(self, request: AuthorizationRequest) -> AuthorizationResponse:
-        return AuthorizationResponse(decision=AuthorizationDecision.APPROVED, reason="Test auto-approved")
+        cap = self.issue_capability_for_request(request)
+        return AuthorizationResponse(decision=AuthorizationDecision.APPROVED, reason="Test auto-approved", capability=cap)
 
 
 class AutoDenyAuthorizer(BaseAuthorizer):

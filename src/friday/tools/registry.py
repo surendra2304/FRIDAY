@@ -1,10 +1,16 @@
 """Tool Registry for tool registration, discovery, schema export, validation, and execution."""
 
 from typing import Any, Dict, List, Optional
+import uuid
+import asyncio
 from friday.core.exceptions import ToolError
 from friday.core.logging import get_logger, redact_tool_args
 from friday.core.types import SafetyLevel, ToolResult
+from .errors import ToolErrorDetail, ToolTimeoutError, CircuitBreakerError
+from .circuit import CircuitBreaker
+from .execution_context import ExecutionContext
 from friday.tools.base import BaseTool
+from friday.security.authorization import ToolAuthorizer, ToolAuthorizationCapability, tool_authorizer
 
 logger = get_logger("tools.registry")
 
@@ -14,6 +20,11 @@ class ToolRegistry:
 
     def __init__(self) -> None:
         self._tools: Dict[str, BaseTool] = {}
+        from concurrent.futures import ThreadPoolExecutor
+        import threading
+        self._thread_executor = ThreadPoolExecutor(max_workers=20, thread_name_prefix="friday-tool-worker")
+        self._timed_out_executions = set()
+        self._timed_out_lock = threading.Lock()
 
     def register(self, tool: BaseTool) -> None:
         """Register a new tool instance."""
@@ -58,15 +69,20 @@ class ToolRegistry:
         name: str,
         arguments: Dict[str, Any],
         tool_call_id: str = "",
-        allow_sensitive: bool = False,
+        authorization: Optional[ToolAuthorizationCapability] = None,
+        exec_context: Optional[ExecutionContext] = None,
+        authorizer: Optional[ToolAuthorizer] = None,
+        **kwargs: Any,
     ) -> ToolResult:
-        """Validate and execute a tool by name with safety checks.
+        """Validate and execute a tool by name with cryptographic authorization checks.
 
         Args:
             name: Tool name.
             arguments: Dictionary of arguments.
             tool_call_id: Associated LLM tool call ID.
-            allow_sensitive: Whether sensitive/dangerous execution is approved by user.
+            authorization: Signed ToolAuthorizationCapability granting execution rights.
+            exec_context: Optional execution context for circuit breaker.
+            authorizer: Optional custom ToolAuthorizer instance.
 
         Returns:
             ToolResult containing execution status and output.
@@ -75,12 +91,21 @@ class ToolRegistry:
         if not tool:
             err_msg = f"Error: Tool '{name}' is not registered or available in FRIDAY's tool registry."
             logger.error(err_msg)
+            # Structured error
+            exec_id = tool_call_id or str(uuid.uuid4())
+            error_detail = ToolErrorDetail(
+                code="UNKNOWN_TOOL",
+                message=err_msg,
+                tool_name=name,
+                execution_id=exec_id,
+            )
             return ToolResult(
-                tool_call_id=tool_call_id,
+                tool_call_id=exec_id,
                 name=name,
-                content=err_msg,
+                content=error_detail.message,
                 is_error=True,
                 safety_level=SafetyLevel.SAFE,
+                error_detail=error_detail,
             )
 
         # Validate arguments against parameter schema
@@ -88,30 +113,74 @@ class ToolRegistry:
         if not is_valid:
             err_msg = f"Invalid arguments for tool '{name}': {validation_err}"
             logger.warning(err_msg)
+            exec_id = tool_call_id or str(uuid.uuid4())
+            error_detail = ToolErrorDetail(
+                code="INVALID_ARGUMENTS",
+                message=err_msg,
+                tool_name=name,
+                execution_id=exec_id,
+                data={"validation_error": validation_err},
+            )
             return ToolResult(
-                tool_call_id=tool_call_id,
+                tool_call_id=exec_id,
                 name=name,
-                content=err_msg,
+                content=error_detail.message,
                 is_error=True,
                 safety_level=tool.safety_level,
+                error_detail=error_detail,
             )
 
-        # Check safety permissions
-        if tool.safety_level in (SafetyLevel.SENSITIVE, SafetyLevel.DANGEROUS) and not allow_sensitive:
-            err_msg = (
-                f"Safety Block: Tool '{name}' is classified as '{tool.safety_level.value}' "
-                f"and requires explicit user confirmation before execution."
-            )
-            logger.warning(err_msg)
-            return ToolResult(
+        # Check safety permissions via cryptographic ToolAuthorizationCapability
+        if tool.safety_level in (SafetyLevel.SENSITIVE, SafetyLevel.DANGEROUS):
+            active_authz = authorizer or tool_authorizer
+            is_authorized, auth_reason = active_authz.verify_and_consume(
+                capability=authorization,
+                tool_name=name,
+                arguments=arguments,
                 tool_call_id=tool_call_id,
-                name=name,
-                content=err_msg,
-                is_error=True,
-                safety_level=tool.safety_level,
             )
+            if not is_authorized:
+                err_msg = (
+                    f"Safety Block: Tool '{name}' is classified as '{tool.safety_level.value}' "
+                    f"and requires a valid ToolAuthorizationCapability. Denied: {auth_reason}"
+                )
+                logger.warning(err_msg)
+                exec_id = tool_call_id or str(uuid.uuid4())
+                error_detail = ToolErrorDetail(
+                    code="SAFETY_BLOCK",
+                    message=err_msg,
+                    tool_name=name,
+                    execution_id=exec_id,
+                    data={"authorization_denied_reason": auth_reason},
+                )
+                return ToolResult(
+                    tool_call_id=exec_id,
+                    name=name,
+                    content=error_detail.message,
+                    is_error=True,
+                    safety_level=tool.safety_level,
+                    error_detail=error_detail,
+                )
 
         try:
+            # Circuit breaker check
+            cb = exec_context.circuit_breaker if exec_context else CircuitBreaker()
+            if cb.is_open(name):
+                exec_id = tool_call_id or str(uuid.uuid4())
+                error_detail = CircuitBreakerError(name, exec_id)
+                logger.warning(error_detail.message)
+                return ToolResult(
+                    tool_call_id=exec_id,
+                    name=name,
+                    content=error_detail.message,
+                    is_error=True,
+                    safety_level=tool.safety_level,
+                    error_detail=error_detail,
+                )
+
+            # Prepare execution ID
+            exec_id = tool_call_id or str(uuid.uuid4())
+
             # Filter out optional parameters with None values so Python defaults are used
             required_fields = tool.parameters.get("required", [])
             exec_args = {
@@ -125,15 +194,89 @@ class ToolRegistry:
                 len(exec_args),
                 redact_tool_args(exec_args),
             )
-            result = tool.execute(**exec_args)
-            result.tool_call_id = tool_call_id
+
+            # Timeout handling (async if tool.execute is coroutine)
+            timeout_seconds = kwargs.get("timeout") or getattr(tool, "timeout", 30)
+            import inspect
+            import threading
+            from concurrent.futures import TimeoutError as FuturesTimeoutError
+
+            cancel_event = threading.Event()
+            sig = inspect.signature(tool.execute)
+            if "cancellation_token" in sig.parameters:
+                exec_args["cancellation_token"] = cancel_event
+            elif "cancel_event" in sig.parameters:
+                exec_args["cancel_event"] = cancel_event
+
+            try:
+                if asyncio.iscoroutinefunction(tool.execute):
+                    # Run async tool with timeout
+                    result = asyncio.run(asyncio.wait_for(tool.execute(**exec_args), timeout=timeout_seconds))
+                else:
+                    # Run sync tool using the shared thread executor (so we don't wait for worker shutdown!)
+                    future = self._thread_executor.submit(tool.execute, **exec_args)
+                    result = future.result(timeout=timeout_seconds)
+            except (asyncio.TimeoutError, FuturesTimeoutError, TimeoutError):
+                cancel_event.set()
+                with self._timed_out_lock:
+                    self._timed_out_executions.add(exec_id)
+                error_detail = ToolTimeoutError(name, exec_id, timeout_seconds)
+                logger.error(error_detail.message)
+                cb.record_failure(name)
+                return ToolResult(
+                    tool_call_id=exec_id,
+                    name=name,
+                    content=error_detail.message,
+                    is_error=True,
+                    safety_level=tool.safety_level,
+                    error_detail=error_detail,
+                )
+
+            # Record success for circuit breaker
+            cb.record_success(name)
+
+            # Attach execution ID to result
+            result.tool_call_id = exec_id
+
+            # Verification method if supplied
+            if getattr(tool, "verification_method", None):
+                try:
+                    verified = tool.verification_method(result)
+                    if not verified:
+                        err_msg = f"Verification failed for tool '{name}'."
+                        logger.warning(err_msg)
+                        error_detail = ToolErrorDetail(
+                            code="VERIFICATION_FAILED",
+                            message=err_msg,
+                            tool_name=name,
+                            execution_id=exec_id,
+                        )
+                        return ToolResult(
+                            tool_call_id=exec_id,
+                            name=name,
+                            content=err_msg,
+                            is_error=True,
+                            safety_level=tool.safety_level,
+                            error_detail=error_detail,
+                        )
+                except Exception as ve:
+                    logger.exception(f"Verification method error for tool '{name}': {ve}")
+
             return result
         except Exception as e:
             logger.exception(f"Exception during tool '{name}' execution: {e}")
+            exec_id = tool_call_id or str(uuid.uuid4())
+            error_detail = ToolErrorDetail(
+                code="EXECUTION_ERROR",
+                message=str(e),
+                tool_name=name,
+                execution_id=exec_id,
+            )
             return ToolResult(
-                tool_call_id=tool_call_id,
+                tool_call_id=exec_id,
                 name=name,
                 content=f"Tool execution encountered an internal error: {str(e)}",
                 is_error=True,
                 safety_level=tool.safety_level,
+                error_detail=error_detail,
             )

@@ -212,8 +212,8 @@ def test_execution_engine_step_limit_protection():
 
     step_defs = [
         {"step_id": "s1", "tool_name": "add_numbers", "parameters": {"a": 1, "b": 1}},
-        {"step_id": "s2", "tool_name": "add_numbers", "parameters": {"a": 2, "b": 2}},
-        {"step_id": "s3", "tool_name": "add_numbers", "parameters": {"a": 3, "b": 3}},
+        {"step_id": "s2", "tool_name": "add_numbers", "parameters": {"a": 2, "b": 2}, "depends_on": ["s1"]},
+        {"step_id": "s3", "tool_name": "add_numbers", "parameters": {"a": 3, "b": 3}, "depends_on": ["s2"]},
     ]
     plan = GoalDecomposer.create_multi_step_plan("Limit test", step_defs)
     result = engine.execute_plan(plan)

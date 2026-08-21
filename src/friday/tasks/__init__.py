@@ -6,6 +6,10 @@ from friday.tasks.manager import (
     LongRunningTaskManager,
     TaskLifecycleStatus,
     TaskProgressReport,
+    TaskScope,
+    TaskBudget,
+    TaskSpec,
+    TaskPersistenceStore,
 )
 
 __all__ = [
@@ -17,4 +21,8 @@ __all__ = [
     "LongRunningTaskManager",
     "TaskLifecycleStatus",
     "TaskProgressReport",
+    "TaskScope",
+    "TaskBudget",
+    "TaskSpec",
+    "TaskPersistenceStore",
 ]

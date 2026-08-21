@@ -62,4 +62,15 @@ __all__ = [
     "AutonomousSafetyGate",
     "GateEvaluationResult",
     "TaskRiskLevel",
+    "CognitivePhase",
+    "ConfidenceAssessment",
+    "CognitiveDecision",
+    "CognitiveIntelligenceEngine",
 ]
+
+from friday.agent.cognitive import (
+    CognitivePhase,
+    ConfidenceAssessment,
+    CognitiveDecision,
+    CognitiveIntelligenceEngine,
+)

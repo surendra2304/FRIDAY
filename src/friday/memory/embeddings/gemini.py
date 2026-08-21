@@ -69,19 +69,16 @@ class GeminiEmbeddingProvider(BaseEmbeddingProvider):
 
     def _mask_key(self, text: str) -> str:
         """Mask API key in any error or diagnostic string."""
-        if self.api_key and self.api_key in text:
-            return text.replace(self.api_key, "***")
-        return text
+        from friday.security.scrubber import redact_secrets
+        return redact_secrets(text)
 
     @staticmethod
     def sanitize_text_for_embedding(text: str) -> str:
         """Sanitize text before cloud transmission to prevent leaking secrets/keys."""
         if not text:
             return ""
-        sanitized = text
-        for pattern in SECRET_PATTERNS:
-            sanitized = pattern.sub("[REDACTED_SECRET]", sanitized)
-        return sanitized
+        from friday.security.scrubber import redact_secrets
+        return redact_secrets(text)
 
     @staticmethod
     def normalize_vector(vec: List[float]) -> List[float]:

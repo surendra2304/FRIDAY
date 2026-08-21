@@ -20,6 +20,7 @@ class CLIAuthorizer(BaseAuthorizer):
             return AuthorizationResponse(
                 decision=AuthorizationDecision.APPROVED,
                 reason="Automatic execution approved for SAFE tools.",
+                capability=self.issue_capability_for_request(request),
             )
 
         # Print authorization box headers and details
@@ -44,6 +45,7 @@ class CLIAuthorizer(BaseAuthorizer):
                     return AuthorizationResponse(
                         decision=AuthorizationDecision.APPROVED,
                         reason="Explicit CLI user approval granted.",
+                        capability=self.issue_capability_for_request(request),
                     )
                 else:
                     return AuthorizationResponse(
@@ -75,6 +77,7 @@ class CLIAuthorizer(BaseAuthorizer):
                     return AuthorizationResponse(
                         decision=AuthorizationDecision.APPROVED,
                         reason="Explicit DANGEROUS verification accepted.",
+                        capability=self.issue_capability_for_request(request),
                     )
                 else:
                     return AuthorizationResponse(

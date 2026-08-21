@@ -18,7 +18,7 @@ def test_secret_masking_filter_direct_secret():
     )
     f.filter(record)
     assert secret not in record.msg
-    assert "***" in record.msg
+    assert "***" in record.msg or "[REDACTED]" in record.msg or "[REDACTED_SECRET]" in record.msg
 
 
 def test_secret_masking_filter_regex_keys():
@@ -78,4 +78,4 @@ def test_sanitized_formatter_filters_exception_tracebacks():
     
     formatted_msg = formatter.format(record)
     assert secret not in formatted_msg
-    assert "***" in formatted_msg or "[REDACTED_SECRET]" in formatted_msg
+    assert "***" in formatted_msg or "[REDACTED_SECRET]" in formatted_msg or "[REDACTED]" in formatted_msg

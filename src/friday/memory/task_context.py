@@ -165,15 +165,18 @@ class ActiveTaskContext:
         verification: Optional[VerificationResult] = None,
     ) -> None:
         """Record sanitized step result and verification outcome."""
+        from friday.security.scrubber import redact_secrets, recursive_sanitize
+
         res_str = str(result)
 
         # Do not persist raw screenshots, image buffers or binary blobs
         if "data:image/" in res_str or "[image payload" in res_str.lower() or "base64" in res_str:
             res_str = "[Visual screenshot captured and processed safely]"
-
-        # Redact secrets, keys, and tokens
-        if "key=" in res_str or "token=" in res_str or "password=" in res_str or "secret=" in res_str:
+        elif any(k in res_str.lower() for k in ("key=", "token=", "password=", "secret=")):
             res_str = "[Sensitive credentials redacted]"
+        else:
+            sanitized = recursive_sanitize(result)
+            res_str = redact_secrets(str(sanitized))
 
         # Truncate large tool outputs according to context budget
         if len(res_str) > self.max_output_chars_per_step:
@@ -297,8 +300,9 @@ class ActiveTaskContext:
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize working memory for diagnostics and audit logging."""
+        from friday.security.scrubber import recursive_sanitize
         state_str = self.state.value if hasattr(self.state, "value") else str(self.state)
-        return {
+        raw_dict = {
             "task_id": self.task_id,
             "goal": self.goal,
             "state": state_str,
@@ -315,24 +319,27 @@ class ActiveTaskContext:
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
+        return recursive_sanitize(raw_dict)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ActiveTaskContext":
         """Deserialize an ActiveTaskContext instance from dictionary (e.g. from checkpoint restoration)."""
+        from friday.security.scrubber import recursive_sanitize
+        sanitized_data = recursive_sanitize(data)
         ctx = cls(
-            task_id=data.get("task_id"),
-            goal=data.get("goal", ""),
+            task_id=sanitized_data.get("task_id"),
+            goal=sanitized_data.get("goal", ""),
         )
-        ctx.state = data.get("state", "NOT_STARTED")
-        ctx.active_step_id = data.get("active_step_id")
-        ctx.constraints = data.get("constraints", [])
-        ctx.user_clarifications = data.get("user_clarifications", [])
-        ctx.step_outputs = data.get("step_outputs", {})
-        ctx.temp_variables = data.get("temp_variables", {})
-        ctx.failures = data.get("failures", [])
-        ctx.recovery_attempts = data.get("recovery_attempts", [])
-        ctx.authorization_decisions = data.get("authorization_decisions", [])
-        ctx.checkpoint_references = data.get("checkpoint_references", [])
+        ctx.state = sanitized_data.get("state", "NOT_STARTED")
+        ctx.active_step_id = sanitized_data.get("active_step_id")
+        ctx.constraints = sanitized_data.get("constraints", [])
+        ctx.user_clarifications = sanitized_data.get("user_clarifications", [])
+        ctx.step_outputs = sanitized_data.get("step_outputs", {})
+        ctx.temp_variables = sanitized_data.get("temp_variables", {})
+        ctx.failures = sanitized_data.get("failures", [])
+        ctx.recovery_attempts = sanitized_data.get("recovery_attempts", [])
+        ctx.authorization_decisions = sanitized_data.get("authorization_decisions", [])
+        ctx.checkpoint_references = sanitized_data.get("checkpoint_references", [])
         ctx.observations = [
             TaskObservation(
                 step_id=o["step_id"],
@@ -340,11 +347,11 @@ class ActiveTaskContext:
                 source_tool=o.get("source_tool"),
                 timestamp=datetime.fromisoformat(o["timestamp"]) if "timestamp" in o else datetime.now(timezone.utc),
             )
-            for o in data.get("observations", [])
+            for o in sanitized_data.get("observations", [])
         ]
-        if "created_at" in data:
-            ctx.created_at = datetime.fromisoformat(data["created_at"])
-        if "updated_at" in data:
-            ctx.updated_at = datetime.fromisoformat(data["updated_at"])
+        if "created_at" in sanitized_data:
+            ctx.created_at = datetime.fromisoformat(sanitized_data["created_at"])
+        if "updated_at" in sanitized_data:
+            ctx.updated_at = datetime.fromisoformat(sanitized_data["updated_at"])
         return ctx
 

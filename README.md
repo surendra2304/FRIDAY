@@ -27,23 +27,23 @@ FRIDAY is a modular, extensible, autonomous personal AI assistant built with a c
 
 | Subsystem / Capability | Implementation | Mock Tested | Real Tested | Status |
 | :--- | :--- | :---: | :---: | :---: |
-| **Core FridayAgent & Reasoning Loop** | `src/friday/agent/` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
-| **Google Gemini Text Provider (`gemini-3.6-flash`)** | `src/friday/llm/gemini_provider.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
-| **Function Calling & Tool Execution** | `src/friday/tools/` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
-| **Tiered Authorization & Safety Gating** | `src/friday/core/auth.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
-| **Persistent SQLite Memory (WAL + ACID)** | `src/friday/memory/sqlite.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
-| **FTS5 Full-Text Keyword Search** | `src/friday/memory/sqlite.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
-| **Cloud-First Gemini Embeddings** | `src/friday/memory/embeddings/` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
-| **Real Gemini Live WebSocket Voice** | `src/friday/voice/gemini_live_session.py` | ✅ PASS | ✅ PASS | **REAL-TESTED** |
-| **Non-Blocking Streaming Microphone (16kHz)** | `src/friday/voice/audio_io.py` | ✅ PASS | ✅ PASS | **REAL-TESTED** |
-| **Immediate Streaming Speaker (24kHz)** | `src/friday/voice/audio_io.py` | ✅ PASS | ✅ PASS | **REAL-TESTED** |
-| **Instant Barge-In Interruption (<10ms)** | `src/friday/voice/gemini_live_session.py` | ✅ PASS | ✅ PASS | **REAL-TESTED** |
-| **Automatic Server-Side VAD** | `src/friday/voice/gemini_live_session.py` | ✅ PASS | ✅ PASS | **REAL-TESTED** |
-| **Voice Tool Calling & Correlation** | `src/friday/voice/gemini_live_session.py` | ✅ PASS | ✅ PASS | **REAL-TESTED** |
-| **Voice Memory Persistence & Retrieval** | `src/friday/voice/gemini_live_session.py` | ✅ PASS | ✅ PASS | **REAL-TESTED** |
-| **Session Resumption & GoAway Reconnect** | `src/friday/voice/gemini_live_session.py` | ✅ PASS | ✅ PASS | **REAL-TESTED** |
-| **Proactive Automation Scheduler** | `src/friday/tasks/` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
-| **Phase 6: Multi-Modal Vision & Screen Awareness** | `src/friday/vision/` | ⏳ Pending | ⏳ Pending | **FUTURE** |
+| **10-Phase Cognitive Intelligence Loop** | `src/friday/agent/cognitive.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Multi-Attribute Capability Router** | `src/friday/routing/capability_router.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Unified 15-Category Domain Error Taxonomy** | `src/friday/core/exceptions.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **FridayDoctor System Health Diagnostics** | `src/friday/core/doctor.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Background Tasks & Crash-Recovery Store** | `src/friday/tasks/manager.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Durable Checkpoints & Resumption Engine** | `src/friday/agent/checkpoint.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **HMAC-SHA256 Authorization & Safety Gating** | `src/friday/core/auth.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Zero-Secret Scrubber & Redaction Engine** | `src/friday/security/scrubber.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Google Gemini Intelligence Provider (`gemini-3.7-flash`)** | `src/friday/llm/gemini_provider.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **OpenAI / Non-Gemini Multimodal Provider** | `src/friday/vision/openai_vision.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Multimodal Perception & Screen Caching** | `src/friday/vision/perception_pipeline.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Windows DPI Virtual Screen Capture** | `src/friday/vision/windows_screen.py` | ✅ PASS | ⚠️ BLOCKED (Headless) | **IMPLEMENTED** |
+| **Real Streaming Microphone Capture (16kHz)** | `src/friday/voice/audio_io.py` | ✅ PASS | ✅ REAL PASS (17 devs) | **REAL-TESTED** |
+| **Immediate Streaming Speaker (24kHz)** | `src/friday/voice/audio_io.py` | ✅ PASS | ✅ REAL PASS (Dev 3) | **REAL-TESTED** |
+| **Gemini Live WebSocket Voice (`gemini-3.1-flash-live-preview`)** | `src/friday/voice/gemini_live_session.py` | ✅ PASS | ✅ PASS | **REAL-TESTED** |
+| **Persistent SQLite Memory (WAL + ACID + FTS5)**| `src/friday/memory/sqlite.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Cloud-First Gemini Embeddings (`gemini-embedding-2`)** | `src/friday/memory/embeddings/` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 
 ---
 

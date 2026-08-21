@@ -80,7 +80,14 @@ class GeminiLiveVoiceSession:
             self.api_key = api_key or settings.gemini_api_key or settings.llm_api_key
         if not self.api_key:
             raise ValueError("Gemini API key is required for Gemini Live voice session")
-        self.model = model or getattr(settings, "voice_live_model", "gemini-3.1-flash-live-preview")
+        live_model = model or getattr(settings, "voice_live_model", "gemini-3.1-flash-live-preview")
+        if "live" not in live_model.lower():
+            logger.warning(
+                f"Model '{live_model}' is not a valid Gemini Live voice model. "
+                f"Falling back to configured Live voice model '{getattr(settings, 'voice_live_model', 'gemini-3.1-flash-live-preview')}'."
+            )
+            live_model = getattr(settings, "voice_live_model", "gemini-3.1-flash-live-preview")
+        self.model = live_model
         self.agent = agent
         self.voice_name = voice_name or getattr(settings, "voice_name", "Aoede")
         self.sample_rate_in = sample_rate_in
@@ -481,6 +488,19 @@ class GeminiLiveVoiceSession:
                     self._connected_event.clear()
                     if stop.is_set() or not self._active:
                         break
+
+                    err_str = str(e).lower()
+                    # Safe credential failover for quota, auth, and server GoAway events without leaking keys
+                    if self.credential_pool and ("429" in err_str or "quota" in err_str or "401" in err_str or "403" in err_str or "unauthorized" in err_str or "goaway" in err_str):
+                        self.credential_pool.report_failure(self.api_key, error=e)
+                        next_key = self.credential_pool.get_active_key()
+                        if next_key and next_key != self.api_key:
+                            label = self.credential_pool.get_active_label()
+                            logger.warning(f"Gemini Live session encountered error. Failing over to credential ({label})...")
+                            self.api_key = next_key
+                            client = genai.Client(api_key=self.api_key)
+                            reconnect_attempts = 0
+                            continue
 
                     reconnect_attempts += 1
                     if reconnect_attempts > self.max_retries:

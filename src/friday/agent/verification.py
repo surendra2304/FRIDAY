@@ -37,11 +37,14 @@ class VerificationResult:
     evidence: Optional[str] = None
     diagnostics: Optional[str] = None
     suggested_correction: Optional[Dict[str, Any]] = None
+    evidence_source: Optional[str] = None
+    confidence: float = 1.0
+    is_real_success: bool = True
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
     def passed(self) -> bool:
-        return self.status == VerificationStatus.PASSED
+        return self.status == VerificationStatus.PASSED and self.is_real_success
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -50,35 +53,43 @@ class VerificationResult:
             "evidence": self.evidence,
             "diagnostics": self.diagnostics,
             "suggested_correction": self.suggested_correction,
+            "evidence_source": self.evidence_source,
+            "confidence": self.confidence,
+            "is_real_success": self.is_real_success,
             "timestamp": self.timestamp.isoformat(),
         }
 
 
 class StepVerifier:
-    """Evaluates step and task outcome assertions against real execution results."""
+    """Evaluates step and task outcome assertions against real-world evidence and execution results."""
 
     @staticmethod
     def verify_step_result(
         step: PlanStep,
         step_result: Any,
         custom_validator: Optional[Callable[[PlanStep, Any], VerificationResult]] = None,
+        environment_state: Optional[Dict[str, Any]] = None,
     ) -> VerificationResult:
-        """Verify that a step's execution result satisfies its success criteria."""
+        """Verify that a step's execution result satisfies its postconditions and real-world evidence."""
+        import os
+        import json
+
         if custom_validator:
             return custom_validator(step, step_result)
 
-        # 1. If step execution failed or produced error content
+        # 1. Check for null / empty execution failure
         if step_result is None or (isinstance(step_result, str) and not step_result.strip()):
             return VerificationResult(
                 status=VerificationStatus.FAILED,
                 criterion=step.success_criteria or "Non-empty step output",
                 diagnostics="Step produced empty or null execution result.",
+                is_real_success=False,
             )
 
         result_str = str(step_result).strip()
         lower_res = result_str.lower()
 
-        # Check for obvious unhandled error markers in output
+        # Check for unhandled error markers in output
         if lower_res.startswith("error:") or "traceback (most recent call last)" in lower_res or "exception:" in lower_res:
             return VerificationResult(
                 status=VerificationStatus.FAILED,
@@ -86,139 +97,253 @@ class StepVerifier:
                 evidence=result_str[:200],
                 diagnostics="Step execution returned an explicit error message.",
                 suggested_correction={"adjust_parameters": True, "error_context": result_str[:200]},
+                is_real_success=False,
             )
 
-        # 2. If specific success criteria is defined
-        if step.success_criteria:
-            crit = step.success_criteria.strip()
+        evidence_src = step.evidence_source or "tool_output"
 
-            # Handle regex matching criteria syntax: "regex:<pattern>"
-            if crit.startswith("regex:"):
-                pattern = crit[6:].strip()
-                if re.search(pattern, result_str, re.IGNORECASE):
-                    return VerificationResult(
-                        status=VerificationStatus.PASSED,
-                        criterion=crit,
-                        evidence=result_str[:150],
-                    )
-                else:
-                    return VerificationResult(
-                        status=VerificationStatus.FAILED,
-                        criterion=crit,
-                        evidence=result_str[:150],
-                        diagnostics=f"Result failed to match required regex pattern: '{pattern}'",
-                        suggested_correction={"adjust_parameters": True},
-                    )
-
-            # Handle substring matching criteria syntax: "contains:<substr>"
-            if crit.startswith("contains:"):
-                expected = crit[9:].strip().lower()
-                if expected in lower_res:
-                    return VerificationResult(
-                        status=VerificationStatus.PASSED,
-                        criterion=crit,
-                        evidence=result_str[:150],
-                    )
-                else:
-                    return VerificationResult(
-                        status=VerificationStatus.FAILED,
-                        criterion=crit,
-                        evidence=result_str[:150],
-                        diagnostics=f"Result missing expected substring: '{expected}'",
-                        suggested_correction={"adjust_parameters": True},
-                    )
-
-            # Handle negative substring criteria syntax: "not_contains:<substr>"
-            if crit.startswith("not_contains:"):
-                forbidden = crit[13:].strip().lower()
-                if forbidden not in lower_res:
-                    return VerificationResult(
-                        status=VerificationStatus.PASSED,
-                        criterion=crit,
-                        evidence=result_str[:150],
-                    )
-                else:
-                    return VerificationResult(
-                        status=VerificationStatus.FAILED,
-                        criterion=crit,
-                        evidence=result_str[:150],
-                        diagnostics=f"Result unexpectedly contains forbidden substring: '{forbidden}'",
-                        suggested_correction={"adjust_parameters": True},
-                    )
-
-            # Handle JSON key existence criteria syntax: "json_key:<key>"
-            if crit.startswith("json_key:"):
-                key = crit[9:].strip()
-                import json
-                try:
-                    parsed = json.loads(result_str) if isinstance(step_result, str) else step_result
-                    if isinstance(parsed, dict) and key in parsed:
+        # 2. Evidence Source: Filesystem Verification (prevents false-success where tool reports success but file wasn't written)
+        if evidence_src == "filesystem" or (step.tool_name and any(term in step.tool_name for term in ("write_file", "create_file", "delete_file", "save_file"))):
+            target_path = step.parameters.get("path") or step.parameters.get("file_path") or step.parameters.get("target_path")
+            if target_path and isinstance(target_path, str):
+                if "delete" in (step.tool_name or ""):
+                    if os.path.exists(target_path):
                         return VerificationResult(
-                            status=VerificationStatus.PASSED,
-                            criterion=crit,
-                            evidence=f"Key '{key}' found in JSON output.",
+                            status=VerificationStatus.FAILED,
+                            criterion=f"file_deleted:{target_path}",
+                            evidence=f"File still exists at {target_path}",
+                            diagnostics="False success: Tool reported deletion but target file still exists on filesystem.",
+                            evidence_source="filesystem",
+                            is_real_success=False,
+                            suggested_correction={"retry": True},
                         )
-                    else:
+                else:
+                    if not os.path.exists(target_path):
+                        return VerificationResult(
+                            status=VerificationStatus.FAILED,
+                            criterion=f"file_exists:{target_path}",
+                            evidence=f"File not found at {target_path}",
+                            diagnostics="False success: Tool reported success but target file was not created on filesystem.",
+                            evidence_source="filesystem",
+                            is_real_success=False,
+                            suggested_correction={"retry": True},
+                        )
+
+        # 3. Evidence Source: Screen State Verification
+        if evidence_src == "screen":
+            screen_data = environment_state.get("screen_state", {}) if environment_state else {}
+            expected_element = step.parameters.get("target_element") or step.parameters.get("expected_ui_text")
+            if expected_element:
+                visible_elements = screen_data.get("elements", [])
+                if expected_element not in visible_elements and expected_element not in str(screen_data):
+                    return VerificationResult(
+                        status=VerificationStatus.FAILED,
+                        criterion=f"ui_element_visible:{expected_element}",
+                        evidence=str(screen_data)[:150],
+                        diagnostics=f"False success: Tool reported action executed but expected UI element '{expected_element}' was not verified on screen.",
+                        evidence_source="screen",
+                        is_real_success=False,
+                    )
+
+        # 4. Evidence Source: Structured Output Verification
+        if evidence_src == "structured_output":
+            try:
+                parsed = json.loads(result_str) if isinstance(step_result, str) else step_result
+                if not isinstance(parsed, (dict, list)):
+                    return VerificationResult(
+                        status=VerificationStatus.FAILED,
+                        criterion="structured_json",
+                        evidence=result_str[:150],
+                        diagnostics="False success: Output is not valid structured JSON object or array.",
+                        evidence_source="structured_output",
+                        is_real_success=False,
+                    )
+            except Exception as e:
+                return VerificationResult(
+                    status=VerificationStatus.FAILED,
+                    criterion="structured_json",
+                    evidence=result_str[:150],
+                    diagnostics=f"False success: Failed to parse structured JSON: {e}",
+                    evidence_source="structured_output",
+                    is_real_success=False,
+                )
+
+        # 5. Evaluate Explicit Postconditions
+        all_conditions = list(step.postconditions)
+        if step.success_criteria:
+            all_conditions.append(step.success_criteria)
+
+        for crit in all_conditions:
+            crit = crit.strip()
+
+            # file_exists:<path>
+            if crit.startswith("file_exists:"):
+                fpath = crit[12:].strip()
+                if not os.path.exists(fpath):
+                    return VerificationResult(
+                        status=VerificationStatus.FAILED,
+                        criterion=crit,
+                        diagnostics=f"Postcondition failed: File does not exist at '{fpath}'.",
+                        evidence_source="filesystem",
+                        is_real_success=False,
+                    )
+
+            # file_contains:<path>:<content>
+            elif crit.startswith("file_contains:"):
+                parts = crit[14:].rsplit(":", 1)
+                if len(parts) == 2:
+                    fpath, expected_content = parts[0].strip(), parts[1].strip()
+                    if not os.path.exists(fpath):
                         return VerificationResult(
                             status=VerificationStatus.FAILED,
                             criterion=crit,
-                            diagnostics=f"Key '{key}' not found in structured JSON output.",
+                            diagnostics=f"Postcondition failed: File '{fpath}' not found.",
+                            evidence_source="filesystem",
+                            is_real_success=False,
+                        )
+                    try:
+                        with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                            content = f.read()
+                        if expected_content not in content:
+                            return VerificationResult(
+                                status=VerificationStatus.FAILED,
+                                criterion=crit,
+                                diagnostics=f"Postcondition failed: File '{fpath}' does not contain expected content '{expected_content}'.",
+                                evidence_source="filesystem",
+                                is_real_success=False,
+                            )
+                    except Exception as fe:
+                        return VerificationResult(
+                            status=VerificationStatus.FAILED,
+                            criterion=crit,
+                            diagnostics=f"Postcondition failed: Error reading file '{fpath}': {fe}",
+                            evidence_source="filesystem",
+                            is_real_success=False,
+                        )
+
+            # file_deleted:<path>
+            elif crit.startswith("file_deleted:"):
+                fpath = crit[13:].strip()
+                if os.path.exists(fpath):
+                    return VerificationResult(
+                        status=VerificationStatus.FAILED,
+                        criterion=crit,
+                        diagnostics=f"Postcondition failed: File '{fpath}' was not deleted.",
+                        evidence_source="filesystem",
+                        is_real_success=False,
+                    )
+
+            # json_key:<key>
+            elif crit.startswith("json_key:"):
+                key = crit[9:].strip()
+                try:
+                    parsed = json.loads(result_str) if isinstance(step_result, str) else step_result
+                    if not isinstance(parsed, dict) or key not in parsed:
+                        return VerificationResult(
+                            status=VerificationStatus.FAILED,
+                            criterion=crit,
+                            diagnostics=f"Postcondition failed: Key '{key}' not found in structured JSON output.",
+                            is_real_success=False,
                         )
                 except Exception as e:
                     return VerificationResult(
                         status=VerificationStatus.FAILED,
                         criterion=crit,
-                        diagnostics=f"Failed to parse output as JSON for key check '{key}': {e}",
+                        diagnostics=f"Postcondition failed: Failed to parse output as JSON for key check '{key}': {e}",
+                        is_real_success=False,
                     )
 
-            # Handle minimum length criteria syntax: "min_length:<int>"
-            if crit.startswith("min_length:"):
-                try:
-                    min_len = int(crit[11:].strip())
-                    if len(result_str) >= min_len:
-                        return VerificationResult(
-                            status=VerificationStatus.PASSED,
-                            criterion=crit,
-                            evidence=f"Output length {len(result_str)} >= {min_len}",
-                        )
-                    else:
+            # json_field:<key>:<expected_val>
+            elif crit.startswith("json_field:"):
+                parts = crit[11:].split(":", 1)
+                if len(parts) == 2:
+                    key, expected_val = parts[0].strip(), parts[1].strip()
+                    try:
+                        parsed = json.loads(result_str) if isinstance(step_result, str) else step_result
+                        val = str(parsed.get(key, ""))
+                        if val != expected_val:
+                            return VerificationResult(
+                                status=VerificationStatus.FAILED,
+                                criterion=crit,
+                                diagnostics=f"Postcondition failed: JSON field '{key}' value '{val}' != expected '{expected_val}'.",
+                                is_real_success=False,
+                            )
+                    except Exception as e:
                         return VerificationResult(
                             status=VerificationStatus.FAILED,
                             criterion=crit,
-                            diagnostics=f"Output length {len(result_str)} is less than required minimum {min_len}",
+                            diagnostics=f"Postcondition failed: Failed to check JSON field '{key}': {e}",
+                            is_real_success=False,
                         )
-                except ValueError:
-                    pass
 
-            # Handle exact string match criteria syntax: "exact:<text>"
-            if crit.startswith("exact:"):
-                expected = crit[6:].strip()
-                if result_str == expected:
+            # regex:<pattern>
+            elif crit.startswith("regex:"):
+                pattern = crit[6:].strip()
+                if not re.search(pattern, result_str, re.IGNORECASE):
                     return VerificationResult(
-                        status=VerificationStatus.PASSED,
+                        status=VerificationStatus.FAILED,
                         criterion=crit,
                         evidence=result_str[:150],
+                        diagnostics=f"Result failed to match required regex pattern: '{pattern}'",
+                        is_real_success=False,
                     )
-                else:
+
+            # contains:<substr>
+            elif crit.startswith("contains:"):
+                expected = crit[9:].strip().lower()
+                if expected not in lower_res:
+                    return VerificationResult(
+                        status=VerificationStatus.FAILED,
+                        criterion=crit,
+                        evidence=result_str[:150],
+                        diagnostics=f"Result missing expected substring: '{expected}'",
+                        is_real_success=False,
+                    )
+
+            # not_contains:<substr>
+            elif crit.startswith("not_contains:"):
+                forbidden = crit[13:].strip().lower()
+                if forbidden in lower_res:
+                    return VerificationResult(
+                        status=VerificationStatus.FAILED,
+                        criterion=crit,
+                        evidence=result_str[:150],
+                        diagnostics=f"Result unexpectedly contains forbidden substring: '{forbidden}'",
+                        is_real_success=False,
+                    )
+
+            # exact:<text>
+            elif crit.startswith("exact:"):
+                expected = crit[6:].strip()
+                if result_str != expected:
                     return VerificationResult(
                         status=VerificationStatus.FAILED,
                         criterion=crit,
                         diagnostics=f"Result '{result_str[:50]}' does not exactly match expected '{expected[:50]}'",
+                        is_real_success=False,
                     )
 
-            # Default text heuristic match
-            if any(term in lower_res for term in crit.lower().split() if len(term) > 3):
-                return VerificationResult(
-                    status=VerificationStatus.PASSED,
-                    criterion=crit,
-                    evidence=result_str[:150],
-                )
+            # min_length:<int>
+            elif crit.startswith("min_length:"):
+                try:
+                    min_len = int(crit[11:].strip())
+                    if len(result_str) < min_len:
+                        return VerificationResult(
+                            status=VerificationStatus.FAILED,
+                            criterion=crit,
+                            diagnostics=f"Output length {len(result_str)} is less than required minimum {min_len}",
+                            is_real_success=False,
+                        )
+                except ValueError:
+                    pass
 
-        # 3. Default verification passes if output is non-empty and error-free
         return VerificationResult(
             status=VerificationStatus.PASSED,
-            criterion=step.success_criteria or "Valid execution output",
+            criterion=step.success_criteria or "Valid execution output and postconditions verified",
             evidence=result_str[:150],
+            evidence_source=evidence_src,
+            confidence=step.confidence,
+            is_real_success=True,
         )
 
     @staticmethod
@@ -238,12 +363,14 @@ class StepVerifier:
                 status=VerificationStatus.FAILED,
                 criterion=f"All {len(plan.steps)} steps verified",
                 diagnostics=f"Step(s) failed verification: {failed_steps}",
+                is_real_success=False,
             )
 
         return VerificationResult(
             status=VerificationStatus.PASSED,
             criterion=f"All {len(plan.steps)} steps verified",
             evidence=f"Successfully verified {len(step_verification_results)} step(s).",
+            is_real_success=True,
         )
 
 

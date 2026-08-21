@@ -121,7 +121,7 @@ def test_single_tool_call(registry):
         settings=Settings(env="testing"),
         llm_provider=MockLLMProvider(custom_responder=mock_responder),
         tool_registry=registry,
-        authorizer=AutoApproveAuthorizer()
+        authorizer=AutoApproveAuthorizer.create_for_testing()
     )
 
     response = agent.process_message("Execute A")
@@ -152,7 +152,7 @@ def test_two_independent_safe_tool_calls(registry):
         settings=Settings(env="testing", embedding_provider="none"),
         llm_provider=MockLLMProvider(custom_responder=mock_responder),
         tool_registry=registry,
-        authorizer=AutoApproveAuthorizer()
+        authorizer=AutoApproveAuthorizer.create_for_testing()
     )
 
     start = time.perf_counter()
@@ -197,7 +197,7 @@ def test_multiple_safe_tool_calls(registry):
         settings=Settings(env="testing"),
         llm_provider=MockLLMProvider(custom_responder=mock_responder),
         tool_registry=registry,
-        authorizer=AutoApproveAuthorizer()
+        authorizer=AutoApproveAuthorizer.create_for_testing()
     )
 
     response = agent.process_message("Execute three safe tools")
@@ -230,7 +230,7 @@ def test_one_success_one_failure(registry):
         settings=Settings(env="testing"),
         llm_provider=MockLLMProvider(custom_responder=mock_responder),
         tool_registry=registry,
-        authorizer=AutoApproveAuthorizer()
+        authorizer=AutoApproveAuthorizer.create_for_testing()
     )
 
     response = agent.process_message("Do work and fail")
@@ -270,7 +270,7 @@ def test_all_failures(registry):
         settings=Settings(env="testing"),
         llm_provider=MockLLMProvider(custom_responder=mock_responder),
         tool_registry=registry,
-        authorizer=AutoApproveAuthorizer()
+        authorizer=AutoApproveAuthorizer.create_for_testing()
     )
 
     response = agent.process_message("Failing tools")
@@ -305,7 +305,7 @@ def test_mixed_safety_classifications(registry):
         settings=Settings(env="testing"),
         llm_provider=MockLLMProvider(custom_responder=mock_responder),
         tool_registry=registry,
-        authorizer=AutoApproveAuthorizer()
+        authorizer=AutoApproveAuthorizer.create_for_testing()
     )
 
     response = agent.process_message("Execute mixed tools")
@@ -371,7 +371,7 @@ def test_result_correlation_and_order(registry):
         settings=Settings(env="testing"),
         llm_provider=MockLLMProvider(custom_responder=mock_responder),
         tool_registry=registry,
-        authorizer=AutoApproveAuthorizer()
+        authorizer=AutoApproveAuthorizer.create_for_testing()
     )
 
     response = agent.process_message("Run parallel correlation test")
@@ -422,7 +422,7 @@ def test_sequential_follow_up_after_parallel_results(registry):
         settings=Settings(env="testing"),
         llm_provider=MockLLMProvider(custom_responder=mock_responder),
         tool_registry=registry,
-        authorizer=AutoApproveAuthorizer()
+        authorizer=AutoApproveAuthorizer.create_for_testing()
     )
 
     response = agent.process_message("Start multi-turn reasoning")
@@ -448,7 +448,7 @@ def test_max_iteration_guardrail_multi_tool(registry):
         llm_provider=MockLLMProvider(custom_responder=mock_responder),
         tool_registry=registry,
         max_tool_iterations=2,
-        authorizer=AutoApproveAuthorizer()
+        authorizer=AutoApproveAuthorizer.create_for_testing()
     )
 
     response = agent.process_message("Endless loop test")

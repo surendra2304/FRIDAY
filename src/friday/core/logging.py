@@ -12,13 +12,9 @@ class SecretMaskingFilter(logging.Filter):
 
     def __init__(self, secrets_to_mask: Optional[list[str]] = None):
         super().__init__()
-        self.secrets = [s for s in (secrets_to_mask or []) if s and len(s) > 4]
-        # Regex patterns for common secret formats (e.g. sk-..., bearer tokens)
-        self.patterns = [
-            re.compile(r"sk-[a-zA-Z0-9]{20,}", re.IGNORECASE),
-            re.compile(r"Bearer\s+[a-zA-Z0-9_\-\.]{20,}", re.IGNORECASE),
-            re.compile(r"(api[_-]?key|password|secret|token)\s*[:=]\s*['\"]?([^'\"\s]+)['\"]?", re.IGNORECASE),
-        ]
+        from friday.security.scrubber import global_scrubber
+        for s in (secrets_to_mask or []):
+            global_scrubber.register_secret(s)
 
     def filter(self, record: logging.LogRecord) -> bool:
         if isinstance(record.msg, str):
@@ -31,15 +27,8 @@ class SecretMaskingFilter(logging.Filter):
         return True
 
     def _sanitize(self, text: str) -> str:
-        # Mask explicitly known secrets
-        for secret in self.secrets:
-            if secret in text:
-                text = text.replace(secret, "***")
-
-        # Mask regex matching secrets
-        for pattern in self.patterns:
-            text = pattern.sub(r"\1: [REDACTED]", text) if "api" in pattern.pattern else pattern.sub("[REDACTED_SECRET]", text)
-        return text
+        from friday.security.scrubber import redact_secrets
+        return redact_secrets(text)
 
 
 class SanitizedFormatter(logging.Formatter):
@@ -78,9 +67,12 @@ def setup_logging(
     if logger.hasHandlers():
         logger.handlers.clear()
 
-    mask_filter = SecretMaskingFilter(
-        secrets_to_mask=[settings.llm_api_key] if settings.llm_api_key else []
-    )
+    # Register credentials automatically from settings and environment variables
+    from friday.security.scrubber import global_scrubber
+    global_scrubber.register_from_settings(settings)
+    global_scrubber.register_from_environment()
+
+    mask_filter = SecretMaskingFilter()
 
     formatter = SanitizedFormatter(
         fmt="%(asctime)s [%(levelname)s] [%(name)s] %(message)s",

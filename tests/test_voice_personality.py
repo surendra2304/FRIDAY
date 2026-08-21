@@ -173,7 +173,7 @@ async def test_tool_request_concise_status_and_execution(memory_db):
     agent = FridayAgent(
         settings=Settings(env="testing", embedding_provider="none"),
         tool_registry=registry,
-        authorizer=AutoApproveAuthorizer(),
+        authorizer=AutoApproveAuthorizer.create_for_testing(),
         memory=memory_db,
     )
     session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY", agent=agent)
@@ -203,7 +203,7 @@ async def test_tool_error_graceful_handling(memory_db):
     agent = FridayAgent(
         settings=Settings(env="testing", embedding_provider="none"),
         tool_registry=registry,
-        authorizer=AutoApproveAuthorizer(),
+        authorizer=AutoApproveAuthorizer.create_for_testing(),
         memory=memory_db,
     )
     session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY", agent=agent)

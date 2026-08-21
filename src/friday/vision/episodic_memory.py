@@ -44,7 +44,8 @@ def redact_sensitive_visual_text(text: str) -> str:
     sanitized = text
     for pattern, replacement in SENSITIVE_PATTERNS:
         sanitized = pattern.sub(replacement, sanitized)
-    return sanitized
+    from friday.security.scrubber import redact_secrets
+    return redact_secrets(sanitized)
 
 
 class MemoryImportance(str, Enum):

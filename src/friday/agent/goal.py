@@ -70,7 +70,8 @@ class SubGoal:
     success_conditions: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        from friday.security.scrubber import recursive_sanitize
+        raw_dict = {
             "subgoal_id": self.subgoal_id,
             "description": self.description,
             "desired_outcome": self.desired_outcome,
@@ -80,20 +81,23 @@ class SubGoal:
             "requires_confirmation": self.requires_confirmation,
             "success_conditions": self.success_conditions,
         }
+        return recursive_sanitize(raw_dict)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SubGoal":
-        safety_str = data.get("safety_level", SafetyLevel.SAFE.value)
+        from friday.security.scrubber import recursive_sanitize
+        sanitized_data = recursive_sanitize(data)
+        safety_str = sanitized_data.get("safety_level", SafetyLevel.SAFE.value)
         safety = SafetyLevel(safety_str) if safety_str in SafetyLevel._value2member_map_ else SafetyLevel.SAFE
         return cls(
-            subgoal_id=data["subgoal_id"],
-            description=data.get("description", ""),
-            desired_outcome=data.get("desired_outcome", ""),
-            dependencies=data.get("dependencies", []),
-            required_capabilities=data.get("required_capabilities", []),
+            subgoal_id=sanitized_data["subgoal_id"],
+            description=sanitized_data.get("description", ""),
+            desired_outcome=sanitized_data.get("desired_outcome", ""),
+            dependencies=sanitized_data.get("dependencies", []),
+            required_capabilities=sanitized_data.get("required_capabilities", []),
             safety_level=safety,
-            requires_confirmation=data.get("requires_confirmation", False),
-            success_conditions=data.get("success_conditions", []),
+            requires_confirmation=sanitized_data.get("requires_confirmation", False),
+            success_conditions=sanitized_data.get("success_conditions", []),
         )
 
 
@@ -122,7 +126,8 @@ class Goal:
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize goal to dictionary."""
-        return {
+        from friday.security.scrubber import recursive_sanitize
+        raw_dict = {
             "goal_id": self.goal_id,
             "original_request": self.original_request,
             "normalized_intent": self.normalized_intent,
@@ -143,37 +148,40 @@ class Goal:
             "created_at": self.created_at.isoformat(),
             "metadata": self.metadata,
         }
+        return recursive_sanitize(raw_dict)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Goal":
-        req_type_str = data.get("request_type", GoalRequestType.INFORMATION_REQUEST.value)
+        from friday.security.scrubber import recursive_sanitize
+        sanitized_data = recursive_sanitize(data)
+        req_type_str = sanitized_data.get("request_type", GoalRequestType.INFORMATION_REQUEST.value)
         req_type = GoalRequestType(req_type_str) if req_type_str in GoalRequestType._value2member_map_ else GoalRequestType.INFORMATION_REQUEST
-        risk_str = data.get("risk_level", GoalRiskLevel.LOW.value)
+        risk_str = sanitized_data.get("risk_level", GoalRiskLevel.LOW.value)
         risk = GoalRiskLevel(risk_str) if risk_str in GoalRiskLevel._value2member_map_ else GoalRiskLevel.LOW
 
-        subgoals = [SubGoal.from_dict(s) for s in data.get("subgoals", [])]
-        created = datetime.fromisoformat(data["created_at"]) if "created_at" in data else datetime.now(timezone.utc)
+        subgoals = [SubGoal.from_dict(s) for s in sanitized_data.get("subgoals", [])]
+        created = datetime.fromisoformat(sanitized_data["created_at"]) if "created_at" in sanitized_data else datetime.now(timezone.utc)
 
         return cls(
-            goal_id=data.get("goal_id", str(uuid.uuid4())),
-            original_request=data.get("original_request", ""),
-            normalized_intent=data.get("normalized_intent", ""),
-            desired_outcome=data.get("desired_outcome", ""),
+            goal_id=sanitized_data.get("goal_id", str(uuid.uuid4())),
+            original_request=sanitized_data.get("original_request", ""),
+            normalized_intent=sanitized_data.get("normalized_intent", ""),
+            desired_outcome=sanitized_data.get("desired_outcome", ""),
             request_type=req_type,
-            constraints=data.get("constraints", []),
-            required_capabilities=data.get("required_capabilities", []),
-            dependencies=data.get("dependencies", []),
+            constraints=sanitized_data.get("constraints", []),
+            required_capabilities=sanitized_data.get("required_capabilities", []),
+            dependencies=sanitized_data.get("dependencies", []),
             risk_level=risk,
-            authorization_requirements=data.get("authorization_requirements", []),
-            success_conditions=data.get("success_conditions", []),
-            cancellation_conditions=data.get("cancellation_conditions", []),
+            authorization_requirements=sanitized_data.get("authorization_requirements", []),
+            success_conditions=sanitized_data.get("success_conditions", []),
+            cancellation_conditions=sanitized_data.get("cancellation_conditions", []),
             subgoals=subgoals,
-            is_ambiguous=data.get("is_ambiguous", False),
-            clarification_needed=data.get("clarification_needed"),
-            is_prohibited=data.get("is_prohibited", False),
-            prohibition_reason=data.get("prohibition_reason"),
+            is_ambiguous=sanitized_data.get("is_ambiguous", False),
+            clarification_needed=sanitized_data.get("clarification_needed"),
+            is_prohibited=sanitized_data.get("is_prohibited", False),
+            prohibition_reason=sanitized_data.get("prohibition_reason"),
             created_at=created,
-            metadata=data.get("metadata", {}),
+            metadata=sanitized_data.get("metadata", {}),
         )
 
 
