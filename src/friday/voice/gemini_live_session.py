@@ -435,8 +435,15 @@ class GeminiLiveVoiceSession:
         output_stream: Optional[SpeakerStream] = None,
         on_turn_complete: Optional[Callable[[str, str], None]] = None,
         stop_event: Optional[asyncio.Event] = None,
+        on_server_content: Optional[Callable[[Any], None]] = None,
     ) -> None:
-        """Run the full-duplex asynchronous bidirectional Gemini Live loop with reconnection management."""
+        """Run the full-duplex asynchronous bidirectional Gemini Live loop with reconnection management.
+
+        `on_server_content` (optional) is invoked with every raw serverContent
+        object immediately AFTER the audio chunks have been enqueued to the
+        speaker, so observers (e.g. transcript extraction) can never delay
+        audio playback.
+        """
         self._active = True
         client = genai.Client(api_key=self.api_key)
 
@@ -481,7 +488,7 @@ class GeminiLiveVoiceSession:
                             name="gemini_live_audio_sender",
                         )
                         receiver_task = asyncio.create_task(
-                            self._audio_receiver_loop(session, spk, on_turn_complete, stop),
+                            self._audio_receiver_loop(session, spk, on_turn_complete, stop, on_server_content),
                             name="gemini_live_audio_receiver",
                         )
 
@@ -637,8 +644,14 @@ class GeminiLiveVoiceSession:
         spk: SpeakerStream,
         on_turn_complete: Optional[Callable[[str, str], None]],
         stop_event: asyncio.Event,
+        on_server_content: Optional[Callable[[Any], None]] = None,
     ) -> None:
-        """Consume server responses, stream audio chunks, and handle instant barge-in."""
+        """Consume server responses, stream audio chunks, and handle instant barge-in.
+
+        Audio chunks are enqueued to the speaker FIRST for every message;
+        transcript accumulation, callbacks, and tool handling run after, so
+        nothing can block playback.
+        """
         user_transcript_accum = []
         agent_text_parts = []
         agent_output_tx = []
@@ -695,7 +708,8 @@ class GeminiLiveVoiceSession:
                         if not turn_interrupted:
                             self._set_state(LiveSessionState.FRIDAY_SPEAKING)
                         for part in model_turn.parts:
-                            # Stream raw 24kHz PCM audio chunk immediately
+                            # Stream raw 24kHz PCM audio chunk immediately (queue-first,
+                            # non-blocking put_nowait in SpeakerStream.play_chunk)
                             inline_data = getattr(part, "inline_data", None)
                             if inline_data and getattr(inline_data, "data", None):
                                 spk.play_chunk(inline_data.data)
@@ -703,6 +717,14 @@ class GeminiLiveVoiceSession:
                             # Accumulate text parts
                             if getattr(part, "text", None):
                                 agent_text_parts.append(part.text)
+
+                    # Notify observers AFTER audio is enqueued so they can never
+                    # delay playback (transcript extraction, diagnostics, etc.)
+                    if on_server_content is not None:
+                        try:
+                            on_server_content(server_content)
+                        except Exception as e:
+                            logger.debug(f"on_server_content callback error: {e}")
 
                     # Accumulate transcriptions if provided
                     in_tx = getattr(server_content, "input_transcription", None)

@@ -537,3 +537,64 @@ async def test_silent_listening_completes_response(mock_agent):
 
 
 
+
+
+@pytest.mark.anyio
+async def test_receiver_loop_on_server_content_after_audio_enqueue():
+    """on_server_content observers receive every serverContent, strictly AFTER audio enqueue."""
+    sample_pcm = b"\x01\x02\x03\x04"
+
+    audio_part = mock.MagicMock()
+    audio_part.text = None
+    audio_part.inline_data = mock.MagicMock(data=sample_pcm)
+
+    content = MockGenAIServerContent(parts=[audio_part], turn_complete=True, output_tx="done")
+    msg = MockGenAIServerMessage(server_content=content)
+    mock_ws = MockAsyncSession(receive_messages=[msg])
+
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY")
+    session._active = True
+
+    events = []
+    spk = mock.MagicMock(spec=SpeakerStream)
+    spk.play_chunk = mock.MagicMock(side_effect=lambda chunk: events.append(("audio", chunk)))
+
+    observed = []
+
+    def on_server_content(sc):
+        events.append(("callback", sc))
+        observed.append(sc)
+
+    stop_event = asyncio.Event()
+    await session._audio_receiver_loop(mock_ws, spk, None, stop_event, on_server_content)
+
+    # Callback saw the serverContent object
+    assert observed == [content]
+    # Audio was enqueued BEFORE the callback ran (audio-first ordering)
+    assert events[0] == ("audio", sample_pcm)
+    assert events[1][0] == "callback"
+
+
+@pytest.mark.anyio
+async def test_receiver_loop_on_server_content_callback_error_isolated():
+    """A crashing on_server_content observer must not break the receive loop."""
+    audio_part = mock.MagicMock()
+    audio_part.text = None
+    audio_part.inline_data = mock.MagicMock(data=b"\x00\x00")
+
+    content = MockGenAIServerContent(parts=[audio_part], turn_complete=True)
+    msg = MockGenAIServerMessage(server_content=content)
+    mock_ws = MockAsyncSession(receive_messages=[msg])
+
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY")
+    session._active = True
+    spk = mock.MagicMock(spec=SpeakerStream)
+    turns = []
+    stop_event = asyncio.Event()
+
+    def broken_callback(sc):
+        raise RuntimeError("observer crashed")
+
+    await session._audio_receiver_loop(mock_ws, spk, lambda u, a: turns.append((u, a)), stop_event, broken_callback)
+    spk.play_chunk.assert_called_once()  # audio still played
+    assert len(turns) == 1  # turn completion still fired

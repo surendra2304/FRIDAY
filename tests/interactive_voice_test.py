@@ -44,11 +44,16 @@ DEFAULT_MODEL = "gemini-3.1-flash-live-preview"
 SAMPLE_RATE_IN = 16000
 SAMPLE_RATE_OUT = 24000
 MAX_KEY_ROTATIONS = 5
+MAX_RECONNECTS = 3
 
 # Error markers that indicate the API KEY (not the model/request) is denied;
 # only these trigger key rotation. "quota" covers exhausted-key denials that
 # surface as quota errors on the Live endpoint.
 _ACCESS_DENIED_MARKERS = ("1008", "denied access", "not supported", "quota")
+
+# Markers for a dropped session (normal closure / timeout) that should be
+# retried with the SAME healthy key.
+_SESSION_DROP_MARKERS = ("1000", "normal closure", "connection closed", "timeout", "timed out")
 
 
 def parse_args() -> argparse.Namespace:
@@ -65,11 +70,21 @@ def parse_args() -> argparse.Namespace:
 
 def _is_access_denied(exc: BaseException) -> bool:
     """True if the exception chain indicates the API key's project is denied."""
+    return _chain_matches(exc, _ACCESS_DENIED_MARKERS)
+
+
+def _is_session_drop(exc: BaseException) -> bool:
+    """True if the exception chain indicates a dropped session (normal closure/timeout)."""
+    return _chain_matches(exc, _SESSION_DROP_MARKERS)
+
+
+def _chain_matches(exc: BaseException, markers: tuple) -> bool:
+    """Walk the exception chain (cause/context) looking for any marker."""
     current: Optional[BaseException] = exc
     depth = 0
     while current is not None and depth < 10:
         text = str(current).lower()
-        if any(marker in text for marker in _ACCESS_DENIED_MARKERS):
+        if any(marker in text for marker in markers):
             return True
         current = current.__cause__ or current.__context__
         depth += 1
@@ -143,10 +158,26 @@ def attempt_session(api_key: str, model: str, turn_log: list):
     if session.model != model:
         print(f"[WARN] Model normalized to '{session.model}' (input was rejected as non-Live).")
 
+    # Script-side transcript extraction: pull text transcripts directly from
+    # the serverContent model turn parts (called after audio is enqueued, so
+    # it can never delay playback).
+    script_agent_text: list = []
+
+    def on_server_content(server_content) -> None:
+        model_turn = getattr(server_content, "model_turn", None)
+        if model_turn and getattr(model_turn, "parts", None):
+            for part in model_turn.parts:
+                if getattr(part, "text", None):
+                    script_agent_text.append(part.text)
+
     def on_turn_complete(user_text: str, agent_text: str) -> None:
         turn_log.append((time.perf_counter(), user_text, agent_text))
+        # Prefer the session's transcription; fall back to script-extracted
+        # model-turn text; only then admit defeat.
+        spoken = (agent_text or "").strip() or "".join(script_agent_text).strip()
+        script_agent_text.clear()
         print(f"\n[TURN {len(turn_log)}] You: {user_text or '(untranscribed)'}")
-        print(f"         FRIDAY: {(agent_text or '(untranscribed)')[:120]}")
+        print(f"         FRIDAY: {spoken or '(untranscribed)'}")
 
     async def run_indefinite() -> None:
         mic = MicrophoneStream(sample_rate=SAMPLE_RATE_IN)
@@ -162,6 +193,7 @@ def attempt_session(api_key: str, model: str, turn_log: list):
                 input_stream=mic,
                 output_stream=spk,
                 on_turn_complete=on_turn_complete,
+                on_server_content=on_server_content,
             )
         finally:
             connected_task.cancel()
@@ -214,13 +246,19 @@ def main() -> None:
     turn_log: list = []
     started = time.perf_counter()
 
-    for attempt in range(1, MAX_KEY_ROTATIONS + 1):
-        print(f"\n--- Connection attempt {attempt}/{MAX_KEY_ROTATIONS} ---")
-        api_key = resolve_api_key()
+    api_key = None
+    reconnects_used = 0
+    attempt = 0
+    while True:
+        attempt += 1
+        if api_key is None or reconnects_used == 0:
+            # Fresh key resolution (first attempt, or after a key rotation)
+            print(f"\n--- Connection attempt {attempt} (key rotations used: {attempt - 1}/{MAX_KEY_ROTATIONS}) ---")
+            api_key = resolve_api_key()
         turn_log = []
         try:
             session = attempt_session(api_key, args.model, turn_log)
-            break  # session completed normally
+            break  # session ended normally (Ctrl+C)
         except KeyboardInterrupt:
             print("\n[interrupted by user]")
             if session is None:
@@ -230,6 +268,13 @@ def main() -> None:
             if _is_access_denied(exc) and attempt < MAX_KEY_ROTATIONS:
                 print("Key denied access. Rotating to next key...")
                 credential_pool.mark_key_unhealthy(api_key, error=exc)
+                api_key = None
+                reconnects_used = 0
+                continue
+            if _is_session_drop(exc) and reconnects_used < MAX_RECONNECTS:
+                reconnects_used += 1
+                print(f"Session dropped. Reconnecting with same key "
+                      f"({reconnects_used}/{MAX_RECONNECTS})...")
                 continue
             print_raw_error(exc)
             sys.exit(4)
