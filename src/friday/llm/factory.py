@@ -3,11 +3,20 @@
 from friday.core.config import Settings
 from friday.core.exceptions import ConfigError
 from friday.core.logging import get_logger
+from friday.auth.credential_pool import (
+    cerebras_credential_pool,
+    credential_pool,
+    groq_credential_pool,
+    openrouter_credential_pool,
+)
 from friday.llm.base import BaseLLMProvider
+from friday.llm.cerebras_provider import CEREBRAS_DEFAULT_MODEL, CerebrasLLMProvider
+from friday.llm.fallback_chain_provider import FallbackChainLLMProvider
 from friday.llm.gemini_provider import GeminiLLMProvider
-from friday.auth.credential_pool import credential_pool
+from friday.llm.groq_provider import GROQ_DEFAULT_MODEL, GroqLLMProvider
 from friday.llm.mock_provider import MockLLMProvider
 from friday.llm.openai_provider import OpenAILLMProvider
+from friday.llm.openrouter_provider import OPENROUTER_DEFAULT_MODEL, OpenRouterLLMProvider
 
 logger = get_logger("llm.factory")
 
@@ -43,7 +52,88 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
             thinking_level=getattr(settings, "llm_thinking_level", "medium"),
         )
 
-    if provider_type in ("openai", "groq", "ollama", "openrouter"):
+    if provider_type == "groq":
+        model_name = settings.groq_model or (
+            settings.llm_model if settings.llm_model != "gemini-3.7-flash" else GROQ_DEFAULT_MODEL
+        )
+        logger.info(f"Initializing Groq Provider (model: {model_name}, fallback: {settings.groq_fallback_model})")
+        return GroqLLMProvider(
+            api_key=settings.groq_api_key or settings.llm_api_key,
+            credential_pool=groq_credential_pool,
+            model=model_name,
+            fallback_model=settings.groq_fallback_model,
+            temperature=settings.llm_temperature,
+            max_tokens=settings.llm_max_tokens,
+        )
+
+    if provider_type == "openrouter":
+        model_name = settings.openrouter_model or (
+            settings.llm_model if settings.llm_model != "gemini-3.7-flash" else OPENROUTER_DEFAULT_MODEL
+        )
+        logger.info(f"Initializing OpenRouter Provider (model: {model_name})")
+        return OpenRouterLLMProvider(
+            api_key=settings.openrouter_api_key or settings.llm_api_key,
+            credential_pool=openrouter_credential_pool,
+            model=model_name,
+            temperature=settings.llm_temperature,
+            max_tokens=settings.llm_max_tokens,
+        )
+
+    if provider_type == "cerebras":
+        model_name = settings.cerebras_model or (
+            settings.llm_model if settings.llm_model != "gemini-3.7-flash" else CEREBRAS_DEFAULT_MODEL
+        )
+        logger.info(f"Initializing Cerebras Provider (model: {model_name})")
+        return CerebrasLLMProvider(
+            api_key=settings.cerebras_api_key or settings.llm_api_key,
+            credential_pool=cerebras_credential_pool,
+            model=model_name,
+            temperature=settings.llm_temperature,
+            max_tokens=settings.llm_max_tokens,
+        )
+
+    if provider_type == "chain":
+        # Cross-provider automatic failover: Groq -> Cerebras -> OpenRouter.
+        groq_model = settings.groq_model or (
+            settings.llm_model if settings.llm_model != "gemini-3.7-flash" else GROQ_DEFAULT_MODEL
+        )
+        cerebras_model = settings.cerebras_model or (
+            settings.llm_model if settings.llm_model != "gemini-3.7-flash" else CEREBRAS_DEFAULT_MODEL
+        )
+        openrouter_model = settings.openrouter_model or (
+            settings.llm_model if settings.llm_model != "gemini-3.7-flash" else OPENROUTER_DEFAULT_MODEL
+        )
+        chain_providers = [
+            GroqLLMProvider(
+                api_key=settings.groq_api_key or settings.llm_api_key,
+                credential_pool=groq_credential_pool,
+                model=groq_model,
+                fallback_model=settings.groq_fallback_model,
+                temperature=settings.llm_temperature,
+                max_tokens=settings.llm_max_tokens,
+            ),
+            CerebrasLLMProvider(
+                api_key=settings.cerebras_api_key or settings.llm_api_key,
+                credential_pool=cerebras_credential_pool,
+                model=cerebras_model,
+                temperature=settings.llm_temperature,
+                max_tokens=settings.llm_max_tokens,
+            ),
+            OpenRouterLLMProvider(
+                api_key=settings.openrouter_api_key or settings.llm_api_key,
+                credential_pool=openrouter_credential_pool,
+                model=openrouter_model,
+                temperature=settings.llm_temperature,
+                max_tokens=settings.llm_max_tokens,
+            ),
+        ]
+        logger.info(
+            "Initializing Fallback Chain Provider: "
+            + " -> ".join(p.provider_name for p in chain_providers)
+        )
+        return FallbackChainLLMProvider(providers=chain_providers)
+
+    if provider_type in ("openai", "ollama"):
         logger.info(f"Initializing OpenAI-compatible Provider (provider: {provider_type}, model: {settings.llm_model})")
         return OpenAILLMProvider(
             api_key=settings.llm_api_key,
@@ -53,4 +143,7 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
             max_tokens=settings.llm_max_tokens,
         )
 
-    raise ConfigError(f"Unsupported LLM provider: '{settings.llm_provider}'. Supported: 'mock', 'openai', 'gemini'")
+    raise ConfigError(
+        f"Unsupported LLM provider: '{settings.llm_provider}'. "
+        "Supported: 'mock', 'openai', 'gemini', 'groq', 'openrouter', 'cerebras', 'chain', 'ollama'"
+    )

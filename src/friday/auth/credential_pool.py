@@ -98,12 +98,20 @@ class Credential:
 
 class GeminiCredentialPool:
     """Thread-safe pool managing primary and fallback Gemini API keys.
-    
+
     Persists health across restarts and tracks session-level active key.
+
+    Subclasses may override `env_key_names` / `env_fallback_fmt` (see
+    `OpenAICompatibleCredentialPool`) to manage non-Gemini credentials
+    (e.g. Groq, OpenRouter) with identical failover semantics.
     """
 
     _instance_lock = threading.Lock()
     _instance: Optional["GeminiCredentialPool"] = None
+
+    # Environment variable names used by `_load_credentials` (subclasses override)
+    env_key_names: Sequence[str] = ("FRIDAY_GEMINI_API_KEY", "GEMINI_API_KEY")
+    env_fallback_fmts: Sequence[str] = ("FRIDAY_GEMINI_FALLBACK_API_KEY_{i}", "GEMINI_FALLBACK_API_KEY_{i}")
 
     def __new__(cls, *args, **kwargs):
         if not cls._instance:
@@ -149,10 +157,15 @@ class GeminiCredentialPool:
             self._session_active_key = None
 
     def _load_credentials(self) -> None:
-        primary = os.getenv("FRIDAY_GEMINI_API_KEY")
-        fallbacks = [
-            os.getenv(f"FRIDAY_GEMINI_FALLBACK_API_KEY_{i}") for i in range(1, 5)
-        ]
+        primary = next((os.getenv(name) for name in self.env_key_names if os.getenv(name)), None)
+        fallbacks = []
+        for i in range(1, 5):
+            val = next(
+                (os.getenv(fmt.format(i=i)) for fmt in self.env_fallback_fmts if os.getenv(fmt.format(i=i))),
+                None,
+            )
+            fallbacks.append(val)
+
         if not primary and not any(fallbacks):
             try:
                 from dotenv import dotenv_values
@@ -160,11 +173,14 @@ class GeminiCredentialPool:
                 env_p = resolve_env_file()
                 if env_p and env_p.is_file():
                     vals = dotenv_values(dotenv_path=env_p)
-                    primary = vals.get("FRIDAY_GEMINI_API_KEY") or vals.get("GEMINI_API_KEY")
-                    fallbacks = [
-                        vals.get(f"FRIDAY_GEMINI_FALLBACK_API_KEY_{i}") or vals.get(f"GEMINI_FALLBACK_API_KEY_{i}")
-                        for i in range(1, 5)
-                    ]
+                    for name in self.env_key_names:
+                        primary = primary or vals.get(name)
+                    fallbacks = []
+                    for i in range(1, 5):
+                        val = None
+                        for fmt in self.env_fallback_fmts:
+                            val = val or vals.get(fmt.format(i=i))
+                        fallbacks.append(val)
             except Exception:
                 pass
 
@@ -439,9 +455,63 @@ class GeminiCredentialPool:
         return None
 
 
+class OpenAICompatibleCredentialPool(GeminiCredentialPool):
+    """Credential pool for OpenAI-SDK-compatible providers (Groq, OpenRouter).
+
+    Completely independent of the Gemini pool singleton: keys are loaded from
+    provider-specific environment variables and health state is persisted to a
+    provider-specific file. Voice (Gemini Live) never touches these pools.
+    """
+
+    _instance_lock = threading.Lock()
+    _instance: Optional["OpenAICompatibleCredentialPool"] = None
+
+    def __new__(cls, *args: Any, **kwargs: Any):
+        # Deliberately non-singleton: each provider (Groq, OpenRouter) gets its
+        # own independent pool, isolated from the Gemini singleton.
+        return object.__new__(cls)
+
+    def __init__(
+        self,
+        env_key_names: Sequence[str],
+        state_file_name: str,
+        env_fallback_fmts: Optional[Sequence[str]] = None,
+        **kwargs: Any,
+    ) -> None:
+        self.env_key_names = env_key_names
+        self.env_fallback_fmts = env_fallback_fmts or tuple(
+            name.replace("_API_KEY", "_FALLBACK_API_KEY_{i}") for name in env_key_names
+        )
+        super().__init__(state_file=Path(state_file_name), **kwargs)
+
+
 # Export a module-level singleton for convenient import
 credential_pool = GeminiCredentialPool()
 
-__all__ = ["Credential", "FailureCategory", "GeminiCredentialPool", "credential_pool", "COOLDOWN_DURATIONS"]
+# Non-Gemini provider pools (text/reasoning only; strictly isolated from voice)
+groq_credential_pool = OpenAICompatibleCredentialPool(
+    env_key_names=("FRIDAY_GROQ_API_KEY", "GROQ_API_KEY"),
+    state_file_name="data/groq_pool_state.json",
+)
+openrouter_credential_pool = OpenAICompatibleCredentialPool(
+    env_key_names=("FRIDAY_OPENROUTER_API_KEY", "OPENROUTER_API_KEY"),
+    state_file_name="data/openrouter_pool_state.json",
+)
+cerebras_credential_pool = OpenAICompatibleCredentialPool(
+    env_key_names=("FRIDAY_CEREBRAS_API_KEY", "CEREBRAS_API_KEY"),
+    state_file_name="data/cerebras_pool_state.json",
+)
+
+__all__ = [
+    "Credential",
+    "FailureCategory",
+    "GeminiCredentialPool",
+    "OpenAICompatibleCredentialPool",
+    "credential_pool",
+    "groq_credential_pool",
+    "openrouter_credential_pool",
+    "cerebras_credential_pool",
+    "COOLDOWN_DURATIONS",
+]
 
 

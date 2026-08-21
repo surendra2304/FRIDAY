@@ -149,6 +149,47 @@ class Settings(BaseSettings):
     )
     llm_max_tokens: int = Field(default=2048, ge=1, le=32768, description="Max tokens per response")
 
+    # Groq (text/reasoning provider; OpenAI-SDK compatible)
+    groq_api_key: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("FRIDAY_GROQ_API_KEY", "GROQ_API_KEY", "groq_api_key"),
+        description="API Key for Groq (text/reasoning only; never used for voice)",
+    )
+    groq_model: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("FRIDAY_GROQ_MODEL", "GROQ_MODEL", "groq_model"),
+        description="Optional Groq model override (default: llama-3.3-70b-versatile)",
+    )
+    groq_fallback_model: str = Field(
+        default="llama-3.1-8b-instant",
+        validation_alias=AliasChoices("FRIDAY_GROQ_FALLBACK_MODEL", "GROQ_FALLBACK_MODEL", "groq_fallback_model"),
+        description="Groq fallback model used on 429 rate limits",
+    )
+
+    # OpenRouter (text/reasoning provider; OpenAI-SDK compatible)
+    openrouter_api_key: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("FRIDAY_OPENROUTER_API_KEY", "OPENROUTER_API_KEY", "openrouter_api_key"),
+        description="API Key for OpenRouter (text/reasoning only; never used for voice)",
+    )
+    openrouter_model: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("FRIDAY_OPENROUTER_MODEL", "OPENROUTER_MODEL", "openrouter_model"),
+        description="Optional OpenRouter model override (default: meta-llama/llama-3.3-70b-instruct)",
+    )
+
+    # Cerebras (text/reasoning provider; OpenAI-SDK compatible)
+    cerebras_api_key: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("FRIDAY_CEREBRAS_API_KEY", "CEREBRAS_API_KEY", "cerebras_api_key"),
+        description="API Key for Cerebras (text/reasoning only; never used for voice)",
+    )
+    cerebras_model: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("FRIDAY_CEREBRAS_MODEL", "CEREBRAS_MODEL", "cerebras_model"),
+        description="Optional Cerebras model override (default: llama3.1-70b-4096)",
+    )
+
     # Memory & Semantic Settings
     memory_backend: str = Field(default="sqlite", description="Memory backend: 'sqlite', 'in_memory'")
     memory_db_path: str = Field(default="data/friday.db", description="Path to SQLite database file")

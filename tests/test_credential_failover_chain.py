@@ -63,8 +63,13 @@ def test_immediate_failover_on_429_quota_exhausted():
     # Fallback 1 attempted EXACTLY ONCE and succeeded
     assert key_attempts["KEY_FALLBACK_1"] == 1
     assert key_attempts["KEY_FALLBACK_2"] == 0
-    # No backoff sleep called for quota exhaustion (immediate failover path)
-    mock_sleep.assert_not_called()
+    # No backoff sleep called for quota exhaustion (immediate failover path).
+    # NOTE: patching "friday.llm.gemini_provider.time.sleep" patches sleep on the
+    # GLOBAL time module, so background threads leaked by earlier tests (e.g. real
+    # Win32 double_click's 0.05s sleeps) can appear in call_args_list. The
+    # provider's own retry sleeps are always >= 1.0s, so filter for those.
+    retry_sleeps = [c for c in mock_sleep.call_args_list if c.args and c.args[0] >= 1.0]
+    assert not retry_sleeps, f"Expected no backoff sleeps, got: {retry_sleeps}"
     # Primary must be in cooldown
     assert pool.credentials[0].last_failure_category == FailureCategory.QUOTA_EXHAUSTED
     assert pool.credentials[0].cooldown_until is not None
