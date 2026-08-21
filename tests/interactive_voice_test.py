@@ -7,7 +7,7 @@ FridayAgent. Only the voice pipeline is exercised:
   1. Resolves the first active Gemini key from the credential pool.
   2. Verifies real microphone and speaker streams.
   3. Connects to the Gemini Live WebSocket (raw errors are printed verbatim).
-  4. Runs a timed bidirectional audio session (speak and be heard).
+  4. Runs an indefinite bidirectional audio session until Ctrl+C.
   5. Prints a session summary: interruptions and turn latency.
 
 Key rotation: if Google denies the connection with a 1008 policy violation
@@ -18,7 +18,6 @@ with the next active key (up to MAX_KEY_ROTATIONS attempts).
 Usage:
     python tests/interactive_voice_test.py
     python tests/interactive_voice_test.py --model gemini-3.1-flash-live-preview
-    python tests/interactive_voice_test.py --duration 60
 
 This script performs REAL hardware + REAL network I/O. It is a diagnostic
 tool, not part of the automated test suite (do not collect with pytest:
@@ -60,12 +59,6 @@ def parse_args() -> argparse.Namespace:
         "--model",
         default=DEFAULT_MODEL,
         help=f"Gemini Live model name (default: {DEFAULT_MODEL})",
-    )
-    parser.add_argument(
-        "--duration",
-        type=float,
-        default=30.0,
-        help="Live session duration in seconds (default: 30)",
     )
     return parser.parse_args()
 
@@ -137,8 +130,8 @@ def print_raw_error(exc: BaseException) -> None:
     traceback.print_exception(type(exc), exc, exc.__traceback__)
 
 
-def attempt_session(api_key: str, model: str, duration: float, turn_log: list):
-    """Run ONE timed live session attempt; raises on failure."""
+def attempt_session(api_key: str, model: str, turn_log: list):
+    """Run ONE indefinite live session attempt (Ctrl+C to end); raises on failure."""
     session = GeminiLiveVoiceSession(
         api_key=api_key,
         model=model,
@@ -155,39 +148,35 @@ def attempt_session(api_key: str, model: str, duration: float, turn_log: list):
         print(f"\n[TURN {len(turn_log)}] You: {user_text or '(untranscribed)'}")
         print(f"         FRIDAY: {(agent_text or '(untranscribed)')[:120]}")
 
-    async def run_timed() -> None:
-        stop = asyncio.Event()
-
-        async def timer() -> None:
-            await asyncio.sleep(duration)
-            print(f"\n--- {duration:.0f}s elapsed: closing live session ---")
-            stop.set()
-
-        timer_task = asyncio.create_task(timer(), name="diag_timer")
+    async def run_indefinite() -> None:
         mic = MicrophoneStream(sample_rate=SAMPLE_RATE_IN)
         spk = SpeakerStream(sample_rate=SAMPLE_RATE_OUT)
+
+        async def announce_connected() -> None:
+            await session._connected_event.wait()
+            print("\nCONNECTED! You can speak now. Press Ctrl+C to exit.")
+
+        connected_task = asyncio.create_task(announce_connected(), name="diag_connected")
         try:
             await session.run_live_loop(
                 input_stream=mic,
                 output_stream=spk,
                 on_turn_complete=on_turn_complete,
-                stop_event=stop,
             )
         finally:
-            timer_task.cancel()
+            connected_task.cancel()
             mic.stop()
             spk.close()
 
-    asyncio.run(run_timed())
+    asyncio.run(run_indefinite())
     return session
 
 
-def print_summary(session, turn_log: list, requested_duration: float, elapsed: float) -> None:
+def print_summary(session, turn_log: list, elapsed: float) -> None:
     print("\n" + "=" * 70)
     print("SESSION SUMMARY")
     print("=" * 70)
-    print(f"Requested duration:  {requested_duration:.0f}s")
-    print(f"Actual duration:     {elapsed:.1f}s")
+    print(f"Session duration:    {elapsed:.1f}s")
     print(f"Model:               {session.model}")
     print(f"Final state:         {session.state.value}")
     print(f"Resumption handle:   {'yes' if session.resumption_handle else 'no'}")
@@ -216,8 +205,8 @@ def main() -> None:
     print("FRIDAY — Interactive Gemini Live Voice Diagnostic (no agent)")
     print("=" * 70)
     print(f"Model:        {args.model}")
-    print(f"Duration:     {args.duration:.0f}s")
-    print(f"Key rotation: up to {MAX_KEY_ROTATIONS} attempts on 1008/'denied access'/'not supported'")
+    print(f"Mode:         indefinite session (Ctrl+C to exit)")
+    print(f"Key rotation: up to {MAX_KEY_ROTATIONS} attempts on 1008/'denied access'/'not supported'/quota")
 
     verify_audio_devices()
 
@@ -230,7 +219,7 @@ def main() -> None:
         api_key = resolve_api_key()
         turn_log = []
         try:
-            session = attempt_session(api_key, args.model, args.duration, turn_log)
+            session = attempt_session(api_key, args.model, turn_log)
             break  # session completed normally
         except KeyboardInterrupt:
             print("\n[interrupted by user]")
@@ -246,7 +235,7 @@ def main() -> None:
             sys.exit(4)
 
     if session is not None:
-        print_summary(session, turn_log, args.duration, time.perf_counter() - started)
+        print_summary(session, turn_log, time.perf_counter() - started)
 
 
 if __name__ == "__main__":
