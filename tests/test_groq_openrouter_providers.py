@@ -278,3 +278,94 @@ def test_missing_sdk_raises_clean_error():
             provider.generate([Message(role=Role.USER, content="hi")])
     finally:
         gp._openai_sdk = original
+
+
+# ---------------------------------------------------------------------------
+# 404 model_not_found fallback (universal model llama3-8b-8192)
+# ---------------------------------------------------------------------------
+
+
+class _ModelNotFound404Error(Exception):
+    def __init__(self, model="llama-3.3-70b-versatile"):
+        super().__init__(f"Error code: 404 - model_not_found: model '{model}' has been decommissioned")
+        self.status_code = 404
+
+
+def test_groq_404_on_primary_retries_with_universal_model():
+    provider = GroqLLMProvider(api_key="k")
+    calls = []
+
+    class FakeCompletions:
+        @staticmethod
+        def create(**kwargs):
+            calls.append(kwargs["model"])
+            if len(calls) == 1:
+                raise _ModelNotFound404Error()
+            return _fake_response(content="universal rescue")
+
+    provider._client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions))
+    result = provider.generate([Message(role=Role.USER, content="hi")])
+    assert result.content == "universal rescue"
+    assert calls == ["llama-3.3-70b-versatile", "llama3-8b-8192"]
+
+
+def test_groq_404_on_primary_and_universal_raises_for_chain_failover():
+    provider = GroqLLMProvider(api_key="k")
+    calls = []
+
+    class FakeCompletions:
+        @staticmethod
+        def create(**kwargs):
+            calls.append(kwargs["model"])
+            raise _ModelNotFound404Error(kwargs["model"])
+
+    provider._client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions))
+    with pytest.raises(LLMProviderError) as exc_info:
+        provider.generate([Message(role=Role.USER, content="hi")])
+    assert "model_not_found" in str(exc_info.value) or "404" in str(exc_info.value)
+    assert calls == ["llama-3.3-70b-versatile", "llama3-8b-8192"]
+
+
+def test_groq_429_then_fallback_404_uses_universal_model():
+    """429 on primary -> fast fallback 404 -> universal succeeds."""
+    provider = GroqLLMProvider(api_key="k")
+    calls = []
+
+    class FakeCompletions:
+        @staticmethod
+        def create(**kwargs):
+            calls.append(kwargs["model"])
+            if len(calls) == 1:
+                raise _RateLimitLikeError()
+            if len(calls) == 2:
+                raise _ModelNotFound404Error()
+            return _fake_response(content="cascade rescue")
+
+    provider._client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions))
+    result = provider.generate([Message(role=Role.USER, content="hi")])
+    assert result.content == "cascade rescue"
+    assert calls == ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-8b-8192"]
+
+
+def test_groq_429_on_universal_after_404_raises():
+    """404 on primary -> universal 429 -> LLMProviderError (chain advances to Cerebras)."""
+    provider = GroqLLMProvider(api_key="k")
+    calls = []
+
+    class FakeCompletions:
+        @staticmethod
+        def create(**kwargs):
+            calls.append(kwargs["model"])
+            if len(calls) == 1:
+                raise _ModelNotFound404Error()
+            raise _RateLimitLikeError()
+
+    provider._client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions))
+    with pytest.raises(LLMProviderError):
+        provider.generate([Message(role=Role.USER, content="hi")])
+    assert calls == ["llama-3.3-70b-versatile", "llama3-8b-8192"]
+
+
+def test_groq_universal_fallback_model_configurable():
+    provider = GroqLLMProvider(api_key="k", universal_fallback_model="llama3-70b-8192")
+    assert provider.universal_fallback_model == "llama3-70b-8192"

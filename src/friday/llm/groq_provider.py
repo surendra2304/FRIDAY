@@ -24,10 +24,17 @@ logger = get_logger("llm.groq")
 GROQ_DEFAULT_BASE_URL = "https://api.groq.com/openai/v1"
 GROQ_DEFAULT_MODEL = "llama-3.3-70b-versatile"
 GROQ_FALLBACK_MODEL = "llama-3.1-8b-instant"
+# Universally available Groq model used as the terminal retry when the
+# configured model is decommissioned / not found (404 model_not_found).
+GROQ_UNIVERSAL_FALLBACK_MODEL = "llama3-8b-8192"
 
 
 class _RateLimitedError(Exception):
     """Internal signal that the current model hit a 429 and a fallback may help."""
+
+
+class _ModelNotFoundError(Exception):
+    """Internal signal that the current model returned 404 model_not_found."""
 
 
 def _is_rate_limit(error: Exception) -> bool:
@@ -39,6 +46,16 @@ def _is_rate_limit(error: Exception) -> bool:
     return "429" in str(error) or "rate limit" in str(error).lower()
 
 
+def _is_model_not_found(error: Exception) -> bool:
+    """Detect a 404 model_not_found (including decommissioned models)."""
+    if _openai_sdk is not None and isinstance(error, _openai_sdk.NotFoundError):
+        return True
+    if getattr(error, "status_code", None) == 404:
+        return True
+    err = str(error).lower()
+    return "404" in err or "model_not_found" in err or "model not found" in err or "decommissioned" in err
+
+
 class GroqLLMProvider(BaseLLMProvider):
     """LLM Provider for Groq via the OpenAI SDK with automatic model fallback on 429."""
 
@@ -48,6 +65,7 @@ class GroqLLMProvider(BaseLLMProvider):
         base_url: str = GROQ_DEFAULT_BASE_URL,
         model: str = GROQ_DEFAULT_MODEL,
         fallback_model: str = GROQ_FALLBACK_MODEL,
+        universal_fallback_model: str = GROQ_UNIVERSAL_FALLBACK_MODEL,
         temperature: float = 0.7,
         max_tokens: int = 2048,
         timeout: float = 60.0,
@@ -62,6 +80,7 @@ class GroqLLMProvider(BaseLLMProvider):
         self.api_key = api_key or ""
         self.base_url = base_url.rstrip("/")
         self.fallback_model = fallback_model
+        self.universal_fallback_model = universal_fallback_model
         self.timeout = timeout
         self._client: Optional[Any] = None
 
@@ -90,7 +109,17 @@ class GroqLLMProvider(BaseLLMProvider):
         messages: List[Message],
         tools: Optional[List[Dict[str, Any]]] = None,
     ) -> Message:
-        """Call Groq chat completions; on 429 retry once with the fallback model."""
+        """Call Groq chat completions with automatic in-provider model fallbacks.
+
+        - 429 rate limit on the primary model -> retry once with `fallback_model`
+          (fast fallback), then with `universal_fallback_model` if that model
+          is not found.
+        - 404 model_not_found on the primary model -> retry directly with the
+          universally available `universal_fallback_model` (llama3-8b-8192).
+        - A second 429 fails fast (Groq rate limits are organization-wide, so
+          further same-org retries waste quota): raise LLMProviderError so the
+          fallback chain advances to Cerebras.
+        """
         try:
             return self._generate_with_model(self.model, messages, tools)
         except _RateLimitedError as primary_error:
@@ -101,11 +130,29 @@ class GroqLLMProvider(BaseLLMProvider):
                 )
                 try:
                     return self._generate_with_model(self.fallback_model, messages, tools)
+                except _ModelNotFoundError:
+                    logger.warning(
+                        f"Groq fallback model '{self.fallback_model}' not found (404). "
+                        f"Retrying with universally available model '{self.universal_fallback_model}'..."
+                    )
+                    return self._generate_with_model(self.universal_fallback_model, messages, tools)
                 except _RateLimitedError as fallback_error:
                     raise LLMProviderError(
                         f"Groq rate limited on both '{self.model}' and '{self.fallback_model}': {fallback_error}"
                     ) from fallback_error
             raise LLMProviderError(f"Groq rate limited on '{self.model}': {primary_error}") from primary_error
+        except _ModelNotFoundError as primary_error:
+            logger.warning(
+                f"Groq model '{self.model}' not found (404). Retrying same prompt with "
+                f"universally available model '{self.universal_fallback_model}'..."
+            )
+            try:
+                return self._generate_with_model(self.universal_fallback_model, messages, tools)
+            except (_RateLimitedError, _ModelNotFoundError) as universal_error:
+                raise LLMProviderError(
+                    f"Groq failed on '{self.model}' (model_not_found) and on "
+                    f"'{self.universal_fallback_model}': {universal_error}"
+                ) from universal_error
 
     def _generate_with_model(
         self,
@@ -129,6 +176,8 @@ class GroqLLMProvider(BaseLLMProvider):
         except Exception as e:
             if _is_rate_limit(e):
                 raise _RateLimitedError(str(e)) from e
+            if _is_model_not_found(e):
+                raise _ModelNotFoundError(str(e)) from e
             err_msg = str(e)
             if self.api_key and self.api_key in err_msg:
                 err_msg = err_msg.replace(self.api_key, "***")
