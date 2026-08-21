@@ -554,7 +554,33 @@ class GenuineAcceptanceRunner:
         for c_name, count in sorted(counts.items()):
             lines.append(f"- **{c_name}**: {count}")
 
-        lines.append("")
+        # Compute overall release status
+        has_failed = counts.get("FAIL", 0) > 0
+        has_blocked = counts.get("BLOCKED", 0) > 0
+        all_software_pass = counts.get("SOFTWARE_PASS", 0) > 0
+
+        if has_failed:
+            overall_status = "FAILED"
+            status_desc = "Release BLOCKED due to unhandled defects or test failures."
+        elif has_blocked:
+            overall_status = "SOFTWARE_VERIFIED_PARTIAL_HARDWARE_BLOCKED"
+            status_desc = "All software and offline integrations pass 100%. Mandatory hardware/display capture is BLOCKED due to non-interactive console session. Production-Ready claim is deferred."
+        elif all_software_pass:
+            overall_status = "REAL_WORLD_VERIFIED"
+            status_desc = "All software and physical hardware capabilities validated."
+        else:
+            overall_status = "PARTIAL"
+            status_desc = "Partial validation."
+
+        lines.extend([
+            "",
+            "## Overall Release Status Assessment",
+            "",
+            f"- **Overall Status**: `{overall_status}`",
+            f"- **Release Assessment**: {status_desc}",
+            "",
+        ])
+
         content = "\n".join(lines)
         output_path.write_text(content, encoding="utf-8")
         return content

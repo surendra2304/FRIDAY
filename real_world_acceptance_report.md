@@ -1,6 +1,6 @@
 # Genuine Real-World Acceptance Test Report
 
-**Generated:** 2026-08-21T09:46:38.244833+00:00
+**Generated:** 2026-08-21T10:02:33.393174+00:00
 **Audit Rule:** Hardware-dependent tests evaluate to BLOCKED when devices/credentials are missing. Never falsely PASS.
 
 ## Summary Matrix
@@ -23,3 +23,8 @@
 - **REAL_PASS**: 2
 - **SIMULATED_PASS**: 1
 - **SOFTWARE_PASS**: 5
+
+## Overall Release Status Assessment
+
+- **Overall Status**: `SOFTWARE_VERIFIED_PARTIAL_HARDWARE_BLOCKED`
+- **Release Assessment**: All software and offline integrations pass 100%. Mandatory hardware/display capture is BLOCKED due to non-interactive console session. Production-Ready claim is deferred.

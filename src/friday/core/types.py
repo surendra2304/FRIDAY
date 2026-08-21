@@ -23,6 +23,19 @@ class TrustLevel(str, Enum):
     UNTRUSTED_EXTERNAL = "untrusted_external" # Screen OCR, websites, tool output, file data
 
 
+class ReleaseStatus(str, Enum):
+    """Honest engineering release readiness status definitions.
+    
+    A blocked hardware or external dependency strictly prevents REAL_WORLD_VERIFIED.
+    """
+    SOFTWARE_VERIFIED = "SOFTWARE_VERIFIED"      # 100% software test suite passes offline
+    REAL_WORLD_VERIFIED = "REAL_WORLD_VERIFIED"  # All real hardware and cloud services verified
+    BLOCKED_EXTERNAL = "BLOCKED_EXTERNAL"        # Mandatory real capability is blocked externally
+    NOT_TESTED = "NOT_TESTED"                    # Capability unverified
+    FAILED = "FAILED"                            # Invariant violation or defect detected
+    PARTIAL = "PARTIAL"                          # Mixed verification state
+
+
 class SafetyLevel(str, Enum):
     """Tool safety classification levels.
 
