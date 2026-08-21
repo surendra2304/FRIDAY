@@ -251,3 +251,25 @@ def test_system_prompt_is_provider_agnostic():
     assert "multi-provider architecture" in prompt
     for banned in ("Google Gemini", "Gemini", "OpenAI", "Groq", "Cerebras", "OpenRouter", "powered by"):
         assert banned.lower() not in prompt.lower(), f"Found '{banned}' in system prompt"
+
+
+def test_system_prompt_identity_uses_requested_wording():
+    from friday.agent.prompts import get_default_system_prompt
+    from friday.core.config import Settings
+
+    prompt = get_default_system_prompt(Settings())
+    assert (
+        "You are FRIDAY, a Fully Responsive Intelligent Digital Assistant. "
+        "You operate using a multi-provider architecture for text, voice, and vision."
+    ) in prompt
+
+
+def test_system_prompt_contains_greeting_rule():
+    from friday.agent.prompts import get_default_system_prompt
+    from friday.core.config import Settings
+
+    prompt = get_default_system_prompt(Settings())
+    assert "greeting" in prompt.lower()
+    assert "Do not treat greetings as commands or tool targets" in prompt
+    for greeting in ("'hi'", "'hello'", "'hey'"):
+        assert greeting in prompt
