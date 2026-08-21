@@ -107,7 +107,7 @@ def test_consecutive_failure_circuit_breaker():
     allowed, reason = acc.can_make_request()
     assert allowed is False
     assert "Circuit breaker active" in reason
-    assert "3 consecutive provider failures" in reason
+    assert "Circuit breaker active: The AI service is paused" in reason
 
     # Successful request (e.g. after pool recovery or reset) resets the failure count
     acc.reset()

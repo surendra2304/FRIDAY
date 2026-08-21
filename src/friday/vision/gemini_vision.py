@@ -249,11 +249,14 @@ class GeminiVisionProvider(BaseVisionProvider):
                     delay = self.backoff_factor ** (attempt - 1)
                     time.sleep(delay)
 
-        error_msg = f"Gemini Vision analysis failed after {attempt} attempts: {last_error}"
+        if last_error and "No healthy Gemini API key" in str(last_error):
+            error_msg = f"CREDENTIAL_EXHAUSTED: Gemini Vision analysis failed: {last_error}"
+        else:
+            error_msg = f"Gemini Vision analysis failed after {attempt} attempts: {last_error}"
         logger.error(error_msg)
         return VisionAnalysisResult(
             text="",
             is_error=True,
-            error_message=str(last_error),
+            error_message=error_msg,
             model=self.model,
         )

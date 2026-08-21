@@ -87,11 +87,11 @@ class ExecuteComputerActionTool(BaseTool):
             },
             "x": {
                 "type": "integer",
-                "description": "Target X pixel coordinate (required for click/move/drag).",
+                "description": "Target X pixel coordinate (required for click/move/drag). Omit for automatic screen centering if intent specifies 'center'.",
             },
             "y": {
                 "type": "integer",
-                "description": "Target Y pixel coordinate (required for click/move/drag).",
+                "description": "Target Y pixel coordinate (required for click/move/drag). Omit for automatic screen centering if intent specifies 'center'.",
             },
             "text": {
                 "type": "string",
@@ -306,7 +306,21 @@ class ExecuteComputerActionTool(BaseTool):
                 safety_level=self.safety_level,
             )
 
-        # ── Guard 3: Coordinate presence ─────────────────────────────────
+        # ── Guard 3: Coordinate presence & Center resolution ────────────────
+        if x is None and y is None and "center" in intent.lower():
+            try:
+                from friday.vision.windows_screen import WindowsScreenCaptureProvider
+                displays = WindowsScreenCaptureProvider.list_displays()
+                if displays:
+                    x = displays[0]["width"] // 2
+                    y = displays[0]["height"] // 2
+                else:
+                    x = 1920 // 2
+                    y = 1080 // 2
+            except Exception:
+                x = 1920 // 2
+                y = 1080 // 2
+
         coord_err = self._guard_coordinates(act_enum, x, y)
         if coord_err:
             logger.warning(f"[GUARD-3 FAIL] {coord_err}")

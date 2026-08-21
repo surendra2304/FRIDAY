@@ -212,7 +212,7 @@ class CapabilityRouter:
             ))
 
         # 6. Fallback Tool Execution Candidate
-        if any(w in clean_input for w in ["write", "read", "delete", "create", "list", "system", "file", "process"]):
+        if any(w in clean_input for w in ["write", "read", "delete", "create", "list", "system", "file", "process", "move", "click", "type", "scroll"]):
             candidates.append(CapabilityMetadata(
                 capability_type=ExecutionCapabilityType.TOOL_EXECUTION,
                 estimated_cost_usd=0.0,

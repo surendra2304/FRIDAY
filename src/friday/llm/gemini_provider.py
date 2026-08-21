@@ -133,6 +133,12 @@ class GeminiLLMProvider(BaseLLMProvider):
             return FailureCategory.SERVICE_ERROR
         if "connect" in msg or "timeout" in msg or "network" in msg:
             return FailureCategory.NETWORK_ERROR
+        if "400" in msg or "invalid_argument" in msg:
+            return FailureCategory.INVALID_REQUEST
+        if "sdk" in msg or "clienterror" in msg:
+            return FailureCategory.SDK_ERROR
+        if "budget exceeded" in msg or "circuit breaker active" in msg:
+            return FailureCategory.CIRCUIT_BLOCK
         return FailureCategory.UNKNOWN
 
     def _mask_key(self, text: str) -> str:
@@ -519,7 +525,7 @@ class GeminiLLMProvider(BaseLLMProvider):
                             continue
                         except (RuntimeError, Exception):
                             logger.error("All Gemini credentials in pool are exhausted or authentication failed.")
-                            raise LLMProviderError("All Gemini credentials in pool are exhausted or in cooldown.") from e
+                            raise LLMProviderError("CREDENTIAL_EXHAUSTED: All Gemini credentials in pool are exhausted or in cooldown.") from e
                     else:
                         logger.error(f"Gemini authentication failed for explicit key: {err_msg}")
                         raise LLMProviderError(f"Gemini authentication failed: {err_msg}") from e
@@ -536,7 +542,7 @@ class GeminiLLMProvider(BaseLLMProvider):
                             continue
                         except (RuntimeError, Exception):
                             logger.error("All Gemini credentials in pool are exhausted or in cooldown.")
-                            raise LLMProviderError("All Gemini credentials in pool are exhausted or in cooldown.") from e
+                            raise LLMProviderError("CREDENTIAL_EXHAUSTED: All Gemini credentials in pool are exhausted or in cooldown.") from e
                     else:
                         if attempt < max_attempts:
                             wait = 1.0 * (self.backoff_factor ** (attempt - 1))

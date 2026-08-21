@@ -582,12 +582,20 @@ class FridayAgent:
                 # User friendly translated error messages
                 err_text = "I encountered a transient network issue while communicating with my intelligence core. Please try again in a moment."
                 err_str = str(e).lower()
-                if "rate limit" in err_str or "status 429" in err_str:
-                    err_text = "My intelligence core is currently experiencing high demand. Please hold on a moment and try again."
+                
+                if "credential_exhausted" in err_str:
+                    err_text = "I can't access my vision or reasoning service right now because all configured AI credentials are unavailable."
+                elif "circuit breaker active" in err_str:
+                    err_text = "The AI service is temporarily paused after repeated failures. I'll retry after the cooldown."
+                elif "budget exceeded" in err_str:
+                    err_text = "My AI budget limits have been reached for this session or task. I'm halting to prevent infinite loops or quota burn."
+                elif "rate limit" in err_str or "status 429" in err_str or "quota" in err_str:
+                    err_text = "My AI quota is currently exhausted or experiencing high demand. Please hold on a moment and try again."
                 elif "authentication" in err_str or "api key" in err_str or "status 401" in err_str or "status 403" in err_str:
                     err_text = "I'm unable to authenticate with my intelligence core. Please verify your API key settings."
                 elif "connection" in err_str or "timeout" in err_str or "dns" in err_str:
                     err_text = "I'm having trouble connecting to my intelligence core. Please check your internet connection and try again."
+
                 
                 self.memory.add_message(Message(role=Role.ASSISTANT, content=err_text))
                 return AgentResponse(

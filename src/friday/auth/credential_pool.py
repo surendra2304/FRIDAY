@@ -26,6 +26,13 @@ class FailureCategory(str, enum.Enum):
     MODEL_NOT_FOUND = "model_not_found"
     SERVICE_ERROR = "service_error"
     NETWORK_ERROR = "network_error"
+    SDK_ERROR = "sdk_error"
+    INVALID_REQUEST = "invalid_request"
+    CREDENTIAL_EXHAUSTED = "credential_exhausted"
+    CIRCUIT_OPEN = "circuit_open"
+    CIRCUIT_BLOCK = "circuit_block"
+    BUDGET_BLOCK = "budget_block"
+    PROVIDER_FAILURE = "provider_failure"
     UNKNOWN = "unknown_error"
 
 
@@ -37,6 +44,13 @@ COOLDOWN_DURATIONS: Dict[FailureCategory, float] = {
     FailureCategory.MODEL_NOT_FOUND: 3600.0,   # Bad model: 1 hour
     FailureCategory.SERVICE_ERROR: 60.0,       # 500/503: 1 min
     FailureCategory.NETWORK_ERROR: 30.0,       # Timeout/network: 30s
+    FailureCategory.SDK_ERROR: 60.0,
+    FailureCategory.INVALID_REQUEST: 10.0,
+    FailureCategory.CREDENTIAL_EXHAUSTED: 300.0,
+    FailureCategory.CIRCUIT_OPEN: 60.0,
+    FailureCategory.CIRCUIT_BLOCK: 10.0,
+    FailureCategory.BUDGET_BLOCK: 3600.0,
+    FailureCategory.PROVIDER_FAILURE: 30.0,
     FailureCategory.UNKNOWN: 60.0,
 }
 
@@ -327,6 +341,12 @@ class GeminiCredentialPool:
             return FailureCategory.SERVICE_ERROR
         if "connect" in err_str or "timeout" in err_str or "network" in err_str or "connection reset" in err_str:
             return FailureCategory.NETWORK_ERROR
+        if "400" in err_str or "invalid_argument" in err_str:
+            return FailureCategory.INVALID_REQUEST
+        if "sdk" in err_str or "clienterror" in err_str:
+            return FailureCategory.SDK_ERROR
+        if "budget exceeded" in err_str or "circuit breaker active" in err_str:
+            return FailureCategory.CIRCUIT_BLOCK
         return FailureCategory.UNKNOWN
 
     def report_failure(self, key: str, error: Optional[Exception] = None) -> None:

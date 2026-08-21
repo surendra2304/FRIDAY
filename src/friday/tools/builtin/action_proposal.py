@@ -27,11 +27,11 @@ class ProposeComputerActionTool(BaseTool):
             },
             "x": {
                 "type": "integer",
-                "description": "Target X pixel coordinate on screen (for clicks/moves)",
+                "description": "Target X pixel coordinate on screen (for clicks/moves). Omit for automatic screen centering if intent specifies 'center'.",
             },
             "y": {
                 "type": "integer",
-                "description": "Target Y pixel coordinate on screen (for clicks/moves)",
+                "description": "Target Y pixel coordinate on screen (for clicks/moves). Omit for automatic screen centering if intent specifies 'center'.",
             },
             "text": {
                 "type": "string",
@@ -75,6 +75,20 @@ class ProposeComputerActionTool(BaseTool):
                 safety_level=self.safety_level,
             )
 
+        if x is None and y is None and "center" in intent.lower():
+            try:
+                from friday.vision.windows_screen import WindowsScreenCaptureProvider
+                displays = WindowsScreenCaptureProvider.list_displays()
+                if displays:
+                    x = displays[0]["width"] // 2
+                    y = displays[0]["height"] // 2
+                else:
+                    x = 1920 // 2
+                    y = 1080 // 2
+            except Exception:
+                x = 1920 // 2
+                y = 1080 // 2
+
         proposal: ComputerActionProposal
         if act_enum in (ActionType.CLICK, ActionType.DOUBLE_CLICK, ActionType.RIGHT_CLICK):
             if x is None or y is None:
@@ -85,8 +99,8 @@ class ProposeComputerActionTool(BaseTool):
                     safety_level=self.safety_level,
                 )
             proposal = ProposalBuilder.click(
-                x=x,
-                y=y,
+                x=int(x),
+                y=int(y),
                 intent=intent,
                 double=(act_enum == ActionType.DOUBLE_CLICK),
                 right=(act_enum == ActionType.RIGHT_CLICK),

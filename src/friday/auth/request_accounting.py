@@ -28,6 +28,14 @@ class BudgetExceededError(RuntimeError):
     pass
 
 
+from enum import Enum
+
+class CircuitBreakerState(str, Enum):
+    CLOSED = "CLOSED"
+    OPEN = "OPEN"
+    HALF_OPEN = "HALF_OPEN"
+
+
 @dataclass
 class RequestRecord:
     """Audit record for a single LLM/Vision/Voice provider request."""
@@ -74,10 +82,11 @@ class BudgetLimits:
     max_requests_per_day: int = 1500
     max_consecutive_failed_calls: int = 3
     max_vision_perceptions_per_task: int = 12
+    circuit_breaker_cooldown_seconds: float = 60.0
 
 
 class RequestAccountant:
-    """Thread-safe request accounting and budget enforcement layer."""
+    """Thread-safe request accounting and budget enforcement layer with circuit breaker."""
 
     _instance_lock = threading.Lock()
     _instance: Optional["RequestAccountant"] = None
@@ -95,6 +104,8 @@ class RequestAccountant:
             self.limits = limits or BudgetLimits()
             self.records: List[RequestRecord] = []
             self.consecutive_failures = 0
+            self.circuit_state = CircuitBreakerState.CLOSED
+            self.circuit_cooldown_until: Optional[datetime] = None
             self._initialized = True
 
     def reset(self) -> None:
@@ -102,6 +113,8 @@ class RequestAccountant:
         with self.lock:
             self.records.clear()
             self.consecutive_failures = 0
+            self.circuit_state = CircuitBreakerState.CLOSED
+            self.circuit_cooldown_until = None
 
     def can_make_request(
         self,
@@ -115,18 +128,25 @@ class RequestAccountant:
             one_hour_ago = now - timedelta(hours=1)
             one_day_ago = now - timedelta(days=1)
 
-            # 1. Consecutive failure circuit breaker
-            if self.consecutive_failures >= self.limits.max_consecutive_failed_calls:
-                return False, (
-                    f"Circuit breaker active: {self.consecutive_failures} consecutive provider failures "
-                    f"(limit: {self.limits.max_consecutive_failed_calls}). Halting to prevent quota burn."
-                )
+            # 1. Evaluate Circuit Breaker state
+            if self.circuit_state == CircuitBreakerState.OPEN:
+                if self.circuit_cooldown_until and now >= self.circuit_cooldown_until:
+                    logger.info("Circuit breaker cooldown expired. Transitioning to HALF_OPEN probe state.")
+                    self.circuit_state = CircuitBreakerState.HALF_OPEN
+                else:
+                    return False, (
+                        f"Circuit breaker active: The AI service is paused after {self.consecutive_failures} failures. "
+                        "Cooldown in progress."
+                    )
+            elif self.circuit_state == CircuitBreakerState.HALF_OPEN:
+                # We allow 1 request through to test if the service has recovered
+                pass
 
             # 2. Per-task budget
             if task_id:
                 task_requests = sum(
                     1 for r in self.records
-                    if r.task_id == task_id and not r.is_cache_hit
+                    if r.task_id == task_id and not r.is_cache_hit and r.failure_category not in ("circuit_block", "budget_block")
                 )
                 if task_requests >= self.limits.max_requests_per_task:
                     return False, (
@@ -138,7 +158,7 @@ class RequestAccountant:
                 if "vision" in purpose.lower():
                     vision_requests = sum(
                         1 for r in self.records
-                        if r.task_id == task_id and "vision" in r.purpose.lower() and not r.is_cache_hit
+                        if r.task_id == task_id and "vision" in r.purpose.lower() and not r.is_cache_hit and r.failure_category not in ("circuit_block", "budget_block")
                     )
                     if vision_requests >= self.limits.max_vision_perceptions_per_task:
                         return False, (
@@ -150,7 +170,7 @@ class RequestAccountant:
             if session_id:
                 session_requests = sum(
                     1 for r in self.records
-                    if r.session_id == session_id and not r.is_cache_hit
+                    if r.session_id == session_id and not r.is_cache_hit and r.failure_category not in ("circuit_block", "budget_block")
                 )
                 if session_requests >= self.limits.max_requests_per_session:
                     return False, (
@@ -161,7 +181,7 @@ class RequestAccountant:
             # 4. Hourly sliding window budget
             hourly_requests = sum(
                 1 for r in self.records
-                if r.timestamp >= one_hour_ago and not r.is_cache_hit
+                if r.timestamp >= one_hour_ago and not r.is_cache_hit and r.failure_category not in ("circuit_block", "budget_block")
             )
             if hourly_requests >= self.limits.max_requests_per_hour:
                 return False, (
@@ -172,7 +192,7 @@ class RequestAccountant:
             # 5. Daily sliding window budget
             daily_requests = sum(
                 1 for r in self.records
-                if r.timestamp >= one_day_ago and not r.is_cache_hit
+                if r.timestamp >= one_day_ago and not r.is_cache_hit and r.failure_category not in ("circuit_block", "budget_block")
             )
             if daily_requests >= self.limits.max_requests_per_day:
                 return False, (
@@ -199,9 +219,10 @@ class RequestAccountant:
     ) -> RequestRecord:
         """Record an accounting entry and update circuit breaker state."""
         with self.lock:
+            now = datetime.now(timezone.utc)
             rec = RequestRecord(
                 request_id=f"req_{uuid.uuid4().hex[:10]}",
-                timestamp=datetime.now(timezone.utc),
+                timestamp=now,
                 credential_label=credential_label,
                 model=model,
                 purpose=purpose,
@@ -217,15 +238,34 @@ class RequestAccountant:
             )
             self.records.append(rec)
 
+            # Circuit breaker logic
             if failure_category is not None:
-                self.consecutive_failures += 1
-                logger.warning(
-                    f"RequestAccountant: Failure recorded ({failure_category}). "
-                    f"Consecutive failures: {self.consecutive_failures}/{self.limits.max_consecutive_failed_calls}"
-                )
+                # Do not count circuit/budget blocks as new provider failures
+                if failure_category not in ("circuit_block", "budget_block"):
+                    if self.circuit_state == CircuitBreakerState.CLOSED:
+                        self.consecutive_failures += 1
+                        logger.warning(
+                            f"RequestAccountant: Failure recorded ({failure_category}). "
+                            f"Consecutive failures: {self.consecutive_failures}/{self.limits.max_consecutive_failed_calls}"
+                        )
+                        if self.consecutive_failures >= self.limits.max_consecutive_failed_calls:
+                            self.circuit_state = CircuitBreakerState.OPEN
+                            self.circuit_cooldown_until = now + timedelta(seconds=self.limits.circuit_breaker_cooldown_seconds)
+                            logger.error(f"Circuit breaker OPENED. Cooldown until {self.circuit_cooldown_until.isoformat()}.")
+                    
+                    elif self.circuit_state == CircuitBreakerState.HALF_OPEN:
+                        # Probe failed, open it again immediately
+                        self.circuit_state = CircuitBreakerState.OPEN
+                        self.circuit_cooldown_until = now + timedelta(seconds=self.limits.circuit_breaker_cooldown_seconds)
+                        logger.error(f"Circuit breaker probe FAILED. Returning to OPEN state until {self.circuit_cooldown_until.isoformat()}.")
             else:
                 if not is_cache_hit:
+                    # Successful request resets breaker
+                    if self.circuit_state != CircuitBreakerState.CLOSED:
+                        logger.info(f"Successful request resolved circuit breaker. Resetting from {self.circuit_state.value} to CLOSED.")
                     self.consecutive_failures = 0
+                    self.circuit_state = CircuitBreakerState.CLOSED
+                    self.circuit_cooldown_until = None
 
             return rec
 
