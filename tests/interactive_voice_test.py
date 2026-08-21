@@ -10,9 +10,14 @@ FridayAgent. Only the voice pipeline is exercised:
   4. Runs a timed bidirectional audio session (speak and be heard).
   5. Prints a session summary: interruptions and turn latency.
 
+Key rotation: if Google denies the connection with a 1008 policy violation
+("Your project has been denied access") or a "not supported" error, the
+offending key is marked unhealthy in the pool and the connection is retried
+with the next active key (up to MAX_KEY_ROTATIONS attempts).
+
 Usage:
     python tests/interactive_voice_test.py
-    python tests/interactive_voice_test.py --model gemini-1.5-flash-latest
+    python tests/interactive_voice_test.py --model gemini-3.1-flash-live-preview
     python tests/interactive_voice_test.py --duration 60
 
 This script performs REAL hardware + REAL network I/O. It is a diagnostic
@@ -32,13 +37,18 @@ from typing import Optional
 # Allow running directly from a source checkout without installation
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from friday.auth.credential_pool import credential_pool, GeminiCredentialPool  # noqa: E402
+from friday.auth.credential_pool import credential_pool  # noqa: E402
 from friday.voice.audio_io import MicrophoneStream, SpeakerStream  # noqa: E402
 from friday.voice.gemini_live_session import GeminiLiveVoiceSession  # noqa: E402
 
-DEFAULT_MODEL = "gemini-2.0-flash-exp"
+DEFAULT_MODEL = "gemini-3.1-flash-live-preview"
 SAMPLE_RATE_IN = 16000
 SAMPLE_RATE_OUT = 24000
+MAX_KEY_ROTATIONS = 5
+
+# Error markers that indicate the API KEY (not the model/request) is denied;
+# only these trigger key rotation.
+_ACCESS_DENIED_MARKERS = ("1008", "denied access", "not supported")
 
 
 def parse_args() -> argparse.Namespace:
@@ -57,6 +67,19 @@ def parse_args() -> argparse.Namespace:
         help="Live session duration in seconds (default: 30)",
     )
     return parser.parse_args()
+
+
+def _is_access_denied(exc: BaseException) -> bool:
+    """True if the exception chain indicates the API key's project is denied."""
+    current: Optional[BaseException] = exc
+    depth = 0
+    while current is not None and depth < 10:
+        text = str(current).lower()
+        if any(marker in text for marker in _ACCESS_DENIED_MARKERS):
+            return True
+        current = current.__cause__ or current.__context__
+        depth += 1
+    return False
 
 
 def resolve_api_key() -> str:
@@ -103,54 +126,40 @@ def print_raw_error(exc: BaseException) -> None:
     print("[FAIL] Gemini Live session failed. RAW error chain (outermost -> root cause):")
     print("=" * 70)
     depth = 0
-    current: Optional = exc
-    while current is not None:
+    current: Optional[BaseException] = exc
+    while current is not None and depth < 10:
         prefix = "  " * depth + ("ROOT CAUSE: " if depth else "EXCEPTION: ")
         print(f"{prefix}{type(current).__module__}.{type(current).__name__}: {current}")
-        current = current.__cause__ or current.__context__ if depth < 10 else None
+        current = current.__cause__ or current.__context__
         depth += 1
     print("\nFull traceback:")
     traceback.print_exception(type(exc), exc, exc.__traceback__)
 
 
-def main() -> None:
-    args = parse_args()
-    print("=" * 70)
-    print("FRIDAY — Interactive Gemini Live Voice Diagnostic (no agent)")
-    print("=" * 70)
-    print(f"Model:        {args.model}")
-    print(f"Duration:     {args.duration:.0f}s")
-
-    api_key = resolve_api_key()
-    verify_audio_devices()
-
-    print("\n--- Connecting to Gemini Live ---")
-    # max_retries=0: surface the first raw connection error immediately
-    # instead of masking it behind reconnect attempts.
+def attempt_session(api_key: str, model: str, duration: float, turn_log: list):
+    """Run ONE timed live session attempt; raises on failure."""
     session = GeminiLiveVoiceSession(
         api_key=api_key,
-        model=args.model,
+        model=model,
         sample_rate_in=SAMPLE_RATE_IN,
         sample_rate_out=SAMPLE_RATE_OUT,
-        max_retries=0,
+        max_retries=0,  # surface the first raw connection error immediately
         credential_pool=credential_pool,
     )
-    if session.model != args.model:
+    if session.model != model:
         print(f"[WARN] Model normalized to '{session.model}' (input was rejected as non-Live).")
-
-    turn_log = []  # (monotonic_timestamp, user_text, agent_text)
 
     def on_turn_complete(user_text: str, agent_text: str) -> None:
         turn_log.append((time.perf_counter(), user_text, agent_text))
         print(f"\n[TURN {len(turn_log)}] You: {user_text or '(untranscribed)'}")
         print(f"         FRIDAY: {(agent_text or '(untranscribed)')[:120]}")
 
-    async def run_timed_session() -> None:
+    async def run_timed() -> None:
         stop = asyncio.Event()
 
         async def timer() -> None:
-            await asyncio.sleep(args.duration)
-            print(f"\n--- {args.duration:.0f}s elapsed: closing live session ---")
+            await asyncio.sleep(duration)
+            print(f"\n--- {duration:.0f}s elapsed: closing live session ---")
             stop.set()
 
         timer_task = asyncio.create_task(timer(), name="diag_timer")
@@ -168,21 +177,17 @@ def main() -> None:
             mic.stop()
             spk.close()
 
-    started = time.perf_counter()
-    try:
-        asyncio.run(run_timed_session())
-    except KeyboardInterrupt:
-        print("\n[interrupted by user]")
-    except BaseException as exc:  # noqa: BLE001 - diagnostics must show everything
-        print_raw_error(exc)
-        sys.exit(4)
-    elapsed = time.perf_counter() - started
+    asyncio.run(run_timed())
+    return session
 
+
+def print_summary(session, turn_log: list, requested_duration: float, elapsed: float) -> None:
     print("\n" + "=" * 70)
     print("SESSION SUMMARY")
     print("=" * 70)
-    print(f"Requested duration:  {args.duration:.0f}s")
+    print(f"Requested duration:  {requested_duration:.0f}s")
     print(f"Actual duration:     {elapsed:.1f}s")
+    print(f"Model:               {session.model}")
     print(f"Final state:         {session.state.value}")
     print(f"Resumption handle:   {'yes' if session.resumption_handle else 'no'}")
     print(f"Completed turns:     {len(turn_log)}")
@@ -202,6 +207,45 @@ def main() -> None:
     if not turn_log and session.user_interruptions == 0:
         print("\n[NOTE] No turns completed. If you spoke, check microphone input level "
               "and VAD sensitivity settings (FRIDAY_VOICE_VAD_*).")
+
+
+def main() -> None:
+    args = parse_args()
+    print("=" * 70)
+    print("FRIDAY — Interactive Gemini Live Voice Diagnostic (no agent)")
+    print("=" * 70)
+    print(f"Model:        {args.model}")
+    print(f"Duration:     {args.duration:.0f}s")
+    print(f"Key rotation: up to {MAX_KEY_ROTATIONS} attempts on 1008/'denied access'/'not supported'")
+
+    verify_audio_devices()
+
+    session = None
+    turn_log: list = []
+    started = time.perf_counter()
+
+    for attempt in range(1, MAX_KEY_ROTATIONS + 1):
+        print(f"\n--- Connection attempt {attempt}/{MAX_KEY_ROTATIONS} ---")
+        api_key = resolve_api_key()
+        turn_log = []
+        try:
+            session = attempt_session(api_key, args.model, args.duration, turn_log)
+            break  # session completed normally
+        except KeyboardInterrupt:
+            print("\n[interrupted by user]")
+            if session is None:
+                sys.exit(0)
+            break
+        except BaseException as exc:  # noqa: BLE001 - diagnostics must show everything
+            if _is_access_denied(exc) and attempt < MAX_KEY_ROTATIONS:
+                print("Key denied access. Rotating to next key...")
+                credential_pool.mark_key_unhealthy(api_key, error=exc)
+                continue
+            print_raw_error(exc)
+            sys.exit(4)
+
+    if session is not None:
+        print_summary(session, turn_log, args.duration, time.perf_counter() - started)
 
 
 if __name__ == "__main__":

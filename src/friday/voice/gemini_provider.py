@@ -86,7 +86,7 @@ class GeminiVoiceProvider(VoiceProvider):
 
         if not self.api_key:
             raise ValueError("Gemini API key not configured (FRIDAY_GEMINI_API_KEY)")
-        self.model = model or getattr(settings, "voice_live_model", "gemini-2.0-flash-exp")
+        self.model = model or getattr(settings, "voice_live_model", "gemini-3.1-flash-live-preview")
         
         input_dev = GeminiVoiceInput(sample_rate=getattr(settings, "voice_input_sample_rate", 16000))
         output_dev = GeminiVoiceOutput(sample_rate=getattr(settings, "voice_live_sample_rate", 24000))

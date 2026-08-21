@@ -6,7 +6,7 @@ Verifies:
 2. GenerateContentConfig for 3.7-family models (explicitly configured) omits unsupported parameters.
 3. Legacy models (e.g. 'gemini-1.5-pro') retain supported generation parameters.
 4. GeminiVisionProvider defaults to 'gemini-1.5-flash-latest' and omits temperature in SDK config.
-5. GeminiLiveVoiceSession strictly isolates Live models ('gemini-2.0-flash-exp') and rejects text/vision models.
+5. GeminiLiveVoiceSession isolates Live models (gemini-3.1-flash-live-preview) and rejects non-live models. ('gemini-1.5-flash-latest' via allowlist) and rejects non-live models.
 6. GeminiEmbeddingProvider defaults to 'gemini-embedding-2' with 768 dimensions.
 """
 
@@ -83,15 +83,15 @@ def test_gemini_vision_provider_model_and_parameter_sanitization():
 
 
 def test_gemini_live_voice_session_model_isolation():
-    """Verify Live voice session defaults to gemini-2.0-flash-exp and refuses text/vision models."""
+    """Verify Live voice session defaults to gemini-3.1-flash-live-preview and refuses non-live models."""
     # 1. Default model
     session = GeminiLiveVoiceSession(api_key="TEST_API_KEY")
-    assert session.model == "gemini-2.0-flash-exp"
+    assert session.model == "gemini-3.1-flash-live-preview"
 
-    # 2. Rejection / Fallback when text/vision model is passed
-    session_bad = GeminiLiveVoiceSession(api_key="TEST_API_KEY", model="gemini-1.5-flash-latest")
-    assert session_bad.model == "gemini-2.0-flash-exp"
-    assert session_bad.model != "gemini-1.5-flash-latest"
+    # 2. Rejection / Fallback when a genuinely non-live model is passed
+    session_bad = GeminiLiveVoiceSession(api_key="TEST_API_KEY", model="gemini-2.5-flash")
+    assert session_bad.model == "gemini-3.1-flash-live-preview"
+    assert session_bad.model != "gemini-2.5-flash"
 
 
 def test_gemini_embedding_provider_model_and_dimension():

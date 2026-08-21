@@ -116,7 +116,7 @@ def test_hardware_failure_raises_voice_error():
         from friday.voice.gemini_live_session import GeminiLiveVoiceSession
         session = GeminiLiveVoiceSession(
             api_key="test_key",
-            model="gemini-2.0-flash-exp",
+            model="gemini-3.1-flash-live-preview",
         )
         invalid_mic = MicrophoneStream(device=99999)  # Non-existent device index
         invalid_spk = SpeakerStream(device=99999)

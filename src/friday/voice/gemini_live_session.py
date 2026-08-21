@@ -32,7 +32,7 @@ from friday.voice.audio_io import MicrophoneStream, SpeakerStream, compute_pcm_r
 logger = get_logger("voice.live_session")
 
 # Live-capable model names that do not contain "live" in their identifier
-_LIVE_CAPABLE_MODEL_NAMES = {"gemini-2.0-flash-exp"}
+_LIVE_CAPABLE_MODEL_NAMES = {"gemini-2.0-flash-exp", "gemini-3.1-flash-live-preview"}
 
 
 class LiveSessionState(str, Enum):
@@ -83,13 +83,13 @@ class GeminiLiveVoiceSession:
             self.api_key = api_key or settings.gemini_api_key or settings.llm_api_key
         if not self.api_key:
             raise ValueError("Gemini API key is required for Gemini Live voice session")
-        live_model = model or getattr(settings, "voice_live_model", "gemini-2.0-flash-exp")
+        live_model = model or getattr(settings, "voice_live_model", "gemini-3.1-flash-live-preview")
         if "live" not in live_model.lower() and live_model.lower() not in _LIVE_CAPABLE_MODEL_NAMES:
             logger.warning(
                 f"Model '{live_model}' is not a valid Gemini Live voice model. "
-                f"Falling back to configured Live voice model '{getattr(settings, 'voice_live_model', 'gemini-2.0-flash-exp')}'."
+                f"Falling back to configured Live voice model '{getattr(settings, 'voice_live_model', 'gemini-1.5-flash-latest')}'."
             )
-            live_model = getattr(settings, "voice_live_model", "gemini-2.0-flash-exp")
+            live_model = getattr(settings, "voice_live_model", "gemini-3.1-flash-live-preview")
         self.model = live_model
         self.agent = agent
         self.voice_name = voice_name or getattr(settings, "voice_name", "Aoede")

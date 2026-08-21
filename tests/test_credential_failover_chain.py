@@ -184,3 +184,18 @@ def test_cooldown_expiry_restores_primary(tmp_path):
     assert pool.credentials[0].is_healthy(1) is True
     assert pool.get_active_label() == "PRIMARY"
 
+
+
+def test_mark_key_unhealthy_rotates_active_key():
+    """mark_key_unhealthy() must cooldown the key so get_active_key() rotates."""
+    keys = ["KEY_A", "KEY_B"]
+    pool = GeminiCredentialPool(keys=keys, cooldown_seconds=3600)
+    pool.load_keys(keys)
+    pool.reset_all()
+    assert pool.get_active_key() == "KEY_A"
+
+    pool.mark_key_unhealthy("KEY_A", error=RuntimeError("1008 Your project has been denied access"))
+
+    assert pool.get_active_key() == "KEY_B"
+    assert pool.credentials[0].cooldown_until is not None
+    assert pool.credentials[0].failure_count == 1

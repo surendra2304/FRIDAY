@@ -365,6 +365,16 @@ class GeminiCredentialPool:
             return FailureCategory.CIRCUIT_BLOCK
         return FailureCategory.UNKNOWN
 
+    def mark_key_unhealthy(self, key: str, error: Optional[Exception] = None) -> None:
+        """Explicitly mark a credential unhealthy, applying the classified cooldown.
+
+        Public convenience alias over `report_failure` used by diagnostics and
+        live tooling (e.g. voice key rotation on 1008 policy-violation denials)
+        so callers do not need to know the failure-reporting internals. After
+        this call, `get_active_key()` rotates to the next healthy credential.
+        """
+        self.report_failure(key, error=error)
+
     def report_failure(self, key: str, error: Optional[Exception] = None) -> None:
         """Record a failure for the credential, applying category-specific cooldown (thread-safe)."""
         snapshot = None
