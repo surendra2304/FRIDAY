@@ -14,6 +14,7 @@ from friday.vision.change_detector import ScreenChangeDetector, compute_image_di
 from friday.vision.screen_awareness import ScreenAwarenessController
 from friday.vision.vision_memory import VisionMemoryManager, redact_sensitive_visual_text
 from friday.vision.actions import ActionType, ComputerActionProposal, ProposalBuilder
+from friday.vision.detector import DeterministicActionDetector, DeterministicActionIntent
 from friday.vision.computer_control import (
     ActionExecutionResult,
     ComputerActionExecutor,
@@ -143,4 +144,6 @@ __all__ = [
     "CoordinateTransform",
     "DisplayMonitor",
     "StaleCoordinateGuard",
+    "DeterministicActionDetector",
+    "DeterministicActionIntent",
 ]

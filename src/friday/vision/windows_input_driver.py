@@ -233,19 +233,33 @@ class WindowsNativeInputDriver(BaseWindowsInputDriver):
         return (int(pt.x), int(pt.y))
 
     def move_cursor(self, x: int, y: int) -> bool:
-        # First try SetCursorPos
+        # First try SetCursorPos (handles multi-monitor absolute desktop coords directly)
         ok = bool(self._user32.SetCursorPos(int(x), int(y)))
         if not ok:
-            # Fallback to SendInput with MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE
-            sw, sh = self.get_screen_dimensions()
-            if sw > 0 and sh > 0:
-                norm_x = int((x * 65535) / sw)
-                norm_y = int((y * 65535) / sh)
+            # Fallback to SendInput with MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE | MOUSEEVENTF_VIRTUALDESK
+            SM_CXVIRTUALSCREEN = 78
+            SM_CYVIRTUALSCREEN = 79
+            SM_XVIRTUALSCREEN = 76
+            SM_YVIRTUALSCREEN = 77
+            MOUSEEVENTF_VIRTUALDESK = 0x4000
+
+            virt_w = int(self._user32.GetSystemMetrics(SM_CXVIRTUALSCREEN))
+            virt_h = int(self._user32.GetSystemMetrics(SM_CYVIRTUALSCREEN))
+            virt_x = int(self._user32.GetSystemMetrics(SM_XVIRTUALSCREEN))
+            virt_y = int(self._user32.GetSystemMetrics(SM_YVIRTUALSCREEN))
+
+            if virt_w <= 0 or virt_h <= 0:
+                virt_w, virt_h = self.get_screen_dimensions()
+                virt_x, virt_y = 0, 0
+
+            if virt_w > 0 and virt_h > 0:
+                norm_x = int(((x - virt_x) * 65535) / virt_w)
+                norm_y = int(((y - virt_y) * 65535) / virt_h)
                 inp = (INPUT * 1)()
                 inp[0].type = INPUT_MOUSE
                 inp[0].mi.dx = norm_x
                 inp[0].mi.dy = norm_y
-                inp[0].mi.dwFlags = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE
+                inp[0].mi.dwFlags = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE | MOUSEEVENTF_VIRTUALDESK
                 sent = self._user32.SendInput(1, inp, ctypes.sizeof(INPUT))
                 ok = (sent == 1)
 

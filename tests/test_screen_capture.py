@@ -93,7 +93,8 @@ def test_windows_screen_capture_gdi_cleanup_on_error():
     """Verify WindowsScreenCaptureProvider cleans up GDI handles if an exception occurs."""
     prov = WindowsScreenCaptureProvider()
 
-    with mock.patch.object(prov._user32, "GetSystemMetrics", return_value=-1):
+    with mock.patch.object(prov._user32, "GetSystemMetrics", return_value=-1), \
+         mock.patch.object(prov, "_capture_via_powershell", return_value=None):
         snap = prov.capture_screen("primary")
         assert snap.is_error is True
         assert "Invalid display dimensions detected" in snap.error_message

@@ -9,8 +9,7 @@ def test_screen_center_manual():
     response = agent.process_message("Move the mouse cursor to the center of the screen.")
     print("RESPONSE:", response.content)
     
-    # We should look in the agent's memory to see the tool call
-    memory = agent.memory.get_messages(limit=10)
+    memory = agent.memory.get_messages()
     for msg in memory:
         if msg.tool_calls:
             for tc in msg.tool_calls:

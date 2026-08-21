@@ -44,6 +44,15 @@ from friday.agent.checkpoint import TaskCheckpoint, TaskCheckpointStore
 from friday.agent.cognitive import CognitiveIntelligenceEngine, CognitiveDecision, CognitivePhase
 from friday.agent.verification import StepVerifier, VerificationStatus
 from friday.routing.capability_router import CapabilityRouter, ExecutionCapabilityType
+from friday.vision.actions import ActionType
+from friday.vision.detector import DeterministicActionDetector, DeterministicActionIntent
+from friday.vision.computer_control import ComputerActionExecutor, ExecutionStatus
+from friday.vision.windows_input_driver import (
+    BaseWindowsInputDriver,
+    MockWindowsInputDriver,
+    WindowsNativeInputDriver,
+    check_desktop_interactivity,
+)
 from friday.memory.task_context import ActiveTaskContext
 from friday.tools.registry import ToolRegistry
 import uuid
@@ -522,6 +531,125 @@ class FridayAgent:
             context={"has_working_context": bool(self.task_context)},
         )
         logger.info(f"Capability routed to: {routing_decision.selected_capability.value}")
+
+        # Evaluate Deterministic Computer Action Fast-Path (Bypasses LLM & Vision entirely)
+        det_intent = DeterministicActionDetector.detect(clean_input)
+        if det_intent and det_intent.confidence >= 0.95:
+            logger.info(
+                f"[FAST-PATH] Deterministic computer action detected: {det_intent.action_type.value} "
+                f"(Args: {det_intent.arguments}, Confidence: {det_intent.confidence})"
+            )
+            self.state_machine.transition_to(TaskState.PLANNING, reason="Formulating deterministic action proposal")
+            proposal = det_intent.to_proposal()
+
+            # Record user turn in memory
+            user_msg = Message(role=Role.USER, content=clean_input)
+            self.memory.add_message(user_msg)
+
+            # Evaluate authorization requirement
+            auth_req = AuthorizationRequest(
+                tool_name="execute_computer_action",
+                safety_level=det_intent.risk_level,
+                arguments=det_intent.arguments,
+                tool_call_id=str(uuid.uuid4()),
+                purpose=det_intent.intent,
+                affected_resource="windows_desktop",
+            )
+            auth_resp = self.authorizer.authorize(auth_req)
+
+            if auth_resp.decision == AuthorizationDecision.APPROVED:
+                self.state_machine.transition_to(TaskState.EXECUTING, reason=f"Executing deterministic {det_intent.action_type.value} action")
+                interactive, reason = check_desktop_interactivity()
+                sandboxed_mode = not interactive
+                executor = ComputerActionExecutor(sandboxed=sandboxed_mode)
+                exec_result = executor.execute_proposal(proposal, user_confirmed=True)
+
+                self.state_machine.transition_to(TaskState.VERIFYING, reason="Verifying action execution result")
+
+                if exec_result.is_success:
+                    self.state_machine.transition_to(TaskState.COMPLETED, reason="Deterministic action executed successfully")
+                    
+                    if det_intent.action_type == ActionType.MOVE:
+                        x_coord = det_intent.arguments.get("x")
+                        y_coord = det_intent.arguments.get("y")
+                        if "center" in clean_input.lower():
+                            resp_content = f"Moved the mouse cursor to the center of the screen ({x_coord}, {y_coord})."
+                        else:
+                            resp_content = f"Moved the mouse cursor to ({x_coord}, {y_coord})."
+                    elif det_intent.action_type == ActionType.SCROLL:
+                        delta = det_intent.arguments.get("delta_y", 0)
+                        dir_str = "up" if delta > 0 else "down"
+                        resp_content = f"Scrolled the screen {dir_str}."
+                    elif det_intent.action_type in (ActionType.CLICK, ActionType.DOUBLE_CLICK, ActionType.RIGHT_CLICK):
+                        x_coord = det_intent.arguments.get("x")
+                        y_coord = det_intent.arguments.get("y")
+                        resp_content = f"Clicked at coordinates ({x_coord}, {y_coord})."
+                    else:
+                        resp_content = f"Executed {det_intent.action_type.value} successfully."
+
+                    assistant_resp_msg = Message(role=Role.ASSISTANT, content=resp_content)
+                    self.memory.add_message(assistant_resp_msg)
+
+                    return AgentResponse(
+                        content=resp_content,
+                        is_done=True,
+                        metadata={
+                            "fast_path": True,
+                            "deterministic": True,
+                            "action_type": det_intent.action_type.value,
+                            "arguments": det_intent.arguments,
+                            "execution_result": exec_result.to_dict(),
+                            "duration_seconds": time.perf_counter() - start_time,
+                            "task_state": self.state_machine.current_state.value,
+                            "state_history": [r.to_dict() for r in self.state_machine.history],
+                        }
+                    )
+                else:
+                    self.state_machine.fail(reason=f"Action execution failed: {exec_result.details}")
+                    err_content = f"Failed to execute computer action: {exec_result.details}"
+                    self.memory.add_message(Message(role=Role.ASSISTANT, content=err_content))
+                    return AgentResponse(
+                        content=err_content,
+                        is_done=True,
+                        metadata={
+                            "fast_path": True,
+                            "success": False,
+                            "error": exec_result.details,
+                            "duration_seconds": time.perf_counter() - start_time,
+                            "task_state": self.state_machine.current_state.value,
+                            "state_history": [r.to_dict() for r in self.state_machine.history],
+                        }
+                    )
+            elif auth_resp.decision == AuthorizationDecision.DENIED:
+                self.state_machine.fail(reason=f"Authorization denied: {auth_resp.reason}")
+                denial_content = f"Action was not authorized: {auth_resp.reason}"
+                self.memory.add_message(Message(role=Role.ASSISTANT, content=denial_content))
+                return AgentResponse(
+                    content=denial_content,
+                    is_done=True,
+                    metadata={
+                        "fast_path": True,
+                        "authorized": False,
+                        "duration_seconds": time.perf_counter() - start_time,
+                        "task_state": self.state_machine.current_state.value,
+                        "state_history": [r.to_dict() for r in self.state_machine.history],
+                    }
+                )
+            else:
+                self.state_machine.cancel(reason="User cancelled authorization prompt")
+                cancel_content = "Action cancelled by user."
+                self.memory.add_message(Message(role=Role.ASSISTANT, content=cancel_content))
+                return AgentResponse(
+                    content=cancel_content,
+                    is_done=True,
+                    metadata={
+                        "fast_path": True,
+                        "cancelled": True,
+                        "duration_seconds": time.perf_counter() - start_time,
+                        "task_state": self.state_machine.current_state.value,
+                        "state_history": [r.to_dict() for r in self.state_machine.history],
+                    }
+                )
 
         recalled = self._retrieve_relevant_memories(clean_input)
         if recalled:

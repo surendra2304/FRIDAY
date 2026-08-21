@@ -119,12 +119,25 @@ def test_consecutive_failure_circuit_breaker():
 def test_static_screen_does_not_generate_repeated_vision_calls():
     """Prove that identical static screen observations hit cache and do NOT increment provider calls."""
     acc = RequestAccountant()
+    # Explicitly reset to ensure clean singleton state regardless of test ordering in full suite.
+    acc.reset()
+    acc.limits = BudgetLimits(
+        max_requests_per_task=100,
+        max_vision_perceptions_per_task=50,
+        max_requests_per_hour=1000,
+        max_requests_per_day=5000,
+        max_consecutive_failed_calls=10,
+    )
+
     cap = MockScreenCaptureProvider(width=100, height=100)
     static_img = create_synthetic_png(100, 100, (50, 100, 150))
     cap.set_mock_image(static_img)
 
     mock_vision = MockVisionProvider()
     pipeline = PerceptionPipeline(capture_provider=cap, vision_provider=mock_vision, ttl_seconds=60.0)
+
+    # Capture baseline cache_hits before this test's perceptions
+    baseline_cache_hits = acc.get_summary()["cache_hits"]
 
     # First perception: Cache miss -> queries provider
     res1 = pipeline.perceive(task_id="task_vision_test")
@@ -142,7 +155,9 @@ def test_static_screen_does_not_generate_repeated_vision_calls():
     assert mock_vision.call_count == 1
 
     summary = acc.get_summary()
-    assert summary["cache_hits"] >= 2
+    # Assert that at least 2 cache hits were added during THIS test
+    new_cache_hits = summary["cache_hits"] - baseline_cache_hits
+    assert new_cache_hits >= 2
 
 
 def test_vision_loop_guard_triggers_within_budget():

@@ -48,9 +48,13 @@ def test_immediate_failover_on_429_quota_exhausted():
     mock_client = mock.MagicMock()
     mock_client._is_mock = True
     mock_client.models.generate_content.side_effect = fake_generate_content
-    provider._client = mock_client
 
-    with mock.patch("friday.llm.gemini_provider.time.sleep") as mock_sleep:
+    # Patch _get_client to always return mock_client regardless of which API key is active.
+    # Without this patch, _get_client() detects the key change when rotating to FALLBACK_1
+    # and instantiates a real genai.Client, overwriting the mock and causing real API calls
+    # and unexpected backoff sleep() calls.
+    with mock.patch.object(provider, "_get_client", return_value=mock_client), \
+         mock.patch("friday.llm.gemini_provider.time.sleep") as mock_sleep:
         resp = provider.generate([Message(role=Role.USER, content="Hello")])
 
     assert resp.content == "Response from Fallback 1"
@@ -59,9 +63,9 @@ def test_immediate_failover_on_429_quota_exhausted():
     # Fallback 1 attempted EXACTLY ONCE and succeeded
     assert key_attempts["KEY_FALLBACK_1"] == 1
     assert key_attempts["KEY_FALLBACK_2"] == 0
-    # No backoff sleep called for quota exhaustion
+    # No backoff sleep called for quota exhaustion (immediate failover path)
     mock_sleep.assert_not_called()
-    # Primary in cooldown
+    # Primary must be in cooldown
     assert pool.credentials[0].last_failure_category == FailureCategory.QUOTA_EXHAUSTED
     assert pool.credentials[0].cooldown_until is not None
 
