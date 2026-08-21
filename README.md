@@ -164,9 +164,12 @@ pytest -v
 
 ---
 
-## 📖 Architecture & Diary
+## 📖 Documentation & Architecture
 
-FRIDAY maintains a permanent engineering diary, architectural decision records (ADR), and development history in:
+For external AI agents and developers seeking to understand the complete project state, architecture, and current status, refer to the **Primary Handoff Document**:
+👉 [**docs/FRIDAY_PROJECT_CONTEXT.md**](docs/FRIDAY_PROJECT_CONTEXT.md)
+
+FRIDAY also maintains a permanent engineering diary, architectural decision records (ADR), and development history in:
 👉 [**docs/FRIDAY_DIARY.md**](docs/FRIDAY_DIARY.md)
 
 ---

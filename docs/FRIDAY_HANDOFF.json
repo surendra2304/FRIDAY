@@ -1,0 +1,42 @@
+{
+  "project": "FRIDAY",
+  "version": "0.1.0",
+  "git_commit": "8a4b7cfec7f96ecb3e5cca3dcaf71f42788246d5",
+  "branch": "main",
+  "models": {
+    "text": "Gemini 3.7 Flash",
+    "vision": "Gemini Vision",
+    "voice": "Gemini Live",
+    "thinking_level": "configurable",
+    "embedding": "SQLite FTS"
+  },
+  "architecture": {
+    "core_loop": "FridayAgent + ReasoningStateMachine",
+    "computer_control": "Deterministic fast-path -> Semantic UI Automation -> Vision fallback",
+    "memory": "SQLite persistent + active task context"
+  },
+  "capabilities": [
+    "Voice input",
+    "Screen understanding",
+    "Autonomous computer control",
+    "Deterministic execution",
+    "Semantic UI interactions",
+    "Authorization gates"
+  ],
+  "test_summary": {
+    "total": 855,
+    "passed": 851,
+    "skipped": 4,
+    "failed": 0
+  },
+  "real_world_summary": "Deterministic capabilities successfully bypass Vision to avoid rate limit loops.",
+  "known_issues": ["Multi-monitor DPI scaling", "Fuzzy matching accuracy in UI automation"],
+  "known_limitations": ["UI Automation requires Windows", "API rate limits"],
+  "security_status": "Strict Authorization implemented; Secrets are scrubbed; Circuit breaker active.",
+  "provider_status": "Agnostic core with Gemini and pywinauto implementations.",
+  "environment_requirements": {
+    "os": "Windows 10/11",
+    "python": ">=3.10"
+  },
+  "next_recommended_work": "Enhance UI element hierarchy matching; Validate multi-monitor DPI handling."
+}
