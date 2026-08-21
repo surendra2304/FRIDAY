@@ -4,16 +4,19 @@ from friday.auth.request_accounting import RequestAccountant, BudgetLimits, Circ
 
 @pytest.fixture
 def accountant():
-    # Clear singleton instance for testing
-    RequestAccountant._instance = None
-    limits = BudgetLimits(
+    # Use reset() to clean state without breaking the module-level singleton reference.
+    # Setting _instance=None creates a new object that diverges from the imported
+    # `request_accountant` variable, causing cross-test contamination.
+    from friday.auth.request_accounting import request_accountant
+    original_limits = request_accountant.limits
+    request_accountant.reset()
+    request_accountant.limits = BudgetLimits(
         max_consecutive_failed_calls=3,
         circuit_breaker_cooldown_seconds=0.1
     )
-    acc = RequestAccountant(limits=limits)
-    acc.reset()
-    yield acc
-    RequestAccountant._instance = None
+    yield request_accountant
+    request_accountant.reset()
+    request_accountant.limits = original_limits
 
 def test_circuit_breaker_transitions(accountant):
     # Initial state
