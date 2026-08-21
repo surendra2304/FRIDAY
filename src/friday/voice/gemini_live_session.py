@@ -24,7 +24,7 @@ from enum import Enum
 
 from friday.auth.credential_pool import credential_pool, GeminiCredentialPool
 from friday.core.config import get_settings
-from friday.core.exceptions import LLMProviderError
+from friday.core.exceptions import LLMProviderError, VoiceError
 from friday.core.logging import get_logger, redact_tool_args
 from friday.core.types import Message, Role, SafetyLevel, ToolCall
 from friday.voice.audio_io import MicrophoneStream, SpeakerStream, compute_pcm_rms
@@ -444,6 +444,18 @@ class GeminiLiveVoiceSession:
         loop = asyncio.get_running_loop()
         mic.start(loop=loop)
         spk.start()
+
+        if not mic.is_active or mic.error:
+            self._set_state(LiveSessionState.FAILED)
+            err_msg = mic.error or "Microphone stream failed to initialize."
+            logger.error(f"Cannot run Gemini Live loop: {err_msg}")
+            raise VoiceError(f"Microphone unavailable: {err_msg}")
+
+        if not spk.is_active or spk.error:
+            self._set_state(LiveSessionState.FAILED)
+            err_msg = spk.error or "Speaker stream failed to initialize."
+            logger.error(f"Cannot run Gemini Live loop: {err_msg}")
+            raise VoiceError(f"Speaker unavailable: {err_msg}")
 
         reconnect_attempts = 0
 

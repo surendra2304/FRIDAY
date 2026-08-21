@@ -495,7 +495,12 @@ class TaskExecutionEngine:
                         error=err_msg,
                     )
 
-            step_res = self._execute_step(current_step_target, step_results=step_results, state_machine=state_machine)
+            step_res = self._execute_step(
+                current_step_target,
+                step_results=step_results,
+                state_machine=state_machine,
+                cancel_event=cancel_event,
+            )
             step_res.retries_used = retries_performed
 
             if current_step_target.safety_level in (SafetyLevel.SENSITIVE, SafetyLevel.DANGEROUS) and step_res.status in (StepStatus.COMPLETED, StepStatus.SUCCEEDED):
@@ -549,6 +554,7 @@ class TaskExecutionEngine:
         step: PlanStep,
         step_results: Optional[Dict[str, Any]] = None,
         state_machine: Optional[ReasoningStateMachine] = None,
+        cancel_event: Optional[Any] = None,
     ) -> StepExecutionResult:
         """Execute a single PlanStep using the ToolRegistry and BaseAuthorizer with state barrier."""
         step_start_time = datetime.now(timezone.utc)
@@ -652,14 +658,18 @@ class TaskExecutionEngine:
             )
 
         # 3. Direct Tool Execution via ToolRegistry (uses ToolRegistry's shared worker pool and timeout)
+        exec_kwargs: Dict[str, Any] = {
+            "name": step.tool_name,
+            "arguments": resolved_params,
+            "tool_call_id": call_id,
+            "authorization": auth_resp.capability,
+            "timeout": self.step_timeout_seconds,
+        }
+        if cancel_event is not None:
+            exec_kwargs["cancellation_token"] = cancel_event
+
         try:
-            tool_result: ToolResult = self.tools.execute(
-                name=step.tool_name,
-                arguments=resolved_params,
-                tool_call_id=call_id,
-                authorization=auth_resp.capability,
-                timeout=self.step_timeout_seconds,
-            )
+            tool_result: ToolResult = self.tools.execute(**exec_kwargs)
             duration = time.perf_counter() - start_perf
 
             if tool_result.is_error:

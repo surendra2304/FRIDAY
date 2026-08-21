@@ -103,3 +103,33 @@ def test_gemini_embedding_provider_model_and_dimension():
     settings = get_settings()
     assert settings.embedding_model == "gemini-embedding-2"
     assert settings.embedding_dimension == 768
+
+
+def test_gemini_37_build_gemini_payload_omits_unsupported_parameters():
+    """Verify _build_gemini_payload compatibility method omits temperature for Gemini 3.7 models."""
+    for model_name in ["gemini-3.7-flash", "gemini-3.7-pro", "models/gemini-3.7-flash"]:
+        provider = GeminiLLMProvider(api_key="TEST_API_KEY", model=model_name, temperature=0.85)
+        messages = [
+            Message(role=Role.SYSTEM, content="System prompt"),
+            Message(role=Role.USER, content="Hello"),
+        ]
+        payload = provider._build_gemini_payload(messages=messages)
+
+        gen_config = payload.get("generationConfig", {})
+        assert "temperature" not in gen_config, f"temperature found in generationConfig for {model_name}"
+        assert "top_p" not in gen_config, f"top_p found in generationConfig for {model_name}"
+        assert "top_k" not in gen_config, f"top_k found in generationConfig for {model_name}"
+        assert "thinking_config" in gen_config
+        assert gen_config["thinking_config"]["thinking_level"] == "MEDIUM"
+
+
+def test_legacy_build_gemini_payload_retains_temperature():
+    """Verify _build_gemini_payload compatibility method retains temperature for legacy non-3.7 models."""
+    provider = GeminiLLMProvider(api_key="TEST_API_KEY", model="gemini-2.5-flash", temperature=0.65)
+    messages = [Message(role=Role.USER, content="Hello legacy")]
+    payload = provider._build_gemini_payload(messages=messages)
+
+    gen_config = payload.get("generationConfig", {})
+    assert gen_config.get("temperature") == 0.65
+    assert "thinking_config" not in gen_config
+

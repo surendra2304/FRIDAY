@@ -333,9 +333,17 @@ class GeminiLLMProvider(BaseLLMProvider):
                     "parts": [{"functionResponse": {"name": tool_name, "response": parsed}}],
                 })
 
+        generation_config: Dict[str, Any] = {
+            "max_output_tokens": self.max_tokens,
+        }
+        if not is_gemini_37_model(self.model):
+            generation_config["temperature"] = self.temperature
+        else:
+            generation_config["thinking_config"] = {"thinking_level": self.thinking_level.upper()}
+
         payload: Dict[str, Any] = {
             "contents": contents,
-            "generationConfig": {"temperature": self.temperature, "max_output_tokens": self.max_tokens},
+            "generationConfig": generation_config,
         }
         if system_instruction_parts:
             payload["systemInstruction"] = {"parts": system_instruction_parts}

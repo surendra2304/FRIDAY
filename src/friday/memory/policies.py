@@ -184,10 +184,18 @@ def should_embed_message(message: Message) -> bool:
     if MATH_PATTERN.match(text) and any(c in text for c in "+-*/%^"):
         return False
 
-    # Skip transient tool errors or sensitive redactions
-    if message.role == Role.TOOL:
-        if "Execution error:" in text or "[SENSITIVE TOOL RESULT" in text:
+    # Untrusted external observations (tool outputs, screen OCR, websites) must never automatically
+    # become trusted long-term semantic memories or user preferences without explicit confirmation
+    if getattr(message, "trust_level", None) == getattr(message.trust_level, "UNTRUSTED_EXTERNAL", "untrusted_external") or message.role == Role.TOOL:
+        # Check if explicitly confirmed or tagged as trusted
+        is_confirmed = message.metadata.get("user_confirmed", False) if hasattr(message, "metadata") and message.metadata else False
+        if not is_confirmed:
             return False
+
+    # Prevent prompt injection strings in text from being indexed into memory
+    lower_check = lower
+    if any(inj in lower_check for inj in ("ignore previous instructions", "system prompt", "developer mode", "override instructions", "you are now")):
+        return False
 
     # Retain substantive messages
     words = text.split()

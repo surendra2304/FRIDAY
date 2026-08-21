@@ -163,3 +163,7 @@ class InMemoryConversationMemory(BaseMemory):
 
     def __len__(self) -> int:
         return len(self._messages)
+
+    def __bool__(self) -> bool:
+        """Always truthy so `memory or fallback` idioms don't discard a valid empty memory."""
+        return True

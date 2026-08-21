@@ -30,6 +30,10 @@ class ScreenContext:
     is_error: bool = False
     error_message: Optional[str] = None
     overall_confidence: float = 1.0
+    screen_state_id: Optional[str] = None
+    provider_model: Optional[str] = None
+    source: str = "fresh"
+    is_cached: bool = False
 
     def get_elements_by_type(self, element_type: ElementType) -> List[UIElement]:
         """Filter detected elements by their structural type."""
@@ -48,7 +52,7 @@ class ScreenContext:
         return None
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert screen context into safe dictionary representation."""
+        """Convert screen context into safe dictionary representation with provenance."""
         return {
             "summary": self.summary,
             "active_application": self.active_application,
@@ -67,13 +71,18 @@ class ScreenContext:
             "is_error": self.is_error,
             "error_message": self.error_message,
             "overall_confidence": self.overall_confidence,
+            "screen_state_id": self.screen_state_id,
+            "provider_model": self.provider_model,
+            "source": self.source,
+            "is_cached": self.is_cached,
         }
 
     def format_for_prompt(self) -> str:
         """Format screen context as UNTRUSTED visual data block for LLM reasoning."""
+        provenance_str = f"Source: {self.source} | Model: {self.provider_model or 'unknown'} | State ID: {self.screen_state_id or 'none'} | Cached: {self.is_cached}"
         lines = [
             "=== VISUAL SCREEN OBSERVATION (UNTRUSTED DATA) ===",
-            f"Display: {self.display_id} ({self.width}x{self.height}) at {self.captured_at.isoformat()}",
+            f"Display: {self.display_id} ({self.width}x{self.height}) at {self.captured_at.isoformat()} [{provenance_str}]",
             f"Summary: {self.summary}",
         ]
         if self.active_application:

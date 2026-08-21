@@ -15,6 +15,14 @@ class Role(str, Enum):
     TOOL = "tool"
 
 
+class TrustLevel(str, Enum):
+    """Provenance and trust boundary classification for memory and content."""
+    TRUSTED_USER = "trusted_user"          # Direct user commands & explicit preferences
+    SYSTEM_INSTRUCTION = "system_instruction" # Built-in system prompt & policies
+    MODEL_OUTPUT = "model_output"          # AI responses & synthesized plans
+    UNTRUSTED_EXTERNAL = "untrusted_external" # Screen OCR, websites, tool output, file data
+
+
 class SafetyLevel(str, Enum):
     """Tool safety classification levels.
 
@@ -67,6 +75,8 @@ class Message(BaseModel):
     tool_calls: Optional[List[ToolCall]] = Field(default=None, description="Tool calls requested by assistant")
     tool_call_id: Optional[str] = Field(default=None, description="ID of the tool call this message responds to")
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Creation timestamp")
+    trust_level: TrustLevel = Field(default=TrustLevel.TRUSTED_USER, description="Trust boundary classification")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Arbitrary provenance and classification metadata")
 
     @field_validator("content", mode="after")
     @classmethod
@@ -136,6 +146,8 @@ class MemorySearchResult(BaseModel):
     content: str = Field(..., description="Text content of the matching message")
     timestamp: datetime = Field(..., description="Timestamp of the message")
     score: float = Field(default=1.0, description="Relevance ranking score")
+    trust_level: TrustLevel = Field(default=TrustLevel.TRUSTED_USER, description="Trust level classification")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Provenance metadata")
 
 
 class EmbeddingRecord(BaseModel):

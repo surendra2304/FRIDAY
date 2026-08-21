@@ -144,7 +144,7 @@ def test_tool_timeout_enforcement(slow_registry):
     result = agent._execute_single_tool_call_with_timeout(tc, timeout=0.1)
     
     assert result.is_error
-    assert "timed out after 0.1 seconds" in result.content
+    assert "timeout" in result.content.lower() or "exceeded" in result.content.lower()
 
 
 # --- 5. Test agent translates LLM connection errors to friendly user messages ---

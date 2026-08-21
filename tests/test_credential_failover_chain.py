@@ -50,7 +50,7 @@ def test_immediate_failover_on_429_quota_exhausted():
     mock_client.models.generate_content.side_effect = fake_generate_content
     provider._client = mock_client
 
-    with mock.patch("time.sleep") as mock_sleep:
+    with mock.patch("friday.llm.gemini_provider.time.sleep") as mock_sleep:
         resp = provider.generate([Message(role=Role.USER, content="Hello")])
 
     assert resp.content == "Response from Fallback 1"

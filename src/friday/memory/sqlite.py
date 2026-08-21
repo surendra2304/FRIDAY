@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 import os
 import hashlib
 from friday.core.logging import get_logger
-from friday.core.types import EmbeddingRecord, MemorySearchResult, Message, Role, SemanticSearchResult, ToolCall
+from friday.core.types import EmbeddingRecord, MemorySearchResult, Message, Role, SemanticSearchResult, ToolCall, TrustLevel
 from friday.memory.base import BaseMemory
 from friday.core.config import get_settings
 
@@ -353,8 +353,12 @@ class SQLiteConversationMemory(BaseMemory):
                 if not conv:
                     conn.execute("INSERT INTO conversations (id, title, created_at, updated_at, metadata) VALUES (?, ?, ?, ?, ?)",
                                  (conv_id, "Auto-created Conversation", created_at, now, "{}"))
+                meta_dict = message.metadata or {}
+                if message.trust_level:
+                    meta_dict["trust_level"] = message.trust_level.value
+                meta_json = json.dumps(meta_dict)
                 conn.execute("INSERT INTO messages (id, conversation_id, role, content, name, tool_calls, tool_call_id, created_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                              (msg_id, conv_id, message.role.value, content, message.name, tool_calls_str, message.tool_call_id, created_at, "{}"))
+                              (msg_id, conv_id, message.role.value, content, message.name, tool_calls_str, message.tool_call_id, created_at, meta_json))
                 conn.execute("UPDATE conversations SET updated_at = ? WHERE id = ?", (now, conv_id))
                 conn.commit()
                 logger.debug(f"Saved message '{msg_id}' [Role: {message.role.value}] to conversation '{conv_id}'")
@@ -432,6 +436,19 @@ class SQLiteConversationMemory(BaseMemory):
         except Exception:
             role = Role.USER
 
+        # Parse metadata and trust level
+        msg_meta = {}
+        trust = TrustLevel.TRUSTED_USER
+        if "metadata" in row.keys() and row["metadata"]:
+            try:
+                msg_meta = json.loads(row["metadata"])
+                if isinstance(msg_meta, dict) and "trust_level" in msg_meta:
+                    t_val = msg_meta["trust_level"]
+                    if t_val in TrustLevel._value2member_map_:
+                        trust = TrustLevel(t_val)
+            except Exception:
+                pass
+
         return Message(
             role=role,
             content=row["content"] or "",
@@ -439,6 +456,8 @@ class SQLiteConversationMemory(BaseMemory):
             tool_calls=tool_calls,
             tool_call_id=row["tool_call_id"],
             timestamp=ts,
+            trust_level=trust,
+            metadata=msg_meta,
         )
 
     def get_messages(self, conversation_id: Optional[str] = None) -> List[Message]:
@@ -969,3 +988,7 @@ class SQLiteConversationMemory(BaseMemory):
                 for m in messages
             ],
         }
+
+    def close(self) -> None:
+        """Close SQLite memory resources cleanly."""
+        logger.debug(f"Closed SQLiteConversationMemory at '{self.db_path}'")

@@ -238,10 +238,33 @@ class PerceptionPipeline:
                         task_id=task_id,
                         is_cache_hit=True,
                     )
-                    return self._evaluate_and_sanitize_result(
-                        screen_context=self._cached_context,
+                    cached_view = ScreenContext(
+                        summary=self._cached_context.summary,
+                        active_application=self._cached_context.active_application,
+                        window_title=self._cached_context.window_title,
+                        visible_text=self._cached_context.visible_text,
+                        ui_elements=self._cached_context.ui_elements,
+                        buttons=self._cached_context.buttons,
+                        dialogs=self._cached_context.dialogs,
+                        errors=self._cached_context.errors,
+                        warnings=self._cached_context.warnings,
+                        charts=self._cached_context.charts,
+                        width=self._cached_context.width,
+                        height=self._cached_context.height,
+                        display_id=self._cached_context.display_id,
+                        captured_at=self._cached_context.captured_at,
+                        is_error=self._cached_context.is_error,
+                        error_message=self._cached_context.error_message,
+                        overall_confidence=self._cached_context.overall_confidence,
+                        screen_state_id=self._cached_context.screen_state_id,
+                        provider_model=self._cached_context.provider_model,
                         source="cache",
-                        confidence=self._cached_context.overall_confidence,
+                        is_cached=True,
+                    )
+                    return self._evaluate_and_sanitize_result(
+                        screen_context=cached_view,
+                        source="cache",
+                        confidence=cached_view.overall_confidence,
                         active_monitor=target_mon,
                         query=query,
                         start_time=start_time,
@@ -257,10 +280,33 @@ class PerceptionPipeline:
                             task_id=task_id,
                             is_cache_hit=True,
                         )
-                        return self._evaluate_and_sanitize_result(
-                            screen_context=self._cached_context,
+                        cached_view = ScreenContext(
+                            summary=self._cached_context.summary,
+                            active_application=self._cached_context.active_application,
+                            window_title=self._cached_context.window_title,
+                            visible_text=self._cached_context.visible_text,
+                            ui_elements=self._cached_context.ui_elements,
+                            buttons=self._cached_context.buttons,
+                            dialogs=self._cached_context.dialogs,
+                            errors=self._cached_context.errors,
+                            warnings=self._cached_context.warnings,
+                            charts=self._cached_context.charts,
+                            width=self._cached_context.width,
+                            height=self._cached_context.height,
+                            display_id=self._cached_context.display_id,
+                            captured_at=self._cached_context.captured_at,
+                            is_error=self._cached_context.is_error,
+                            error_message=self._cached_context.error_message,
+                            overall_confidence=self._cached_context.overall_confidence,
+                            screen_state_id=self._cached_context.screen_state_id,
+                            provider_model=self._cached_context.provider_model,
                             source="cache",
-                            confidence=self._cached_context.overall_confidence,
+                            is_cached=True,
+                        )
+                        return self._evaluate_and_sanitize_result(
+                            screen_context=cached_view,
+                            source="cache",
+                            confidence=cached_view.overall_confidence,
                             active_monitor=target_mon,
                             query=query,
                             start_time=start_time,
@@ -351,6 +397,8 @@ class PerceptionPipeline:
         if vision_resp.raw_response and "confidence" in vision_resp.raw_response:
             overall_conf = float(vision_resp.raw_response["confidence"])
 
+        screen_state_id = f"state_{img_sha[:12]}"
+        model_name = getattr(vision_resp, "model", getattr(self.vision_provider, "model", "gemini_vision"))
         screen_ctx = ScreenContext(
             summary=parsed_data.get("summary", vision_resp.text[:100]),
             active_application=parsed_data.get("active_application"),
@@ -366,6 +414,10 @@ class PerceptionPipeline:
             height=snapshot.height,
             display_id=display,
             overall_confidence=overall_conf,
+            screen_state_id=screen_state_id,
+            provider_model=model_name,
+            source="gemini_vision",
+            is_cached=False,
         )
 
         # 5. Cache the freshly analyzed context
@@ -394,6 +446,7 @@ class PerceptionPipeline:
         if target_roi.xmax <= target_roi.xmin or target_roi.ymax <= target_roi.ymin:
             return None
 
+        img_sha = hashlib.sha256(snapshot.image_data).hexdigest() if snapshot.image_data else "none"
         return ScreenContext(
             summary=f"Local ROI inspected at ({target_roi.xmin}, {target_roi.ymin}, {target_roi.xmax}, {target_roi.ymax})",
             ui_elements=[
@@ -409,6 +462,10 @@ class PerceptionPipeline:
             height=snapshot.height,
             display_id=snapshot.display_id,
             overall_confidence=0.95,
+            screen_state_id=f"state_roi_{img_sha[:8]}",
+            provider_model="local_roi_filter",
+            source="local_roi",
+            is_cached=False,
         )
 
     def _evaluate_and_sanitize_result(

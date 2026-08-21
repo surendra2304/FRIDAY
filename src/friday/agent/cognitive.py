@@ -123,8 +123,9 @@ class CognitiveIntelligenceEngine:
     AMBIGUOUS_PATTERNS = [
         r"^(it|that|this|do it|fix it|run)$",
         r"^(something|anything|whatever)$",
-        r"^delete\s*$",
-        r"^open\s*$",
+        r"^do (that|this|it|the thing|that thing)( with (it|that))?$",
+        r"^(delete|open|fix|clean|process|run|start)\s*$",
+        r"^(handle|do)\s+(it|this|that)$",
     ]
 
     def __init__(

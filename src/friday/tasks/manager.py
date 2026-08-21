@@ -441,6 +441,15 @@ class LongRunningTaskManager:
                 return None
 
             elapsed = (time.time() - t["started_at"]) if t["started_at"] else 0.0
+            
+            # Dynamic timeout detection while thread is executing
+            if (
+                t["status"] == TaskLifecycleStatus.RUNNING
+                and (elapsed > t["timeout_seconds"] or (t.get("deadline") and datetime.now(timezone.utc) > t["deadline"]))
+            ):
+                t["status"] = TaskLifecycleStatus.TIMED_OUT
+                t["error"] = f"Task exceeded execution timeout ({t['timeout_seconds']}s)."
+                t["cancel_event"].set()
 
             return TaskProgressReport(
                 task_id=task_id,
@@ -628,6 +637,11 @@ class LongRunningTaskManager:
             t = self._tasks.get(task_id)
             if not t:
                 return
+            if t["status"] in (TaskLifecycleStatus.CANCELLED, TaskLifecycleStatus.TIMED_OUT):
+                return
+            if t["cancel_event"].is_set():
+                t["status"] = TaskLifecycleStatus.CANCELLED
+                return
             t["status"] = TaskLifecycleStatus.RUNNING
             t["started_at"] = t["started_at"] or time.time()
             plan: TaskPlan = t["plan"]
@@ -683,7 +697,12 @@ class LongRunningTaskManager:
             if is_resumption:
                 res = self.agent.resume_task(task_id)
             else:
-                res = self.agent.execute_plan(plan=plan, on_step_progress=_step_progress_callback)
+                res = self.agent.execute_plan(
+                    plan=plan,
+                    on_step_progress=_step_progress_callback,
+                    step_timeout_seconds=timeout,
+                    cancellation_token=t["cancel_event"],
+                )
 
             with self._lock:
                 task_rec = self._tasks.get(task_id)
@@ -696,6 +715,9 @@ class LongRunningTaskManager:
                 # Do not override terminal state if already cancelled or timed out
                 if task_rec["status"] in (TaskLifecycleStatus.CANCELLED, TaskLifecycleStatus.TIMED_OUT, TaskLifecycleStatus.PAUSED):
                     pass
+                elif time.time() - start_time > timeout:
+                    task_rec["status"] = TaskLifecycleStatus.TIMED_OUT
+                    task_rec["error"] = f"Task exceeded execution timeout ({timeout}s)."
                 elif res.success:
                     task_rec["status"] = TaskLifecycleStatus.COMPLETED
                     task_rec["progress_percentage"] = 100.0

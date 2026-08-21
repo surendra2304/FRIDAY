@@ -1,6 +1,6 @@
 # Genuine Real-World Acceptance Test Report
 
-**Generated:** 2026-08-21T03:30:32.886822+00:00
+**Generated:** 2026-08-21T09:46:38.244833+00:00
 **Audit Rule:** Hardware-dependent tests evaluate to BLOCKED when devices/credentials are missing. Never falsely PASS.
 
 ## Summary Matrix

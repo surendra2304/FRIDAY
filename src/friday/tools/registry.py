@@ -196,7 +196,13 @@ class ToolRegistry:
             )
 
             # Timeout handling (async if tool.execute is coroutine)
-            timeout_seconds = kwargs.get("timeout") or getattr(tool, "timeout", 30)
+            raw_timeout = kwargs.get("timeout") or getattr(tool, "timeout", 30.0)
+            try:
+                timeout_seconds = float(raw_timeout)
+                if timeout_seconds <= 0:
+                    timeout_seconds = 30.0
+            except (TypeError, ValueError):
+                timeout_seconds = 30.0
             import inspect
             import threading
             from concurrent.futures import TimeoutError as FuturesTimeoutError

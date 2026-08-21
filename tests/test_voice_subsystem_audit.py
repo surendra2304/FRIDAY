@@ -87,10 +87,25 @@ def test_gemini_live_credential_failover_on_quota_error():
         assert session.api_key == "primary_key_1111"
 
         # Simulate 429 Resource Exhausted during live loop
+        async def _mock_async_gen():
+            if False:
+                yield None
+
+        mock_session_obj = MagicMock()
+        mock_session_obj.receive = _mock_async_gen
+        mock_session_obj.send = AsyncMock()
+
+        class _MockAsyncContextManager:
+            async def __aenter__(self):
+                return mock_session_obj
+
+            async def __aexit__(self, exc_type, exc_val, exc_tb):
+                return None
+
         mock_connect = MagicMock()
         mock_connect.side_effect = [
             Exception("429 Resource Exhausted: Quota exceeded"),
-            AsyncMock(),  # Second connect succeeds
+            _MockAsyncContextManager(),  # Second connect succeeds with proper async context manager
         ]
 
         with patch("google.genai.Client") as mock_client_cls:

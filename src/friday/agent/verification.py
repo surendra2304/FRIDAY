@@ -25,6 +25,7 @@ class VerificationStatus(str, Enum):
     """Outcome status of a verification check."""
     PASSED = "PASSED"
     FAILED = "FAILED"
+    UNVERIFIED = "UNVERIFIED"
     SKIPPED = "SKIPPED"
 
 
@@ -144,8 +145,55 @@ class StepVerifier:
                         evidence_source="screen",
                         is_real_success=False,
                     )
+            elif not screen_data and environment_state is not None:
+                return VerificationResult(
+                    status=VerificationStatus.UNVERIFIED,
+                    criterion="screen_state_evidence",
+                    diagnostics="Screen state evidence unavailable to confirm visual side effects.",
+                    evidence_source="screen",
+                    is_real_success=False,
+                )
 
-        # 4. Evidence Source: Structured Output Verification
+        # 4. Evidence Source: Application State Verification
+        if evidence_src == "application" or (step.tool_name and any(term in step.tool_name for term in ("launch_app", "close_app", "focus_window"))):
+            app_state = environment_state.get("application_state", {}) if environment_state else {}
+            expected_app = step.parameters.get("app_name") or step.parameters.get("process_name") or step.parameters.get("window_title")
+            if expected_app:
+                running_apps = app_state.get("running_processes", []) or app_state.get("open_windows", [])
+                if "close" in (step.tool_name or ""):
+                    if expected_app in running_apps or any(expected_app.lower() in str(a).lower() for a in running_apps):
+                        return VerificationResult(
+                            status=VerificationStatus.FAILED,
+                            criterion=f"app_closed:{expected_app}",
+                            diagnostics=f"False success: Tool reported app closed but '{expected_app}' is still active.",
+                            evidence_source="application",
+                            is_real_success=False,
+                        )
+                else:
+                    if running_apps and not any(expected_app.lower() in str(a).lower() for a in running_apps):
+                        return VerificationResult(
+                            status=VerificationStatus.FAILED,
+                            criterion=f"app_running:{expected_app}",
+                            diagnostics=f"False success: Tool reported app launched but '{expected_app}' was not found in running processes.",
+                            evidence_source="application",
+                            is_real_success=False,
+                        )
+
+        # 5. Evidence Source: External / Network Service State Verification
+        if evidence_src == "external_service" or evidence_src == "network":
+            external_state = environment_state.get("external_state", {}) if environment_state else {}
+            if not external_state and environment_state is not None:
+                # If external verification cannot be performed safely, report UNVERIFIED instead of inventing success
+                return VerificationResult(
+                    status=VerificationStatus.UNVERIFIED,
+                    criterion="external_service_evidence",
+                    evidence=result_str[:100],
+                    diagnostics="External verification service unreachable or unverified; cannot confirm real-world state.",
+                    evidence_source="external_service",
+                    is_real_success=False,
+                )
+
+        # 6. Evidence Source: Structured Output Verification
         if evidence_src == "structured_output":
             try:
                 parsed = json.loads(result_str) if isinstance(step_result, str) else step_result
