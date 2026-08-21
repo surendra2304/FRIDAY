@@ -5,6 +5,7 @@ Provides a concrete Windows implementation using `pywinauto` that is imported la
 and only when the feature flag `ui_automation_enabled` is true on a Windows platform.
 """
 
+import difflib
 import os
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
@@ -60,6 +61,9 @@ class UIAutomationProvider:
     def find_element(self, query: str) -> Optional[UIElement]:
         raise NotImplementedError
 
+    def launch_application(self, executable: str) -> bool:
+        raise NotImplementedError
+
     def click(self, element: UIElement) -> bool:
         raise NotImplementedError
 
@@ -93,23 +97,22 @@ class WindowsUIAutomationProvider(UIAutomationProvider):
         return elements
 
     def find_element(self, query: str) -> Optional[UIElement]:
-        import difflib
         candidates = self._enumerate_all_elements()
-        searchable = []
-        for el in candidates:
-            parts = []
-            if el.automation_id:
-                parts.append(el.automation_id.lower())
-            if el.name:
-                parts.append(el.name.lower())
-            if el.control_type:
-                parts.append(el.control_type.lower())
-            searchable.append((" ".join(parts), el))
         query_norm = query.lower().strip()
         best_score = 0.0
         best_el = None
-        for text, el in searchable:
-            score = difflib.SequenceMatcher(None, query_norm, text).ratio()
+        for el in candidates:
+            parts = [p for p in (el.automation_id, el.name, el.control_type) if p]
+            if not parts:
+                continue
+            part_scores = [
+                difflib.SequenceMatcher(None, query_norm, p.lower()).ratio() for p in parts
+            ]
+            combined = " ".join(p.lower() for p in parts)
+            score = max(part_scores + [difflib.SequenceMatcher(None, query_norm, combined).ratio()])
+            # Reward direct containment (e.g. query "send" inside element name "Send button")
+            if any(query_norm in p.lower() for p in parts):
+                score = max(score, 0.85)
             if score > best_score:
                 best_score = score
                 best_el = el
@@ -117,6 +120,14 @@ class WindowsUIAutomationProvider(UIAutomationProvider):
             # Attach confidence for later use
             setattr(best_el, "confidence", best_score)
         return best_el
+
+    def launch_application(self, executable: str) -> bool:
+        """Launch an application by executable name via pywinauto (no LLM/Vision involved)."""
+        try:
+            Application(backend="uia").start(executable)
+            return True
+        except Exception:
+            return False
 
     def click(self, element: UIElement) -> bool:
         try:

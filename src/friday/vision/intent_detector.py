@@ -40,7 +40,41 @@ class IntentDetector:
         r"click the (windows )?start button": {"action_type": "click", "target": "Start"},
         r"open (the )?start menu": {"action_type": "click", "target": "Start"},
         r"press (the )?enter key": {"action_type": "key_press", "key": "enter"},
+        # Generic semantic element clicks: "click the send button", "click the File menu",
+        # "click the search box", "click the submit link", "click the General tab".
+        r"^(?:please )?(?:click|press|select|tap) (?:the )?(?P<target>.+?) (?:button|link|tab|menu|menu item|icon|box|field|checkbox|toggle)$": {
+            "action_type": "click",
+        },
+        r"^(?:please )?(?:click|press|select|tap) (?:the )?(?P<target>[^ ]+)$": {
+            "action_type": "click",
+        },
     }
+
+    # Known applications launchable deterministically without LLM/Vision.
+    # Maps spoken app names to Windows executables for the UIA provider.
+    APP_LAUNCH_MAP = {
+        "notepad": "notepad.exe",
+        "calculator": "calc.exe",
+        "paint": "mspaint.exe",
+        "file explorer": "explorer.exe",
+        "explorer": "explorer.exe",
+        "edge": "msedge.exe",
+        "microsoft edge": "msedge.exe",
+        "chrome": "chrome.exe",
+        "google chrome": "chrome.exe",
+        "wordpad": "wordpad.exe",
+        "task manager": "taskmgr.exe",
+        "cmd": "cmd.exe",
+        "command prompt": "cmd.exe",
+        "powershell": "powershell.exe",
+        "terminal": "wt.exe",
+        "settings": "ms-settings:",
+        "control panel": "control.exe",
+    }
+
+    LAUNCH_PATTERN = re.compile(
+        r"^(?:please )?(?:open|launch|start|run) (?:the )?(?P<app>.+?)(?: (?:app|application|program|window))?$"
+    )
 
     @classmethod
     def detect(cls, user_input: str) -> IntentResult:
@@ -59,13 +93,32 @@ class IntentDetector:
         # 2. semantic UI patterns – exact regex match gives confidence 1.0
         text = user_input.strip().lower()
         for pattern, data in cls.UI_ACTION_PATTERNS.items():
-            if re.search(pattern, text):
+            match = re.search(pattern, text)
+            if match:
+                parsed = dict(data)
+                if "target" not in parsed and "target" in match.groupdict():
+                    parsed["target"] = match.group("target").strip()
                 return IntentResult(
                     intent=ActionIntent.SEMANTIC_UI_ACTION,
                     confidence=1.0,
-                    parsed_data=data,
+                    parsed_data=parsed,
                 )
 
-        # 3. fuzzy match – placeholder that could be integrated with the UI provider later.
+        # 3. application launch – "open notepad", "launch calculator"
+        launch_match = cls.LAUNCH_PATTERN.match(text)
+        if launch_match:
+            app = launch_match.group("app").strip()
+            if app in cls.APP_LAUNCH_MAP:
+                return IntentResult(
+                    intent=ActionIntent.SEMANTIC_UI_ACTION,
+                    confidence=1.0,
+                    parsed_data={
+                        "action_type": "launch",
+                        "target": app,
+                        "executable": cls.APP_LAUNCH_MAP[app],
+                    },
+                )
+
+        # 4. fuzzy match – placeholder that could be integrated with the UI provider later.
         # For now we return OTHER to let the generic pipeline handle it.
         return IntentResult(intent=ActionIntent.OTHER, confidence=0.0, parsed_data=None)

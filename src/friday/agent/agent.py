@@ -153,6 +153,76 @@ class FridayAgent:
         """Permanently delete all stored conversations and messages."""
         return self.memory.purge_all(confirm=confirm)
 
+    # Minimum fuzzy-match score an enumerated UI element must reach before FRIDAY
+    # clicks it via UI Automation (element match confidence, independent of the
+    # intent regex confidence which is always 1.0 for pattern hits).
+    UIA_ELEMENT_CONFIDENCE_THRESHOLD = 0.60
+
+    def _execute_semantic_ui_action(self, intent_result, user_input: str) -> Optional[AgentResponse]:
+        """Execute a high-confidence semantic UI action via the pywinauto provider.
+
+        Returns an AgentResponse when the action was handled here (bypassing
+        LLM/Vision entirely), or None to fall through to the normal pipeline.
+        """
+        parsed = intent_result.parsed_data or {}
+        action = parsed.get("action_type")
+        target = parsed.get("target", "")
+        self.memory.add_message(Message(role=Role.USER, content=user_input))
+
+        if action == "launch":
+            executable = parsed.get("executable", "")
+            # Proposal != Execution: application launches pass through the authorizer.
+            shell_apps = {"cmd.exe", "powershell.exe", "wt.exe", "taskmgr.exe"}
+            risk = SafetyLevel.SENSITIVE if executable.lower() in shell_apps else SafetyLevel.SAFE
+            auth_req = AuthorizationRequest(
+                tool_name="execute_computer_action",
+                safety_level=risk,
+                arguments={"action_type": "launch", "executable": executable},
+                tool_call_id=str(uuid.uuid4()),
+                purpose=f"Semantic UI launch of {target}",
+                affected_resource="windows_desktop",
+            )
+            auth_resp = self.authorizer.authorize(auth_req)
+            if auth_resp.decision != AuthorizationDecision.APPROVED:
+                logger.warning(f"[UIA] Launch of '{target}' was not authorized ({auth_resp.decision}).")
+                return None
+            logger.info(f"[UIA] Launching application '{target}' ({executable})")
+            if self.ui_provider.launch_application(executable):
+                resp_content = f"Opened {target}."
+                self.memory.add_message(Message(role=Role.ASSISTANT, content=resp_content))
+                return AgentResponse(
+                    content=resp_content,
+                    is_done=True,
+                    metadata={"ui_automation": True, "action": "launch", "target": target},
+                )
+            logger.warning(f"[UIA] Failed to launch application '{executable}'.")
+            return None
+
+        if action in ("click", "key_press"):
+            element = self.ui_provider.find_element(target)
+            if element and getattr(element, "confidence", 0) >= self.UIA_ELEMENT_CONFIDENCE_THRESHOLD:
+                if self.ui_provider.click(element):
+                    resp_content = f"Clicked the {target} via UI Automation."
+                    self.memory.add_message(Message(role=Role.ASSISTANT, content=resp_content))
+                    return AgentResponse(
+                        content=resp_content,
+                        is_done=True,
+                        metadata={
+                            "ui_automation": True,
+                            "action": "click",
+                            "target": target,
+                            "element_confidence": getattr(element, "confidence", 0.0),
+                            "intent_confidence": intent_result.confidence,
+                        },
+                    )
+                logger.warning("[UIA] UI Automation click failed.")
+            else:
+                logger.warning(
+                    f"[UIA] UI element '{target}' not found or below confidence threshold "
+                    f"({getattr(element, 'confidence', 0.0):.2f} < {self.UIA_ELEMENT_CONFIDENCE_THRESHOLD})."
+                )
+        return None
+
     def clear_memory(self, confirm: bool = True) -> None:
         """Clear messages from the active conversation."""
         self.memory.clear(conversation_id=self.conversation_id, confirm=confirm)
@@ -546,17 +616,9 @@ class FridayAgent:
         if intent_result.intent == ActionIntent.SEMANTIC_UI_ACTION and intent_result.confidence >= 0.90:
             logger.info(f"Semantic UI action detected with confidence {intent_result.confidence}")
             if self.ui_provider:
-                element = self.ui_provider.find_element(intent_result.parsed_data.get('target', ''))
-                if element and getattr(element, "confidence", 0) >= intent_result.confidence:
-                    click_success = self.ui_provider.click(element)
-                    if click_success:
-                        resp_content = f"Clicked the {intent_result.parsed_data.get('target', '')} button via UI Automation."
-                        self.memory.add_message(Message(role=Role.ASSISTANT, content=resp_content))
-                        return AgentResponse(content=resp_content, is_done=True, metadata={"ui_automation": True, "action": "click", "target": intent_result.parsed_data.get('target'), "confidence": intent_result.confidence})
-                    else:
-                        logger.warning("UI Automation click failed.")
-                else:
-                    logger.warning("UI element not found or low confidence.")
+                uia_response = self._execute_semantic_ui_action(intent_result, clean_input)
+                if uia_response is not None:
+                    return uia_response
             else:
                 logger.warning("UI Automation provider not initialized.")
         # Evaluate Deterministic Computer Action Fast-Path (Bypasses LLM & Vision entirely)
@@ -570,24 +632,6 @@ class FridayAgent:
             proposal = det_intent.to_proposal()
 
             # Record user turn in memory
-            # Intent detection for semantic UI actions
-            intent_result = IntentDetector.detect(clean_input)
-            if intent_result.intent == ActionIntent.SEMANTIC_UI_ACTION and intent_result.confidence >= 0.90:
-                logger.info(f"Semantic UI action detected with confidence {intent_result.confidence}")
-                # Use UI Automation provider to find element
-                if self.ui_provider:
-                    element = self.ui_provider.find_element(intent_result.parsed_data.get('target', ''))
-                    if element and getattr(element, "confidence", 0) >= intent_result.confidence:
-                        click_success = self.ui_provider.click(element)
-                        if click_success:
-                            resp_content = f"Clicked the {intent_result.parsed_data.get('target', '')} button via UI Automation."
-                            self.memory.add_message(Message(role=Role.ASSISTANT, content=resp_content))
-                            return AgentResponse(content=resp_content, is_done=True, metadata={"ui_automation": True, "action": "click", "target": intent_result.parsed_data.get('target'), "confidence": intent_result.confidence})
-                        else:
-                            logger.warning("UI Automation click failed.")
-                    else:
-                        logger.warning("UI element not found or low confidence.")
-            # Proceed with normal flow
             user_msg = Message(role=Role.USER, content=clean_input)
             self.memory.add_message(user_msg)
 

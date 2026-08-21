@@ -20,6 +20,7 @@ dependencies = [
     "openai>=1.0.0",
     "sounddevice>=0.4.6",
     "numpy>=1.26.0",
+    "pywinauto>=0.6.8; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]
