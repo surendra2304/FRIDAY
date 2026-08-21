@@ -9,17 +9,16 @@ Orchestrates multi-level caching for visual observations, element groundings, an
 5. Strict quota & credential failover preservation.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
 import hashlib
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional
 
 from friday.core.logging import get_logger
 from friday.vision.base import BaseVisionProvider
-from friday.vision.change_detector import ScreenChangeDetector, compute_image_difference_ratio
+from friday.vision.change_detector import compute_image_difference_ratio
 from friday.vision.screen_analyzer import ScreenAnalyzer
-from friday.vision.screen_base import BaseScreenCaptureProvider, ScreenSnapshot
+from friday.vision.screen_base import BaseScreenCaptureProvider
 from friday.vision.screen_context import ScreenContext
 
 logger = get_logger("vision.cache_manager")

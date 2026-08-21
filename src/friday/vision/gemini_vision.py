@@ -6,10 +6,9 @@ performs safe image format validation, and enforces zero secret exposure.
 """
 
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from google import genai
-from google.genai import errors as genai_errors
 from google.genai import types as genai_types
 
 from friday.auth.credential_pool import credential_pool, GeminiCredentialPool, FailureCategory

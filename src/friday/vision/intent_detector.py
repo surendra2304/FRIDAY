@@ -4,7 +4,6 @@
 Detects whether a user request is a geometric deterministic action, a semantic UI action, or falls back to generic processing.
 """
 
-import difflib
 import re
 from dataclasses import dataclass
 from enum import Enum

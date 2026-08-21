@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Proposal-only tool for suggesting desktop computer actions without execution."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 from friday.core.types import SafetyLevel, ToolResult
 from friday.tools.base import BaseTool
 from friday.vision.actions import ActionType, ComputerActionProposal, ProposalBuilder

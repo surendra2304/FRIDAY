@@ -23,7 +23,7 @@ from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel
 
 if TYPE_CHECKING:
-    from friday.agent.planner import PlanStep, StepStatus, TaskPlan
+    from friday.agent.planner import PlanStep, TaskPlan
     from friday.tools.registry import ToolRegistry
 
 logger = get_logger("tools.orchestrator")

@@ -6,12 +6,9 @@ multimodal vision endpoint (Groq, Ollama, OpenRouter, vLLM).
 """
 
 import base64
-import json
-import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 import httpx
 
-from friday.core.exceptions import VisionProviderError
 from friday.core.logging import get_logger
 from friday.security.scrubber import redact_secrets
 from friday.vision.base import BaseVisionProvider, VisionAnalysisResult

@@ -18,15 +18,13 @@ Enforces:
 4. Comprehensive Audit Logging without Secret Leakage.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 import re
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
-import uuid
 
 from friday.core.logging import get_logger
-from friday.core.types import SafetyLevel
 from friday.vision.actions import ActionType, ComputerActionProposal
 from friday.vision.windows_input_driver import (
     BaseWindowsInputDriver,

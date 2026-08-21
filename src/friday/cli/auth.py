@@ -1,7 +1,5 @@
 """Interactive CLI implementation of BaseAuthorizer for FRIDAY."""
 
-import sys
-from typing import Any
 from friday.core.auth import BaseAuthorizer
 from friday.core.types import (
     AuthorizationDecision,

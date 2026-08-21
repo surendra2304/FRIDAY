@@ -5,12 +5,12 @@ Parses purely geometric, non-semantic computer control operations from natural l
 without requiring multimodal Vision or external LLM inference.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from friday.core.types import SafetyLevel
-from friday.vision.actions import ActionType, ComputerActionProposal, ProposalBuilder
+from friday.vision.actions import ActionType, ComputerActionProposal
 from friday.vision.windows_screen import WindowsScreenCaptureProvider
 
 

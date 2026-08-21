@@ -13,7 +13,6 @@ from friday.core.types import (
     AgentResponse,
     AuthorizationDecision,
     AuthorizationRequest,
-    AuthorizationResponse,
     MemorySearchResult,
     Message,
     Role,
@@ -27,8 +26,6 @@ from friday.llm.factory import create_llm_provider
 from friday.memory.base import BaseMemory
 from friday.memory.factory import create_memory
 from friday.memory.policies import should_retrieve_memory
-from friday.memory.in_memory import InMemoryConversationMemory
-from friday.memory.sqlite import SQLiteConversationMemory
 from friday.tools.builtin import (
     SystemInfoTool,
     TimeDateTool,
@@ -40,20 +37,16 @@ from friday.tools.builtin import (
     ProposeComputerActionTool,
 )
 from friday.agent.state import TaskState, ReasoningStateMachine
-from friday.agent.planner import TaskPlan, PlanStep, StepStatus, GoalDecomposer
+from friday.agent.planner import TaskPlan, GoalDecomposer
 from friday.agent.executor import TaskExecutionEngine, TaskExecutionResult, ExecutionProgress
 from friday.agent.checkpoint import TaskCheckpoint, TaskCheckpointStore
-from friday.agent.cognitive import CognitiveIntelligenceEngine, CognitiveDecision, CognitivePhase
-from friday.agent.verification import StepVerifier, VerificationStatus
-from friday.routing.capability_router import CapabilityRouter, ExecutionCapabilityType
+from friday.agent.cognitive import CognitiveIntelligenceEngine, CognitivePhase
+from friday.routing.capability_router import CapabilityRouter
 from friday.vision.actions import ActionType
-from friday.vision.detector import DeterministicActionDetector, DeterministicActionIntent
+from friday.vision.detector import DeterministicActionDetector
 from friday.vision.intent_detector import IntentDetector, ActionIntent
-from friday.vision.computer_control import ComputerActionExecutor, ExecutionStatus
+from friday.vision.computer_control import ComputerActionExecutor
 from friday.vision.windows_input_driver import (
-    BaseWindowsInputDriver,
-    MockWindowsInputDriver,
-    WindowsNativeInputDriver,
     check_desktop_interactivity,
 )
 from friday.memory.task_context import ActiveTaskContext
@@ -940,7 +933,6 @@ class FridayAgent:
                 logger.info(f"Coordinated sequential execution completed in {latency:.4f}s.")
 
             # Process batch results in the exact requested order
-            verifier = StepVerifier()
             for tc, result in zip(assistant_msg.tool_calls, batch_results):
                 all_tool_calls.append(tc)
                 all_tool_results.append(result)

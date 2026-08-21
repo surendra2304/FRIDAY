@@ -2,7 +2,6 @@
 
 import logging
 import os
-import re
 from typing import Optional
 from friday.core.config import get_settings
 

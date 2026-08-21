@@ -12,7 +12,7 @@ import json
 import os
 from pathlib import Path
 import threading
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence
 

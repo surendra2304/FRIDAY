@@ -204,7 +204,7 @@ Modes:
 
     # Perform one-time startup preflight check on Gemini pool if available
     from friday.auth.credential_pool import credential_pool
-    preflight = credential_pool.preflight_check(model=settings.llm_model)
+    credential_pool.preflight_check(model=settings.llm_model)
 
     agent = FridayAgent(
         settings=settings,

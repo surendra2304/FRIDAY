@@ -1,6 +1,5 @@
 """Built-in tool for reading file contents safely."""
 
-import os
 from pathlib import Path
 from typing import Any, Dict
 from friday.core.types import SafetyLevel, ToolResult

@@ -8,10 +8,10 @@ import json
 import os
 import threading
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional
 
 from friday.core.config import get_settings
-from .event import Event, EventType, ErrorCategory, sanitize_metadata
+from .event import Event, sanitize_metadata
 
 _lock = threading.Lock()
 _manager_instance: Optional["ObservabilityManager"] = None

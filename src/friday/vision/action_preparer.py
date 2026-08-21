@@ -16,8 +16,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
 from friday.core.logging import get_logger
-from friday.core.types import SafetyLevel
-from friday.vision.actions import ActionType, ComputerActionProposal, ProposalBuilder
+from friday.vision.actions import ComputerActionProposal, ProposalBuilder
 from friday.vision.screen_context import ScreenContext
 from friday.vision.ui_elements import ElementType, UIElement
 

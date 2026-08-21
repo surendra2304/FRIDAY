@@ -6,11 +6,8 @@ and structured parsing for fine-grained desktop screen understanding.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from enum import Enum
-import json
-import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 
 class ElementType(str, Enum):

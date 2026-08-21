@@ -6,7 +6,6 @@ guarantees read-only behavior, extracts structured UI elements, and prevents mod
 instructions from overriding system policy.
 """
 
-from datetime import datetime, timezone
 import json
 import re
 from typing import Any, Dict, List, Optional
@@ -15,7 +14,7 @@ from friday.core.logging import get_logger
 from friday.vision.base import BaseVisionProvider
 from friday.vision.gemini_vision import GeminiVisionProvider
 from friday.vision.mock_vision import MockVisionProvider
-from friday.vision.screen_base import BaseScreenCaptureProvider, ScreenSnapshot
+from friday.vision.screen_base import BaseScreenCaptureProvider
 from friday.vision.windows_screen import WindowsScreenCaptureProvider
 from friday.vision.mock_screen import MockScreenCaptureProvider
 from friday.vision.screen_context import ScreenContext
@@ -175,7 +174,6 @@ class ScreenAnalyzer:
         # 4. Guard raw vision output for prompt‑injection patterns
         raw_text = result.text.strip() if result.text else ""
         # Apply guard to detect malicious instructions
-        from friday.security.prompt_injection import guard_content, SourceType, InjectionRisk
         guard_result = guard_content(SourceType.SCREEN, raw_text)
         if guard_result.risk == InjectionRisk.BLOCKED:
             return ScreenContext(

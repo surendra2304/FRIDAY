@@ -7,14 +7,14 @@ with ScreenChangeDetector, and performs request deduplication to avoid redundant
 
 from datetime import datetime, timezone
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from friday.core.config import get_settings
 from friday.core.logging import get_logger
 from friday.vision.base import BaseVisionProvider
 from friday.vision.change_detector import ScreenChangeDetector
 from friday.vision.screen_analyzer import ScreenAnalyzer
-from friday.vision.screen_base import BaseScreenCaptureProvider, ScreenSnapshot
+from friday.vision.screen_base import BaseScreenCaptureProvider
 from friday.vision.screen_context import ScreenContext
 
 logger = get_logger("vision.screen_awareness")

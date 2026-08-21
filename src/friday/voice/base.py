@@ -6,7 +6,6 @@ the implementation simple for the initial cloud‑first approach.
 """
 
 from abc import ABC, abstractmethod
-from typing import List
 
 
 class VoiceInput(ABC):

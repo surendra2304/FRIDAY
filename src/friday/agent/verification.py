@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 import re
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Optional
 
 from friday.agent.planner import PlanStep, StepStatus, TaskPlan
 from friday.core.logging import get_logger

@@ -20,8 +20,8 @@ import sqlite3
 from typing import Any, Dict, List, Optional
 import uuid
 
-from friday.agent.planner import PlanStep, StepStatus, TaskPlan
-from friday.agent.state import ReasoningStateMachine, TaskState
+from friday.agent.planner import StepStatus, TaskPlan
+from friday.agent.state import TaskState
 from friday.core.logging import get_logger
 
 logger = get_logger("agent.checkpoint")

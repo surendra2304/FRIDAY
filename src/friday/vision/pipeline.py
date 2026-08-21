@@ -12,15 +12,14 @@ Provides:
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import hashlib
 import time
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional
 
 from friday.auth.request_accounting import request_accountant
 from friday.core.logging import get_logger
 from friday.vision.base import BaseVisionProvider
-from friday.vision.cache_manager import CachedObservation, PerceptionCacheManager
+from friday.vision.cache_manager import PerceptionCacheManager
 from friday.vision.change_detector import compute_image_difference_ratio
 from friday.vision.mock_screen import MockScreenCaptureProvider
 from friday.vision.mock_vision import MockVisionProvider

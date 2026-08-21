@@ -3,10 +3,9 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import json
 from typing import Any, Dict, List, Optional
 
-from friday.vision.ui_elements import BoundingBox, ElementType, UIElement
+from friday.vision.ui_elements import ElementType, UIElement
 
 
 @dataclass

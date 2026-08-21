@@ -26,19 +26,17 @@ from pathlib import Path
 import sqlite3
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional, Set
-import uuid
+from typing import Any, Callable, Dict, List, Optional
 
 from friday.agent.agent import FridayAgent
-from friday.agent.checkpoint import TaskCheckpoint, TaskCheckpointStore
-from friday.agent.executor import ExecutionProgress, TaskExecutionResult
-from friday.agent.planner import PlanStep, StepStatus, TaskPlan
-from friday.agent.state import ReasoningStateMachine, TaskState
-from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer
+from friday.agent.checkpoint import TaskCheckpointStore
+from friday.agent.executor import ExecutionProgress
+from friday.agent.planner import TaskPlan
+from friday.core.auth import BaseAuthorizer
 from friday.core.logging import get_logger
-from friday.observability.event import ErrorCategory, Event, EventType
+from friday.observability.event import Event, EventType
 from friday.observability.manager import get_observability_manager
-from friday.security.scrubber import redact_secrets, recursive_sanitize
+from friday.security.scrubber import redact_secrets
 
 logger = get_logger("tasks.manager")
 
@@ -645,7 +643,6 @@ class LongRunningTaskManager:
             t["status"] = TaskLifecycleStatus.RUNNING
             t["started_at"] = t["started_at"] or time.time()
             plan: TaskPlan = t["plan"]
-            spec: TaskSpec = t["spec"]
             timeout = t["timeout_seconds"]
             deadline = t.get("deadline")
 

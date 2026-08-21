@@ -16,11 +16,10 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 import uuid
 
-from friday.core.logging import get_logger, redact_tool_args
+from friday.core.logging import get_logger
 from friday.core.types import Message, Role
 
 if TYPE_CHECKING:
-    from friday.agent.planner import PlanStep, StepStatus, TaskPlan
     from friday.agent.state import TaskState
     from friday.agent.verification import VerificationResult
 

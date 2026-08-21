@@ -17,22 +17,17 @@ Core Capabilities:
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from enum import Enum
-import json
 import re
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
-import uuid
+from typing import Any, Dict, List, Optional
 
-from friday.agent.goal import Goal, GoalRequestType, GoalRiskLevel, GoalUnderstandingEngine
-from friday.agent.planner import PlanStep, StepStatus, TaskPlan
-from friday.agent.state import ReasoningStateMachine, TaskState
-from friday.agent.verification import StepVerifier, VerificationResult, VerificationStatus
+from friday.agent.goal import GoalRequestType, GoalUnderstandingEngine
+from friday.agent.planner import PlanStep, TaskPlan
+from friday.agent.verification import VerificationResult, VerificationStatus
 from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer
 from friday.core.logging import get_logger
-from friday.core.types import AuthorizationDecision, AuthorizationRequest, Message, Role, SafetyLevel, ToolResult
+from friday.core.types import SafetyLevel, ToolResult
 from friday.llm.base import BaseLLMProvider
-from friday.security.scrubber import redact_secrets
 
 logger = get_logger("agent.cognitive")
 
@@ -220,7 +215,6 @@ class CognitiveIntelligenceEngine:
         authorizer: Optional[BaseAuthorizer] = None,
     ) -> CognitiveDecision:
         """Execute CHECK_PLAN phase: validate safety, cycles, authorization, and plan confidence."""
-        authz = authorizer or self.authorizer
         confidence = ConfidenceAssessment()
         reasons = []
 
@@ -229,7 +223,7 @@ class CognitiveIntelligenceEngine:
 
         # 1. Dependency DAG cycle validation
         try:
-            waves = plan.compute_topological_schedule()
+            plan.compute_topological_schedule()
         except Exception as err:
             confidence.planning_confidence = 0.1
             reasons.append(f"Plan validation failed with dependency error: {err}")

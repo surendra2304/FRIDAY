@@ -25,13 +25,12 @@ Converts high-level natural language user requests into structured, validated Go
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-import json
 import re
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import uuid
 
-from friday.core.logging import get_logger, redact_tool_args
-from friday.core.types import Message, Role, SafetyLevel
+from friday.core.logging import get_logger
+from friday.core.types import SafetyLevel
 from friday.llm.base import BaseLLMProvider
 from friday.vision.vision_memory import redact_sensitive_visual_text
 
@@ -241,7 +240,6 @@ class GoalUnderstandingEngine:
                 )
 
         # 2. Ambiguity & Underspecification Check
-        lower_req = clean_request.lower()
         if len(clean_request) < 4 or clean_request in ("do it", "fix it", "run that", "open it", "start"):
             return Goal(
                 goal_id=goal_id,

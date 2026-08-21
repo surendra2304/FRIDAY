@@ -6,8 +6,6 @@ from friday.core.config import get_settings
 from friday.core.types import SafetyLevel, ToolResult
 from friday.tools.base import BaseTool
 from friday.vision.screen_base import BaseScreenCaptureProvider, ScreenSnapshot
-from friday.vision.windows_screen import WindowsScreenCaptureProvider
-from friday.vision.mock_screen import MockScreenCaptureProvider
 
 
 class ScreenSnapshotTool(BaseTool):

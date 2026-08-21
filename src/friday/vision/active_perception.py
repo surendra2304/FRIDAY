@@ -8,10 +8,9 @@ handles uncertainty, and strictly ignores untrusted screen instructions attempti
 to force observation loops.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from friday.core.logging import get_logger
 from friday.vision.screen_analyzer import ScreenAnalyzer

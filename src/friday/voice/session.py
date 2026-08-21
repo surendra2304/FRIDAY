@@ -5,7 +5,6 @@ for handling user‑initiated interruptions. It simply forwards the agent
 instance to the provider's ``run_session`` method.
 """
 
-from typing import Optional
 
 from .base import VoiceProvider
 from ..agent.agent import FridayAgent

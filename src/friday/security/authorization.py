@@ -6,7 +6,6 @@ cryptographically signed capability tokens bound to the specific tool name,
 arguments hash, safety level, tool call ID, and expiration timestamp.
 """
 
-from datetime import datetime, timezone
 import hashlib
 import hmac
 import json

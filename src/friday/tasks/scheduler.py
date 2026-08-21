@@ -1,10 +1,9 @@
 import threading
 import time
 from datetime import datetime, timedelta
-from typing import List, Dict
 
 from .models import Task, ScheduleType, SafetyLevel
-from .sqlite_store import get_all_tasks, save_task, delete_task, log_task_run, get_task_history
+from .sqlite_store import get_all_tasks, save_task, log_task_run
 from friday.core.config import get_settings
 from friday.agent.agent import FridayAgent
 from friday.core.auth import DefaultSecureAuthorizer

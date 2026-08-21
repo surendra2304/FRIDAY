@@ -34,11 +34,10 @@ from enum import Enum
 import os
 from pathlib import Path
 import sqlite3
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from friday.core.config import Settings, get_settings
 from friday.core.logging import get_logger
-from friday.core.types import SafetyLevel
 from friday.security.scrubber import redact_secrets, recursive_sanitize
 
 logger = get_logger("core.doctor")

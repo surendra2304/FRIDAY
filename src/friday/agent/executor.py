@@ -20,13 +20,10 @@ import uuid
 
 from friday.agent.planner import PlanStep, StepStatus, TaskPlan
 from friday.agent.state import ReasoningStateMachine, TaskState
-from friday.agent.verification import SelfCorrectionPolicy, StepVerifier, VerificationResult, VerificationStatus
+from friday.agent.verification import StepVerifier, VerificationResult, VerificationStatus
 from friday.agent.recovery import (
     AutonomousRecoveryManager,
     FailureAnalyzer,
-    FailureDiagnosis,
-    FailureType,
-    RecoveryStrategy,
 )
 from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer
 from friday.core.logging import get_logger
@@ -34,7 +31,6 @@ from friday.core.types import (
     AuthorizationDecision,
     AuthorizationRequest,
     SafetyLevel,
-    ToolCall,
     ToolResult,
 )
 from friday.tools.orchestrator import DataFlowResolver
@@ -184,7 +180,7 @@ class TaskExecutionEngine:
         cancellation_token: Optional[Any] = None,
     ) -> TaskExecutionResult:
         """Execute a TaskPlan in validated dependency DAG order with wave scheduling, safe concurrency, and self-correction."""
-        from friday.security.scrubber import redact_secrets, recursive_sanitize
+        from friday.security.scrubber import redact_secrets
 
         start_time = time.perf_counter()
         cancel_event = cancellation_token or self._cancel_token

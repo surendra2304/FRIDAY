@@ -8,12 +8,10 @@ change timestamps, relevant task context associations, and confidence metrics ov
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-import json
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from friday.core.logging import get_logger
 from friday.vision.screen_context import ScreenContext
-from friday.vision.ui_elements import ElementType, UIElement
 
 logger = get_logger("vision.temporal")
 

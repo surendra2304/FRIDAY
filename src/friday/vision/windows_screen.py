@@ -9,10 +9,8 @@ import base64
 import ctypes
 from ctypes import wintypes
 from datetime import datetime
-import os
 import struct
 import subprocess
-import time
 from typing import Any, Dict, List, Optional
 import zlib
 
@@ -232,7 +230,7 @@ class WindowsScreenCaptureProvider(BaseScreenCaptureProvider):
             if not h_bitmap:
                 raise RuntimeError("Failed to create compatible GDI bitmap")
 
-            old_obj = self._gdi32.SelectObject(h_capture_dc, h_bitmap)
+            self._gdi32.SelectObject(h_capture_dc, h_bitmap)
 
             success = self._gdi32.BitBlt(
                 h_capture_dc, 0, 0, width, height, h_desktop_dc, src_x, src_y, SRCCOPY

@@ -517,7 +517,7 @@ class GeminiLLMProvider(BaseLLMProvider):
                 if category == FailureCategory.AUTH_FAILED:
                     if self.credential_pool and not self._explicit_api_key:
                         try:
-                            next_key = self.credential_pool.get_active_key()
+                            self.credential_pool.get_active_key()
                             logger.warning(
                                 f"Gemini credential authentication failed ({self._mask_key(failed_key)}); "
                                 "switching to next healthy credential."
@@ -534,7 +534,7 @@ class GeminiLLMProvider(BaseLLMProvider):
                 if category in (FailureCategory.QUOTA_EXHAUSTED, FailureCategory.RATE_LIMIT):
                     if self.credential_pool and not self._explicit_api_key:
                         try:
-                            next_key = self.credential_pool.get_active_key()
+                            self.credential_pool.get_active_key()
                             logger.warning(
                                 f"Gemini quota exhausted for credential ({self._mask_key(failed_key)}); "
                                 "switching to next available credential."

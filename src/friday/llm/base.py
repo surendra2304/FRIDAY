@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
-from friday.core.types import Message, ToolCall
+from friday.core.types import Message
 
 
 class BaseLLMProvider(ABC):

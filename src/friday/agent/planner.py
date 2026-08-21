@@ -12,12 +12,12 @@ Provides explicit, validated, provider-independent task plans:
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set
 import uuid
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel
-from friday.agent.goal import Goal, GoalRequestType, GoalRiskLevel, SubGoal
+from friday.agent.goal import Goal
 from friday.tools.registry import ToolRegistry
 
 logger = get_logger("agent.planner")

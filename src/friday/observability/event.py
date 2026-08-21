@@ -7,9 +7,7 @@ The schema intentionally avoids logging any sensitive data.
 
 import enum
 from dataclasses import dataclass, asdict
-from datetime import datetime
 from typing import Optional, Dict, Any
-import uuid
 
 
 class EventType(str, enum.Enum):

@@ -9,9 +9,8 @@ exception creation, or serialization.
 
 import os
 import re
-import sys
 import threading
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Optional, Set
 
 
 # Comprehensive regex patterns for common credential formats

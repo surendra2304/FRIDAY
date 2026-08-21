@@ -4,8 +4,7 @@ import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Type
-from enum import Enum
-from pydantic import AliasChoices, Field, SecretStr, validator
+from pydantic import AliasChoices, Field
 from pydantic_settings import (
     BaseSettings,
     EnvSettingsSource,

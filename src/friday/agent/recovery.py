@@ -32,13 +32,11 @@ Provides:
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
-import re
+from typing import Any, Dict, List, Optional
 
-from friday.agent.planner import PlanStep, StepStatus, TaskPlan
+from friday.agent.planner import PlanStep, StepStatus
 from friday.agent.verification import VerificationResult
 from friday.core.logging import get_logger
-from friday.core.types import SafetyLevel
 
 logger = get_logger("agent.recovery")
 

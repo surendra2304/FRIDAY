@@ -18,13 +18,11 @@ Core Capabilities:
    as verified factual TaskObservations with secret redaction and zero raw screenshot persistence.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 import hashlib
-import io
-import math
 import struct
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 import zlib
 
 import numpy as np
@@ -32,7 +30,7 @@ import numpy as np
 from friday.core.logging import get_logger
 from friday.memory.task_context import ActiveTaskContext
 from friday.vision.change_detector import compute_image_difference_ratio
-from friday.vision.temporal import EnvironmentalChange, EnvironmentalChangeType
+from friday.vision.temporal import EnvironmentalChange
 from friday.vision.ui_elements import BoundingBox
 from friday.vision.vision_memory import redact_sensitive_visual_text
 

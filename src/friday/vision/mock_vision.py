@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Deterministic mock vision provider for offline testing and fixture isolation."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 from friday.vision.base import BaseVisionProvider, VisionAnalysisResult
 
 

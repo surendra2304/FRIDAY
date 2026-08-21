@@ -10,14 +10,13 @@ Provides:
 6. Revalidation & Fresh Perception enforcement for sensitive actions.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
 import time
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel
-from friday.vision.ui_elements import BoundingBox, UIElement
+from friday.vision.ui_elements import BoundingBox
 
 logger = get_logger("vision.coordinates")
 

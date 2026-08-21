@@ -20,9 +20,8 @@ Permanently blocked at Guard 4 regardless of mode:
 - dangerous hotkeys (Win+R, Ctrl+Alt+Del, Alt+F4 …)
 """
 
-import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer
 from friday.core.logging import get_logger
@@ -34,8 +33,6 @@ from friday.vision.computer_control import (
     ExecutionStatus,
 )
 from friday.vision.windows_input_driver import (
-    MockWindowsInputDriver,
-    WindowsNativeInputDriver,
     check_desktop_interactivity,
 )
 

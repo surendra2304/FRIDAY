@@ -6,14 +6,14 @@ Resolves spoken contextual references (e.g. "what is this", "what changed", "loo
 to decide whether visual capture is necessary and formulate targeted query parameters.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional
 
 from friday.core.logging import get_logger
 from friday.memory.task_context import ActiveTaskContext
-from friday.vision.active_perception import ActivePerceptionEngine, ObservationNecessity
+from friday.vision.active_perception import ActivePerceptionEngine
 from friday.vision.episodic_memory import EpisodicEnvironmentalMemoryManager
 from friday.vision.screen_context import ScreenContext
 from friday.vision.temporal import TemporalEnvironmentTracker
