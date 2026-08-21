@@ -29,7 +29,7 @@ logger = get_logger("test_live_hardware")
 async def test_live_hardware():
     settings = get_settings()
     # Force live model for testing
-    settings.voice_live_model = "gemini-3.1-flash-live-preview"
+    settings.voice_live_model = "gemini-2.0-flash-exp"
     
     setup_logging(level="DEBUG")
     

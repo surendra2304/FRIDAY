@@ -18,18 +18,21 @@ from friday.memory.embeddings.gemini import GeminiEmbeddingProvider
 
 # Authoritative active model configuration
 AUTHORITATIVE_MODELS = {
-    "text_llm": "gemini-3.7-flash",
-    "vision": "gemini-3.7-flash",
-    "voice_live": "gemini-3.1-flash-live-preview",
+    "text_llm": "gemini-1.5-flash-latest",
+    "vision": "gemini-1.5-flash-latest",
+    "voice_live": "gemini-2.0-flash-exp",
     "embeddings": "gemini-embedding-2",
 }
 
 DISALLOWED_LEGACY_PATTERNS = [
+    # Policy update (2026-08-22): gemini-1.5-flash-latest and gemini-2.0-flash-exp
+    # are the ACTIVE models (Google denies the 3.x previews with 1008 access
+    # errors). The 3.x preview generations are now the disallowed legacy refs.
+    r"\bgemini-3\.7\b",
+    r"\bgemini-3\.6\b",
+    r"\bgemini-3\.1\b",
     r"\bgemini-1\.0\b",
-    r"\bgemini-1\.5\b",
     r"\bgemini-1\.5-pro\b",
-    r"\bgemini-1\.5-flash\b",
-    r"\bgemini-2\.0\b",
     r"\bgemini-pro\b",
     r"\btext-embedding-004\b",
     r"\bmodels/embedding-001\b",

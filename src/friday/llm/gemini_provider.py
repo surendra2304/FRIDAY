@@ -48,7 +48,7 @@ class GeminiLLMProvider(BaseLLMProvider):
         api_key: Optional[str] = None,
         credential_pool: Optional[GeminiCredentialPool] = credential_pool,
         base_url: str = "https://generativelanguage.googleapis.com/v1beta",
-        model: str = "gemini-3.7-flash",
+        model: str = "gemini-1.5-flash-latest",
         temperature: float = 0.7,
         max_tokens: int = 2048,
         timeout: float = 60.0,

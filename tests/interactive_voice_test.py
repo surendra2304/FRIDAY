@@ -36,7 +36,7 @@ from friday.auth.credential_pool import credential_pool, GeminiCredentialPool  #
 from friday.voice.audio_io import MicrophoneStream, SpeakerStream  # noqa: E402
 from friday.voice.gemini_live_session import GeminiLiveVoiceSession  # noqa: E402
 
-DEFAULT_MODEL = "gemini-3.1-flash-live-preview"
+DEFAULT_MODEL = "gemini-2.0-flash-exp"
 SAMPLE_RATE_IN = 16000
 SAMPLE_RATE_OUT = 24000
 

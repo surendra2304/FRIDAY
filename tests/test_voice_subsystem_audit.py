@@ -80,7 +80,7 @@ def test_gemini_live_credential_failover_on_quota_error():
         session = GeminiLiveVoiceSession(
             api_key=None,
             credential_pool=pool,
-            model="gemini-3.1-flash-live-preview",
+            model="gemini-2.0-flash-exp",
             max_retries=1,
         )
 
@@ -143,14 +143,16 @@ def test_gemini_live_credential_failover_on_quota_error():
 
 def test_live_voice_model_preservation_and_fallback():
     """Verify that GeminiLiveVoiceSession enforces a valid Gemini Live model."""
-    # Attempting to supply a non-live text model (e.g. gemini-3.7-flash) falls back to Live voice model
+    # Attempting to supply a non-live text model (e.g. gemini-1.5-flash-latest) falls back to Live voice model
     session = GeminiLiveVoiceSession(
         api_key="test_key",
-        model="gemini-3.7-flash",  # Non-live model
+        model="gemini-1.5-flash-latest",  # Non-live model
     )
 
-    assert "live" in session.model.lower()
-    assert session.model == "gemini-3.1-flash-live-preview"
+    from friday.voice.gemini_live_session import _LIVE_CAPABLE_MODEL_NAMES
+    assert session.model == "gemini-2.0-flash-exp"
+    assert session.model.lower() in _LIVE_CAPABLE_MODEL_NAMES
+    assert session.model == "gemini-2.0-flash-exp"
 
 
 # ============================================================================
@@ -183,7 +185,9 @@ def test_gemini_voice_provider_adapters_and_pool():
     provider = GeminiVoiceProvider(credential_pool=pool)
 
     assert provider.api_key == "test_primary_key_abc"
-    assert "live" in provider.model.lower()
+    from friday.voice.gemini_live_session import _LIVE_CAPABLE_MODEL_NAMES
+    assert provider.model == "gemini-2.0-flash-exp"
+    assert provider.model.lower() in _LIVE_CAPABLE_MODEL_NAMES
 
     # Verify input adapter description
     chunk_desc = provider.input.read_chunk()

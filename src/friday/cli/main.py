@@ -219,7 +219,7 @@ Modes:
         import asyncio
         print(render_friday_banner("0.4.6"))
         print("  Starting Gemini Live Real-Time Voice Session...")
-        print("  Model: gemini-3.1-flash-live-preview | Input: 16kHz PCM | Output: 24kHz PCM")
+        print("  Model: gemini-2.0-flash-exp | Input: 16kHz PCM | Output: 24kHz PCM")
         print("  Press Ctrl+C to end voice session.\n")
         try:
             from friday.voice.gemini_live_session import GeminiLiveVoiceSession

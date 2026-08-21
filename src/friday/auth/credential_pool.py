@@ -290,7 +290,7 @@ class GeminiCredentialPool:
         with self.lock:
             return self._get_active_label_unlocked()
 
-    def preflight_check(self, model: str = "gemini-3.7-flash", force_probe: bool = False) -> Dict[str, Any]:
+    def preflight_check(self, model: str = "gemini-1.5-flash-latest", force_probe: bool = False) -> Dict[str, Any]:
         """Perform a one-time quota-conscious startup preflight check without deadlock.
         
         Checks persisted health first. Only performs a live probe if no healthy

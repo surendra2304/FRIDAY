@@ -20,6 +20,10 @@ from friday.llm.openrouter_provider import OPENROUTER_DEFAULT_MODEL, OpenRouterL
 
 logger = get_logger("llm.factory")
 
+# Sentinel: the configured default llm_model means "not user-overridden" — chain
+# providers then use their own per-provider default models.
+_DEFAULT_LLM_MODEL = Settings.model_fields["llm_model"].default
+
 
 def create_llm_provider(settings: Settings) -> BaseLLMProvider:
     """Create and configure the appropriate LLM provider instance from settings."""
@@ -54,7 +58,7 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
 
     if provider_type == "groq":
         model_name = settings.groq_model or (
-            settings.llm_model if settings.llm_model != "gemini-3.7-flash" else GROQ_DEFAULT_MODEL
+            settings.llm_model if settings.llm_model != _DEFAULT_LLM_MODEL else GROQ_DEFAULT_MODEL
         )
         logger.info(f"Initializing Groq Provider (model: {model_name}, fallback: {settings.groq_fallback_model})")
         return GroqLLMProvider(
@@ -68,7 +72,7 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
 
     if provider_type == "openrouter":
         model_name = settings.openrouter_model or (
-            settings.llm_model if settings.llm_model != "gemini-3.7-flash" else OPENROUTER_DEFAULT_MODEL
+            settings.llm_model if settings.llm_model != _DEFAULT_LLM_MODEL else OPENROUTER_DEFAULT_MODEL
         )
         logger.info(f"Initializing OpenRouter Provider (model: {model_name})")
         return OpenRouterLLMProvider(
@@ -81,7 +85,7 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
 
     if provider_type == "cerebras":
         model_name = settings.cerebras_model or (
-            settings.llm_model if settings.llm_model != "gemini-3.7-flash" else CEREBRAS_DEFAULT_MODEL
+            settings.llm_model if settings.llm_model != _DEFAULT_LLM_MODEL else CEREBRAS_DEFAULT_MODEL
         )
         logger.info(f"Initializing Cerebras Provider (model: {model_name})")
         return CerebrasLLMProvider(
@@ -95,13 +99,13 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
     if provider_type == "chain":
         # Cross-provider automatic failover: Groq -> Cerebras -> OpenRouter.
         groq_model = settings.groq_model or (
-            settings.llm_model if settings.llm_model != "gemini-3.7-flash" else GROQ_DEFAULT_MODEL
+            settings.llm_model if settings.llm_model != _DEFAULT_LLM_MODEL else GROQ_DEFAULT_MODEL
         )
         cerebras_model = settings.cerebras_model or (
-            settings.llm_model if settings.llm_model != "gemini-3.7-flash" else CEREBRAS_DEFAULT_MODEL
+            settings.llm_model if settings.llm_model != _DEFAULT_LLM_MODEL else CEREBRAS_DEFAULT_MODEL
         )
         openrouter_model = settings.openrouter_model or (
-            settings.llm_model if settings.llm_model != "gemini-3.7-flash" else OPENROUTER_DEFAULT_MODEL
+            settings.llm_model if settings.llm_model != _DEFAULT_LLM_MODEL else OPENROUTER_DEFAULT_MODEL
         )
         chain_providers = [
             GroqLLMProvider(

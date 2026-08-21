@@ -96,7 +96,7 @@ class Settings(BaseSettings):
 
     # LLM Settings & Cost Controls
     llm_provider: str = Field(default="gemini", description="LLM provider name: 'mock', 'openai', 'gemini'")
-    llm_model: str = Field(default="gemini-3.7-flash", description="Model identifier")
+    llm_model: str = Field(default="gemini-1.5-flash-latest", description="Model identifier")
     llm_api_key: Optional[str] = Field(
         default=None,
         validation_alias=AliasChoices("FRIDAY_LLM_API_KEY", "OPENAI_API_KEY", "LLM_API_KEY", "llm_api_key"),
@@ -237,7 +237,7 @@ class Settings(BaseSettings):
     )
     voice_playback_buffer_ms: int = Field(default=100, description="Playback buffer size in milliseconds for non‑blocking audio")
     voice_live_model: str = Field(
-        default="gemini-3.1-flash-live-preview",
+        default="gemini-2.0-flash-exp",
         validation_alias=AliasChoices("FRIDAY_VOICE_LIVE_MODEL", "VOICE_LIVE_MODEL", "voice_live_model"),
         description="Gemini Live multimodal voice model",
     )
@@ -283,7 +283,7 @@ class Settings(BaseSettings):
     
     # Vision & Multimodal Settings
     vision_model: str = Field(
-        default="gemini-3.7-flash",
+        default="gemini-1.5-flash-latest",
         validation_alias=AliasChoices("FRIDAY_VISION_MODEL", "VISION_MODEL", "vision_model"),
         description="Multimodal Gemini vision model identifier",
     )

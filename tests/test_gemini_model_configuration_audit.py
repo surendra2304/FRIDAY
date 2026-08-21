@@ -2,11 +2,11 @@
 """Comprehensive audit tests for Gemini model configurations and parameter sanitization.
 
 Verifies:
-1. GeminiLLMProvider defaults to 'gemini-3.7-flash'.
-2. GenerateContentConfig for Gemini 3.7 strictly omits unsupported parameters (temperature, top_p, top_k).
+1. GeminiLLMProvider defaults to 'gemini-1.5-flash-latest'.
+2. GenerateContentConfig for 3.7-family models (explicitly configured) omits unsupported parameters.
 3. Legacy models (e.g. 'gemini-1.5-pro') retain supported generation parameters.
-4. GeminiVisionProvider defaults to 'gemini-3.7-flash' and omits temperature in SDK config.
-5. GeminiLiveVoiceSession strictly isolates Live models ('gemini-3.1-flash-live-preview') and rejects text/vision models.
+4. GeminiVisionProvider defaults to 'gemini-1.5-flash-latest' and omits temperature in SDK config.
+5. GeminiLiveVoiceSession strictly isolates Live models ('gemini-2.0-flash-exp') and rejects text/vision models.
 6. GeminiEmbeddingProvider defaults to 'gemini-embedding-2' with 768 dimensions.
 """
 
@@ -21,14 +21,14 @@ from friday.vision.gemini_vision import GeminiVisionProvider
 from friday.voice.gemini_live_session import GeminiLiveVoiceSession
 
 
-def test_gemini_llm_provider_default_model_is_37():
-    """Verify GeminiLLMProvider constructor default model is gemini-3.7-flash."""
+def test_gemini_llm_provider_default_model():
+    """Verify GeminiLLMProvider constructor default model is gemini-1.5-flash-latest."""
     provider = GeminiLLMProvider(api_key="TEST_API_KEY")
-    assert provider.model == "gemini-3.7-flash"
-    assert is_gemini_37_model(provider.model) is True
+    assert provider.model == "gemini-1.5-flash-latest"
+    assert is_gemini_37_model(provider.model) is False
 
     settings = get_settings()
-    assert settings.llm_model == "gemini-3.7-flash"
+    assert settings.llm_model == "gemini-1.5-flash-latest"
 
 
 def test_gemini_37_generate_content_config_omits_unsupported_parameters():
@@ -63,35 +63,35 @@ def test_legacy_model_generate_content_config_preserves_temperature():
 
 
 def test_gemini_vision_provider_model_and_parameter_sanitization():
-    """Verify GeminiVisionProvider defaults to gemini-3.7-flash and omits temperature for 3.7."""
+    """Verify GeminiVisionProvider defaults to gemini-1.5-flash-latest and omits temperature for 3.7."""
     vision = GeminiVisionProvider(api_key="TEST_API_KEY")
-    assert vision.model == "gemini-3.7-flash"
+    assert vision.model == "gemini-1.5-flash-latest"
 
-    # Mock client.models.generate_content to inspect actual config passed to SDK
+    # For 3.7-family models temperature must be omitted from GenerateContentConfig
     mock_client = mock.MagicMock()
-    with mock.patch.object(vision, "_get_client", return_value=mock_client):
+    vision37 = GeminiVisionProvider(api_key="TEST_API_KEY", model="gemini-3.7-flash")
+    with mock.patch.object(vision37, "_get_client", return_value=mock_client):
         # Valid PNG header + synthetic bytes
         fake_png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 50
-        vision.analyze_image(image_data=fake_png, mime_type="image/png", temperature=0.5)
+        vision37.analyze_image(image_data=fake_png, mime_type="image/png", temperature=0.5)
 
         assert mock_client.models.generate_content.called
         call_kwargs = mock_client.models.generate_content.call_args[1]
         passed_config = call_kwargs.get("config")
         assert passed_config is not None
-        # For Gemini 3.7, temperature must be None in GenerateContentConfig
         assert passed_config.temperature is None
 
 
 def test_gemini_live_voice_session_model_isolation():
-    """Verify Live voice session defaults to gemini-3.1-flash-live-preview and refuses text/vision models."""
+    """Verify Live voice session defaults to gemini-2.0-flash-exp and refuses text/vision models."""
     # 1. Default model
     session = GeminiLiveVoiceSession(api_key="TEST_API_KEY")
-    assert session.model == "gemini-3.1-flash-live-preview"
+    assert session.model == "gemini-2.0-flash-exp"
 
     # 2. Rejection / Fallback when text/vision model is passed
-    session_bad = GeminiLiveVoiceSession(api_key="TEST_API_KEY", model="gemini-3.7-flash")
-    assert session_bad.model == "gemini-3.1-flash-live-preview"
-    assert session_bad.model != "gemini-3.7-flash"
+    session_bad = GeminiLiveVoiceSession(api_key="TEST_API_KEY", model="gemini-1.5-flash-latest")
+    assert session_bad.model == "gemini-2.0-flash-exp"
+    assert session_bad.model != "gemini-1.5-flash-latest"
 
 
 def test_gemini_embedding_provider_model_and_dimension():

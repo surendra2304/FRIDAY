@@ -21,7 +21,7 @@ def test_gemini_cost_configuration_defaults():
     assert settings.gemini_timeout == 60.0
     assert settings.gemini_max_retries == 3
     assert settings.gemini_backoff_factor == 2.0
-    assert settings.gemini_model in (None, "gemini-3.7-flash", "gemini-3.6-flash", "gemini-2.5-flash")
+    assert settings.gemini_model in (None, "gemini-1.5-flash-latest", "gemini-3.6-flash", "gemini-2.5-flash")
     assert settings.gemini_max_tokens is None
     assert settings.gemini_temperature is None
     assert settings.max_daily_requests is None

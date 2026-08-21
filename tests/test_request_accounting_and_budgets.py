@@ -36,7 +36,7 @@ def test_accounting_records_without_secrets():
 
     rec = acc.record_request(
         credential_label="PRIMARY",
-        model="gemini-3.7-flash",
+        model="gemini-1.5-flash-latest",
         purpose="reasoning",
         task_id="task_123",
         session_id="session_abc",
@@ -71,7 +71,7 @@ def test_per_task_budget_enforcement():
         assert reason is None
         acc.record_request(
             credential_label="PRIMARY",
-            model="gemini-3.7-flash",
+            model="gemini-1.5-flash-latest",
             purpose="reasoning",
             task_id="task_audit",
         )
@@ -96,7 +96,7 @@ def test_consecutive_failure_circuit_breaker():
     for i in range(3):
         acc.record_request(
             credential_label="PRIMARY",
-            model="gemini-3.7-flash",
+            model="gemini-1.5-flash-latest",
             purpose="reasoning",
             failure_category="QUOTA_EXHAUSTED",
         )
@@ -169,7 +169,7 @@ def test_vision_loop_guard_triggers_within_budget():
     for _ in range(3):
         acc.record_request(
             credential_label="PRIMARY",
-            model="gemini-3.7-flash",
+            model="gemini-1.5-flash-latest",
             purpose="vision_perception",
             task_id="task_loop_test",
         )
@@ -190,7 +190,7 @@ def test_hourly_and_daily_budgets():
     for i in range(5):
         acc.record_request(
             credential_label="PRIMARY",
-            model="gemini-3.7-flash",
+            model="gemini-1.5-flash-latest",
             purpose="reasoning",
         )
 

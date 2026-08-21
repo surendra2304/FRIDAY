@@ -99,10 +99,10 @@ async def test_live_session_initialization():
     """Verify GeminiLiveVoiceSession initializes with proper defaults."""
     session = GeminiLiveVoiceSession(
         api_key="TEST_GEMINI_API_KEY",
-        model="gemini-3.1-flash-live-preview",
+        model="gemini-2.0-flash-exp",
         voice_name="Puck",
     )
-    assert session.model == "gemini-3.1-flash-live-preview"
+    assert session.model == "gemini-2.0-flash-exp"
     assert session.voice_name == "Puck"
     assert session.sample_rate_in == 16000
     assert session.sample_rate_out == 24000
@@ -307,7 +307,7 @@ async def test_live_session_tool_execution(mock_agent):
 def test_provider_adapter_instantiation():
     """Verify GeminiVoiceProvider instantiates cleanly without hardware dependencies."""
     provider = GeminiVoiceProvider(api_key="TEST_GEMINI_API_KEY")
-    assert provider.model == "gemini-3.1-flash-live-preview"
+    assert provider.model == "gemini-2.0-flash-exp"
     assert provider.api_key == "TEST_GEMINI_API_KEY"
 
 
@@ -419,7 +419,7 @@ async def test_goaway_reconnection_loop_lifecycle(mock_agent):
     # Receiver loop should exit cleanly upon seeing go_away
     await session._audio_receiver_loop(mock_ws, spk, None, stop_event)
     # Reconnection config should have model set properly
-    assert session.model == "gemini-3.1-flash-live-preview"
+    assert session.model == "gemini-2.0-flash-exp"
 
 
 @pytest.mark.anyio
