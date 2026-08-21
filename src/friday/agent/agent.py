@@ -1,5 +1,7 @@
 """Core Agent orchestration loop with multi-step sequential tool calling for FRIDAY."""
 
+import random
+import re
 import time
 from typing import Any, Callable, Dict, List, Optional
 from friday.agent.prompts import build_system_message
@@ -157,6 +159,45 @@ class FridayAgent:
     # clicks it via UI Automation (element match confidence, independent of the
     # intent regex confidence which is always 1.0 for pattern hits).
     UIA_ELEMENT_CONFIDENCE_THRESHOLD = 0.60
+
+    # Greeting fast-path: a bare greeting (optionally "there" + punctuation) is
+    # answered conversationally without entering the cognitive loop, capability
+    # routing, or tool-calling state machine. Addressed or compound requests
+    # like "hello FRIDAY" or "hey, open notepad" intentionally do NOT match and
+    # flow through the normal pipeline (the LLM handles them via the prompt's
+    # GREETING HANDLING rule).
+    _GREETING_PATTERN = re.compile(
+        r"^\s*(?:hi|hello|hey|sup)\b(?:\s+there)?\s*[!.,?]*$",
+        re.IGNORECASE,
+    )
+
+    _GREETING_RESPONSES = (
+        "Hello {user_name}, how can I help you today?",
+        "Hey {user_name}! What can I do for you?",
+        "Hi {user_name}. What do you need?",
+        "Hello {user_name}. I'm ready when you are.",
+    )
+
+    def _greeting_fast_path(self, clean_input: str) -> Optional[AgentResponse]:
+        """Return a direct conversational greeting response, or None if not a greeting."""
+        if not self._GREETING_PATTERN.match(clean_input):
+            return None
+        response = random.choice(self._GREETING_RESPONSES).format(user_name=self.settings.user_name)
+        logger.info("Greeting fast-path: responding directly without cognitive loop or tools")
+        self.state_machine.transition_to(TaskState.UNDERSTANDING, reason="Greeting recognized")
+        self.state_machine.transition_to(TaskState.PLANNING, reason="Synthesizing greeting response")
+        self.state_machine.transition_to(TaskState.VERIFYING, reason="Validating greeting response")
+        self.state_machine.transition_to(TaskState.COMPLETED, reason="Greeting ready")
+        self.memory.add_message(Message(role=Role.USER, content=clean_input))
+        self.memory.add_message(Message(role=Role.ASSISTANT, content=response))
+        return AgentResponse(
+            content=response,
+            is_done=True,
+            metadata={
+                "greeting_fast_path": True,
+                "task_state": self.state_machine.current_state.value,
+            },
+        )
 
     def _execute_semantic_ui_action(self, intent_result, user_input: str) -> Optional[AgentResponse]:
         """Execute a high-confidence semantic UI action via the pywinauto provider.
@@ -572,6 +613,13 @@ class FridayAgent:
             )
 
         logger.info(f"Processing user turn: '{clean_input[:60]}...'")
+
+        # Greeting fast-path: simple greetings bypass the cognitive loop
+        # (which would otherwise ask for clarification), capability routing,
+        # and the tool-calling state machine entirely.
+        greeting_response = self._greeting_fast_path(clean_input)
+        if greeting_response is not None:
+            return greeting_response
 
         # 1. State: UNDERSTANDING (evaluating cognitive confidence, information sufficiency & capability routing)
         self.state_machine.transition_to(TaskState.UNDERSTANDING, reason="Interpreting user turn and retrieving memories")

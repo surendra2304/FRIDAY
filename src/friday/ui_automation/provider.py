@@ -7,8 +7,13 @@ and only when the feature flag `ui_automation_enabled` is true on a Windows plat
 
 import difflib
 import os
+import subprocess
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
+
+from friday.core.logging import get_logger
+
+logger = get_logger("ui_automation.provider")
 
 # Conditional import – avoid ImportError on non‑Windows platforms.
 if os.name == "nt":
@@ -122,11 +127,28 @@ class WindowsUIAutomationProvider(UIAutomationProvider):
         return best_el
 
     def launch_application(self, executable: str) -> bool:
-        """Launch an application by executable name via pywinauto (no LLM/Vision involved)."""
+        """Launch an application natively without pywinauto.
+
+        os.startfile (ShellExecute) resolves the Windows App Paths registry,
+        which is where browsers like chrome.exe and msedge.exe are registered
+        (they are not on PATH); it also opens protocol URIs such as
+        'ms-settings:'. Falls back to subprocess.Popen (shell=True) for
+        executables that only resolve via PATH.
+        """
         try:
-            Application(backend="uia").start(executable)
+            if not executable.lower().endswith(".exe"):
+                # Protocol URIs and registered documents: ShellExecute only.
+                os.startfile(executable)
+                return True
+            try:
+                os.startfile(executable)
+                return True
+            except OSError:
+                logger.warning(f"App Paths/ShellExecute failed for '{executable}'; trying PATH via shell.")
+            subprocess.Popen(executable, shell=True)
             return True
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to launch '{executable}': {e}")
             return False
 
     def click(self, element: UIElement) -> bool:

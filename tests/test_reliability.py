@@ -158,8 +158,10 @@ def test_agent_user_friendly_exceptions():
         llm_provider=FailingProvider(api_key="TEST_OPENAI_API_KEY"),
     )
 
-    # When LLM connection fails, agent must catch and translate it
-    response = agent.process_message("Hello")
+    # When LLM connection fails, agent must catch and translate it.
+    # (Non-greeting input: bare greetings are intercepted by the greeting
+    # fast-path and would never reach the failing LLM.)
+    response = agent.process_message("Please summarize the project status.")
     assert response.is_done
     assert "I'm having trouble connecting to my intelligence core" in response.content
     assert response.metadata["success"] is False

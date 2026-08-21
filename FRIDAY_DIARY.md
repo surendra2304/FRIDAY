@@ -24,6 +24,7 @@ A chronological list:
 - [2026-08-19](diary/2026-08-19.md)
 - [2026-08-20](diary/2026-08-20.md)
 - [2026-08-21](diary/2026-08-21.md)
+- [2026-08-22](diary/2026-08-22.md)
 
 ---
 
@@ -60,3 +61,10 @@ A chronological list:
 **Session 2 — Text/Reasoning Provider Independence**: Added `GroqLLMProvider`, `CerebrasLLMProvider`, and `OpenRouterLLMProvider` (OpenAI SDK against each platform's compatible endpoint) plus cross-provider `FallbackChainLLMProvider` (Groq 70B -> Groq 8B-instant on 429 -> Cerebras -> OpenRouter), activated via `FRIDAY_LLM_PROVIDER=chain`. Added non-singleton `OpenAICompatibleCredentialPool` with three isolated pools and per-provider health state files. Gemini strictly retained for Voice/Vision/Embeddings (voice imports only the Gemini singleton pool; enforced by tests). **Bug Fixes**: Bug #28 (Global `time.sleep` Patch Contamination in credential failover test). **Verification**: 897 passed, 9 deselected; no missing imports or circular dependencies. **End-of-Session State**: Text chain `SOFTWARE_VERIFIED` (mock-tested); live validation requires `pip install openai` + real keys in `.env`.
 
 **Session 3 — Futuristic Computer Control & Provider-Agnostic Identity**: Added `pywinauto` to dependencies; `IntentDetector` now detects generic semantic clicks ("click the send button") and deterministic app launches ("open notepad") at confidence 1.0; `WindowsUIAutomationProvider.launch_application()` added with improved element scoring; consolidated `FridayAgent._execute_semantic_ui_action()` bypasses LLM/Vision with Authorizer gating on launches (SAFE for GUI apps, SENSITIVE for shells). Fixed element-confidence threshold bug (dead-end semantic path) and removed dead duplicated code. System prompt now carries a provider-agnostic IDENTITY (multi-provider architecture); verified zero single-vendor identity claims in source/docs; voice persona untouched. **Verification**: 16 new mock tests; 912 passed, 9 deselected, 1 pre-existing load-sensitive benchmark (fails identically on clean baseline while a live FRIDAY instance holds the dev DB).
+
+### [DAY 5 — 2026-08-22](diary/2026-08-22.md)
+**Objectives**: Live-runtime bug fixes — activate fallback chain, fix browser launching, greeting fast-path.
+**Work Completed**: Set `FRIDAY_LLM_PROVIDER=chain` in `.env` (verified config->factory end-to-end). Replaced pywinauto app launching with `os.startfile` (App Paths resolution for chrome.exe/msedge.exe, protocol URI support) plus `subprocess.Popen` fallback. Added hardcoded greeting fast-path in `process_message()` bypassing cognitive loop/routing/tools for bare greetings. Test hygiene: field-default assertion for `llm_provider`; non-greeting input for connection-error test.
+**Bug Fixes**: Bug #29 (Chain Not Active in Live Config), Bug #30 (pywinauto Browser Launch Failure), Bug #31 (Greetings Triggered Clarification Loop).
+**Verification**: 920 passed, 9 deselected, 1 pre-existing load-sensitive benchmark (documented; live FRIDAY instance holds dev DB during runs).
+**End-of-Day State**: Chain live for text/reasoning; Gemini isolated on Voice/Vision/Embeddings; greeting fast-path and native app launching operational.

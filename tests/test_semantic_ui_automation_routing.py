@@ -72,41 +72,65 @@ def test_geometric_actions_take_priority():
 
 
 # ---------------------------------------------------------------------------
-# WindowsUIAutomationProvider.launch_application (mocked pywinauto)
+# WindowsUIAutomationProvider.launch_application (native os.startfile / subprocess)
 # ---------------------------------------------------------------------------
 
 
-def test_launch_application_success(monkeypatch):
+def _make_uia_provider():
     from friday.ui_automation import provider as uia_module
 
+    return uia_module, uia_module.WindowsUIAutomationProvider.__new__(
+        uia_module.WindowsUIAutomationProvider
+    )
+
+
+def test_launch_application_uses_startfile_for_exe(monkeypatch):
+    uia_module, provider = _make_uia_provider()
     started = {}
 
-    class FakeApp:
-        def __init__(self, backend=None):
-            pass
+    fake_os = SimpleNamespace(startfile=lambda exe: started.setdefault("exe", exe))
+    monkeypatch.setattr(uia_module, "os", fake_os)
+    popen_calls = []
+    monkeypatch.setattr(
+        uia_module, "subprocess", SimpleNamespace(Popen=lambda *a, **kw: popen_calls.append(a))
+    )
 
-        def start(self, exe):
-            started["exe"] = exe
-            return self
-
-    monkeypatch.setattr(uia_module, "Application", FakeApp)
-    provider = uia_module.WindowsUIAutomationProvider.__new__(uia_module.WindowsUIAutomationProvider)
-    assert provider.launch_application("notepad.exe") is True
-    assert started["exe"] == "notepad.exe"
+    assert provider.launch_application("chrome.exe") is True
+    assert started["exe"] == "chrome.exe"  # App Paths resolution via ShellExecute
+    assert popen_calls == []  # startfile succeeded: no subprocess fallback
 
 
-def test_launch_application_failure_returns_false(monkeypatch):
-    from friday.ui_automation import provider as uia_module
+def test_launch_application_falls_back_to_subprocess(monkeypatch):
+    uia_module, provider = _make_uia_provider()
 
-    class FakeApp:
-        def __init__(self, backend=None):
-            pass
+    def bad_startfile(exe):
+        raise OSError("not registered")
 
-        def start(self, exe):
-            raise RuntimeError("app not found")
+    monkeypatch.setattr(uia_module, "os", SimpleNamespace(startfile=bad_startfile))
+    popen_calls = []
+    monkeypatch.setattr(
+        uia_module, "subprocess", SimpleNamespace(Popen=lambda *a, **kw: popen_calls.append(a))
+    )
 
-    monkeypatch.setattr(uia_module, "Application", FakeApp)
-    provider = uia_module.WindowsUIAutomationProvider.__new__(uia_module.WindowsUIAutomationProvider)
+    assert provider.launch_application("someapp.exe") is True
+    assert popen_calls == [("someapp.exe",)]
+
+
+def test_launch_application_protocol_uri_uses_startfile(monkeypatch):
+    uia_module, provider = _make_uia_provider()
+    started = {}
+    monkeypatch.setattr(uia_module, "os", SimpleNamespace(startfile=lambda exe: started.setdefault("uri", exe)))
+    monkeypatch.setattr(uia_module, "subprocess", SimpleNamespace(Popen=lambda *a, **kw: None))
+
+    assert provider.launch_application("ms-settings:") is True
+    assert started["uri"] == "ms-settings:"
+
+
+def test_launch_application_total_failure_returns_false(monkeypatch):
+    uia_module, provider = _make_uia_provider()
+    monkeypatch.setattr(uia_module, "os", SimpleNamespace(startfile=lambda exe: (_ for _ in ()).throw(OSError("no"))))
+    monkeypatch.setattr(uia_module, "subprocess", SimpleNamespace(Popen=lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("no"))))
+
     assert provider.launch_application("nonexistent.exe") is False
 
 
@@ -182,6 +206,7 @@ def _make_agent_with(provider, llm):
     agent.capability_router.route_request.return_value = SimpleNamespace(
         selected_capability=SimpleNamespace(value="TOOL_EXECUTION")
     )
+    agent.cognitive_engine = mock.MagicMock()
     agent.max_tool_iterations = 3
     agent.tool_callback = None
     agent.tool_timeout = 5.0
@@ -236,6 +261,53 @@ def test_agent_launch_failure_falls_through():
     response = agent._execute_semantic_ui_action(IntentDetector.detect("open notepad"), "open notepad")
     assert response is None
     assert provider.launch_calls == ["notepad.exe"]
+
+
+# ---------------------------------------------------------------------------
+# Greeting fast-path (bypasses cognitive loop / clarification / tools)
+# ---------------------------------------------------------------------------
+
+
+def test_greeting_fast_path_matches_simple_greetings():
+    agent = _make_agent_with(FakeUIProvider(), mock.MagicMock())
+    for greeting in ["hi", "Hello", "HEY", "sup?", "hi!", "hey there", "hello!"]:
+        response = agent._greeting_fast_path(greeting)
+        assert response is not None, greeting
+        assert response.is_done is True
+        assert response.metadata["greeting_fast_path"] is True
+        assert "Surendra" in response.content or "help" in response.content.lower()
+
+
+def test_greeting_fast_path_rejects_compound_requests():
+    agent = _make_agent_with(FakeUIProvider(), mock.MagicMock())
+    for phrase in [
+        "hey, open notepad",
+        "hi can you click the send button",
+        "sup, what time is it",
+        "hello FRIDAY",  # addressed requests flow through the LLM pipeline
+    ]:
+        assert agent._greeting_fast_path(phrase) is None, phrase
+
+
+def test_process_message_greeting_bypasses_cognitive_loop():
+    agent = _make_agent_with(FakeUIProvider(), mock.MagicMock())
+    response = agent.process_message("hello")
+    assert response.is_done is True
+    assert response.metadata.get("greeting_fast_path") is True
+    agent.cognitive_engine.evaluate_request.assert_not_called()
+    agent.capability_router.route_request.assert_not_called()
+    # Both turns recorded for multi-turn context
+    history = agent.get_history()
+    assert len(history) == 2
+    assert history[0].role.value == "user"
+    assert history[1].role.value == "assistant"
+
+
+def test_process_message_compound_phrase_still_routes_normally():
+    agent = _make_agent_with(FakeUIProvider(), mock.MagicMock())
+    response = agent.process_message("hey, open notepad")
+    assert response.metadata.get("greeting_fast_path") is None
+    agent.cognitive_engine.evaluate_request.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

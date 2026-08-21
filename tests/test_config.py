@@ -8,9 +8,12 @@ from friday.core.config import Settings, get_settings
 def test_default_settings():
     settings = Settings()
     assert settings.env == "development"
-    assert settings.llm_provider == "gemini"
     assert settings.memory_max_messages == 50
     assert settings.agent_name == "FRIDAY"
+    # Field defaults must be asserted from the model schema, not from a
+    # constructed instance: a local .env may legitimately override them
+    # (e.g. FRIDAY_LLM_PROVIDER=chain).
+    assert Settings.model_fields["llm_provider"].default == "gemini"
 
 
 def test_settings_custom_values():
