@@ -47,8 +47,9 @@ SAMPLE_RATE_OUT = 24000
 MAX_KEY_ROTATIONS = 5
 
 # Error markers that indicate the API KEY (not the model/request) is denied;
-# only these trigger key rotation.
-_ACCESS_DENIED_MARKERS = ("1008", "denied access", "not supported")
+# only these trigger key rotation. "quota" covers exhausted-key denials that
+# surface as quota errors on the Live endpoint.
+_ACCESS_DENIED_MARKERS = ("1008", "denied access", "not supported", "quota")
 
 
 def parse_args() -> argparse.Namespace:
