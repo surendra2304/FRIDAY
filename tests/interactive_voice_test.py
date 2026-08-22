@@ -163,81 +163,12 @@ def attempt_session(api_key: str, model: str, turn_log: list):
     if session.model != model:
         print(f"[WARN] Model normalized to '{session.model}' (input was rejected as non-Live).")
 
-    # Script-side transcript extraction: print FRIDAY's words INSTANTLY as they
-    # stream — output_transcription when enabled, otherwise model-turn part
-    # text. Called after audio is enqueued, so it can never delay playback.
-    # Live transcript streaming: the user's speech prints the moment
-    # input_transcription fragments arrive (BEFORE FRIDAY starts speaking);
-    # FRIDAY's speech prints as output_transcription / model-turn text.
-    # on_turn_complete only logs and prints fallbacks for missed content.
-    stream_state = {
-        "user_streaming": False,
-        "user_turn_streamed": False,
-        "user_last": False,
-        "friday_streaming": False,
-        "friday_turn_streamed": False,
-        "friday_last": False,
-    }
+    # Live transcripts via the shared printer (same implementation as the CLI)
+    from friday.voice.transcripts import LiveTranscriptPrinter
 
-    def _close_user_line() -> None:
-        if stream_state["user_streaming"]:
-            print()  # newline after streamed user transcript
-            stream_state["user_streaming"] = False
-
-    def _close_friday_line() -> None:
-        if stream_state["friday_streaming"]:
-            print()  # newline after streamed FRIDAY transcript
-            stream_state["friday_streaming"] = False
-
-    def _print_friday(text: str) -> None:
-        _close_user_line()  # FRIDAY starts speaking: finish the user's line
-        if text:
-            print("FRIDAY: " if not stream_state["friday_streaming"] else "", end="", flush=True)
-            print(text, end="", flush=True)
-            stream_state["friday_streaming"] = True
-            stream_state["friday_turn_streamed"] = True
-
-    def on_server_content(server_content) -> None:
-        # 1. LIVE user input transcription — streams while the user speaks
-        in_tx = getattr(server_content, "input_transcription", None)
-        if in_tx and getattr(in_tx, "text", None):
-            if not stream_state["user_streaming"]:
-                print("\nYou: ", end="", flush=True)
-                stream_state["user_streaming"] = True
-            print(in_tx.text, end="", flush=True)
-            stream_state["user_turn_streamed"] = True
-
-        # 2. FRIDAY's speech: streaming output transcription (preferred)
-        out_tx = getattr(server_content, "output_transcription", None)
-        if out_tx and getattr(out_tx, "text", None):
-            _print_friday(out_tx.text)
-
-        # 3. Fallback/complement: text parts of the model turn
-        model_turn = getattr(server_content, "model_turn", None)
-        if model_turn and getattr(model_turn, "parts", None):
-            for part in model_turn.parts:
-                if getattr(part, "text", None):
-                    _print_friday(part.text)
-
-        # 4. Turn boundary: close open lines, latch what streamed for the
-        # fallback decision in on_turn_complete (which fires after this).
-        if getattr(server_content, "turn_complete", False):
-            _close_user_line()
-            _close_friday_line()
-            stream_state["user_last"] = stream_state["user_turn_streamed"]
-            stream_state["friday_last"] = stream_state["friday_turn_streamed"]
-            stream_state["user_turn_streamed"] = False
-            stream_state["friday_turn_streamed"] = False
-
-    def on_turn_complete(user_text: str, agent_text: str) -> None:
-        turn_log.append((time.perf_counter(), user_text, agent_text))
-        # Live streaming already printed both sides; only print fallbacks
-        # for content the streams missed.
-        if not stream_state["user_last"]:
-            print(f"\nYou: {user_text or '(untranscribed)'}")
-        if not stream_state["friday_last"]:
-            print(f"FRIDAY: {(agent_text or '').strip() or '(untranscribed)'}")
-        print()  # blank separator line between turns
+    printer = LiveTranscriptPrinter(turn_log=turn_log)
+    on_server_content = printer.on_server_content
+    on_turn_complete = printer.on_turn_complete
 
     async def run_indefinite() -> None:
         mic = MicrophoneStream(sample_rate=SAMPLE_RATE_IN)

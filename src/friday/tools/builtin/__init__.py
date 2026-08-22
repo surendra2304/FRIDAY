@@ -10,6 +10,7 @@ from friday.tools.builtin.screen_snapshot import ScreenSnapshotTool
 from friday.tools.builtin.action_proposal import ProposeComputerActionTool
 from friday.tools.builtin.execute_computer_action import ExecuteComputerActionTool
 from friday.tools.builtin.open_application import OpenApplicationTool
+from friday.tools.builtin.type_text import TypeTextTool
 
 __all__ = [
     "CalculatorTool",
@@ -22,4 +23,5 @@ __all__ = [
     "ProposeComputerActionTool",
     "ExecuteComputerActionTool",
     "OpenApplicationTool",
+    "TypeTextTool",
 ]

@@ -217,15 +217,48 @@ Modes:
     is_voice_mode = (args.voice or getattr(settings, "voice_enabled", False)) and not args.text
     if is_voice_mode:
         import asyncio
+        import threading
+
         print(render_friday_banner("0.4.6"))
         print("  Starting Gemini Live Real-Time Voice Session...")
         print("  Model: gemini-3.1-flash-live-preview | Input: 16kHz PCM | Output: 24kHz PCM")
-        print("  Press Ctrl+C to end voice session.\n")
+        print("  Speak naturally; transcripts print live. You can also TYPE a message")
+        print("  and press Enter to send it to the session. Press Ctrl+C to end.\n")
         try:
             from friday.voice.gemini_live_session import GeminiLiveVoiceSession
+            from friday.voice.transcripts import LiveTranscriptPrinter
+
             logger.info("Starting REAL Gemini Live voice session...")
             voice_session = GeminiLiveVoiceSession(agent=agent, credential_pool=credential_pool)
-            asyncio.run(voice_session.run_live_loop())
+            printer = LiveTranscriptPrinter()
+
+            loop = asyncio.new_event_loop()
+
+            def _stdin_listener() -> None:
+                """Background thread: typed lines become Live text prompts."""
+                while True:
+                    try:
+                        line = sys.stdin.readline()
+                    except Exception:
+                        break
+                    if not line:  # EOF
+                        break
+                    text = line.strip()
+                    if text:
+                        asyncio.run_coroutine_threadsafe(
+                            voice_session.send_text(text), loop
+                        )
+
+            stdin_thread = threading.Thread(target=_stdin_listener, name="voice_stdin", daemon=True)
+            stdin_thread.start()
+
+            loop.run_until_complete(
+                voice_session.run_live_loop(
+                    on_turn_complete=printer.on_turn_complete,
+                    on_server_content=printer.on_server_content,
+                    echo_mute=True,
+                )
+            )
             logger.info("Live Voice session ended.")
         except KeyboardInterrupt:
             print("\nVoice session stopped. Good day, Surendra.")

@@ -52,7 +52,7 @@ def test_microphone_stream_chunk_sizing():
 
 def test_speaker_stream_buffering_and_purge():
     """Verify speaker stream enqueues chunks and purges queue immediately on interruption."""
-    spk = SpeakerStream(sample_rate=24000)
+    spk = SpeakerStream(sample_rate=24000, prebuffer_ms=0)
     spk._active = True
 
     chunk_a = b"\x01\x02" * 100
@@ -70,7 +70,7 @@ def test_speaker_stream_buffering_and_purge():
 
 def test_speaker_stream_overflow_protection():
     """Verify speaker stream drops oldest chunk when max queue size is exceeded."""
-    spk = SpeakerStream(sample_rate=24000, max_buffer_chunks=2)
+    spk = SpeakerStream(sample_rate=24000, max_buffer_chunks=2, prebuffer_ms=0)
     spk._active = True
 
     spk.play_chunk(b"chunk_1")
@@ -142,7 +142,7 @@ def test_microphone_device_failure_handling():
 def test_speaker_device_failure_handling():
     """Verify SpeakerStream gracefully records error state on device failure."""
     with mock.patch("sounddevice.RawOutputStream", side_effect=RuntimeError("Device Disconnected")):
-        spk = SpeakerStream(sample_rate=24000)
+        spk = SpeakerStream(sample_rate=24000, prebuffer_ms=0)
         spk.start()
         assert not spk.is_active
         assert spk.error is not None

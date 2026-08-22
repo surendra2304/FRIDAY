@@ -186,14 +186,17 @@ def test_cli_voice_mode_flag_triggers_live_session(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["friday", "--voice"])
 
     voice_session_inst = mock.MagicMock()
+    voice_session_inst.run_live_loop = mock.AsyncMock(return_value=None)
     mock_live_session_cls = mock.MagicMock(return_value=voice_session_inst)
 
     with mock.patch("friday.auth.credential_pool.GeminiCredentialPool.preflight_check", return_value={"status": "HEALTHY", "active_project": "PRIMARY"}):
         with mock.patch("friday.voice.gemini_live_session.GeminiLiveVoiceSession", mock_live_session_cls):
-            with mock.patch("asyncio.run") as mock_asyncio_run:
-                main()
-                assert mock_live_session_cls.called
-                assert mock_asyncio_run.called
+            main()
+            assert mock_live_session_cls.called
+            voice_session_inst.run_live_loop.assert_awaited_once()
+            kwargs = voice_session_inst.run_live_loop.await_args.kwargs
+            assert kwargs.get("echo_mute") is True
+            assert "on_server_content" in kwargs and "on_turn_complete" in kwargs
 
 
 def test_cli_text_mode_override_suppresses_voice_mode(monkeypatch):

@@ -363,7 +363,7 @@ async def test_live_session_state_transitions(mock_agent):
 
 def test_speaker_stream_remainder_buffering():
     """Verify SpeakerStream handles partial chunk boundaries without dropping or reordering bytes."""
-    stream = SpeakerStream(sample_rate=24000)
+    stream = SpeakerStream(sample_rate=24000, prebuffer_ms=0)
     # Simulate start without actual hardware driver
     stream._active = True
 

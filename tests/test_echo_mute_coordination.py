@@ -13,7 +13,7 @@ def _live_mic() -> MicrophoneStream:
 
 
 def _live_spk() -> SpeakerStream:
-    spk = SpeakerStream()
+    spk = SpeakerStream(prebuffer_ms=0)  # immediate playback: prebuffering tested separately
     spk._active = True
     return spk
 
@@ -82,3 +82,56 @@ def test_no_echo_target_is_safe():
     spk.play_chunk(b"\x00" * 64)
     spk._maybe_unmute()
     spk.stop()  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# Jitter buffer (pre-buffering before playback)
+# ---------------------------------------------------------------------------
+
+
+def test_jitter_buffer_holds_until_threshold():
+    spk = SpeakerStream(sample_rate=24000, prebuffer_ms=100.0)  # 4800 bytes
+    spk._active = True
+
+    spk.play_chunk(b"\x00" * 2000)
+    spk.play_chunk(b"\x00" * 2000)
+    assert spk._queue.qsize() == 0          # still buffered
+    assert len(spk._prebuffer) == 4000
+    assert spk.is_playing is True           # counts as playing while buffering
+
+    spk.play_chunk(b"\x00" * 1000)          # crosses 4800-byte threshold
+    assert spk._queue.qsize() == 1          # flushed to playback queue
+    assert len(spk._prebuffer) == 0
+
+
+def test_jitter_buffer_disabled_when_zero():
+    spk = SpeakerStream(prebuffer_ms=0)
+    spk._active = True
+    spk.play_chunk(b"\x00" * 64)
+    assert spk._queue.qsize() == 1
+    assert len(spk._prebuffer) == 0
+
+
+def test_jitter_buffer_purged_on_stop():
+    spk = SpeakerStream(prebuffer_ms=100.0)
+    spk._active = True
+    spk.play_chunk(b"\x00" * 2000)
+    assert len(spk._prebuffer) == 2000
+    spk.stop()
+    assert len(spk._prebuffer) == 0
+    assert spk._queue.qsize() == 0
+
+
+def test_prebuffer_counts_for_echo_unmute_gate():
+    mic = MicrophoneStream()
+    mic._active = True
+    mic._queue = asyncio.Queue(maxsize=10)
+    spk = SpeakerStream(prebuffer_ms=100.0)
+    spk._active = True
+    spk.set_echo_mute_target(mic)
+
+    spk.play_chunk(b"\x00" * 1000)          # held in prebuffer
+    assert mic.is_muted is True
+    for _ in range(5):
+        spk._maybe_unmute()                  # prebuffer non-empty: never unmute
+    assert mic.is_muted is True

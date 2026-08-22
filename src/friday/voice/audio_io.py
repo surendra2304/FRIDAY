@@ -264,10 +264,17 @@ class SpeakerStream:
         channels: int = 1,
         device: Optional[int] = None,
         max_buffer_chunks: int = 100,
+        prebuffer_ms: float = 100.0,
     ):
         self.sample_rate = sample_rate
         self.channels = channels
         self.device = device
+        # Jitter buffer: accumulate up to prebuffer_ms of audio before playback
+        # starts, so minor network delays don't starve the output callback and
+        # cause choppy audio. 0 disables pre-buffering (immediate playback).
+        self.prebuffer_ms = max(0.0, prebuffer_ms)
+        self.prebuffer_bytes = int(self.sample_rate * 2 * self.channels * (self.prebuffer_ms / 1000.0))
+        self._prebuffer = bytearray()
         self._stream: Optional[Any] = None
         self._active = False
         self._queue: queue.Queue[bytes] = queue.Queue(maxsize=max_buffer_chunks)
@@ -304,7 +311,7 @@ class SpeakerStream:
         """
         if self._mic_to_mute is None or not self._playing:
             return
-        if not self._queue.empty() or self._remainder:
+        if not self._queue.empty() or self._remainder or self._prebuffer:
             self._drain_blocks = 0
             return
         self._drain_blocks += 1
@@ -384,23 +391,53 @@ class SpeakerStream:
             self._active = False
             self._stream = None
 
+    def _flush_prebuffer(self) -> None:
+        """Move accumulated pre-buffered audio into the playback queue (lock held)."""
+        if not self._prebuffer:
+            return
+        data = bytes(self._prebuffer)
+        self._prebuffer.clear()
+        try:
+            self._queue.put_nowait(data)
+            self.played_chunks += 1
+        except queue.Full:
+            self.overflow_count += 1
+            try:
+                self._queue.get_nowait()
+            except queue.Empty:
+                pass
+            self._queue.put_nowait(data)
+            self.played_chunks += 1
+
     def play_chunk(self, pcm_bytes: bytes) -> None:
-        """Enqueue a 24kHz 16-bit PCM chunk for immediate playback."""
+        """Enqueue a 24kHz 16-bit PCM chunk; pre-buffers until the jitter threshold."""
         if not self._active or not pcm_bytes:
             return
         with self._lock:
-            try:
-                self._queue.put_nowait(pcm_bytes)
-                self.played_chunks += 1
-            except queue.Full:
-                self.overflow_count += 1
-                # Drop oldest chunk if buffer is overwhelmed
+            if self.prebuffer_bytes > 0:
+                self._prebuffer.extend(pcm_bytes)
+                if len(self._prebuffer) < self.prebuffer_bytes:
+                    # Not enough accumulated audio yet: hold in the jitter
+                    # buffer so playback starts smoothly, not mid-glide.
+                    if not self._playing:
+                        self._playing = True
+                        self._drain_blocks = 0
+                        self._mute_mic()
+                    return
+                self._flush_prebuffer()
+            else:
                 try:
-                    self._queue.get_nowait()
-                except queue.Empty:
-                    pass
-                self._queue.put_nowait(pcm_bytes)
-                self.played_chunks += 1
+                    self._queue.put_nowait(pcm_bytes)
+                    self.played_chunks += 1
+                except queue.Full:
+                    self.overflow_count += 1
+                    # Drop oldest chunk if buffer is overwhelmed
+                    try:
+                        self._queue.get_nowait()
+                    except queue.Empty:
+                        pass
+                    self._queue.put_nowait(pcm_bytes)
+                    self.played_chunks += 1
             # Echo suppression: mute the mic the moment playback begins
             if not self._playing:
                 self._playing = True
@@ -411,6 +448,7 @@ class SpeakerStream:
         """Instantly purge all buffered playback chunks and remainder (barge-in interruption)."""
         with self._lock:
             self._remainder.clear()
+            self._prebuffer.clear()
             while not self._queue.empty():
                 try:
                     self._queue.get_nowait()
@@ -445,12 +483,14 @@ class SpeakerStream:
     @property
     def queue_size(self) -> int:
         with self._lock:
-            return self._queue.qsize() + (1 if len(self._remainder) > 0 else 0)
+            return self._queue.qsize() + (1 if len(self._remainder) > 0 else 0) + (1 if len(self._prebuffer) > 0 else 0)
 
     @property
     def is_playing(self) -> bool:
         with self._lock:
-            return self._active and (self._queue.qsize() > 0 or len(self._remainder) > 0)
+            return self._active and (
+                self._queue.qsize() > 0 or len(self._remainder) > 0 or len(self._prebuffer) > 0
+            )
 
     @property
     def error(self) -> Optional[str]:
