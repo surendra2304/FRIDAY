@@ -9,6 +9,7 @@ from friday.tools.builtin.memory_search import MemorySearchTool
 from friday.tools.builtin.screen_snapshot import ScreenSnapshotTool
 from friday.tools.builtin.action_proposal import ProposeComputerActionTool
 from friday.tools.builtin.execute_computer_action import ExecuteComputerActionTool
+from friday.tools.builtin.open_application import OpenApplicationTool
 
 __all__ = [
     "CalculatorTool",
@@ -20,4 +21,5 @@ __all__ = [
     "ScreenSnapshotTool",
     "ProposeComputerActionTool",
     "ExecuteComputerActionTool",
+    "OpenApplicationTool",
 ]

@@ -378,3 +378,137 @@ async def test_bidirectional_voice_save_text_retrieve(memory_db):
     assert len(history) == 2
     assert "deployment is on Friday" in history[0].content
     assert "Saved note about Friday deployment" in history[1].content
+
+
+# ===========================================================================
+# Live-agent upgrades: open_application tool, echo gating, 1008 rotation, clock
+# ===========================================================================
+
+
+def test_open_application_tool_in_default_registry_and_live_decl():
+    """open_application is in the agent's default registry AND the Live tool declarations."""
+    from friday.llm.mock_provider import MockLLMProvider
+    from friday.memory.in_memory import InMemoryConversationMemory
+    from friday.tools.builtin.open_application import OpenApplicationTool
+
+    agent = FridayAgent(
+        settings=Settings(env="testing", llm_provider="mock", agent_name="FRIDAY"),
+        llm_provider=MockLLMProvider(),
+        memory=InMemoryConversationMemory(),
+    )
+    schemas = agent.tools.get_schemas()
+    names = [s.get("function", s).get("name") for s in schemas]
+    assert "open_application" in names
+
+    session = GeminiLiveVoiceSession(api_key="TEST", agent=agent)
+    tools = session._build_tools_config()
+    assert tools is not None
+    decl_names = [fd.name for fd in tools[0].function_declarations]
+    assert "open_application" in decl_names
+    assert "get_time_date" in decl_names
+
+
+def test_open_application_launch_and_safety(monkeypatch):
+    from types import SimpleNamespace
+    from friday.tools.builtin.open_application import OpenApplicationTool
+
+    tool = OpenApplicationTool()
+    started = {}
+    launched = []
+    monkeypatch.setattr(
+        "friday.tools.builtin.open_application.os",
+        SimpleNamespace(startfile=lambda exe: (launched.append(exe), started.setdefault("exe", exe))[1]),
+    )
+    monkeypatch.setattr(
+        "friday.tools.builtin.open_application.subprocess",
+        SimpleNamespace(Popen=lambda *a, **kw: launched.append("POPEN")),
+    )
+
+    ok = tool.execute(application="notepad")
+    assert ok.is_error is False and ok.content == "Opened notepad."
+    assert started["exe"] == "notepad.exe"
+
+    fuzzy = tool.execute(application="the calculator app")
+    assert fuzzy.is_error is False
+
+    for shell in ("cmd", "powershell", "command prompt", "task manager"):
+        blocked = tool.execute(application=shell)
+        assert blocked.is_error is True, shell
+    assert launched == ["notepad.exe", "calc.exe"]  # shells never launched
+
+    unknown = tool.execute(application="spotify")
+    assert unknown.is_error is True and "Unknown application" in unknown.content
+
+
+@pytest.mark.anyio
+async def test_echo_gate_drops_echo_passes_loud_interruption():
+    """During playback, echo-level frames are suppressed; loud human frames reach the server."""
+    from friday.voice.audio_io import MicrophoneStream, SpeakerStream
+
+    def _pcm_with_rms(amp: int) -> bytes:
+        a = max(1, int(amp))
+        return b"".join(
+            a.to_bytes(2, "little", signed=True) + (-a).to_bytes(2, "little", signed=True) for _ in range(64)
+        )
+
+    session = GeminiLiveVoiceSession(api_key="TEST")
+    session._active = True
+    session._echo_suppression = True
+    session.echo_interrupt_rms_threshold = 2000.0
+
+    echo_chunk = _pcm_with_rms(300)
+    human_chunk = _pcm_with_rms(4000)
+    from friday.voice.gemini_live_session import compute_pcm_rms
+
+    assert 100 < compute_pcm_rms(echo_chunk) < 2000
+    assert compute_pcm_rms(human_chunk) >= 2000
+
+    sent = []
+    mock_ws = mock.MagicMock()
+    mock_ws.send_realtime_input = mock.AsyncMock(side_effect=lambda audio=None, **kw: sent.append(audio))
+
+    mic = mock.MagicMock(spec=MicrophoneStream)
+    feed = [echo_chunk, echo_chunk, human_chunk]
+
+    async def read_and_finish():
+        # Self-terminating: when the feed is exhausted, deactivate the session
+        if feed:
+            return feed.pop(0)
+        session._active = False
+        return b""
+
+    mic.read_chunk = read_and_finish
+    spk = mock.MagicMock(spec=SpeakerStream)
+    spk.is_playing = True
+    spk.queue_size = 1
+
+    await session._audio_sender_loop(mock_ws, mic, spk, asyncio.Event())
+
+    # The sender wraps chunks in genai Blob objects — compare their data
+    sent_payloads = [getattr(b, "data", b) for b in sent]
+    assert human_chunk in sent_payloads
+    assert echo_chunk not in sent_payloads
+    assert session.echo_suppressed_frames == 2
+
+
+def test_1008_denial_rotates_credential_pool():
+    """1008 denial must cool the dead key so the next healthy key is selected."""
+    from friday.auth.credential_pool import GeminiCredentialPool
+
+    keys = ["DEAD_KEY", "GOOD_KEY"]
+    pool = GeminiCredentialPool(keys=keys, cooldown_seconds=3600)
+    pool.load_keys(keys)
+    pool.reset_all()
+    assert pool.get_active_key() == "DEAD_KEY"
+
+    pool.report_failure(pool.get_active_key(), error=RuntimeError(
+        "1008 None. Your project has been denied access. Please contact support."
+    ))
+    assert pool.get_active_key() == "GOOD_KEY"
+
+
+def test_system_instruction_carries_current_time_hint():
+    session = GeminiLiveVoiceSession(api_key="TEST")
+    prompt = session._build_system_instruction().parts[0].text
+    assert "current local time at session start" in prompt
+    assert "get_time_date tool for exact current time" in prompt

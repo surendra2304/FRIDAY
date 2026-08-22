@@ -35,6 +35,7 @@ from friday.tools.builtin import (
     MemorySearchTool,
     ScreenSnapshotTool,
     ProposeComputerActionTool,
+    OpenApplicationTool,
 )
 from friday.agent.state import TaskState, ReasoningStateMachine
 from friday.agent.planner import TaskPlan, GoalDecomposer
@@ -307,6 +308,7 @@ class FridayAgent:
         registry.register(MemorySearchTool(self.memory))
         registry.register(ScreenSnapshotTool())
         registry.register(ProposeComputerActionTool())
+        registry.register(OpenApplicationTool())
         return registry
 
     def _execute_single_tool_call_internal(self, tc: ToolCall, timeout: Optional[float] = None) -> ToolResult:

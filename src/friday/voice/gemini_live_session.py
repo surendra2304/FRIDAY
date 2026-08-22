@@ -129,6 +129,13 @@ class GeminiLiveVoiceSession:
         self.thinking_level = thinking_level or getattr(settings, "voice_thinking_level", "MINIMAL")
         self.thinking_budget = thinking_budget if thinking_budget is not None else getattr(settings, "voice_thinking_budget", None)
 
+        # Energy-gated echo suppression (enabled per-run via run_live_loop(echo_mute=True)):
+        # while the speaker plays, frames below the interrupt threshold are dropped
+        # as speaker echo; louder frames pass through so server VAD hears real interruptions.
+        self._echo_suppression = False
+        self.echo_interrupt_rms_threshold = 2500.0
+        self.echo_suppressed_frames = 0
+
         self._active = False
         self._state = LiveSessionState.IDLE
         self._session: Optional[Any] = None
@@ -208,6 +215,10 @@ class GeminiLiveVoiceSession:
             local_tz = datetime.now().astimezone().tzname() or "the user's local timezone"
         except Exception:
             local_tz = "the user's local timezone"
+        try:
+            now_str = datetime.now().astimezone().strftime("%I:%M %p on %A, %d %B %Y")
+        except Exception:
+            now_str = "unknown"
         base_prompt = (
             f"You are FRIDAY (Fully Responsive Intelligent Digital Assistant), a premium, personal AI assistant "
             f"communicating in real-time spoken voice.\n\n"
@@ -215,6 +226,8 @@ class GeminiLiveVoiceSession:
             f"- You are FRIDAY, a voice assistant. The user's name is {user_name}.\n"
             f"- The local timezone is {local_tz} (Indian Standard Time, UTC+5:30). "
             f"Always answer time/date questions in the user's local time.\n"
+            f"- The current local time at session start is {now_str} ({local_tz}). "
+            f"Use the get_time_date tool for exact current time instead of guessing.\n"
             f"- Always respond naturally and briefly by voice.\n\n"
             f"CORE VOICE PERSONA & PRINCIPLES:\n"
             f"- Personality: Calm, intelligent, concise, confident, natural, and efficient.\n"
@@ -527,15 +540,20 @@ class GeminiLiveVoiceSession:
             logger.error(f"Cannot run Gemini Live loop: {err_msg}")
             raise VoiceError(f"Speaker unavailable: {err_msg}")
 
-        # Half-duplex echo suppression: mute the mic while the speaker plays
+        # Half-duplex echo suppression: energy-gated. The mic stays OPEN while
+        # the speaker plays, but the sender drops low-energy frames (speaker
+        # echo) and passes loud frames (a nearby human voice) so the server
+        # VAD can still detect genuine interruptions.
         if echo_mute:
-            try:
-                spk.set_echo_mute_target(mic)
-                logger.info("Echo suppression enabled: microphone muted during speaker playback.")
-            except Exception as e:
-                logger.warning(f"Could not enable echo suppression: {e}")
+            self._echo_suppression = True
+            logger.info(
+                "Echo suppression enabled: low-energy frames suppressed during playback "
+                f"(interrupt threshold RMS {self.echo_interrupt_rms_threshold:.0f})."
+            )
 
         reconnect_attempts = 0
+        key_rotations_used = 0
+        MAX_KEY_ROTATIONS = 5
 
         try:
             while self._active and not stop.is_set():
@@ -580,13 +598,31 @@ class GeminiLiveVoiceSession:
                         break
 
                     err_str = str(e).lower()
-                    # Safe credential failover for quota, auth, and server GoAway events without leaking keys
-                    if self.credential_pool and ("429" in err_str or "quota" in err_str or "401" in err_str or "403" in err_str or "unauthorized" in err_str or "goaway" in err_str):
+                    # Safe credential failover for access denials, quota, auth, and
+                    # server GoAway events without leaking keys
+                    is_access_denial = "1008" in err_str or "denied access" in err_str or "not supported" in err_str
+                    is_credential_error = (
+                        "429" in err_str or "quota" in err_str or "401" in err_str
+                        or "403" in err_str or "unauthorized" in err_str or "goaway" in err_str
+                    )
+                    if self.credential_pool and (is_access_denial or is_credential_error):
+                        if key_rotations_used >= MAX_KEY_ROTATIONS:
+                            self._set_state(LiveSessionState.FAILED)
+                            logger.error(
+                                f"Gemini Live session failed after rotating through {MAX_KEY_ROTATIONS} keys."
+                            )
+                            raise LLMProviderError(
+                                f"Gemini Live session error: all {MAX_KEY_ROTATIONS} credential rotations denied: {e}"
+                            ) from e
                         self.credential_pool.report_failure(self.api_key, error=e)
                         next_key = self.credential_pool.get_active_key()
                         if next_key and next_key != self.api_key:
                             label = self.credential_pool.get_active_label()
-                            logger.warning(f"Gemini Live session encountered error. Failing over to credential ({label})...")
+                            key_rotations_used += 1
+                            logger.warning(
+                                f"Gemini Live session error. Failing over to credential ({label}) "
+                                f"[rotation {key_rotations_used}/{MAX_KEY_ROTATIONS}]..."
+                            )
                             self.api_key = next_key
                             client = genai.Client(api_key=self.api_key)
                             reconnect_attempts = 0
@@ -633,6 +669,19 @@ class GeminiLiveVoiceSession:
                     rms = compute_pcm_rms(chunk)
                     self._last_mic_rms = rms
                     is_speaker_active = getattr(spk, "is_playing", False) or getattr(spk, "queue_size", 0) > 0
+
+                    # 0. Energy-gated echo suppression: while the speaker plays,
+                    # drop low-energy frames (FRIDAY's own voice picked up by the
+                    # mic) but pass loud frames so the server VAD can detect a
+                    # genuine human interruption.
+                    if self._echo_suppression and is_speaker_active:
+                        if rms < self.echo_interrupt_rms_threshold:
+                            self.echo_suppressed_frames += 1
+                            continue
+                        logger.info(
+                            f"Loud local audio during playback (RMS {rms:.0f} >= "
+                            f"{self.echo_interrupt_rms_threshold:.0f}): passing frame to server VAD for interruption."
+                        )
 
                     # 1. Candidate speech threshold calculation
                     candidate_threshold = max(self.barge_in_rms_threshold, self._ambient_noise_floor * self.adaptive_noise_multiplier)
