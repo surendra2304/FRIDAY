@@ -196,6 +196,7 @@ Modes:
 """,
     )
     parser.add_argument("--voice", action="store_true", help="Start in real-time Gemini Live bidirectional voice mode")
+    parser.add_argument("--enroll-voice", action="store_true", help="Record 5 seconds of speech to enroll your voice profile for speaker recognition")
     parser.add_argument("--text", action="store_true", help="Start explicitly in interactive text conversation mode")
     parser.add_argument("--debug", action="store_true", help="Enable verbose debug logging in terminal console")
     args, unknown = parser.parse_known_args()
@@ -230,6 +231,20 @@ Modes:
         tool_callback=on_tool_event,
         authorizer=CLIAuthorizer(),
     )
+
+    # Voice biometrics enrollment (one-time; then exit)
+    if getattr(args, "enroll_voice", False):
+        from friday.security.voice_biometrics import VoiceProfileManager
+
+        manager = VoiceProfileManager()
+        try:
+            if manager.enroll_voice(duration=5.0):
+                print("Voice profile saved. Speaker recognition is active when FRIDAY_VOICE_BIOMETRICS_ENABLED=true.")
+            else:
+                print("Voice enrollment failed (see log for details).")
+        except Exception as e:
+            print(f"Voice enrollment unavailable: {e}")
+        return
 
     # Voice interface initialization
     # Activated either by --voice CLI flag or FRIDAY_VOICE_ENABLED=true in config (without --text override)

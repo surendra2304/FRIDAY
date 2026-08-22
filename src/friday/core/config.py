@@ -284,6 +284,11 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("FRIDAY_VOICE_HEADPHONES_MODE", "VOICE_HEADPHONES_MODE", "voice_headphones_mode"),
         description="Whether headphones are used (enables local barge-in during playback with lower threshold)",
     )
+    voice_biometrics_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("FRIDAY_VOICE_BIOMETRICS_ENABLED", "VOICE_BIOMETRICS_ENABLED", "voice_biometrics_enabled"),
+        description="Enroll and verify the owner's voice before obeying spoken commands (resemblyzer; enroll with 'friday --enroll-voice')",
+    )
     voice_adaptive_noise_alpha: float = Field(default=0.05, ge=0.001, le=0.5, description="Exponential moving average alpha for tracking ambient noise floor")
     voice_adaptive_noise_multiplier: float = Field(default=3.5, ge=1.5, le=10.0, description="Adaptive noise floor multiplier to declare candidate speech")
     voice_thinking_level: str = Field(

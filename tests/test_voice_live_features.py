@@ -420,3 +420,145 @@ def test_cli_voice_override_message(monkeypatch, capsys):
 
     out = capsys.readouterr().out
     assert "Voice mode enabled via CLI override" in out
+
+
+# ---------------------------------------------------------------------------
+# Voice biometrics (speaker recognition)
+# ---------------------------------------------------------------------------
+
+
+class _FakeEncoder:
+    """Deterministic encoder: embeddings derived from a controllable 'voice id'."""
+
+    def __init__(self):
+        self.voice_id = 0.0  # tests set this to simulate different speakers
+
+    def embed_utterance(self, wav):
+        import numpy as np
+
+        base = np.zeros(256, dtype=np.float32)
+        base[0] = 1.0
+        base[1] = self.voice_id
+        return base
+
+
+def _fake_pcm(seconds: float = 2.0, amp: int = 8000) -> bytes:
+    import numpy as np
+
+    n = int(16000 * seconds)
+    samples = (np.ones(n) * amp).astype(np.int16)
+    return samples.tobytes()
+
+
+def test_enroll_and_verify_matching_voice(tmp_path, monkeypatch):
+    from friday.security import voice_biometrics as vb
+
+    enc = _FakeEncoder()
+    monkeypatch.setattr(vb, "_get_encoder", lambda: enc)
+
+    profile = tmp_path / "voice_profile.npy"
+    mgr = vb.VoiceProfileManager(profile_path=profile)
+
+    assert mgr.is_enrolled() is False
+    assert mgr.verify_speaker(b"\x01" * 3200) is True  # unenrolled -> allow all
+
+    assert mgr.enroll_from_frames([_fake_pcm(3.0)], sample_rate=16000) is True
+    assert profile.is_file()
+    assert mgr.is_enrolled() is True
+
+    # Same voice (voice_id unchanged) -> cosine similarity 1.0 -> verified
+    assert mgr.verify_speaker(_fake_pcm(2.0)) is True
+    assert mgr.similarity(_fake_pcm(2.0)) >= 0.99
+
+
+def test_verify_rejects_different_speaker(tmp_path, monkeypatch):
+    from friday.security import voice_biometrics as vb
+
+    enc = _FakeEncoder()
+    monkeypatch.setattr(vb, "_get_encoder", lambda: enc)
+    mgr = vb.VoiceProfileManager(profile_path=tmp_path / "p.npy")
+    mgr.enroll_from_frames([_fake_pcm(3.0)])
+
+    enc.voice_id = 5.0  # different speaker -> embedding rotated away
+    sim = mgr.similarity(_fake_pcm(2.0))
+    assert sim < 0.75, sim
+    assert mgr.verify_speaker(_fake_pcm(2.0)) is False
+
+
+def test_threshold_is_075(tmp_path, monkeypatch):
+    from friday.security import voice_biometrics as vb
+
+    assert vb.SIMILARITY_THRESHOLD == 0.75
+    enc = _FakeEncoder()
+    monkeypatch.setattr(vb, "_get_encoder", lambda: enc)
+    mgr = vb.VoiceProfileManager(profile_path=tmp_path / "p.npy")
+    mgr.enroll_from_frames([_fake_pcm(3.0)])
+    enc.voice_id = 1.0  # cosine ~ 1/sqrt(2) = 0.707 < 0.75 -> reject
+    assert mgr.verify_speaker(_fake_pcm(2.0)) is False
+
+
+def test_config_toggle_and_cli_flag_wiring():
+    import inspect
+
+    from friday.core.config import Settings
+    from friday.cli.main import main as cli_main
+
+    assert Settings.model_fields["voice_biometrics_enabled"].default is False
+    cli_src = inspect.getsource(cli_main)
+    assert "--enroll-voice" in cli_src
+    assert "enroll_voice(duration=5.0)" in cli_src
+    from friday.security import voice_biometrics as vb
+    vb_src = inspect.getsource(vb)
+    assert "Please speak for {duration:.0f} seconds to enroll your voice" in vb_src
+
+
+@pytest.mark.anyio
+async def test_sender_biometrics_gate_blocks_unrecognized_voice():
+    """Enrolled + enabled: failing verification drops frames with a warning."""
+    import asyncio as _asyncio
+    from unittest import mock as _mock
+
+    from friday.voice.audio_io import MicrophoneStream, SpeakerStream
+    from friday.voice.gemini_live_session import GeminiLiveVoiceSession
+
+    session = GeminiLiveVoiceSession(api_key="T")
+    session._active = True
+    session.voice_biometrics_enabled = True
+
+    fake_manager = _mock.MagicMock()
+    fake_manager.is_enrolled.return_value = True
+    fake_manager.verification_window_frames = 3
+    fake_manager.verify_speaker.return_value = False  # unrecognized
+    session._biometrics_manager = fake_manager
+
+    sent = []
+    mock_ws = _mock.MagicMock()
+    mock_ws.send_realtime_input = _mock.AsyncMock(side_effect=lambda audio=None, **kw: sent.append(audio))
+
+    chunk = _fake_pcm(0.04)
+    feed = [chunk] * 4
+
+    async def read_and_finish():
+        if feed:
+            return feed.pop(0)
+        session._active = False
+        return b""
+
+    mic = _mock.MagicMock(spec=MicrophoneStream)
+    mic.read_chunk = read_and_finish
+    spk = _mock.MagicMock(spec=SpeakerStream)
+    spk.is_playing = False
+    spk.queue_size = 0
+
+    with _mock.patch.object(
+        session, "_apply_biometrics_gate", wraps=session._apply_biometrics_gate
+    ):
+        await session._audio_sender_loop(mock_ws, mic, spk, _asyncio.Event())
+
+    # Design: the first window's frames are sent before the verdict lands (no
+    # startup lockout); after the failing verdict every subsequent frame drops.
+    payloads = [getattr(b, "data", b) for b in sent]
+    assert len(payloads) == 2, f"expected only the 2 pre-verdict frames, got {len(payloads)}"
+    fake_manager.verify_speaker.assert_called_once()
+    verified_window = fake_manager.verify_speaker.call_args[0][0]
+    assert len(verified_window) == len(chunk) * 3  # full 3-frame window

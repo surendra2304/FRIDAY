@@ -136,6 +136,13 @@ class GeminiLiveVoiceSession:
         self.echo_interrupt_rms_threshold = 2500.0
         self.echo_suppressed_frames = 0
 
+        # Speaker recognition (voice biometrics): when enabled AND a profile is
+        # enrolled, only the enrolled voice is obeyed; unenrolled = allow all.
+        self.voice_biometrics_enabled = getattr(settings, "voice_biometrics_enabled", False)
+        self._biometrics_manager = None
+        self._biometrics_buffer: list = []
+        self._biometrics_verified: bool = True
+
         self._active = False
         self._state = LiveSessionState.IDLE
         self._session: Optional[Any] = None
@@ -498,6 +505,50 @@ class GeminiLiveVoiceSession:
             response={"output": guarded_content},
         )
 
+    def _biometrics_gate_active(self) -> bool:
+        """True when biometrics is enabled AND a voice profile is enrolled."""
+        if not self.voice_biometrics_enabled:
+            return False
+        if self._biometrics_manager is None:
+            try:
+                from friday.security.voice_biometrics import VoiceProfileManager
+
+                self._biometrics_manager = VoiceProfileManager()
+            except Exception as e:
+                logger.warning(f"Voice biometrics unavailable (allowing all voices): {e}")
+                self.voice_biometrics_enabled = False
+                return False
+        try:
+            return self._biometrics_manager.is_enrolled()
+        except Exception:
+            return False
+
+    async def _apply_biometrics_gate(self, chunk: bytes):
+        """Periodically verify the speaker; drop audio from unrecognized voices.
+
+        Returns the chunk when it may be sent, or None when it must be ignored.
+        Verification runs off-loop (to_thread) every ~2s of accumulated audio;
+        until the first verdict the speaker is assumed genuine (no startup
+        lockout), and a failed verdict suppresses audio until a passing one.
+        """
+        manager = self._biometrics_manager
+        self._biometrics_buffer.append(chunk)
+        if len(self._biometrics_buffer) < manager.verification_window_frames:
+            return None if self._biometrics_verified is False else chunk
+
+        window = b"".join(self._biometrics_buffer)
+        self._biometrics_buffer = []
+        try:
+            verified = await asyncio.to_thread(manager.verify_speaker, window)
+        except Exception as e:
+            logger.warning(f"Speaker verification error (allowing): {e}")
+            verified = True
+        self._biometrics_verified = verified
+        if not verified:
+            logger.warning("[WARNING: Unrecognized Voice] audio ignored (speaker does not match the enrolled profile)")
+            return None
+        return chunk
+
     async def send_text(self, text: str) -> None:
         """Send a realtime text prompt to the active Live session.
 
@@ -690,6 +741,13 @@ class GeminiLiveVoiceSession:
             while self._active and not stop_event.is_set():
                 chunk = await mic.read_chunk()
                 if chunk and len(chunk) > 0:
+                    # 0a. Voice biometrics gate: verify the speaker periodically.
+                    # Unenrolled or disabled -> allow all (backward compatible).
+                    if self.voice_biometrics_enabled and self._biometrics_gate_active():
+                        chunk = await self._apply_biometrics_gate(chunk)
+                        if chunk is None:
+                            continue  # unrecognized voice: do not send to Gemini
+
                     now = time.time()
                     rms = compute_pcm_rms(chunk)
                     self._last_mic_rms = rms
