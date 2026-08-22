@@ -26,7 +26,7 @@ GROQ_DEFAULT_MODEL = "llama-3.3-70b-versatile"
 GROQ_FALLBACK_MODEL = "llama-3.1-8b-instant"
 # Universally available Groq model used as the terminal retry when the
 # configured model is decommissioned / not found (404 model_not_found).
-GROQ_UNIVERSAL_FALLBACK_MODEL = "llama3-8b-8192"
+GROQ_UNIVERSAL_FALLBACK_MODEL = "llama-3.1-8b-instant"
 
 
 class _RateLimitedError(Exception):
@@ -115,7 +115,7 @@ class GroqLLMProvider(BaseLLMProvider):
           (fast fallback), then with `universal_fallback_model` if that model
           is not found.
         - 404 model_not_found on the primary model -> retry directly with the
-          universally available `universal_fallback_model` (llama3-8b-8192).
+          universally available `universal_fallback_model` (llama-3.1-8b-instant).
         - A second 429 fails fast (Groq rate limits are organization-wide, so
           further same-org retries waste quota): raise LLMProviderError so the
           fallback chain advances to Cerebras.

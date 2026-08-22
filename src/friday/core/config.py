@@ -186,7 +186,7 @@ class Settings(BaseSettings):
     cerebras_model: Optional[str] = Field(
         default=None,
         validation_alias=AliasChoices("FRIDAY_CEREBRAS_MODEL", "CEREBRAS_MODEL", "cerebras_model"),
-        description="Optional Cerebras model override (default: llama3.1-70b-4096)",
+        description="Optional Cerebras model override (default: llama3.1-8b-8192)",
     )
 
     # Memory & Semantic Settings

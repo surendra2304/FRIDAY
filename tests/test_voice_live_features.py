@@ -181,3 +181,98 @@ async def test_stdin_listener_sends_text_to_session():
 
     await asyncio.sleep(0.05)  # let the scheduled coroutine run
     assert sent == ["open notepad"]
+
+
+# ---------------------------------------------------------------------------
+# type_text window focusing
+# ---------------------------------------------------------------------------
+
+
+def test_type_text_focuses_window_before_typing(monkeypatch):
+    from friday.tools.builtin import type_text as tt
+
+    events = []
+
+    def fake_focus(title):
+        events.append(("focus", title))
+        return True
+
+    def fake_send_keys(sequence, **kwargs):
+        events.append(("type", sequence))
+
+    monkeypatch.setattr(tt, "_focus_window", fake_focus)
+    monkeypatch.setattr(tt, "_get_send_keys", lambda: fake_send_keys)
+
+    result = tt.TypeTextTool().execute(text="hello", window_title="Notepad")
+    assert result.is_error is False
+    # Focus MUST happen before the keystrokes
+    assert events[0] == ("focus", "Notepad")
+    assert events[1][0] == "type"
+    assert "window 'Notepad'" in result.content
+
+
+def test_type_text_focus_failure_types_into_current_focus(monkeypatch):
+    from friday.tools.builtin import type_text as tt
+
+    events = []
+
+    monkeypatch.setattr(tt, "_focus_window", lambda title: False)
+    monkeypatch.setattr(tt, "_get_send_keys", lambda lambda_seq=None: None) if False else None
+
+    def fake_send_keys(sequence, **kwargs):
+        events.append(sequence)
+
+    monkeypatch.setattr(tt, "_get_send_keys", lambda: fake_send_keys)
+    result = tt.TypeTextTool().execute(text="hello", window_title="Missing App")
+    assert result.is_error is False
+    assert events, "typing still happens when focus fails (best effort)"
+    assert "current focus" in result.content
+
+
+def test_focus_window_matches_title_substring_and_sleeps(monkeypatch):
+    from friday.tools.builtin import type_text as tt
+
+    slept = []
+    monkeypatch.setattr("time.sleep", lambda s: slept.append(s))
+
+    class FakeWindow:
+        def __init__(self, title):
+            self._t = title
+
+        def window_text(self):
+            return self._t
+
+        def set_focus(self):
+            slept.append("focus")
+
+    import types
+
+    fake_desktop = types.SimpleNamespace(
+        windows=lambda: [FakeWindow("PowerShell"), FakeWindow("Untitled - Notepad")]
+    )
+    import sys
+
+    fake_pywinauto = types.ModuleType("pywinauto")
+    fake_pywinauto.Desktop = lambda backend=None: fake_desktop
+    monkeypatch.setitem(sys.modules, "pywinauto", fake_pywinauto)
+
+    assert tt._focus_window("notepad") is True
+    assert slept[0] == "focus"   # set_focus called
+    assert slept[1] == 0.5       # settle delay before typing
+
+
+# ---------------------------------------------------------------------------
+# Updated provider default models
+# ---------------------------------------------------------------------------
+
+
+def test_groq_universal_fallback_model_updated():
+    from friday.llm.groq_provider import GROQ_UNIVERSAL_FALLBACK_MODEL
+
+    assert GROQ_UNIVERSAL_FALLBACK_MODEL == "llama-3.1-8b-instant"
+
+
+def test_cerebras_default_model_updated():
+    from friday.llm.cerebras_provider import CEREBRAS_DEFAULT_MODEL
+
+    assert CEREBRAS_DEFAULT_MODEL == "llama3.1-8b-8192"

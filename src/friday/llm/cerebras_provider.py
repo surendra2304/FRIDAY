@@ -22,7 +22,7 @@ except ImportError:  # pragma: no cover - exercised only when SDK absent
 logger = get_logger("llm.cerebras")
 
 CEREBRAS_DEFAULT_BASE_URL = "https://api.cerebras.ai/v1"
-CEREBRAS_DEFAULT_MODEL = "llama3.1-70b-4096"
+CEREBRAS_DEFAULT_MODEL = "llama3.1-8b-8192"
 
 
 class CerebrasLLMProvider(BaseLLMProvider):

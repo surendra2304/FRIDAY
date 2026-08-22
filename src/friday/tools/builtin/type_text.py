@@ -37,14 +37,46 @@ def _get_send_keys():
     return send_keys
 
 
+def _focus_window(title_substring: str) -> bool:
+    """Focus a top-level window whose title contains the given substring.
+
+    Uses UI Automation to find the window (e.g. 'Notepad' matches
+    'Untitled - Notepad'), brings it to the foreground via set_focus(), and
+    waits 0.5s for the focus to settle before keystrokes are sent. Returns
+    True when a window was focused; callers proceed regardless (best effort).
+    """
+    import time as _time
+
+    from pywinauto import Desktop
+
+    needle = (title_substring or "").strip().lower()
+    if not needle:
+        return False
+    try:
+        windows = Desktop(backend="uia").windows()
+        matches = [w for w in windows if needle in (w.window_text() or "").lower()]
+        if not matches:
+            logger.warning(f"No window found matching '{title_substring}' to focus.")
+            return False
+        matches[0].set_focus()
+        _time.sleep(0.5)  # let the OS settle focus before typing
+        logger.info(f"Focused window '{matches[0].window_text()}' for typing.")
+        return True
+    except Exception as e:
+        logger.warning(f"Window focus for '{title_substring}' failed: {e}")
+        return False
+
+
 class TypeTextTool(BaseTool):
-    """Type the given text into the currently focused window, exactly as provided."""
+    """Type text into a window (optionally focusing it first), exactly as provided."""
 
     name = "type_text"
     description = (
-        "Type a piece of text into the currently focused window/application, character "
-        "by character, exactly as provided (no hotkeys or special keys are possible). "
-        "Use after opening an application when the user asks you to write or enter text."
+        "Type a piece of text into an application window, character by character, exactly "
+        "as provided (no hotkeys or special keys are possible). ALWAYS pass window_title "
+        "when the text belongs in a specific application you just opened (e.g. "
+        "window_title='Notepad') so the tool focuses that window before typing; otherwise "
+        "the text goes to whatever currently has focus (often the terminal)."
     )
     safety_level = SafetyLevel.SAFE
     parameters = {
@@ -52,13 +84,20 @@ class TypeTextTool(BaseTool):
         "properties": {
             "text": {
                 "type": "string",
-                "description": "The exact text to type into the focused window.",
-            }
+                "description": "The exact text to type.",
+            },
+            "window_title": {
+                "type": "string",
+                "description": (
+                    "Substring of the target window's title (e.g. 'Notepad' matches "
+                    "'Untitled - Notepad'). The window is focused before typing."
+                ),
+            },
         },
         "required": ["text"],
     }
 
-    def execute(self, text: str = "", **kwargs: Any) -> ToolResult:
+    def execute(self, text: str = "", window_title: str = "", **kwargs: Any) -> ToolResult:
         payload = text or ""
         if not payload.strip():
             return ToolResult(
@@ -75,12 +114,22 @@ class TypeTextTool(BaseTool):
                 safety_level=self.safety_level,
             )
 
+        focused = False
+        if window_title and window_title.strip():
+            focused = _focus_window(window_title)
+
         try:
             send_keys(_escape_literal(payload), with_spaces=True, pause=0.005)
-            logger.info(f"Typed {len(payload)} characters into the focused window.")
+            target = f"window '{window_title}'" if focused else "current focus"
+            logger.info(f"Typed {len(payload)} characters into {target}.")
             return ToolResult(
                 name=self.name,
-                content=f"Typed: {payload[:80]}{'...' if len(payload) > 80 else ''}",
+                content=(
+                    f"Typed into {target}: {payload[:80]}{'...' if len(payload) > 80 else ''}"
+                    + ("" if focused else " (note: target window not found; typed into current focus)")
+                    if window_title
+                    else f"Typed: {payload[:80]}{'...' if len(payload) > 80 else ''}"
+                ),
                 is_error=False,
                 safety_level=self.safety_level,
             )
