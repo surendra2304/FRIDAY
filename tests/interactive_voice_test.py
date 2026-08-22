@@ -154,30 +154,57 @@ def attempt_session(api_key: str, model: str, turn_log: list):
         sample_rate_out=SAMPLE_RATE_OUT,
         max_retries=0,  # surface the first raw connection error immediately
         credential_pool=credential_pool,
+        # Echo control: disable ALL client-side RMS barge-in (server VAD is the
+        # sole authority) and mute the mic while the speaker plays FRIDAY's voice.
+        barge_in_rms_threshold=float("inf"),
+        local_barge_in_during_playback=False,
+        headphones_mode=False,
     )
     if session.model != model:
         print(f"[WARN] Model normalized to '{session.model}' (input was rejected as non-Live).")
 
-    # Script-side transcript extraction: pull text transcripts directly from
-    # the serverContent model turn parts (called after audio is enqueued, so
-    # it can never delay playback).
-    script_agent_text: list = []
+    # Script-side transcript extraction: print FRIDAY's words INSTANTLY as they
+    # stream — output_transcription when enabled, otherwise model-turn part
+    # text. Called after audio is enqueued, so it can never delay playback.
+    stream_state = {"streaming": False, "turn_streamed": False, "streamed_last_turn": False}
+
+    def _print_stream(text: str) -> None:
+        if text:
+            print(text, end="", flush=True)
+            stream_state["streaming"] = True
+            stream_state["turn_streamed"] = True
 
     def on_server_content(server_content) -> None:
+        # Preferred: streaming output transcription of FRIDAY's speech
+        out_tx = getattr(server_content, "output_transcription", None)
+        if out_tx and getattr(out_tx, "text", None):
+            _print_stream(out_tx.text)
+
+        # Fallback/complement: text parts of the model turn
         model_turn = getattr(server_content, "model_turn", None)
         if model_turn and getattr(model_turn, "parts", None):
             for part in model_turn.parts:
                 if getattr(part, "text", None):
-                    script_agent_text.append(part.text)
+                    _print_stream(part.text)
+
+        # Close the streamed line when the turn ends; latch whether anything
+        # streamed so on_turn_complete (which fires after this) can skip the
+        # duplicate fallback print.
+        if getattr(server_content, "turn_complete", False):
+            if stream_state["streaming"]:
+                print()  # newline after streamed transcript
+                stream_state["streaming"] = False
+            stream_state["streamed_last_turn"] = stream_state["turn_streamed"]
+            stream_state["turn_streamed"] = False
 
     def on_turn_complete(user_text: str, agent_text: str) -> None:
         turn_log.append((time.perf_counter(), user_text, agent_text))
-        # Prefer the session's transcription; fall back to script-extracted
-        # model-turn text; only then admit defeat.
-        spoken = (agent_text or "").strip() or "".join(script_agent_text).strip()
-        script_agent_text.clear()
         print(f"\n[TURN {len(turn_log)}] You: {user_text or '(untranscribed)'}")
-        print(f"         FRIDAY: {spoken or '(untranscribed)'}")
+        # The transcript was already printed live by on_server_content; only
+        # print a fallback line if nothing streamed for this turn.
+        if not stream_state.get("streamed_last_turn"):
+            spoken = (agent_text or "").strip()
+            print(f"         FRIDAY: {spoken or '(untranscribed)'}")
 
     async def run_indefinite() -> None:
         mic = MicrophoneStream(sample_rate=SAMPLE_RATE_IN)
@@ -200,6 +227,7 @@ def attempt_session(api_key: str, model: str, turn_log: list):
                 output_stream=spk,
                 on_turn_complete=on_turn_complete,
                 on_server_content=on_server_content,
+                echo_mute=True,
             )
         finally:
             connected_task.cancel()

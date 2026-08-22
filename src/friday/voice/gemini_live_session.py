@@ -74,6 +74,8 @@ class GeminiLiveVoiceSession:
         vad_prefix_padding_ms: Optional[int] = None,
         vad_silence_duration_ms: Optional[int] = None,
         barge_in_rms_threshold: Optional[float] = None,
+        local_barge_in_during_playback: Optional[bool] = None,
+        headphones_mode: Optional[bool] = None,
         thinking_level: Optional[str] = None,
         thinking_budget: Optional[int] = None,
         credential_pool: Optional[GeminiCredentialPool] = credential_pool,
@@ -113,8 +115,14 @@ class GeminiLiveVoiceSession:
         self.barge_in_consecutive_frames = getattr(settings, "voice_barge_in_consecutive_frames", 4)
         self.barge_in_playback_factor = getattr(settings, "voice_barge_in_playback_factor", 3.0)
         self.barge_in_cooldown_seconds = getattr(settings, "voice_barge_in_cooldown_seconds", 1.0)
-        self.local_barge_in_during_playback = getattr(settings, "voice_local_barge_in_during_playback", False)
-        self.headphones_mode = getattr(settings, "voice_headphones_mode", False)
+        self.local_barge_in_during_playback = (
+            local_barge_in_during_playback
+            if local_barge_in_during_playback is not None
+            else getattr(settings, "voice_local_barge_in_during_playback", False)
+        )
+        self.headphones_mode = (
+            headphones_mode if headphones_mode is not None else getattr(settings, "voice_headphones_mode", False)
+        )
         self.adaptive_noise_alpha = getattr(settings, "voice_adaptive_noise_alpha", 0.05)
         self.adaptive_noise_multiplier = getattr(settings, "voice_adaptive_noise_multiplier", 3.5)
         self.thinking_level = thinking_level or getattr(settings, "voice_thinking_level", "MINIMAL")
@@ -472,6 +480,7 @@ class GeminiLiveVoiceSession:
         on_turn_complete: Optional[Callable[[str, str], None]] = None,
         stop_event: Optional[asyncio.Event] = None,
         on_server_content: Optional[Callable[[Any], None]] = None,
+        echo_mute: bool = False,
     ) -> None:
         """Run the full-duplex asynchronous bidirectional Gemini Live loop with reconnection management.
 
@@ -479,6 +488,11 @@ class GeminiLiveVoiceSession:
         object immediately AFTER the audio chunks have been enqueued to the
         speaker, so observers (e.g. transcript extraction) can never delay
         audio playback.
+
+        `echo_mute` (optional) enables half-duplex echo suppression: the
+        microphone is muted while the speaker is playing and resumes a few
+        blocks after playback drains, so FRIDAY's own voice is never captured
+        and sent back as user input.
         """
         self._active = True
         client = genai.Client(api_key=self.api_key)
@@ -502,6 +516,14 @@ class GeminiLiveVoiceSession:
             err_msg = spk.error or "Speaker stream failed to initialize."
             logger.error(f"Cannot run Gemini Live loop: {err_msg}")
             raise VoiceError(f"Speaker unavailable: {err_msg}")
+
+        # Half-duplex echo suppression: mute the mic while the speaker plays
+        if echo_mute:
+            try:
+                spk.set_echo_mute_target(mic)
+                logger.info("Echo suppression enabled: microphone muted during speaker playback.")
+            except Exception as e:
+                logger.warning(f"Could not enable echo suppression: {e}")
 
         reconnect_attempts = 0
 

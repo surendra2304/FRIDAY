@@ -118,6 +118,10 @@ class MicrophoneStream:
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._active = False
         self._error: Optional[str] = None
+        # Echo suppression: while muted, captured frames are dropped instead of
+        # enqueued (e.g. while the speaker is playing FRIDAY's voice).
+        self._muted = False
+        self.muted_dropped_frames = 0
 
         self.overflow_count = 0
         self.captured_chunks = 0
@@ -174,8 +178,26 @@ class MicrophoneStream:
             self._active = False
             self._stream = None
 
+    def set_muted(self, muted: bool) -> None:
+        """Mute/unmute capture: muted frames are dropped, not enqueued.
+
+        Used for speaker-echo suppression (half-duplex): the speaker stream
+        mutes the mic while it is playing and unmutes once playback drains.
+        Cheap atomic bool flip — safe from audio callbacks and any thread.
+        """
+        self._muted = bool(muted)
+
+    @property
+    def is_muted(self) -> bool:
+        return self._muted
+
     def _safe_enqueue(self, pcm_bytes: bytes) -> None:
         """Safely push chunk into queue, dropping oldest if full to avoid unbounded memory."""
+        if self._muted:
+            # Echo suppression: drop the frame entirely (never echo FRIDAY's
+            # own speaker output back to the server as user input).
+            self.muted_dropped_frames += 1
+            return
         if self._queue is None:
             return
         try:
@@ -252,11 +274,47 @@ class SpeakerStream:
         self._remainder = bytearray()
         self._lock = threading.Lock()
         self._error: Optional[str] = None
+        # Echo suppression: optionally mute a MicrophoneStream while playing
+        self._mic_to_mute: Optional["MicrophoneStream"] = None
+        self._playing = False
+        self._drain_blocks = 0
 
         self.underflow_count = 0
         self.overflow_count = 0
         self.played_chunks = 0
         self.played_bytes = 0
+
+    def set_echo_mute_target(self, mic: Optional["MicrophoneStream"]) -> None:
+        """Wire a MicrophoneStream to be muted while this speaker is playing."""
+        self._mic_to_mute = mic
+
+    def _mute_mic(self) -> None:
+        if self._mic_to_mute is not None:
+            try:
+                self._mic_to_mute.set_muted(True)
+            except Exception:
+                pass
+
+    def _maybe_unmute(self) -> None:
+        """Unmute the mic after playback fully drains.
+
+        Requires a few consecutive empty output blocks (hardware buffer tail
+        latency) so the speaker has physically finished sounding before the
+        microphone resumes. Called from the audio callback — must stay cheap.
+        """
+        if self._mic_to_mute is None or not self._playing:
+            return
+        if not self._queue.empty() or self._remainder:
+            self._drain_blocks = 0
+            return
+        self._drain_blocks += 1
+        if self._drain_blocks >= 3:
+            self._playing = False
+            self._drain_blocks = 0
+            try:
+                self._mic_to_mute.set_muted(False)
+            except Exception:
+                pass
 
     def start(self) -> None:
         """Start the speaker audio output stream."""
@@ -299,6 +357,9 @@ class SpeakerStream:
                     except queue.Empty:
                         break
 
+                # 2b. Echo suppression: unmute the mic once playback drains
+                self._maybe_unmute()
+
             # 3. Pad with silence if underflow occurs
             if len(out_chunk) < bytes_needed:
                 out_chunk.extend(b"\x00" * (bytes_needed - len(out_chunk)))
@@ -340,6 +401,11 @@ class SpeakerStream:
                     pass
                 self._queue.put_nowait(pcm_bytes)
                 self.played_chunks += 1
+            # Echo suppression: mute the mic the moment playback begins
+            if not self._playing:
+                self._playing = True
+                self._drain_blocks = 0
+                self._mute_mic()
 
     def stop(self) -> None:
         """Instantly purge all buffered playback chunks and remainder (barge-in interruption)."""
@@ -350,6 +416,14 @@ class SpeakerStream:
                     self._queue.get_nowait()
                 except queue.Empty:
                     break
+        # Playback ceased (purged): the mic may resume immediately
+        self._playing = False
+        self._drain_blocks = 0
+        if self._mic_to_mute is not None:
+            try:
+                self._mic_to_mute.set_muted(False)
+            except Exception:
+                pass
         logger.debug("SpeakerStream playback queue purged (barge-in)")
 
     def close(self) -> None:
