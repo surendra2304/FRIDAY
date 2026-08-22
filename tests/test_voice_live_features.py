@@ -276,3 +276,75 @@ def test_cerebras_default_model_updated():
     from friday.llm.cerebras_provider import CEREBRAS_DEFAULT_MODEL
 
     assert CEREBRAS_DEFAULT_MODEL == "llama3.1-8b-8192"
+
+
+# ---------------------------------------------------------------------------
+# close_application tool
+# ---------------------------------------------------------------------------
+
+
+class _FakeWin:
+    def __init__(self, title):
+        self._t = title
+        self.closed = False
+
+    def window_text(self):
+        return self._t
+
+    def close(self):
+        self.closed = True
+
+
+def test_close_application_finds_and_closes(monkeypatch):
+    from friday.tools.builtin import close_application as ca
+
+    notepad = _FakeWin("Untitled - Notepad")
+    monkeypatch.setattr(ca, "_find_window", lambda t: notepad if "notepad" == t else None)
+    result = ca.CloseApplicationTool().execute(window_title="notepad")
+    assert result.is_error is False
+    assert result.content == "Closed notepad."
+    assert notepad.closed is True
+
+
+def test_close_application_not_found():
+    from friday.tools.builtin.close_application import CloseApplicationTool
+
+    result = CloseApplicationTool().execute(window_title="Nonexistent")
+    assert result.is_error is True
+    assert "No open window" in result.content
+
+
+def test_close_application_empty_title():
+    from friday.tools.builtin.close_application import CloseApplicationTool
+
+    result = CloseApplicationTool().execute(window_title="  ")
+    assert result.is_error is True
+
+
+def test_close_application_registered_and_declared():
+    from friday.agent.agent import FridayAgent
+    from friday.core.config import Settings
+    from friday.llm.mock_provider import MockLLMProvider
+    from friday.memory.in_memory import InMemoryConversationMemory
+    from friday.voice.gemini_live_session import GeminiLiveVoiceSession
+
+    agent = FridayAgent(
+        settings=Settings(env="testing", llm_provider="mock"),
+        llm_provider=MockLLMProvider(),
+        memory=InMemoryConversationMemory(),
+    )
+    names = {s.get("function", s).get("name") for s in agent.tools.get_schemas()}
+    assert "close_application" in names
+    session = GeminiLiveVoiceSession(api_key="TEST", agent=agent)
+    declared = {fd.name for fd in session._build_tools_config()[0].function_declarations}
+    assert "close_application" in declared
+
+
+def test_console_logging_error_only_by_default():
+    """CLI default console level is ERROR; debug flag restores verbose console."""
+    import inspect
+
+    from friday.cli.main import main as cli_main
+
+    source = inspect.getsource(cli_main)
+    assert "logging.DEBUG if args.debug else logging.ERROR" in source

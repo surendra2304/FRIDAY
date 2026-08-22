@@ -197,8 +197,10 @@ Modes:
         print(f"Details: {e}\n")
         sys.exit(1)
 
-    # In default mode, keep console clean (WARNING only), all debug/info goes to log file
-    console_log_level = logging.DEBUG if args.debug else logging.WARNING
+    # Clean console: only ERROR-level logs reach the terminal in default mode
+    # (provider failover warnings, INFO chatter, etc. go to the log file only).
+    # Use --debug to mirror everything to the console.
+    console_log_level = logging.DEBUG if args.debug else logging.ERROR
     setup_logging(level=settings.log_level, log_file=settings.log_file, console_level=console_log_level)
     logger.info("Starting FRIDAY CLI session")
 

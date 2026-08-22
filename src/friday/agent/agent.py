@@ -37,6 +37,7 @@ from friday.tools.builtin import (
     ProposeComputerActionTool,
     OpenApplicationTool,
     TypeTextTool,
+    CloseApplicationTool,
 )
 from friday.agent.state import TaskState, ReasoningStateMachine
 from friday.agent.planner import TaskPlan, GoalDecomposer
@@ -311,6 +312,7 @@ class FridayAgent:
         registry.register(ProposeComputerActionTool())
         registry.register(OpenApplicationTool())
         registry.register(TypeTextTool())
+        registry.register(CloseApplicationTool())
         return registry
 
     def _execute_single_tool_call_internal(self, tc: ToolCall, timeout: Optional[float] = None) -> ToolResult:

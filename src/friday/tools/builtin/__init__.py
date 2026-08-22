@@ -11,6 +11,7 @@ from friday.tools.builtin.action_proposal import ProposeComputerActionTool
 from friday.tools.builtin.execute_computer_action import ExecuteComputerActionTool
 from friday.tools.builtin.open_application import OpenApplicationTool
 from friday.tools.builtin.type_text import TypeTextTool
+from friday.tools.builtin.close_application import CloseApplicationTool
 
 __all__ = [
     "CalculatorTool",
@@ -24,4 +25,5 @@ __all__ = [
     "ExecuteComputerActionTool",
     "OpenApplicationTool",
     "TypeTextTool",
+    "CloseApplicationTool",
 ]
