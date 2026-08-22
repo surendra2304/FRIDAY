@@ -171,3 +171,106 @@ def test_settings_load_cerebras_key(monkeypatch):
     monkeypatch.setenv("FRIDAY_CEREBRAS_API_KEY", "ck")
     s = Settings()
     assert s.cerebras_api_key == "ck"
+
+
+# ---------------------------------------------------------------------------
+# Mistral provider (deep fallback)
+# ---------------------------------------------------------------------------
+
+
+def test_factory_creates_mistral_provider():
+    from friday.llm.factory import create_llm_provider
+    from friday.llm.mistral_provider import MISTRAL_DEFAULT_MODEL, MistralLLMProvider
+
+    settings = Settings(llm_provider="mistral", mistral_api_key="TEST_MISTRAL_KEY")
+    provider = create_llm_provider(settings)
+    assert isinstance(provider, MistralLLMProvider)
+    assert provider.provider_name == "mistral"
+    assert provider.model == MISTRAL_DEFAULT_MODEL == "mistral-large-latest"
+    assert provider.base_url == "https://api.mistral.ai/v1"
+
+
+def test_mistral_generate_success():
+    from friday.llm.mistral_provider import MistralLLMProvider
+
+    provider = MistralLLMProvider(api_key="k")
+
+    class FakeCompletions:
+        @staticmethod
+        def create(**kwargs):
+            msg = SimpleNamespace(content="hello from mistral", tool_calls=None)
+            return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
+
+    provider._client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions))
+    result = provider.generate([Message(role=Role.USER, content="hi")])
+    assert result.content == "hello from mistral"
+
+
+def test_mistral_retries_transient_then_succeeds(monkeypatch):
+    from friday.llm.mistral_provider import MistralLLMProvider
+
+    provider = MistralLLMProvider(api_key="k", max_retries=2)
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    attempts = []
+
+    class RateLimit429(Exception):
+        def __init__(self):
+            super().__init__("Error code: 429 - Rate limit reached")
+            self.status_code = 429
+
+    class FakeCompletions:
+        @staticmethod
+        def create(**kwargs):
+            attempts.append(1)
+            if len(attempts) < 2:
+                raise RateLimit429()
+            msg = SimpleNamespace(content="recovered", tool_calls=None)
+            return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
+
+    provider._client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions))
+    assert provider.generate([Message(role=Role.USER, content="hi")]).content == "recovered"
+
+
+def test_mistral_permanent_error_and_key_masking():
+    from friday.llm.mistral_provider import MistralLLMProvider
+
+    provider = MistralLLMProvider(api_key="sk-super-mistral")
+
+    class FakeCompletions:
+        @staticmethod
+        def create(**kwargs):
+            raise RuntimeError("auth failed for key sk-super-mistral")
+
+    provider._client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions))
+    with pytest.raises(LLMProviderError) as exc_info:
+        provider.generate([Message(role=Role.USER, content="hi")])
+    assert "sk-super-mistral" not in str(exc_info.value)
+
+
+def test_mistral_pool_distinct_and_settings(monkeypatch):
+    from friday.auth.credential_pool import OpenAICompatibleCredentialPool, mistral_credential_pool
+
+    assert mistral_credential_pool.state_file.name == "mistral_pool_state.json"
+    monkeypatch.setenv("MISTRAL_API_KEY", "env-mistral-key")
+    pool = OpenAICompatibleCredentialPool(
+        env_key_names=("FRIDAY_MISTRAL_API_KEY", "MISTRAL_API_KEY"),
+        state_file_name="data/_test_mistral_pool_state.json",
+    )
+    pool.reload()
+    assert pool.get_active_key() == "env-mistral-key"
+
+    monkeypatch.setenv("FRIDAY_MISTRAL_API_KEY", "mk")
+    assert Settings().mistral_api_key == "mk"
+
+
+def test_mistral_never_uses_gemini_pool(monkeypatch):
+    from friday.auth.credential_pool import GeminiCredentialPool
+    from friday.llm.factory import create_llm_provider
+    from friday.llm.mistral_provider import MistralLLMProvider
+
+    def _explode(*a, **kw):
+        raise AssertionError("Gemini pool must not be consulted for Mistral")
+
+    monkeypatch.setattr(GeminiCredentialPool, "get_active_key", _explode)
+    provider = create_llm_provider(Settings(llm_provider="mistral", mistral_api_key="mk"))
+    assert provider.api_key == "mk"

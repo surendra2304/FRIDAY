@@ -10,6 +10,7 @@ from friday.llm.cerebras_provider import CerebrasLLMProvider
 from friday.llm.factory import create_llm_provider
 from friday.llm.fallback_chain_provider import FallbackChainLLMProvider, _BLOCKED_TOOL_OUTPUT
 from friday.llm.groq_provider import GroqLLMProvider
+from friday.llm.mistral_provider import MistralLLMProvider
 from friday.llm.openrouter_provider import OpenRouterLLMProvider
 
 
@@ -112,17 +113,20 @@ def test_chain_provider_name_lists_order():
 # ---------------------------------------------------------------------------
 
 
-def test_factory_creates_chain_in_groq_cerebras_openrouter_order():
+def test_factory_creates_chain_in_groq_cerebras_mistral_openrouter_order():
     settings = Settings(
         llm_provider="chain",
         groq_api_key="gk",
         cerebras_api_key="ck",
+        mistral_api_key="mk",
         openrouter_api_key="ork",
     )
     provider = create_llm_provider(settings)
     assert isinstance(provider, FallbackChainLLMProvider)
-    assert [type(p) for p in provider.providers] == [GroqLLMProvider, CerebrasLLMProvider, OpenRouterLLMProvider]
-    assert provider.provider_name == "chain(groq -> cerebras -> openrouter)"
+    assert [type(p) for p in provider.providers] == [
+        GroqLLMProvider, CerebrasLLMProvider, MistralLLMProvider, OpenRouterLLMProvider,
+    ]
+    assert provider.provider_name == "chain(groq -> cerebras -> mistral -> openrouter)"
 
 
 def test_factory_chain_uses_own_pools_not_gemini(monkeypatch):
@@ -136,11 +140,12 @@ def test_factory_chain_uses_own_pools_not_gemini(monkeypatch):
         llm_provider="chain",
         groq_api_key="gk",
         cerebras_api_key="ck",
+        mistral_api_key="mk",
         openrouter_api_key="ork",
     )
     provider = create_llm_provider(settings)
     assert isinstance(provider, FallbackChainLLMProvider)
-    assert [p.api_key for p in provider.providers] == ["gk", "ck", "ork"]
+    assert [p.api_key for p in provider.providers] == ["gk", "ck", "mk", "ork"]
 
 
 def test_factory_chain_end_to_end_failover(monkeypatch):

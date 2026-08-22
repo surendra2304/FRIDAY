@@ -189,6 +189,18 @@ class Settings(BaseSettings):
         description="Optional Cerebras model override (default: llama3.1-8b-8192)",
     )
 
+    # Mistral (deep-fallback text/reasoning provider; OpenAI-SDK compatible)
+    mistral_api_key: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("FRIDAY_MISTRAL_API_KEY", "MISTRAL_API_KEY", "mistral_api_key"),
+        description="API Key for Mistral (text/reasoning only; never used for voice)",
+    )
+    mistral_model: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("FRIDAY_MISTRAL_MODEL", "MISTRAL_MODEL", "mistral_model"),
+        description="Optional Mistral model override (default: mistral-large-latest)",
+    )
+
     # Memory & Semantic Settings
     memory_backend: str = Field(default="sqlite", description="Memory backend: 'sqlite', 'in_memory'")
     memory_db_path: str = Field(default="data/friday.db", description="Path to SQLite database file")

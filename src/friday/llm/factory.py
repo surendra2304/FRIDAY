@@ -5,12 +5,14 @@ from friday.core.exceptions import ConfigError
 from friday.core.logging import get_logger
 from friday.auth.credential_pool import (
     cerebras_credential_pool,
+    mistral_credential_pool,
     credential_pool,
     groq_credential_pool,
     openrouter_credential_pool,
 )
 from friday.llm.base import BaseLLMProvider
 from friday.llm.cerebras_provider import CEREBRAS_DEFAULT_MODEL, CerebrasLLMProvider
+from friday.llm.mistral_provider import MISTRAL_DEFAULT_MODEL, MistralLLMProvider
 from friday.llm.fallback_chain_provider import FallbackChainLLMProvider
 from friday.llm.gemini_provider import GeminiLLMProvider
 from friday.llm.groq_provider import GROQ_DEFAULT_MODEL, GroqLLMProvider
@@ -107,6 +109,9 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
         openrouter_model = settings.openrouter_model or (
             settings.llm_model if settings.llm_model != _DEFAULT_LLM_MODEL else OPENROUTER_DEFAULT_MODEL
         )
+        mistral_model = settings.mistral_model or (
+            settings.llm_model if settings.llm_model != _DEFAULT_LLM_MODEL else MISTRAL_DEFAULT_MODEL
+        )
         chain_providers = [
             GroqLLMProvider(
                 api_key=settings.groq_api_key or settings.llm_api_key,
@@ -120,6 +125,13 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
                 api_key=settings.cerebras_api_key or settings.llm_api_key,
                 credential_pool=cerebras_credential_pool,
                 model=cerebras_model,
+                temperature=settings.llm_temperature,
+                max_tokens=settings.llm_max_tokens,
+            ),
+            MistralLLMProvider(
+                api_key=settings.mistral_api_key or settings.llm_api_key,
+                credential_pool=mistral_credential_pool,
+                model=mistral_model,
                 temperature=settings.llm_temperature,
                 max_tokens=settings.llm_max_tokens,
             ),
@@ -137,6 +149,19 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
         )
         return FallbackChainLLMProvider(providers=chain_providers)
 
+    if provider_type == "mistral":
+        model_name = settings.mistral_model or (
+            settings.llm_model if settings.llm_model != _DEFAULT_LLM_MODEL else MISTRAL_DEFAULT_MODEL
+        )
+        logger.info(f"Initializing Mistral Provider (model: {model_name})")
+        return MistralLLMProvider(
+            api_key=settings.mistral_api_key or settings.llm_api_key,
+            credential_pool=mistral_credential_pool,
+            model=model_name,
+            temperature=settings.llm_temperature,
+            max_tokens=settings.llm_max_tokens,
+        )
+
     if provider_type in ("openai", "ollama"):
         logger.info(f"Initializing OpenAI-compatible Provider (provider: {provider_type}, model: {settings.llm_model})")
         return OpenAILLMProvider(
@@ -149,5 +174,5 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
 
     raise ConfigError(
         f"Unsupported LLM provider: '{settings.llm_provider}'. "
-        "Supported: 'mock', 'openai', 'gemini', 'groq', 'openrouter', 'cerebras', 'chain', 'ollama'"
+        "Supported: 'mock', 'openai', 'gemini', 'groq', 'openrouter', 'cerebras', 'mistral', 'chain', 'ollama'"
     )
