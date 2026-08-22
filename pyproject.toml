@@ -21,6 +21,12 @@ dependencies = [
     "sounddevice>=0.4.6",
     "numpy>=1.26.0",
     "pywinauto>=0.6.8; sys_platform == 'win32'",
+    "pycaw>=20240210; sys_platform == 'win32'",
+    "duckduckgo-search>=6.0.0",
+    "beautifulsoup4>=4.12.0",
+    "rich>=13.0.0",
+    "pytesseract>=0.3.10",
+    "pillow>=10.0.0",
 ]
 
 [project.optional-dependencies]

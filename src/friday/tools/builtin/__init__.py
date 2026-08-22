@@ -12,6 +12,10 @@ from friday.tools.builtin.execute_computer_action import ExecuteComputerActionTo
 from friday.tools.builtin.open_application import OpenApplicationTool
 from friday.tools.builtin.type_text import TypeTextTool
 from friday.tools.builtin.close_application import CloseApplicationTool
+from friday.tools.builtin.os_control import ManageVolumeTool, SystemPowerControlTool, ManageWindowsTool
+from friday.tools.builtin.web_tools import WebSearchTool, FetchWebpageTool
+from friday.tools.builtin.file_and_command import FileOperationsTool, ExecuteCommandTool
+from friday.tools.builtin.screen_ocr import ReadScreenTextTool, FindOnScreenTool
 
 __all__ = [
     "CalculatorTool",
@@ -26,4 +30,13 @@ __all__ = [
     "OpenApplicationTool",
     "TypeTextTool",
     "CloseApplicationTool",
+    "ManageVolumeTool",
+    "SystemPowerControlTool",
+    "ManageWindowsTool",
+    "WebSearchTool",
+    "FetchWebpageTool",
+    "FileOperationsTool",
+    "ExecuteCommandTool",
+    "ReadScreenTextTool",
+    "FindOnScreenTool",
 ]

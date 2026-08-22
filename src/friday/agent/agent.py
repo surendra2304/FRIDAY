@@ -38,6 +38,15 @@ from friday.tools.builtin import (
     OpenApplicationTool,
     TypeTextTool,
     CloseApplicationTool,
+    ManageVolumeTool,
+    SystemPowerControlTool,
+    ManageWindowsTool,
+    WebSearchTool,
+    FetchWebpageTool,
+    FileOperationsTool,
+    ExecuteCommandTool,
+    ReadScreenTextTool,
+    FindOnScreenTool,
 )
 from friday.agent.state import TaskState, ReasoningStateMachine
 from friday.agent.planner import TaskPlan, GoalDecomposer
@@ -313,6 +322,15 @@ class FridayAgent:
         registry.register(OpenApplicationTool())
         registry.register(TypeTextTool())
         registry.register(CloseApplicationTool())
+        registry.register(ManageVolumeTool())
+        registry.register(SystemPowerControlTool())
+        registry.register(ManageWindowsTool())
+        registry.register(WebSearchTool())
+        registry.register(FetchWebpageTool())
+        registry.register(FileOperationsTool())
+        registry.register(ExecuteCommandTool())
+        registry.register(ReadScreenTextTool())
+        registry.register(FindOnScreenTool())
         return registry
 
     def _execute_single_tool_call_internal(self, tc: ToolCall, timeout: Optional[float] = None) -> ToolResult:

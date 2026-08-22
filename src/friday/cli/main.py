@@ -10,6 +10,15 @@ from friday.cli.auth import CLIAuthorizer
 from friday.core.config import get_settings
 from friday.core.logging import get_logger, setup_logging
 
+try:
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.text import Text
+
+    _console = Console()
+except ImportError:  # pragma: no cover - rich is a hard dependency
+    _console = None
+
 import shutil
 
 logger = get_logger("cli")
@@ -160,9 +169,17 @@ def print_tools(agent: FridayAgent) -> None:
     print("---------------------------------------\n")
 
 
+_active_status = {"obj": None}
+
+
 def on_tool_event(tool_call, tool_result) -> None:
-    """Print clean indicator in console when a tool executes (only shown in debug mode or sensitive tools)."""
-    pass
+    """Update the Rich spinner while a tool executes; no-op without an active status."""
+    status = _active_status.get("obj")
+    if status is not None and getattr(tool_call, "name", None):
+        try:
+            status.update(f"[magenta]Executing Tool: {tool_call.name}...")
+        except Exception:
+            pass
 
 
 def main() -> None:
@@ -210,7 +227,7 @@ Modes:
 
     agent = FridayAgent(
         settings=settings,
-        tool_callback=on_tool_event if args.debug else None,
+        tool_callback=on_tool_event,
         authorizer=CLIAuthorizer(),
     )
 
@@ -224,7 +241,11 @@ Modes:
         print(render_friday_banner("0.4.6"))
         print("  Starting Gemini Live Real-Time Voice Session...")
         print("  Model: gemini-3.1-flash-live-preview | Input: 16kHz PCM | Output: 24kHz PCM")
-        print("  Speak naturally; transcripts print live. You can also TYPE a message")
+        if _console is not None:
+            _console.print("[bold green]Listening...[/bold green] speak naturally; transcripts print live. "
+                           "You can also TYPE a message")
+        else:
+            print("  Speak naturally; transcripts print live. You can also TYPE a message")
         print("  and press Enter to send it to the session. Press Ctrl+C to end.\n")
         try:
             from friday.voice.gemini_live_session import GeminiLiveVoiceSession
@@ -273,7 +294,10 @@ Modes:
 
     while True:
         try:
-            user_input = input(f"{settings.user_name} > ").strip()
+            if _console is not None:
+                user_input = _console.input(f"[bold green]{settings.user_name} > [/]").strip()
+            else:
+                user_input = input(f"{settings.user_name} > ").strip()
         except (KeyboardInterrupt, EOFError):
             print(f"\nShutting down FRIDAY. Good day, {settings.user_name}.")
             break
@@ -402,10 +426,23 @@ Modes:
                 print(f"\n[Error exporting conversation]: {e}\n")
             continue
 
-        # Process standard conversation turn
+        # Process standard conversation turn with Rich UI
         try:
-            response = agent.process_message(user_input)
-            print(f"\n{settings.agent_name} > {response.content}\n")
+            if _console is not None:
+                with _console.status("[bold cyan]FRIDAY is thinking...", spinner="dots") as status:
+                    _active_status["obj"] = status
+                    try:
+                        response = agent.process_message(user_input)
+                    finally:
+                        _active_status["obj"] = None
+                _console.print(
+                    Panel(Text(response.content or "(no response)"), title=settings.agent_name,
+                          border_style="cyan", padding=(0, 1)),
+                )
+                _console.print()
+            else:
+                response = agent.process_message(user_input)
+                print(f"\n{settings.agent_name} > {response.content}\n")
         except Exception as e:
             print(f"\n[Error]: {e}\n")
 
