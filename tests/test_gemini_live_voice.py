@@ -598,3 +598,29 @@ async def test_receiver_loop_on_server_content_callback_error_isolated():
     await session._audio_receiver_loop(mock_ws, spk, lambda u, a: turns.append((u, a)), stop_event, broken_callback)
     spk.play_chunk.assert_called_once()  # audio still played
     assert len(turns) == 1  # turn completion still fired
+
+
+@pytest.mark.anyio
+async def test_send_text_realtime_and_fallback():
+    """send_text uses send_realtime_input(text=...) and falls back to client_content."""
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY")
+
+    # No active session -> safe no-op
+    await session.send_text("hi")
+
+    mock_ws = mock.MagicMock()
+    mock_ws.send_realtime_input = mock.AsyncMock()
+    session._session = mock_ws
+    await session.send_text("greet me")
+    mock_ws.send_realtime_input.assert_awaited_once_with(text="greet me")
+
+    # Older SDK without realtime text -> client_content fallback
+    mock_ws2 = mock.MagicMock()
+    mock_ws2.send_realtime_input = mock.AsyncMock(side_effect=TypeError("no text kwarg"))
+    mock_ws2.send_client_content = mock.AsyncMock()
+    session._session = mock_ws2
+    await session.send_text("greet me again")
+    mock_ws2.send_client_content.assert_awaited_once()
+    kwargs = mock_ws2.send_client_content.await_args.kwargs
+    assert kwargs["turn_complete"] is True
+    assert "greet me again" in str(kwargs["turns"])

@@ -34,6 +34,10 @@ logger = get_logger("voice.live_session")
 # Live-capable model names that do not contain "live" in their identifier
 _LIVE_CAPABLE_MODEL_NAMES = {"gemini-2.0-flash-exp", "gemini-3.1-flash-live-preview"}
 
+# Preferred transcription model when the SDK's AudioTranscriptionConfig
+# supports an explicit model field (falls back to the plain marker otherwise).
+TRANSCRIPTION_MODEL = "gemini-1.5-flash-latest"
+
 
 class LiveSessionState(str, Enum):
     """Observable states of the real-time bidirectional Gemini Live session."""
@@ -246,8 +250,22 @@ class GeminiLiveVoiceSession:
 
         # Transcriptions
         try:
-            config_kwargs["input_audio_transcription"] = genai_types.AudioTranscriptionConfig()
-            config_kwargs["output_audio_transcription"] = genai_types.AudioTranscriptionConfig()
+            # Prefer an explicit transcription model when the SDK supports it
+            # (newer Live APIs). Fall back to the plain marker config — never
+            # drop transcription entirely.
+            try:
+                config_kwargs["input_audio_transcription"] = genai_types.AudioTranscriptionConfig(
+                    model=TRANSCRIPTION_MODEL
+                )
+                config_kwargs["output_audio_transcription"] = genai_types.AudioTranscriptionConfig(
+                    model=TRANSCRIPTION_MODEL
+                )
+            except Exception:
+                # SDK rejects an explicit model (pydantic ValidationError /
+                # TypeError depending on version): fall back to the plain
+                # marker config — never drop transcription entirely.
+                config_kwargs["input_audio_transcription"] = genai_types.AudioTranscriptionConfig()
+                config_kwargs["output_audio_transcription"] = genai_types.AudioTranscriptionConfig()
         except Exception as e:
             logger.debug(f"Transcription config not supported: {e}")
 
@@ -428,6 +446,24 @@ class GeminiLiveVoiceSession:
             id=tool_id,
             response={"output": content},
         )
+
+    async def send_text(self, text: str) -> None:
+        """Send a realtime text prompt to the active Live session.
+
+        Used for initial conversation starters (e.g. a greeting request) so
+        FRIDAY speaks first. No-op with a warning when no session is open.
+        """
+        if not self._session:
+            logger.warning("send_text called with no active Live session.")
+            return
+        try:
+            await self._session.send_realtime_input(text=text)
+        except TypeError:
+            # Older SDKs: fall back to client_content turns
+            await self._session.send_client_content(
+                turns=genai_types.Content(role="user", parts=[genai_types.Part.from_text(text=text)]),
+                turn_complete=True,
+            )
 
     async def run_live_loop(
         self,
@@ -702,19 +738,19 @@ class GeminiLiveVoiceSession:
                         agent_text_parts.clear()
                         agent_output_tx.clear()
 
-                    # Stream model audio turn parts
+                    # Stream model audio turn parts — STRICTLY two passes:
+                    # pass 1 enqueues every PCM chunk (non-blocking put_nowait),
+                    # pass 2 extracts text. Text extraction can therefore never
+                    # sit between a received chunk and the speaker queue.
                     model_turn = getattr(server_content, "model_turn", None)
                     if model_turn and getattr(model_turn, "parts", None):
                         if not turn_interrupted:
                             self._set_state(LiveSessionState.FRIDAY_SPEAKING)
                         for part in model_turn.parts:
-                            # Stream raw 24kHz PCM audio chunk immediately (queue-first,
-                            # non-blocking put_nowait in SpeakerStream.play_chunk)
                             inline_data = getattr(part, "inline_data", None)
                             if inline_data and getattr(inline_data, "data", None):
                                 spk.play_chunk(inline_data.data)
-
-                            # Accumulate text parts
+                        for part in model_turn.parts:
                             if getattr(part, "text", None):
                                 agent_text_parts.append(part.text)
 

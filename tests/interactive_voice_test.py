@@ -186,6 +186,12 @@ def attempt_session(api_key: str, model: str, turn_log: list):
         async def announce_connected() -> None:
             await session._connected_event.wait()
             print("\nCONNECTED! You can speak now. Press Ctrl+C to exit.")
+            # Make FRIDAY speak first with a brief opening greeting.
+            try:
+                await session.send_text("Start the conversation by greeting me briefly.")
+                print("[SENT initial greeting prompt]")
+            except Exception as e:
+                print(f"[WARN] Could not send initial greeting prompt: {e}")
 
         connected_task = asyncio.create_task(announce_connected(), name="diag_connected")
         try:
