@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
 from google import genai
@@ -203,9 +204,18 @@ class GeminiLiveVoiceSession:
         """Construct system prompt embodying FRIDAY's futuristic, natural spoken persona."""
         settings = get_settings()
         user_name = getattr(settings, "user_name", "Surendra")
+        try:
+            local_tz = datetime.now().astimezone().tzname() or "the user's local timezone"
+        except Exception:
+            local_tz = "the user's local timezone"
         base_prompt = (
             f"You are FRIDAY (Fully Responsive Intelligent Digital Assistant), a premium, personal AI assistant "
             f"communicating in real-time spoken voice.\n\n"
+            f"IDENTITY & CONTEXT:\n"
+            f"- You are FRIDAY, a voice assistant. The user's name is {user_name}.\n"
+            f"- The local timezone is {local_tz} (Indian Standard Time, UTC+5:30). "
+            f"Always answer time/date questions in the user's local time.\n"
+            f"- Always respond naturally and briefly by voice.\n\n"
             f"CORE VOICE PERSONA & PRINCIPLES:\n"
             f"- Personality: Calm, intelligent, concise, confident, natural, and efficient.\n"
             f"- Speaking Style: Spoken voice responses should be concise, crisp, and direct.\n"

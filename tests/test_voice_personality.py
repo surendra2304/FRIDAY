@@ -277,3 +277,15 @@ async def test_interruption_and_followup_dialogue(memory_db):
     # Check turn 2 is clean
     assert history[2].content == "Never mind, what is 2 plus 2?"
     assert history[3].content == "4."
+
+
+def test_system_instruction_identity_and_timezone():
+    """Live system prompt carries identity, user name, local timezone, brevity."""
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY")
+    prompt_text = session._build_system_instruction().parts[0].text
+
+    assert "You are FRIDAY, a voice assistant" in prompt_text
+    assert "The user's name is Surendra" in prompt_text
+    assert "Indian Standard Time" in prompt_text
+    assert "local time" in prompt_text
+    assert "respond naturally and briefly by voice" in prompt_text
