@@ -450,6 +450,25 @@ class GeminiLiveVoiceSession:
                 content = f"Execution error: {type(e).__name__}: {str(e)}"
                 is_sensitive = False
 
+        # --- Prompt-injection guard: tool output is untrusted external content.
+        # Screen OCR / file reads / web text must never carry instructions into
+        # the Live model's context. BLOCKED -> neutral placeholder.
+        guarded_content = str(content)
+        try:
+            from friday.security.prompt_injection import InjectionRisk, SourceType, guard_content
+
+            guard_result = guard_content(SourceType.TOOL_OUTPUT, guarded_content)
+            if guard_result.risk == InjectionRisk.BLOCKED:
+                logger.warning(
+                    "Prompt-injection guard BLOCKED voice tool output for '%s' (hash=%s)",
+                    tool_name, guard_result.content_hash,
+                )
+                guarded_content = "[TOOL OUTPUT REMOVED BY PROMPT-INJECTION GUARD]"
+            elif guard_result.sanitized and guard_result.sanitized != guarded_content:
+                guarded_content = guard_result.sanitized
+        except Exception as e:
+            logger.debug("Injection guard unavailable for voice tool output: %s", type(e).__name__)
+
         # --- Persist tool result to memory (sensitive output gated from auto-embedding) ---
         if self.agent is not None and getattr(self.agent, "memory", None) is not None:
             try:
@@ -459,8 +478,9 @@ class GeminiLiveVoiceSession:
                 )
                 # Sensitive/dangerous tool results are stored to SQLite for audit purposes
                 # but must NOT be auto-embedded into the semantic vector index.
-                mem_content = "[SENSITIVE TOOL RESULT — content not embedded]" if is_sensitive else str(content)
-                self.agent.memory.add_message(
+                mem_content = "[SENSITIVE TOOL RESULT — content not embedded]" if is_sensitive else guarded_content
+                await asyncio.to_thread(
+                    self.agent.memory.add_message,
                     Message(
                         role=Role.TOOL,
                         content=mem_content,
@@ -475,7 +495,7 @@ class GeminiLiveVoiceSession:
         return genai_types.FunctionResponse(
             name=tool_name,
             id=tool_id,
-            response={"output": content},
+            response={"output": guarded_content},
         )
 
     async def send_text(self, text: str) -> None:
@@ -872,9 +892,17 @@ class GeminiLiveVoiceSession:
                         if self.agent is not None and getattr(self.agent, "memory", None) is not None:
                             conv_id = getattr(self.agent, "conversation_id", None) or getattr(self.agent.memory, "active_conversation_id", None)
                             if user_text:
-                                self.agent.memory.add_message(Message(role=Role.USER, content=user_text), conversation_id=conv_id)
+                                await asyncio.to_thread(
+                                    self.agent.memory.add_message,
+                                    Message(role=Role.USER, content=user_text),
+                                    conversation_id=conv_id,
+                                )
                             if agent_text:
-                                self.agent.memory.add_message(Message(role=Role.ASSISTANT, content=agent_text), conversation_id=conv_id)
+                                await asyncio.to_thread(
+                                    self.agent.memory.add_message,
+                                    Message(role=Role.ASSISTANT, content=agent_text),
+                                    conversation_id=conv_id,
+                                )
 
                         user_transcript_accum.clear()
                         agent_text_parts.clear()
