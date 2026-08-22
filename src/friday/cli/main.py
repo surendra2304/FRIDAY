@@ -234,6 +234,8 @@ Modes:
     # Voice interface initialization
     # Activated either by --voice CLI flag or FRIDAY_VOICE_ENABLED=true in config (without --text override)
     is_voice_mode = (args.voice or getattr(settings, "voice_enabled", False)) and not args.text
+    if is_voice_mode and args.voice and not getattr(settings, "voice_enabled", False):
+        print("Voice mode enabled via CLI override (--voice; FRIDAY_VOICE_ENABLED is false).")
     if is_voice_mode:
         import asyncio
         import threading

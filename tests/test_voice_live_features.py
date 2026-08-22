@@ -348,3 +348,75 @@ def test_console_logging_error_only_by_default():
 
     source = inspect.getsource(cli_main)
     assert "logging.DEBUG if args.debug else logging.ERROR" in source
+
+
+# ---------------------------------------------------------------------------
+# Configuration & environment audit (Session 21)
+# ---------------------------------------------------------------------------
+
+
+def test_headphones_mode_disables_echo_gate_and_enables_barge_in():
+    """headphones_mode=True: echo suppression must stay off, local barge-in allowed."""
+    from friday.voice.gemini_live_session import GeminiLiveVoiceSession
+
+    hp = GeminiLiveVoiceSession(api_key="T", headphones_mode=True)
+    assert hp._echo_suppression is False  # gate not armed before run
+    # sender-loop barge-in predicate: headphones mode allows local interruption
+    assert (hp.headphones_mode or hp.local_barge_in_during_playback) is True
+
+    spk = GeminiLiveVoiceSession(api_key="T", headphones_mode=False)
+    assert (spk.headphones_mode or spk.local_barge_in_during_playback) is False
+
+
+def test_env_example_documents_every_settings_field():
+    from friday.core.config import Settings
+
+    example = open(".env.example", encoding="utf-8").read()
+    missing = [f"FRIDAY_{n.upper()}" for n in Settings.model_fields
+               if f"FRIDAY_{n.upper()}" not in example]
+    assert not missing, f"Undocumented fields in .env.example: {missing}"
+
+
+def test_missing_env_vars_fall_back_to_safe_defaults(monkeypatch):
+    """No .env file at all and no env vars: Settings must load every default cleanly."""
+    import os
+
+    for var in list(os.environ):
+        if var.startswith("FRIDAY_"):
+            monkeypatch.delenv(var, raising=False)
+
+    from friday.core.config import Settings
+
+    s = Settings(_env_file=None)
+    assert s.llm_provider == "gemini"  # field default (chain only in .env)
+    assert s.voice_live_model == "gemini-3.1-flash-live-preview"
+    assert s.voice_headphones_mode is False
+    assert s.voice_enabled is False
+    assert s.log_level == "INFO"
+    assert s.memory_backend == "sqlite"
+    assert s.groq_api_key is None and s.mistral_api_key is None
+
+
+def test_cli_voice_override_message(monkeypatch, capsys):
+    """--voice with FRIDAY_VOICE_ENABLED=false prints the override explanation."""
+    import sys as _sys
+    from unittest import mock as _mock
+
+    monkeypatch.setattr(_sys, "argv", ["friday", "--voice"])
+    monkeypatch.setenv("FRIDAY_VOICE_ENABLED", "false")
+
+    voice_session_inst = _mock.MagicMock()
+    voice_session_inst.run_live_loop = _mock.AsyncMock(return_value=None)
+    mock_cls = _mock.MagicMock(return_value=voice_session_inst)
+
+    from friday.cli.main import main
+
+    with _mock.patch(
+        "friday.auth.credential_pool.GeminiCredentialPool.preflight_check",
+        return_value={"status": "HEALTHY", "active_project": "PRIMARY"},
+    ):
+        with _mock.patch("friday.voice.gemini_live_session.GeminiLiveVoiceSession", mock_cls):
+            main()
+
+    out = capsys.readouterr().out
+    assert "Voice mode enabled via CLI override" in out

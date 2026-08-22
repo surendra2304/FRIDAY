@@ -564,11 +564,16 @@ class GeminiLiveVoiceSession:
         # the speaker plays, but the sender drops low-energy frames (speaker
         # echo) and passes loud frames (a nearby human voice) so the server
         # VAD can still detect genuine interruptions.
-        if echo_mute:
+        if echo_mute and not self.headphones_mode:
             self._echo_suppression = True
             logger.info(
                 "Echo suppression enabled: low-energy frames suppressed during playback "
                 f"(interrupt threshold RMS {self.echo_interrupt_rms_threshold:.0f})."
+            )
+        elif echo_mute and self.headphones_mode:
+            logger.info(
+                "Headphones mode: echo suppression DISABLED and client-side barge-in "
+                "ENABLED (full-duplex interruptions allowed)."
             )
 
         reconnect_attempts = 0
