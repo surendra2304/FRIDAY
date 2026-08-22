@@ -234,11 +234,13 @@ Modes:
 
     # Voice biometrics enrollment (one-time; then exit)
     if getattr(args, "enroll_voice", False):
+        import asyncio
+
         from friday.security.voice_biometrics import VoiceProfileManager
 
         manager = VoiceProfileManager()
         try:
-            if manager.enroll_voice(duration=5.0):
+            if asyncio.run(manager.enroll_voice(duration=5.0)):
                 print("Voice profile saved. Speaker recognition is active when FRIDAY_VOICE_BIOMETRICS_ENABLED=true.")
             else:
                 print("Voice enrollment failed (see log for details).")

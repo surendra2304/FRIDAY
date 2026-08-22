@@ -562,3 +562,70 @@ async def test_sender_biometrics_gate_blocks_unrecognized_voice():
     fake_manager.verify_speaker.assert_called_once()
     verified_window = fake_manager.verify_speaker.call_args[0][0]
     assert len(verified_window) == len(chunk) * 3  # full 3-frame window
+
+
+@pytest.mark.anyio
+async def test_enroll_voice_is_async_and_awaits_mic(tmp_path, monkeypatch, capsys):
+    """enroll_voice must be a coroutine that awaits read_chunk (regression:
+    the sync version raised 'coroutine never awaited' and recorded silence)."""
+    from unittest import mock as _mock
+
+    from friday.security import voice_biometrics as vb
+
+    awaited = {"read": 0, "slept": 0}
+    fake_pcm = (np_int16 := __import__("numpy").ones(16000, dtype=__import__("numpy").int16)).tobytes()
+    # ~2 fake 40ms frames per loop iteration; duration consumed by monkeypatched time
+    frame = (__import__("numpy").ones(640, dtype=__import__("numpy").int16)).tobytes()
+    clock = {"t": 0.0}
+    monkeypatch.setattr(vb.time, "time", lambda: clock["t"])
+
+    async def fast_sleep(s):
+        awaited["slept"] += 1
+        clock["t"] += 0.25  # advance clock so the recording window closes
+
+    monkeypatch.setattr(vb.asyncio, "sleep", fast_sleep)
+
+    class FakeMic:
+        def __init__(self, *a, **kw):
+            pass
+
+        def start(self, *a, **kw):
+            self._active = True
+
+        def stop(self):
+            self._active = False
+
+        @property
+        def is_active(self):
+            return True
+
+        @property
+        def error(self):
+            return None
+
+        async def read_chunk(self):
+            awaited["read"] += 1
+            clock["t"] += 0.04  # advance the mocked clock per 40ms frame
+            return frame
+
+    monkeypatch.setattr("friday.voice.audio_io.MicrophoneStream", FakeMic)
+
+    class FakeEncoder:
+        def embed_utterance(self, wav):
+            import numpy as np
+
+            return np.zeros(256, dtype=np.float32)
+
+    monkeypatch.setattr(vb, "_get_encoder", lambda: FakeEncoder())
+
+    import inspect
+
+    mgr = vb.VoiceProfileManager(profile_path=tmp_path / "p.npy")
+    assert inspect.iscoroutinefunction(mgr.enroll_voice), "enroll_voice must be async"
+
+    clock["t"] = 0.0
+    result = await mgr.enroll_voice(duration=5.0)
+    assert result is True
+    assert (tmp_path / "p.npy").is_file()
+    assert awaited["read"] > 0, "read_chunk must be awaited (never a bare call)"
+    assert "enroll your voice" in capsys.readouterr().out

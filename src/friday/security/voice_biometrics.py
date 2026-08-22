@@ -11,6 +11,8 @@ cryptographic authentication — the Gemini API key itself remains the
 secret. Toggled by FRIDAY_VOICE_BIOMETRICS_ENABLED (default false).
 """
 
+import asyncio
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -105,27 +107,25 @@ class VoiceProfileManager:
             logger.error(f"Voice enrollment failed: {e}")
             return False
 
-    def enroll_voice(self, duration: float = 5.0, sample_rate: int = 16000) -> bool:
+    async def enroll_voice(self, duration: float = 5.0, sample_rate: int = 16000) -> bool:
         """Record `duration` seconds from the microphone and enroll the speaker."""
         print(f"Please speak for {duration:.0f} seconds to enroll your voice...")
         from friday.voice.audio_io import MicrophoneStream
 
         mic = MicrophoneStream(sample_rate=sample_rate)
-        mic.start()
+        mic.start()  # inside a running loop: captures the loop automatically
         try:
             if not mic.is_active or mic.error:
                 logger.error(f"Microphone unavailable for enrollment: {mic.error}")
                 return False
-            import time as _time
-
             frames = []
-            deadline = _time.time() + duration
-            while _time.time() < deadline:
-                chunk = mic.read_chunk()
+            deadline = time.time() + duration
+            while time.time() < deadline:
+                chunk = await mic.read_chunk()  # async: mic queue consumption
                 if chunk:
                     frames.append(chunk)
                 else:
-                    _time.sleep(0.01)
+                    await asyncio.sleep(0.01)
         finally:
             mic.stop()
 
