@@ -654,18 +654,30 @@ class GeminiLiveVoiceSession:
                             name="gemini_live_audio_receiver",
                         )
 
-                        # Wait until interrupted, stopped, or disconnected
-                        done, pending = await asyncio.wait(
-                            [sender_task, receiver_task, asyncio.create_task(stop.wait())],
-                            return_when=asyncio.FIRST_COMPLETED,
-                        )
+                        try:
+                            # Wait until interrupted, stopped, or disconnected
+                            done, pending = await asyncio.wait(
+                                [sender_task, receiver_task, asyncio.create_task(stop.wait())],
+                                return_when=asyncio.FIRST_COMPLETED,
+                            )
 
-                        for task in pending:
-                            task.cancel()
-                            try:
-                                await task
-                            except asyncio.CancelledError:
-                                pass
+                            for task in pending:
+                                task.cancel()
+                                try:
+                                    await task
+                                except asyncio.CancelledError:
+                                    pass
+                        finally:
+                            # Cancellation-safe cleanup (Ctrl+C): always cancel and
+                            # drain both audio loops so no task is destroyed pending,
+                            # letting the WebSocket close cleanly via async-with.
+                            for task in (sender_task, receiver_task):
+                                if not task.done():
+                                    task.cancel()
+                                    try:
+                                        await task
+                                    except BaseException:
+                                        pass
 
                 except Exception as e:
                     self._session = None

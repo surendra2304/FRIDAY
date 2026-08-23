@@ -629,3 +629,29 @@ async def test_enroll_voice_is_async_and_awaits_mic(tmp_path, monkeypatch, capsy
     assert (tmp_path / "p.npy").is_file()
     assert awaited["read"] > 0, "read_chunk must be awaited (never a bare call)"
     assert "enroll your voice" in capsys.readouterr().out
+
+
+def test_cli_voice_greeting_and_graceful_shutdown_wiring():
+    """Greeting-on-connect and cancel-drain shutdown are wired in the CLI."""
+    import inspect
+
+    from friday.cli.main import main as cli_main
+
+    src = inspect.getsource(cli_main)
+    assert "Start the conversation by greeting me briefly." in src
+    assert "_greet_on_connect" in src
+    # Graceful shutdown: task-based run + cancel + drain + loop close
+    assert "voice_task.cancel()" in src
+    assert "loop.shutdown_asyncgens()" in src
+    assert "loop.close()" in src
+
+
+def test_session_wait_section_cancellation_safe():
+    """run_live_loop drains sender/receiver tasks even when cancelled mid-wait."""
+    import inspect
+
+    from friday.voice.gemini_live_session import GeminiLiveVoiceSession
+
+    src = inspect.getsource(GeminiLiveVoiceSession.run_live_loop)
+    assert "Cancellation-safe cleanup" in src
+    assert "for task in (sender_task, receiver_task):" in src

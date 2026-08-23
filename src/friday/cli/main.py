@@ -271,7 +271,16 @@ Modes:
             from friday.voice.transcripts import LiveTranscriptPrinter
 
             logger.info("Starting REAL Gemini Live voice session...")
-            voice_session = GeminiLiveVoiceSession(agent=agent, credential_pool=credential_pool)
+            # Barge-in tuning: server VAD alone false-interrupts on continuous
+            # background noise (fans). Client-side barge-in re-enabled with a
+            # very high RMS threshold: only loud, close-up human speech
+            # interrupts FRIDAY; steady ambient noise is ignored.
+            voice_session = GeminiLiveVoiceSession(
+                agent=agent,
+                credential_pool=credential_pool,
+                barge_in_rms_threshold=3000.0,
+                local_barge_in_during_playback=True,
+            )
             printer = LiveTranscriptPrinter()
 
             loop = asyncio.new_event_loop()
@@ -294,16 +303,42 @@ Modes:
             stdin_thread = threading.Thread(target=_stdin_listener, name="voice_stdin", daemon=True)
             stdin_thread.start()
 
-            loop.run_until_complete(
-                voice_session.run_live_loop(
-                    on_turn_complete=printer.on_turn_complete,
-                    on_server_content=printer.on_server_content,
-                    echo_mute=True,
-                )
-            )
-            logger.info("Live Voice session ended.")
-        except KeyboardInterrupt:
-            print("\nVoice session stopped. Good day, Surendra.")
+            async def _greet_on_connect() -> None:
+                """Make FRIDAY speak first with a brief opening greeting."""
+                await voice_session._connected_event.wait()
+                try:
+                    await voice_session.send_text("Start the conversation by greeting me briefly.")
+                    logger.info("Sent initial voice greeting prompt.")
+                except Exception as e:
+                    logger.warning(f"Could not send initial greeting prompt: {e}")
+
+            # Graceful shutdown: run the live loop as a task so Ctrl+C can
+            # cancel-and-drain it, letting the session's finally blocks close
+            # the WebSocket before the loop exits (no 'Event loop is closed' /
+            # 'Task was destroyed' warnings).
+            voice_task = loop.create_task(voice_session.run_live_loop(
+                on_turn_complete=printer.on_turn_complete,
+                on_server_content=printer.on_server_content,
+                echo_mute=True,
+            ))
+            greeting_task = loop.create_task(_greet_on_connect())
+            try:
+                loop.run_until_complete(voice_task)
+                logger.info("Live Voice session ended.")
+            except KeyboardInterrupt:
+                print("\nVoice session stopped. Good day, Surendra.")
+                voice_task.cancel()
+                greeting_task.cancel()
+                try:
+                    loop.run_until_complete(voice_task)
+                except BaseException:
+                    pass
+            finally:
+                try:
+                    loop.run_until_complete(loop.shutdown_asyncgens())
+                except Exception:
+                    pass
+                loop.close()
         except Exception as e:
             print(f"\n[Voice Error]: Gemini Live session failed: {e}")
             logger.error(f"Gemini Live session failed: {e}")
