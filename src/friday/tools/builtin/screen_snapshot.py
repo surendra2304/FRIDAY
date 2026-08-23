@@ -1,11 +1,15 @@
 # -*- coding: utf-8 -*-
 """Safe built-in tool for capturing a desktop screen snapshot without OS actions or raw image logging."""
 
-from typing import Any, Optional
+from __future__ import annotations
+
+from typing import Any, Optional, TYPE_CHECKING
 from friday.core.config import get_settings
 from friday.core.types import SafetyLevel, ToolResult
 from friday.tools.base import BaseTool
-from friday.vision.screen_base import BaseScreenCaptureProvider, ScreenSnapshot
+
+if TYPE_CHECKING:
+    from friday.vision.screen_base import BaseScreenCaptureProvider, ScreenSnapshot
 
 
 class ScreenSnapshotTool(BaseTool):

@@ -14,9 +14,7 @@ secret. Toggled by FRIDAY_VOICE_BIOMETRICS_ENABLED (default false).
 import asyncio
 import time
 from pathlib import Path
-from typing import Optional
-
-import numpy as np
+from typing import Optional, Any
 
 from friday.core.logging import get_logger
 
@@ -36,8 +34,10 @@ def _get_encoder():
     return VoiceEncoder(verbose=False)
 
 
-def pcm_to_float(pcm_bytes: bytes) -> np.ndarray:
+def pcm_to_float(pcm_bytes: bytes) -> Any:
     """Convert int16 PCM to float32 in [-1, 1] as expected by resemblyzer."""
+    import numpy as np
+
     samples = np.frombuffer(pcm_bytes, dtype=np.int16)
     return samples.astype(np.float32) / 32768.0
 
@@ -62,16 +62,20 @@ class VoiceProfileManager:
             self._encoder = _get_encoder()
         return self._encoder
 
-    def _embed(self, wav: np.ndarray) -> np.ndarray:
+    def _embed(self, wav: Any) -> Any:
+        import numpy as np
+
         if len(wav) < 16000:  # pad sub-second audio to the encoder minimum
             wav = np.pad(wav, (0, 16000 - len(wav)))
         return self._ensure_encoder().embed_utterance(wav)
 
-    def _load_profile(self) -> Optional[np.ndarray]:
+    def _load_profile(self) -> Optional[Any]:
         if self._profile is not None:
             return self._profile
         try:
             if self.profile_path.is_file():
+                import numpy as np
+
                 self._profile = np.load(self.profile_path)
         except Exception as e:
             logger.warning(f"Could not load voice profile: {e}")
@@ -89,6 +93,8 @@ class VoiceProfileManager:
     def enroll_from_frames(self, frames, sample_rate: int = 16000) -> bool:
         """Process recorded PCM frames into an embedding and save the profile."""
         try:
+            import numpy as np
+
             wav = np.concatenate([pcm_to_float(f) for f in frames if f])
             if sample_rate != 16000:
                 ratio = sample_rate / 16000
@@ -144,6 +150,8 @@ class VoiceProfileManager:
         if profile is None:
             return True
         try:
+            import numpy as np
+
             wav = pcm_to_float(audio_chunk)
             embedding = self._embed(wav)
             similarity = float(np.dot(profile, embedding) /
@@ -159,6 +167,8 @@ class VoiceProfileManager:
         if profile is None:
             return None
         try:
+            import numpy as np
+
             embedding = self._embed(pcm_to_float(audio_chunk))
             return float(np.dot(profile, embedding) /
                          (np.linalg.norm(profile) * np.linalg.norm(embedding) + 1e-9))

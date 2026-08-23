@@ -271,15 +271,9 @@ Modes:
             from friday.voice.transcripts import LiveTranscriptPrinter
 
             logger.info("Starting REAL Gemini Live voice session...")
-            # Barge-in tuning: server VAD alone false-interrupts on continuous
-            # background noise (fans). Client-side barge-in re-enabled with a
-            # very high RMS threshold: only loud, close-up human speech
-            # interrupts FRIDAY; steady ambient noise is ignored.
             voice_session = GeminiLiveVoiceSession(
                 agent=agent,
                 credential_pool=credential_pool,
-                barge_in_rms_threshold=3000.0,
-                local_barge_in_during_playback=True,
             )
             printer = LiveTranscriptPrinter()
 

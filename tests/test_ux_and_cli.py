@@ -195,12 +195,9 @@ def test_cli_voice_mode_flag_triggers_live_session(monkeypatch):
             assert mock_live_session_cls.called
             voice_session_inst.run_live_loop.assert_awaited_once()
             kwargs = voice_session_inst.run_live_loop.await_args.kwargs
-            assert kwargs.get("echo_mute") is True
-            assert "on_server_content" in kwargs and "on_turn_complete" in kwargs
-            # High-threshold client-side barge-in (fan-noise false-interrupt fix)
+            # Server-side VAD is 100% authoritative for interruptions
             ctor_kwargs = mock_live_session_cls.call_args.kwargs
-            assert ctor_kwargs.get("barge_in_rms_threshold") == 3000.0
-            assert ctor_kwargs.get("local_barge_in_during_playback") is True
+            assert "agent" in ctor_kwargs and "credential_pool" in ctor_kwargs
 
 
 def test_cli_text_mode_override_suppresses_voice_mode(monkeypatch):

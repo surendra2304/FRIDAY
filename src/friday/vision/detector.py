@@ -11,7 +11,6 @@ from typing import Any, Dict, Optional, Tuple
 
 from friday.core.types import SafetyLevel
 from friday.vision.actions import ActionType, ComputerActionProposal
-from friday.vision.windows_screen import WindowsScreenCaptureProvider
 
 
 @dataclass
@@ -79,6 +78,8 @@ class DeterministicActionDetector:
     def get_display_metrics(cls, display_id: str = "primary") -> Tuple[int, int, int, int]:
         """Fetch left, top, width, height for the requested display."""
         try:
+            from friday.vision.windows_screen import WindowsScreenCaptureProvider
+
             displays = WindowsScreenCaptureProvider().list_displays()
             target = next((d for d in displays if d.get("id") == display_id), None)
             if target:
