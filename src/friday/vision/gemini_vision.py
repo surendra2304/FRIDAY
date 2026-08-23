@@ -65,7 +65,7 @@ class GeminiVisionProvider(BaseVisionProvider):
         settings = get_settings()
         self.credential_pool = credential_pool
         self._explicit_api_key = api_key
-        self.model = model or getattr(settings, "vision_model", "gemini-1.5-flash-latest")
+        self.model = model or getattr(settings, "vision_model", "gemini-1.5-flash")
         self.timeout = timeout
         self.max_retries = max_retries
         self.backoff_factor = backoff_factor
@@ -219,6 +219,10 @@ class GeminiVisionProvider(BaseVisionProvider):
                 attempt += 1
 
                 cat = self._classify_error(e)
+                if cat == FailureCategory.MODEL_NOT_FOUND:
+                    logger.error(f"Gemini Vision model not found ({self.model}): {e}")
+                    break
+
                 if self.credential_pool and not self._explicit_api_key and (active_key or self._current_key):
                     failed_key = active_key or self._current_key
                     self.credential_pool.report_failure(failed_key, e)

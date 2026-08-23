@@ -19,7 +19,7 @@ from friday.memory.embeddings.gemini import GeminiEmbeddingProvider
 # Authoritative active model configuration
 AUTHORITATIVE_MODELS = {
     "text_llm": "gemini-1.5-flash-latest",
-    "vision": "gemini-1.5-flash-latest",
+    "vision": "gemini-1.5-flash",
     "voice_live": "gemini-3.1-flash-live-preview",
     "embeddings": "gemini-embedding-2",
 }

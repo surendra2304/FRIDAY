@@ -300,7 +300,7 @@ class Settings(BaseSettings):
     
     # Vision & Multimodal Settings
     vision_model: str = Field(
-        default="gemini-1.5-flash-latest",
+        default="gemini-1.5-flash",
         validation_alias=AliasChoices("FRIDAY_VISION_MODEL", "VISION_MODEL", "vision_model"),
         description="Multimodal Gemini vision model identifier",
     )

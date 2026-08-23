@@ -71,7 +71,7 @@ class TestVisionPipelineAuditAndProvenance:
 
         mock_vis = MockVisionProvider(
             default_response='{"summary": "Calculator window with buttons", "active_application": "Calculator", "confidence": 0.92}',
-            model="gemini-1.5-flash-latest",
+            model="gemini-1.5-flash",
         )
 
         pipeline = PerceptionPipeline(
@@ -84,7 +84,7 @@ class TestVisionPipelineAuditAndProvenance:
         assert res.source == "gemini_vision"
         assert res.screen_context.source == "gemini_vision"
         assert res.screen_context.is_cached is False
-        assert res.screen_context.provider_model == "gemini-1.5-flash-latest"
+        assert res.screen_context.provider_model == "gemini-1.5-flash"
         assert res.screen_context.screen_state_id is not None
         assert res.screen_context.screen_state_id.startswith("state_")
         assert res.screen_context.active_application == "Calculator"
@@ -92,7 +92,7 @@ class TestVisionPipelineAuditAndProvenance:
         # Format for prompt must display full provenance block
         prompt_repr = res.screen_context.format_for_prompt()
         assert "Source: gemini_vision" in prompt_repr
-        assert "Model: gemini-1.5-flash-latest" in prompt_repr
+        assert "Model: gemini-1.5-flash" in prompt_repr
         assert "Cached: False" in prompt_repr
 
     def test_cached_observation_never_labelled_as_fresh_gemini_vision(self):
@@ -103,7 +103,7 @@ class TestVisionPipelineAuditAndProvenance:
 
         mock_vis = MockVisionProvider(
             default_response='{"summary": "Dashboard view", "active_application": "Browser", "confidence": 0.88}',
-            model="gemini-1.5-flash-latest",
+            model="gemini-1.5-flash",
         )
 
         pipeline = PerceptionPipeline(

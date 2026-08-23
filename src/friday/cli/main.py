@@ -334,6 +334,13 @@ Modes:
                 except BaseException:
                     pass
             finally:
+                for t in (greeting_task, voice_task):
+                    if not t.done():
+                        t.cancel()
+                        try:
+                            loop.run_until_complete(t)
+                        except BaseException:
+                            pass
                 try:
                     loop.run_until_complete(loop.shutdown_asyncgens())
                 except Exception:

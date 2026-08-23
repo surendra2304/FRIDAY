@@ -153,7 +153,7 @@ def test_acceptance_9_and_10_proposal_requires_authorization_and_hard_blocks():
 def test_acceptance_11_and_12_quota_failover_and_graceful_exhaustion():
     """Verify vision fails over across credential pool and returns graceful error when exhausted."""
     pool = GeminiCredentialPool(keys=["key-quota-exhausted", "key-backup-ok"])
-    provider = GeminiVisionProvider(credential_pool=pool, model="gemini-1.5-flash-latest")
+    provider = GeminiVisionProvider(credential_pool=pool, model="gemini-1.5-flash")
 
     call_count = 0
 
