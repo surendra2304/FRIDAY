@@ -531,3 +531,53 @@ async def test_user_speech_then_silence_completes_full_response():
     assert session.user_interruptions == 0
 
 
+@pytest.mark.anyio
+async def test_speaker_hard_timeout_forces_unmute_and_stop(capsys):
+    """Verify speaker playing >10s triggers hard timeout, stopping speaker and unmuting mic."""
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY")
+    session._active = True
+
+    # Mock mic with mute capability
+    class MuteableMic(MockMicrophoneStream):
+        def __init__(self):
+            super().__init__(chunks=[b"\x00\x00" * 800] * 5)
+            self._muted = True
+
+        def set_muted(self, val):
+            self._muted = val
+
+        @property
+        def is_muted(self):
+            return self._muted
+
+    mic = MuteableMic()
+    mic.start()
+    mic.set_muted(True)
+
+    spk = SpeakerStream(sample_rate=24000)
+    spk._active = True
+    spk.play_chunk(b"speech" * 50)
+    assert spk.is_playing
+
+    mock_ws = MockAsyncSession()
+    stop_event = asyncio.Event()
+
+    t_val = [100.0]
+    def fake_time():
+        t = t_val[0]
+        t_val[0] += 5.0
+        return t
+
+    with mock.patch("time.time", side_effect=fake_time):
+        task = asyncio.create_task(session._audio_sender_loop(mock_ws, mic, spk, stop_event))
+        await asyncio.sleep(0.05)
+        stop_event.set()
+        await task
+
+    # Verified: speaker stopped and mic unmuted
+    assert not spk.is_playing
+    assert not mic.is_muted
+    out = capsys.readouterr().out
+    assert "[DEBUG] Mic unmuted, listening..." in out
+
+

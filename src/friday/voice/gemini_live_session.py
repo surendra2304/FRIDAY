@@ -758,8 +758,38 @@ class GeminiLiveVoiceSession:
         stop_event: asyncio.Event,
     ) -> None:
         """Stream microphone PCM chunks continuously with adaptive noise floor and robust barge-in."""
+        speaker_active_since: Optional[float] = None
+        last_reported_muted: Optional[bool] = None
+
         try:
             while self._active and not stop_event.is_set():
+                now = time.time()
+                is_speaker_active = getattr(spk, "is_playing", False) or getattr(spk, "queue_size", 0) > 0
+
+                # 2. Hard timeout: If speaker has been playing for >10s, force stop & unmute
+                if is_speaker_active:
+                    if speaker_active_since is None:
+                        speaker_active_since = now
+                    elif (now - speaker_active_since) > 10.0:
+                        logger.warning("Speaker playing timeout exceeded (>10s); forcing speaker stop and unmuting mic.")
+                        spk.stop()
+                        if hasattr(mic, "set_muted"):
+                            mic.set_muted(False)
+                        is_speaker_active = False
+                        speaker_active_since = None
+                else:
+                    speaker_active_since = None
+                    # 1. Immediately and continuously unmute microphone while speaker is idle
+                    if hasattr(mic, "set_muted") and getattr(mic, "is_muted", False):
+                        mic.set_muted(False)
+
+                # 3. Debug log when mic state transitions from muted to unmuted
+                current_muted = getattr(mic, "is_muted", False)
+                if last_reported_muted is True and current_muted is False:
+                    print("[DEBUG] Mic unmuted, listening...")
+                    logger.info("[DEBUG] Mic unmuted, listening...")
+                last_reported_muted = current_muted
+
                 chunk = await mic.read_chunk()
                 if chunk and len(chunk) > 0:
                     # 0a. Voice biometrics gate: verify the speaker periodically.
@@ -769,10 +799,8 @@ class GeminiLiveVoiceSession:
                         if chunk is None:
                             continue  # unrecognized voice: do not send to Gemini
 
-                    now = time.time()
                     rms = compute_pcm_rms(chunk)
                     self._last_mic_rms = rms
-                    is_speaker_active = getattr(spk, "is_playing", False) or getattr(spk, "queue_size", 0) > 0
 
                     # 0. Energy-gated echo suppression: while the speaker plays,
                     # drop low-energy frames (FRIDAY's own voice picked up by the
@@ -831,6 +859,8 @@ class GeminiLiveVoiceSession:
                             self.user_interruptions += 1
                             self.speaker_playback_interruptions += 1
                             spk.stop()
+                            if hasattr(mic, "set_muted"):
+                                mic.set_muted(False)
                         else:
                             self._local_interruption_active = False
                     else:
