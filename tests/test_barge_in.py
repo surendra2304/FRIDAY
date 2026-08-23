@@ -77,18 +77,17 @@ def test_pcm_rms_calculation():
 
 
 @pytest.mark.anyio
-async def test_high_threshold_local_barge_in():
-    """Verify high-threshold sustained user speech (e.g. shouting) triggers local barge-in."""
+async def test_audio_streaming_without_local_barge_in_cut_off():
+    """Verify loud audio during playback does not locally cut off the speaker; frames pass to server VAD."""
     session = GeminiLiveVoiceSession(
         api_key="TEST_GEMINI_API_KEY",
-        barge_in_rms_threshold=4000.0,
-        local_barge_in_during_playback=True,
+        barge_in_rms_threshold=float("inf"),
+        local_barge_in_during_playback=False,
         headphones_mode=True,
     )
-    session.barge_in_consecutive_frames = 2
     session._active = True
 
-    # Very loud PCM (RMS > 4000)
+    # Loud PCM (RMS > 4000)
     loud_pcm = struct.pack("<800h", *[6000] * 800)
     mic = MockMicrophoneStream(chunks=[loud_pcm, loud_pcm, loud_pcm])
     mic.start()
@@ -106,9 +105,9 @@ async def test_high_threshold_local_barge_in():
     stop_event.set()
     await task
 
-    # Speaker stream purged by high-threshold local barge-in
-    assert not spk.is_playing
-    assert spk.queue_size == 0
+    # Speaker stream is NOT interrupted locally; frames forwarded to Google for server-side VAD
+    assert spk.is_playing
+    assert len(mock_ws_session.sent_realtime_chunks) == 3
 
 
 @pytest.mark.anyio

@@ -270,12 +270,12 @@ Modes:
             from friday.voice.gemini_live_session import GeminiLiveVoiceSession
             from friday.voice.transcripts import LiveTranscriptPrinter
 
-            # High-threshold client-side barge-in (allows user shouting interruption, ignores background noise)
+            # Client-side RMS barge-in disabled completely; relying 100% on Google Server-Side VAD
             voice_session = GeminiLiveVoiceSession(
                 agent=agent,
                 credential_pool=credential_pool,
-                barge_in_rms_threshold=4000.0,
-                local_barge_in_during_playback=True,
+                barge_in_rms_threshold=float("inf"),
+                local_barge_in_during_playback=False,
             )
             printer = LiveTranscriptPrinter()
 

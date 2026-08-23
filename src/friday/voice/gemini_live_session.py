@@ -231,20 +231,23 @@ class GeminiLiveVoiceSession:
             f"communicating in real-time spoken voice.\n\n"
             f"IDENTITY & CONTEXT:\n"
             f"- You are FRIDAY, a voice assistant. The user's name is {user_name}.\n"
-            f"- The local timezone is {local_tz} (Indian Standard Time, UTC+5:30). "
-            f"Always answer time/date questions in the user's local time. "
-            f"Do not state the time unless the user explicitly asks for it.\n"
+            f"- The local timezone is {local_tz} (Indian Standard Time, UTC+5:30).\n"
             f"- The current local time at session start is {now_str} ({local_tz}). "
             f"Use the get_time_date tool for exact current time instead of guessing.\n"
+            f"- CRITICAL CONVERSATION RULES:\n"
+            f"  * NEVER repeat greetings ('Hi Surendra', 'Hello', etc.). NEVER greet the user again after the session has started.\n"
+            f"  * NEVER state the time or date unless explicitly asked in the immediate query.\n"
+            f"  * Respond ONLY to the user's immediate query or command.\n"
+            f"  * NEVER summarize or recite past tool executions, past actions (like opening or closing apps), or previous conversation history unless explicitly asked.\n"
             f"- Always respond naturally and briefly by voice.\n\n"
             f"CORE VOICE PERSONA & PRINCIPLES:\n"
             f"- Personality: Calm, intelligent, concise, confident, natural, and efficient.\n"
             f"- Speaking Style: Spoken voice responses should be concise, crisp, and direct.\n"
-            f"  * Simple queries: Respond with minimal words (e.g. 'It is 2:14 PM.', 'Done.', 'I found 3 files.').\n"
+            f"  * Simple queries: Respond with minimal words (e.g. 'Done.', 'I found 3 files.', 'It is 2:14 PM.').\n"
             f"  * Explanations: Deliver key information clearly without rambling monologues, allowing the user to take control quickly.\n"
             f"  * Speech Optimization: Never speak raw JSON, code symbols, markdown formatting (*, #, `), internal tool IDs, or debugging metadata.\n"
             f"- ADDRESSING THE USER:\n"
-            f"  * The user is {user_name}. Use their name naturally when appropriate, but do NOT prepend or repeat it on every response.\n"
+            f"  * The user is {user_name}. Use their name naturally and sparingly, but do NOT prepend or repeat it on every response.\n"
             f"  * Never use sycophantic titles like 'Boss' or fake catchphrases.\n"
             f"  * Never use customer-service filler ('Certainly!', 'I would be happy to assist you with that.').\n"
             f"- INTERRUPTION RECOVERY:\n"
@@ -256,20 +259,8 @@ class GeminiLiveVoiceSession:
             f"  * Dangerous or sensitive operations require explicit user authorization."
         )
 
-        # Inject historical memory context if agent is available
-        if self.agent is not None and getattr(self.agent, "memory", None) is not None:
-            try:
-                recent_memories = self.agent.memory.get_context_window(max_messages=5)
-                if recent_memories:
-                    hist_lines = []
-                    for m in recent_memories:
-                        if m.content:
-                            hist_lines.append(f"{m.role.value.capitalize()}: {m.content}")
-                    if hist_lines:
-                        base_prompt += "\n\nRecent context:\n" + "\n".join(hist_lines)
-            except Exception as e:
-                logger.debug(f"Could not load historical context for Live system prompt: {e}")
-
+        # Note: In Live bidirectional streaming, the session maintains its own turns.
+        # Avoid dumping past tool executions into the prompt which causes repetitive action narration.
         return genai_types.Content(parts=[genai_types.Part.from_text(text=base_prompt)])
 
     def _build_live_config(self) -> genai_types.LiveConnectConfig:
@@ -836,35 +827,10 @@ class GeminiLiveVoiceSession:
                     else:
                         self._consecutive_speech_frames = 0
 
-                    # 3. Handle Barge-In Interruption while FRIDAY is speaking (High-threshold local barge-in)
-                    if is_speaker_active:
-                        is_cooldown_active = (now - self._last_interruption_time) < self.barge_in_cooldown_seconds
-                        allow_local_barge_in = self.headphones_mode or self.local_barge_in_during_playback
-                        
-                        if (
-                            allow_local_barge_in
-                            and not is_cooldown_active
-                            and self._consecutive_speech_frames >= self.barge_in_consecutive_frames
-                            and self._state != LiveSessionState.INTERRUPTED
-                        ):
-                            self._local_interruption_active = True
-                            logger.info(
-                                f"Local barge-in: sustained user speech detected (RMS: {rms:.1f}, "
-                                f"noise_floor: {self._ambient_noise_floor:.1f}, "
-                                f"frames: {self._consecutive_speech_frames}), purging speaker buffer"
-                            )
-                            self._set_state(LiveSessionState.INTERRUPTED)
-                            self._last_interruption_time = now
-                            self._consecutive_speech_frames = 0
-                            self.user_interruptions += 1
-                            self.speaker_playback_interruptions += 1
-                            spk.stop()
-                            if hasattr(mic, "set_muted"):
-                                mic.set_muted(False)
-                        else:
-                            self._local_interruption_active = False
-                    else:
-                        self._local_interruption_active = False
+                    # 3. Interruption Handling: Local client-side RMS interruption disabled to prevent
+                    # acoustic self-interruption mid-sentence. Interruption authority relies 100% on Google Server-Side VAD.
+                    self._local_interruption_active = False
+                    if not is_speaker_active:
                         if rms > candidate_threshold and self._state == LiveSessionState.CONNECTED:
                             self._set_state(LiveSessionState.USER_SPEAKING)
 
