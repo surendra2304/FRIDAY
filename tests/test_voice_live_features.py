@@ -119,6 +119,19 @@ def test_printer_fallback_when_nothing_streamed(capsys):
     assert "FRIDAY: Hi there." in out
 
 
+def test_printer_suppresses_empty_untranscribed_turn(capsys):
+    from friday.voice.transcripts import LiveTranscriptPrinter
+
+    p = LiveTranscriptPrinter()
+    p.on_server_content(_sc(turn_complete=True))
+    p.on_turn_complete("", "")
+
+    out = capsys.readouterr().out
+    assert "(untranscribed)" not in out
+    assert "You:" not in out
+    assert "FRIDAY:" not in out
+
+
 def test_printer_model_turn_text_fallback_stream(capsys):
     from friday.voice.transcripts import LiveTranscriptPrinter
 
@@ -147,6 +160,19 @@ def test_cli_voice_uses_printer_stdin_thread_and_echo_mute():
     assert "run_coroutine_threadsafe" in source
     assert "echo_mute=True" in source
     assert "on_server_content=printer.on_server_content" in source
+
+
+def test_cli_exposes_action_audit_command():
+    import inspect
+
+    from friday.cli.main import main as cli_main, print_action_audit
+
+    source = inspect.getsource(cli_main)
+    audit_source = inspect.getsource(print_action_audit)
+    assert "--action-audit" in source
+    assert "print_action_audit(audit_agent)" in source
+    assert "chrome_search" in audit_source
+    assert "open_windows_update" in audit_source
 
 
 @pytest.mark.anyio
@@ -336,18 +362,17 @@ def test_close_application_registered_and_declared():
     names = {s.get("function", s).get("name") for s in agent.tools.get_schemas()}
     assert "close_application" in names
     session = GeminiLiveVoiceSession(api_key="TEST", agent=agent)
-    declared = {fd.name for fd in session._build_tools_config()[0].function_declarations}
-    assert "close_application" in declared
+    assert session._build_tools_config() is None
 
 
 def test_console_logging_error_only_by_default():
-    """CLI default console level is ERROR; debug flag restores verbose console."""
+    """CLI default console level is ERROR; voice suppresses provider noise unless debug is set."""
     import inspect
 
     from friday.cli.main import main as cli_main
 
     source = inspect.getsource(cli_main)
-    assert "logging.DEBUG if args.debug else logging.ERROR" in source
+    assert "logging.CRITICAL if voice_requested else logging.ERROR" in source
 
 
 # ---------------------------------------------------------------------------

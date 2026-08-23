@@ -7,6 +7,7 @@ scrub these results before they reach any model context.
 """
 
 from typing import Any
+import warnings
 
 import httpx
 
@@ -45,14 +46,26 @@ class WebSearchTool(BaseTool):
             return ToolResult(name=self.name, content="No search query provided.", is_error=True,
                               safety_level=self.safety_level)
         try:
-            from duckduckgo_search import DDGS
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message=r".*duckduckgo_search.*renamed to `ddgs`.*",
+                    category=RuntimeWarning,
+                )
+                from duckduckgo_search import DDGS
         except Exception as e:
             return ToolResult(name=self.name, content=f"Search library unavailable: {e}",
                               is_error=True, safety_level=self.safety_level)
 
         try:
-            with DDGS() as ddgs:
-                results = list(ddgs.text(q, max_results=_MAX_RESULTS))
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message=r".*duckduckgo_search.*renamed to `ddgs`.*",
+                    category=RuntimeWarning,
+                )
+                with DDGS() as ddgs:
+                    results = list(ddgs.text(q, max_results=_MAX_RESULTS))
         except Exception as e:
             return ToolResult(name=self.name, content=f"Web search failed: {e}",
                               is_error=True, safety_level=self.safety_level)

@@ -2,7 +2,10 @@
 
 import random
 import re
+import os
+import subprocess
 import time
+from urllib.parse import quote_plus
 from typing import Any, Callable, Dict, List, Optional
 from friday.agent.prompts import build_system_message
 from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer
@@ -59,6 +62,7 @@ from friday.vision.detector import DeterministicActionDetector
 from friday.vision.intent_detector import IntentDetector, ActionIntent
 from friday.vision.computer_control import ComputerActionExecutor
 from friday.vision.windows_input_driver import (
+    WindowsNativeInputDriver,
     check_desktop_interactivity,
 )
 from friday.memory.task_context import ActiveTaskContext
@@ -203,6 +207,373 @@ class FridayAgent:
                 "task_state": self.state_machine.current_state.value,
             },
         )
+
+    _NOTEPAD_TYPE_PATTERN = re.compile(
+        r"^\s*(?:please\s+)?(?:open|launch|start)\s+notepad\s+and\s+type\s+(?P<text>.+?)\s*$",
+        re.IGNORECASE,
+    )
+    _CHROME_SEARCH_PATTERN = re.compile(
+        r"^\s*(?:please\s+)?(?:(?:open|launch|start)\s+)?(?:chrome|google chrome)\s+and\s+search\s+(?P<query>.+?)\s*$|"
+        r"^\s*(?:please\s+)?search\s+(?P<query2>.+?)\s+in\s+(?:chrome|google chrome)\s*$",
+        re.IGNORECASE,
+    )
+    _CLOSE_CHROME_PATTERN = re.compile(
+        r"^\s*(?:please\s+)?(?:close|quit|exit)\s+(?:google\s+)?chrome\.?\s*$",
+        re.IGNORECASE,
+    )
+    _SETTINGS_PATTERN = re.compile(
+        r"^\s*(?:please\s+)?(?:open|launch|start)\s+(?:windows\s+)?settings\.?\s*$",
+        re.IGNORECASE,
+    )
+    _WINDOWS_UPDATE_PATTERN = re.compile(
+        r"^\s*(?:please\s+)?(?:(?:check|see|look)\s+(?:if\s+)?(?:there\s+are\s+)?(?:any\s+)?updates(?:\s+for\s+my\s+laptop)?|"
+        r"are\s+there\s+(?:any\s+)?updates(?:\s+for\s+my\s+laptop)?|"
+        r"(?:if\s+)?there\s+are\s+(?:any\s+)?updates(?:\s+for\s+my\s+laptop)?|"
+        r"(?:open|launch|start)\s+windows\s+update)[\.\?]?\s*$",
+        re.IGNORECASE,
+    )
+    _TIME_PATTERN = re.compile(
+        r"^\s*(?:please\s+)?(?:what(?:'s| is)?|tell me)\s+(?:the\s+)?time(?:\s+now)?\??\s*$|"
+        r"^\s*(?:please\s+)?what\s+time\s+(?:(?:is\s+)?it|it\s+is)\??\s*$",
+        re.IGNORECASE,
+    )
+    _LAPTOP_SPECS_PATTERN = re.compile(
+        r"^\s*(?:please\s+)?(?:(?:tell|show)\s+(?:me\s+)?(?:its|my laptop(?:'s)?)\s+specs|"
+        r"what\s+are\s+(?:the\s+)?specs\s+of\s+my\s+laptop|"
+        r"tell\s+(?:its|my laptop(?:'s)?)\s+specs|"
+        r"tell\s+(?:me\s+)?(?:its|the)\s+specs)\??\s*$",
+        re.IGNORECASE,
+    )
+    _LAPTOP_IDENTITY_PATTERN = re.compile(
+        r"^\s*(?:please\s+)?(?:which|what)\s+laptop\s+is\s+this\??\s*$",
+        re.IGNORECASE,
+    )
+    _LISTENING_CHECK_PATTERN = re.compile(
+        r"^\s*(?:are\s+you\s+listening|can\s+you\s+hear\s+me)\??\s*$",
+        re.IGNORECASE,
+    )
+
+    def _launch_process(self, executable: str, *args: str) -> None:
+        """Launch a desktop process without blocking the agent turn."""
+        try:
+            subprocess.Popen([executable, *args], shell=False)
+        except Exception:
+            if args:
+                subprocess.Popen(["cmd.exe", "/c", "start", "", executable, *args], shell=False)
+            else:
+                os.startfile(executable)
+
+    def _focus_window_for_direct_action(self, title_substring: str, timeout: float = 3.0) -> bool:
+        """Best-effort focus for a newly opened desktop window."""
+        deadline = time.time() + max(0.1, timeout)
+        needle = title_substring.lower()
+        while time.time() < deadline:
+            try:
+                from pywinauto import Desktop
+
+                windows = Desktop(backend="uia").windows()
+                matches = [w for w in windows if needle in (w.window_text() or "").lower()]
+                if matches:
+                    matches[0].set_focus()
+                    time.sleep(0.25)
+                    return True
+            except Exception as e:
+                logger.debug(f"Direct action focus attempt failed for '{title_substring}': {e}")
+            time.sleep(0.15)
+        return False
+
+    def _dedupe_repeated_query_tail(self, query: str) -> str:
+        """Trim accidental duplicated voice fragments from a search query."""
+        words = query.strip().split()
+        if len(words) < 4:
+            return query.strip()
+        for size in range(len(words) // 2, 1, -1):
+            if words[-size:] == words[-2 * size:-size]:
+                return " ".join(words[:-size]).strip()
+        return query.strip()
+
+    def _format_local_specs(self) -> str:
+        """Return concise laptop specs for spoken responses."""
+        import os as _os
+        import platform
+        import sys as _sys
+
+        bits = [
+            f"{platform.system()} {platform.release()}",
+            platform.machine(),
+            f"{_os.cpu_count() or 1} logical CPU cores",
+        ]
+        processor = platform.processor()
+        if processor:
+            bits.insert(2, processor)
+        try:
+            if _sys.platform == "win32":
+                import ctypes
+
+                class MEMORYSTATUSEX(ctypes.Structure):
+                    _fields_ = [
+                        ("dwLength", ctypes.c_ulong),
+                        ("dwMemoryLoad", ctypes.c_ulong),
+                        ("ullTotalPhys", ctypes.c_ulonglong),
+                        ("ullAvailPhys", ctypes.c_ulonglong),
+                        ("ullTotalPageFile", ctypes.c_ulonglong),
+                        ("ullAvailPageFile", ctypes.c_ulonglong),
+                        ("ullTotalVirtual", ctypes.c_ulonglong),
+                        ("ullAvailVirtual", ctypes.c_ulonglong),
+                        ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
+                    ]
+
+                stat = MEMORYSTATUSEX()
+                stat.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+                if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
+                    bits.append(f"{round(stat.ullTotalPhys / (1024**3), 1)} GB RAM")
+        except Exception:
+            pass
+        return "This laptop is running " + ", ".join(bits) + "."
+
+    def _direct_desktop_action_fast_path(self, clean_input: str, start_time: float) -> Optional[AgentResponse]:
+        """Execute common laptop-control commands deterministically.
+
+        This avoids routing simple desktop actions through a general model,
+        which can otherwise summarize, search the web, or mix previous turns
+        instead of performing the concrete Windows sequence.
+        """
+        notepad_match = self._NOTEPAD_TYPE_PATTERN.match(clean_input)
+        if notepad_match:
+            payload = notepad_match.group("text").strip()
+            self.memory.add_message(Message(role=Role.USER, content=clean_input))
+            self.state_machine.transition_to(TaskState.PLANNING, reason="Direct Notepad typing command")
+            self.state_machine.transition_to(TaskState.EXECUTING, reason="Opening Notepad and typing text")
+            try:
+                self._launch_process("notepad.exe")
+                self._focus_window_for_direct_action("Notepad")
+                typed = WindowsNativeInputDriver().type_text(payload)
+            except Exception as e:
+                typed = False
+                logger.warning(f"Direct Notepad typing failed: {e}")
+            self.state_machine.transition_to(TaskState.VERIFYING, reason="Checking direct Notepad action result")
+            content = "Done." if typed else "I opened Notepad, but I could not reliably type into it."
+            self.state_machine.transition_to(TaskState.COMPLETED if typed else TaskState.FAILED, reason=content)
+            self.memory.add_message(Message(role=Role.ASSISTANT, content=content))
+            return AgentResponse(
+                content=content,
+                is_done=True,
+                metadata={
+                    "fast_path": True,
+                    "direct_desktop_action": "notepad_type",
+                    "success": typed,
+                    "duration_seconds": time.perf_counter() - start_time,
+                    "task_state": self.state_machine.current_state.value,
+                },
+            )
+
+        chrome_match = self._CHROME_SEARCH_PATTERN.match(clean_input)
+        if chrome_match:
+            query = self._dedupe_repeated_query_tail(
+                chrome_match.group("query") or chrome_match.group("query2") or ""
+            )
+            if not query:
+                return None
+            self.memory.add_message(Message(role=Role.USER, content=clean_input))
+            self.state_machine.transition_to(TaskState.PLANNING, reason="Direct Chrome search command")
+            self.state_machine.transition_to(TaskState.EXECUTING, reason="Opening Chrome search URL")
+            ok = False
+            try:
+                self._launch_process("chrome.exe", f"https://www.google.com/search?q={quote_plus(query)}")
+                ok = True
+            except Exception as e:
+                logger.warning(f"Chrome direct URL launch failed; trying focus/type fallback: {e}")
+                try:
+                    self._launch_process("chrome.exe")
+                    self._focus_window_for_direct_action("Chrome")
+                    driver = WindowsNativeInputDriver()
+                    ok = (
+                        driver.hotkey(["ctrl", "l"])
+                        and driver.type_text(query)
+                        and driver.press_key("enter")
+                    )
+                except Exception as fallback_error:
+                    logger.warning(f"Chrome search fallback failed: {fallback_error}")
+                    ok = False
+            self.state_machine.transition_to(TaskState.VERIFYING, reason="Checking direct Chrome search result")
+            content = "Done." if ok else "I could not reliably complete the Chrome search."
+            self.state_machine.transition_to(TaskState.COMPLETED if ok else TaskState.FAILED, reason=content)
+            self.memory.add_message(Message(role=Role.ASSISTANT, content=content))
+            return AgentResponse(
+                content=content,
+                is_done=True,
+                metadata={
+                    "fast_path": True,
+                    "direct_desktop_action": "chrome_search",
+                    "query": query,
+                    "success": ok,
+                    "duration_seconds": time.perf_counter() - start_time,
+                    "task_state": self.state_machine.current_state.value,
+                },
+            )
+
+        if self._CLOSE_CHROME_PATTERN.match(clean_input):
+            self.memory.add_message(Message(role=Role.USER, content=clean_input))
+            self.state_machine.transition_to(TaskState.PLANNING, reason="Direct close Chrome command")
+            self.state_machine.transition_to(TaskState.EXECUTING, reason="Closing Chrome")
+            ok = False
+            try:
+                result = subprocess.run(
+                    ["taskkill.exe", "/IM", "chrome.exe", "/T"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                combined = f"{result.stdout}\n{result.stderr}".lower()
+                ok = result.returncode == 0 or "not found" in combined
+            except Exception as e:
+                logger.warning(f"Closing Chrome failed: {e}")
+            self.state_machine.transition_to(TaskState.VERIFYING, reason="Checking Chrome close request")
+            content = "Done." if ok else "I could not close Chrome."
+            self.state_machine.transition_to(TaskState.COMPLETED if ok else TaskState.FAILED, reason=content)
+            self.memory.add_message(Message(role=Role.ASSISTANT, content=content))
+            return AgentResponse(
+                content=content,
+                is_done=True,
+                metadata={
+                    "fast_path": True,
+                    "direct_desktop_action": "close_chrome",
+                    "success": ok,
+                    "duration_seconds": time.perf_counter() - start_time,
+                    "task_state": self.state_machine.current_state.value,
+                },
+            )
+
+        if self._SETTINGS_PATTERN.match(clean_input):
+            self.memory.add_message(Message(role=Role.USER, content=clean_input))
+            self.state_machine.transition_to(TaskState.PLANNING, reason="Direct Settings command")
+            self.state_machine.transition_to(TaskState.EXECUTING, reason="Opening Windows Settings")
+            ok = False
+            try:
+                self._launch_process("explorer.exe", "ms-settings:")
+                ok = True
+            except Exception as e:
+                logger.warning(f"Opening Settings failed: {e}")
+            self.state_machine.transition_to(TaskState.VERIFYING, reason="Checking Settings launch")
+            content = "Done." if ok else "I could not open Settings."
+            self.state_machine.transition_to(TaskState.COMPLETED if ok else TaskState.FAILED, reason=content)
+            self.memory.add_message(Message(role=Role.ASSISTANT, content=content))
+            return AgentResponse(
+                content=content,
+                is_done=True,
+                metadata={
+                    "fast_path": True,
+                    "direct_desktop_action": "open_settings",
+                    "success": ok,
+                    "duration_seconds": time.perf_counter() - start_time,
+                    "task_state": self.state_machine.current_state.value,
+                },
+            )
+
+        if self._WINDOWS_UPDATE_PATTERN.match(clean_input):
+            self.memory.add_message(Message(role=Role.USER, content=clean_input))
+            self.state_machine.transition_to(TaskState.PLANNING, reason="Direct Windows Update command")
+            self.state_machine.transition_to(TaskState.EXECUTING, reason="Opening Windows Update")
+            ok = False
+            try:
+                self._launch_process("explorer.exe", "ms-settings:windowsupdate")
+                ok = True
+            except Exception as e:
+                logger.warning(f"Opening Windows Update failed: {e}")
+            self.state_machine.transition_to(TaskState.VERIFYING, reason="Checking Windows Update launch")
+            content = "Done." if ok else "I could not open Windows Update."
+            self.state_machine.transition_to(TaskState.COMPLETED if ok else TaskState.FAILED, reason=content)
+            self.memory.add_message(Message(role=Role.ASSISTANT, content=content))
+            return AgentResponse(
+                content=content,
+                is_done=True,
+                metadata={
+                    "fast_path": True,
+                    "direct_desktop_action": "open_windows_update",
+                    "success": ok,
+                    "duration_seconds": time.perf_counter() - start_time,
+                    "task_state": self.state_machine.current_state.value,
+                },
+            )
+
+        if self._TIME_PATTERN.match(clean_input):
+            self.memory.add_message(Message(role=Role.USER, content=clean_input))
+            self.state_machine.transition_to(TaskState.PLANNING, reason="Direct time query")
+            self.state_machine.transition_to(TaskState.VERIFYING, reason="Formatting local time")
+            time_format = "It is %#I:%M %p." if os.name == "nt" else "It is %-I:%M %p."
+            content = datetime.now().astimezone().strftime(time_format)
+            self.state_machine.transition_to(TaskState.COMPLETED, reason="Time answered")
+            self.memory.add_message(Message(role=Role.ASSISTANT, content=content))
+            return AgentResponse(
+                content=content,
+                is_done=True,
+                metadata={
+                    "fast_path": True,
+                    "direct_desktop_action": "time",
+                    "success": True,
+                    "duration_seconds": time.perf_counter() - start_time,
+                    "task_state": self.state_machine.current_state.value,
+                },
+            )
+
+        if self._LISTENING_CHECK_PATTERN.match(clean_input):
+            self.memory.add_message(Message(role=Role.USER, content=clean_input))
+            self.state_machine.transition_to(TaskState.PLANNING, reason="Direct listening check")
+            self.state_machine.transition_to(TaskState.VERIFYING, reason="Confirming voice readiness")
+            content = "Yes. I am listening."
+            self.state_machine.transition_to(TaskState.COMPLETED, reason="Listening confirmed")
+            self.memory.add_message(Message(role=Role.ASSISTANT, content=content))
+            return AgentResponse(
+                content=content,
+                is_done=True,
+                metadata={
+                    "fast_path": True,
+                    "direct_desktop_action": "listening_check",
+                    "success": True,
+                    "duration_seconds": time.perf_counter() - start_time,
+                    "task_state": self.state_machine.current_state.value,
+                },
+            )
+
+        if self._LAPTOP_IDENTITY_PATTERN.match(clean_input):
+            self.memory.add_message(Message(role=Role.USER, content=clean_input))
+            self.state_machine.transition_to(TaskState.PLANNING, reason="Direct laptop identity query")
+            self.state_machine.transition_to(TaskState.VERIFYING, reason="Reading local laptop identity")
+            content = "This is your local Windows laptop. " + self._format_local_specs()
+            self.state_machine.transition_to(TaskState.COMPLETED, reason="Laptop identity answered")
+            self.memory.add_message(Message(role=Role.ASSISTANT, content=content))
+            return AgentResponse(
+                content=content,
+                is_done=True,
+                metadata={
+                    "fast_path": True,
+                    "direct_desktop_action": "laptop_identity",
+                    "success": True,
+                    "duration_seconds": time.perf_counter() - start_time,
+                    "task_state": self.state_machine.current_state.value,
+                },
+            )
+
+        if self._LAPTOP_SPECS_PATTERN.match(clean_input):
+            self.memory.add_message(Message(role=Role.USER, content=clean_input))
+            self.state_machine.transition_to(TaskState.PLANNING, reason="Direct laptop specs query")
+            self.state_machine.transition_to(TaskState.VERIFYING, reason="Reading local specs")
+            content = self._format_local_specs()
+            self.state_machine.transition_to(TaskState.COMPLETED, reason="Specs answered")
+            self.memory.add_message(Message(role=Role.ASSISTANT, content=content))
+            return AgentResponse(
+                content=content,
+                is_done=True,
+                metadata={
+                    "fast_path": True,
+                    "direct_desktop_action": "laptop_specs",
+                    "success": True,
+                    "duration_seconds": time.perf_counter() - start_time,
+                    "task_state": self.state_machine.current_state.value,
+                },
+            )
+
+        return None
 
     def _execute_semantic_ui_action(self, intent_result, user_input: str) -> Optional[AgentResponse]:
         """Execute a high-confidence semantic UI action via the pywinauto provider.
@@ -637,6 +1008,10 @@ class FridayAgent:
         greeting_response = self._greeting_fast_path(clean_input)
         if greeting_response is not None:
             return greeting_response
+
+        direct_desktop_response = self._direct_desktop_action_fast_path(clean_input, start_time)
+        if direct_desktop_response is not None:
+            return direct_desktop_response
 
         # 1. State: UNDERSTANDING (evaluating cognitive confidence, information sufficiency & capability routing)
         self.state_machine.transition_to(TaskState.UNDERSTANDING, reason="Interpreting user turn and retrieving memories")

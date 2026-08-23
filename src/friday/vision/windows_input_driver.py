@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from friday.core.logging import get_logger
 
 logger = get_logger("vision.input_driver")
+_DPI_AWARENESS_SET = False
 
 # Windows Virtual Key Codes
 VK_MAP: Dict[str, int] = {
@@ -207,6 +208,7 @@ class WindowsNativeInputDriver(BaseWindowsInputDriver):
     """Real Win32 input synthesis driver using user32.SendInput and user32 cursor APIs."""
 
     def __init__(self) -> None:
+        self._enable_dpi_awareness()
         self._user32 = ctypes.windll.user32
         # Set function argument and return types for 64-bit safety
         self._user32.SendInput.argtypes = [wintypes.UINT, ctypes.POINTER(INPUT), ctypes.c_int]
@@ -217,6 +219,32 @@ class WindowsNativeInputDriver(BaseWindowsInputDriver):
         self._user32.GetCursorPos.restype = wintypes.BOOL
         self._user32.GetSystemMetrics.argtypes = [ctypes.c_int]
         self._user32.GetSystemMetrics.restype = ctypes.c_int
+
+    @staticmethod
+    def _enable_dpi_awareness() -> None:
+        """Make cursor/screen coordinates physical pixels on scaled Windows desktops."""
+        global _DPI_AWARENESS_SET
+        if _DPI_AWARENESS_SET or sys.platform != "win32":
+            return
+        try:
+            # Windows 10+: per-monitor v2 awareness.
+            ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+            _DPI_AWARENESS_SET = True
+            return
+        except Exception:
+            pass
+        try:
+            # Windows 8.1 fallback: PROCESS_PER_MONITOR_DPI_AWARE = 2.
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
+            _DPI_AWARENESS_SET = True
+            return
+        except Exception:
+            pass
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+            _DPI_AWARENESS_SET = True
+        except Exception as e:
+            logger.debug(f"Could not set process DPI awareness: {e}")
 
     def get_screen_dimensions(self) -> Tuple[int, int]:
         width = int(self._user32.GetSystemMetrics(SM_CXSCREEN))
@@ -233,8 +261,10 @@ class WindowsNativeInputDriver(BaseWindowsInputDriver):
         return (int(pt.x), int(pt.y))
 
     def move_cursor(self, x: int, y: int) -> bool:
+        target_x = int(x)
+        target_y = int(y)
         # First try SetCursorPos (handles multi-monitor absolute desktop coords directly)
-        ok = bool(self._user32.SetCursorPos(int(x), int(y)))
+        ok = bool(self._user32.SetCursorPos(target_x, target_y))
         if not ok:
             # Fallback to SendInput with MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE | MOUSEEVENTF_VIRTUALDESK
             SM_CXVIRTUALSCREEN = 78
@@ -253,8 +283,8 @@ class WindowsNativeInputDriver(BaseWindowsInputDriver):
                 virt_x, virt_y = 0, 0
 
             if virt_w > 0 and virt_h > 0:
-                norm_x = int(((x - virt_x) * 65535) / virt_w)
-                norm_y = int(((y - virt_y) * 65535) / virt_h)
+                norm_x = int(((target_x - virt_x) * 65535) / virt_w)
+                norm_y = int(((target_y - virt_y) * 65535) / virt_h)
                 inp = (INPUT * 1)()
                 inp[0].type = INPUT_MOUSE
                 inp[0].mi.dx = norm_x
@@ -263,8 +293,25 @@ class WindowsNativeInputDriver(BaseWindowsInputDriver):
                 sent = self._user32.SendInput(1, inp, ctypes.sizeof(INPUT))
                 ok = (sent == 1)
 
-        time.sleep(0.01)
-        return ok
+        if not ok:
+            time.sleep(0.01)
+            return False
+
+        # Some scaled or remote Windows sessions acknowledge SetCursorPos but
+        # land at a virtualized coordinate. Verify and correct using the
+        # observed residual so physical automation does not claim false success.
+        for _ in range(4):
+            time.sleep(0.02)
+            cur_x, cur_y = self.get_cursor_position()
+            if abs(cur_x - target_x) <= 2 and abs(cur_y - target_y) <= 2:
+                return True
+            correction_x = target_x + (target_x - cur_x)
+            correction_y = target_y + (target_y - cur_y)
+            if not self._user32.SetCursorPos(int(correction_x), int(correction_y)):
+                break
+
+        cur_x, cur_y = self.get_cursor_position()
+        return abs(cur_x - target_x) <= 2 and abs(cur_y - target_y) <= 2
 
     def click(self, x: Optional[int] = None, y: Optional[int] = None, button: str = "left") -> bool:
         if x is not None and y is not None:

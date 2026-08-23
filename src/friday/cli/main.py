@@ -169,6 +169,41 @@ def print_tools(agent: FridayAgent) -> None:
     print("---------------------------------------\n")
 
 
+def print_action_audit(agent: FridayAgent) -> None:
+    """Print a non-destructive audit of FRIDAY's registered action surface."""
+    tools = agent.tools.list_tools()
+    print("\n==================================================")
+    print("              FRIDAY ACTION AUDIT                 ")
+    print("==================================================")
+    print(f"  Registered Tools : {len(tools)}")
+    invalid = []
+    for tool in tools:
+        params = tool.parameters if isinstance(tool.parameters, dict) else {}
+        required = params.get("required", [])
+        properties = params.get("properties", {})
+        missing_required = [name for name in required if name not in properties]
+        if missing_required or not getattr(tool, "name", "") or not getattr(tool, "description", ""):
+            invalid.append((tool.name, missing_required))
+        print(f"  * {tool.name:<28} [{tool.safety_level.value}]")
+    print("--------------------------------------------------")
+    print("  Deterministic Voice/Desktop Fast Paths:")
+    print("  * open_notepad_and_type")
+    print("  * chrome_search")
+    print("  * close_chrome")
+    print("  * open_settings")
+    print("  * open_windows_update")
+    print("  * local_time")
+    print("  * laptop_specs")
+    print("--------------------------------------------------")
+    if invalid:
+        print("  Audit Result     : FAILED")
+        for name, missing in invalid:
+            print(f"    - {name}: missing schema entries {missing}")
+    else:
+        print("  Audit Result     : PASS (metadata/schema smoke check)")
+    print("==================================================\n")
+
+
 _active_status = {"obj": None}
 
 
@@ -191,11 +226,16 @@ def main() -> None:
 Modes:
   python -m friday           Start in default interactive text conversation mode
   python -m friday --voice   Start direct Gemini Live real-time bidirectional voice mode
+  python -m friday --doctor  Run system diagnostics and exit
+  python -m friday --action-audit
+                             List and validate registered safe action surface
   python -m friday --text    Start explicitly in interactive text conversation mode
   python -m friday --debug   Enable verbose diagnostic logs in the console
 """,
     )
     parser.add_argument("--voice", action="store_true", help="Start in real-time Gemini Live bidirectional voice mode")
+    parser.add_argument("--doctor", action="store_true", help="Run FRIDAY system diagnostics and exit")
+    parser.add_argument("--action-audit", action="store_true", help="List and validate FRIDAY's registered action surface")
     parser.add_argument("--enroll-voice", action="store_true", help="Record 5 seconds of speech to enroll your voice profile for speaker recognition")
     parser.add_argument("--text", action="store_true", help="Start explicitly in interactive text conversation mode")
     parser.add_argument("--debug", action="store_true", help="Enable verbose debug logging in terminal console")
@@ -215,12 +255,31 @@ Modes:
         print(f"Details: {e}\n")
         sys.exit(1)
 
-    # Clean console: only ERROR-level logs reach the terminal in default mode
-    # (provider failover warnings, INFO chatter, etc. go to the log file only).
-    # Use --debug to mirror everything to the console.
-    console_log_level = logging.DEBUG if args.debug else logging.ERROR
+    voice_requested = (args.voice or getattr(settings, "voice_enabled", False)) and not args.text
+    # Clean console: default mode shows only errors; voice mode suppresses
+    # provider-chain noise unless --debug is explicitly requested.
+    console_log_level = logging.DEBUG if args.debug else (logging.CRITICAL if voice_requested else logging.ERROR)
     setup_logging(level=settings.log_level, log_file=settings.log_file, console_level=console_log_level)
     logger.info("Starting FRIDAY CLI session")
+
+    if args.doctor:
+        from friday.core.doctor import FridayDoctor
+
+        report = FridayDoctor(settings=settings).run_full_diagnostics()
+        print(report.to_cli_table())
+        return
+
+    if args.action_audit:
+        from friday.memory.in_memory import InMemoryConversationMemory
+
+        audit_agent = FridayAgent(
+            settings=settings,
+            memory=InMemoryConversationMemory(),
+            tool_callback=on_tool_event,
+            authorizer=CLIAuthorizer(),
+        )
+        print_action_audit(audit_agent)
+        return
 
     # Perform one-time startup preflight check on Gemini pool if available
     from friday.auth.credential_pool import credential_pool
@@ -250,7 +309,7 @@ Modes:
 
     # Voice interface initialization
     # Activated either by --voice CLI flag or FRIDAY_VOICE_ENABLED=true in config (without --text override)
-    is_voice_mode = (args.voice or getattr(settings, "voice_enabled", False)) and not args.text
+    is_voice_mode = voice_requested
     if is_voice_mode and args.voice and not getattr(settings, "voice_enabled", False):
         print("Voice mode enabled via CLI override (--voice; FRIDAY_VOICE_ENABLED is false).")
     if is_voice_mode:

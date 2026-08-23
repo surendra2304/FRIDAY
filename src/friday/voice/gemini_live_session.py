@@ -28,12 +28,13 @@ from friday.core.config import get_settings
 from friday.core.exceptions import LLMProviderError, VoiceError
 from friday.core.logging import get_logger, redact_tool_args
 from friday.core.types import Message, Role, SafetyLevel, ToolCall
-from friday.voice.audio_io import MicrophoneStream, SpeakerStream, compute_pcm_rms
+from friday.voice.audio_io import MicrophoneStream, SpeakerStream, compute_pcm_rms, normalize_audio_device
 
 logger = get_logger("voice.live_session")
 
 # Live-capable model names that do not contain "live" in their identifier
 _LIVE_CAPABLE_MODEL_NAMES = {"gemini-2.0-flash-exp", "gemini-3.1-flash-live-preview"}
+_VOICE_LIVE_EXCLUDED_TOOLS = {"web_search", "fetch_webpage"}
 
 # Preferred transcription model when the SDK's AudioTranscriptionConfig
 # supports an explicit model field (falls back to the plain marker otherwise).
@@ -192,6 +193,11 @@ class GeminiLiveVoiceSession:
 
     def _build_tools_config(self) -> Optional[List[genai_types.Tool]]:
         """Extract tool schemas from agent registry and convert to GenAI tool declarations."""
+        # Voice mode uses Gemini Live for real-time speech I/O. The local
+        # FridayAgent owns tool routing after each completed transcript so the
+        # Live model cannot keep executing stale desktop/search actions across
+        # later turns.
+        return None
         if not self.agent:
             return None
         registry = getattr(self.agent, "tools", getattr(self.agent, "tool_registry", None))
@@ -205,14 +211,17 @@ class GeminiLiveVoiceSession:
         func_decls = []
         for s in schemas:
             func = s.get("function", s) if isinstance(s, dict) else s
+            name = func.get("name", "") if isinstance(func, dict) else getattr(func, "name", "")
+            if name in _VOICE_LIVE_EXCLUDED_TOOLS:
+                continue
             func_decls.append(
                 genai_types.FunctionDeclaration(
-                    name=func.get("name", "") if isinstance(func, dict) else getattr(func, "name", ""),
+                    name=name,
                     description=func.get("description", "") if isinstance(func, dict) else getattr(func, "description", ""),
                     parameters=func.get("parameters", {}) if isinstance(func, dict) else getattr(func, "parameters", {}),
                 )
             )
-        return [genai_types.Tool(function_declarations=func_decls)]
+        return [genai_types.Tool(function_declarations=func_decls)] if func_decls else None
 
     def _build_system_instruction(self) -> Optional[genai_types.Content]:
         """Construct system prompt embodying FRIDAY's futuristic, natural spoken persona."""
@@ -235,6 +244,9 @@ class GeminiLiveVoiceSession:
             f"- The current local time at session start is {now_str} ({local_tz}). "
             f"Use the get_time_date tool for exact current time instead of guessing.\n"
             f"- CRITICAL CONVERSATION RULES:\n"
+            f"  * You are the real-time speech interface. The local FRIDAY controller executes commands after transcripts complete.\n"
+            f"  * Do NOT claim that you opened apps, typed text, searched the web, checked settings, or inspected the computer unless the local controller explicitly gives you that result.\n"
+            f"  * If the user gives a laptop-control command, keep your immediate spoken response to 'Working.' and wait for the controller result.\n"
             f"  * NEVER repeat greetings ('Hi Surendra', 'Hello', etc.). NEVER greet the user again after the session has started.\n"
             f"  * NEVER state the time or date unless explicitly asked in the immediate query.\n"
             f"  * Respond ONLY to the user's immediate query or command.\n"
@@ -583,8 +595,15 @@ class GeminiLiveVoiceSession:
         self._active = True
         client = genai.Client(api_key=self.api_key)
 
-        mic = input_stream or MicrophoneStream(sample_rate=self.sample_rate_in)
-        spk = output_stream or SpeakerStream(sample_rate=self.sample_rate_out)
+        settings = get_settings()
+        mic_device = normalize_audio_device(getattr(settings, "audio_input_device", None))
+        spk_device = normalize_audio_device(getattr(settings, "audio_output_device", None))
+        mic = input_stream or MicrophoneStream(sample_rate=self.sample_rate_in, device=mic_device)
+        spk = output_stream or SpeakerStream(
+            sample_rate=self.sample_rate_out,
+            device=spk_device,
+            prebuffer_ms=float(getattr(settings, "voice_playback_buffer_ms", 100)),
+        )
         stop = stop_event or asyncio.Event()
 
         loop = asyncio.get_running_loop()
@@ -777,8 +796,7 @@ class GeminiLiveVoiceSession:
                 # 3. Debug log when mic state transitions from muted to unmuted
                 current_muted = getattr(mic, "is_muted", False)
                 if last_reported_muted is True and current_muted is False:
-                    print("[DEBUG] Mic unmuted, listening...")
-                    logger.info("[DEBUG] Mic unmuted, listening...")
+                    logger.info("Mic unmuted; listening resumed.")
                 last_reported_muted = current_muted
 
                 chunk = await mic.read_chunk()
@@ -952,10 +970,30 @@ class GeminiLiveVoiceSession:
 
                     # Turn completion
                     if getattr(server_content, "turn_complete", False):
+                        if hasattr(spk, "flush"):
+                            spk.flush()
                         self._set_state(LiveSessionState.CONNECTED)
                         user_text = "".join(user_transcript_accum).strip()
                         raw_agent_text = ("".join(agent_output_tx).strip() or "".join(agent_text_parts).strip())
                         agent_text = f"{raw_agent_text} [interrupted]" if (turn_interrupted and raw_agent_text) else raw_agent_text
+                        local_agent_handled = False
+
+                        if (
+                            user_text
+                            and not turn_interrupted
+                            and self.agent is not None
+                            and type(self.agent).__name__ == "FridayAgent"
+                        ):
+                            try:
+                                local_response = await asyncio.to_thread(self.agent.process_message, user_text)
+                                agent_text = local_response.content or agent_text or "Done."
+                                local_agent_handled = True
+                                # The Live model may have started a generic or stale spoken answer before
+                                # transcript finalization. Purge remaining audio; the local result is
+                                # printed and stored, but not fed back into Live as a new user prompt.
+                                spk.stop()
+                            except Exception as e:
+                                logger.warning(f"Local voice agent processing failed: {e}")
 
                         # Check backup spoken stop command
                         if user_text.lower() in ("stop", "stop.", "cancel", "cancel.", "hold on", "quiet"):
@@ -967,7 +1005,12 @@ class GeminiLiveVoiceSession:
                             on_turn_complete(user_text, agent_text)
 
                         # Commit completed turn into SQLite conversation memory without corrupted state
-                        if self.agent is not None and getattr(self.agent, "memory", None) is not None:
+                        if (
+                            not local_agent_handled
+                            and self.agent is not None
+                            and getattr(self.agent, "memory", None) is not None
+                            and user_text
+                        ):
                             conv_id = getattr(self.agent, "conversation_id", None) or getattr(self.agent.memory, "active_conversation_id", None)
                             if user_text:
                                 await asyncio.to_thread(

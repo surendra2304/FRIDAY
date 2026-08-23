@@ -14,6 +14,7 @@ from friday.voice.audio_io import (
     check_device_availability,
     compute_pcm_rms,
     get_audio_diagnostics,
+    normalize_audio_device,
 )
 
 
@@ -37,6 +38,16 @@ def test_check_device_availability():
     inv_ok, inv_err = check_device_availability("invalid_type")
     assert inv_ok is False
     assert "Unknown device type" in inv_err
+
+
+def test_normalize_audio_device_from_env_values():
+    """Verify configured device selectors can be indexes or names."""
+    assert normalize_audio_device(None) is None
+    assert normalize_audio_device("") is None
+    assert normalize_audio_device("  ") is None
+    assert normalize_audio_device("2") == 2
+    assert normalize_audio_device(3) == 3
+    assert normalize_audio_device("Microphone Array") == "Microphone Array"
 
 
 def test_microphone_stream_chunk_sizing():
@@ -66,6 +77,23 @@ def test_speaker_stream_buffering_and_purge():
     # Barge-in interruption
     spk.stop()
     assert spk.queue_size == 0
+
+
+def test_speaker_stream_flush_releases_short_prebuffered_response():
+    """Verify short responses below the jitter threshold are playable at turn completion."""
+    spk = SpeakerStream(sample_rate=24000, prebuffer_ms=100)
+    spk._active = True
+
+    short_chunk = b"\x01\x02" * 100
+    spk.play_chunk(short_chunk)
+
+    assert spk.played_chunks == 0
+    assert spk.queue_size == 1
+
+    spk.flush()
+
+    assert spk.played_chunks == 1
+    assert spk.queue_size == 1
 
 
 def test_speaker_stream_overflow_protection():

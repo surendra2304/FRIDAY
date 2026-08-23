@@ -14,7 +14,7 @@ import asyncio
 import queue
 import struct
 import threading
-from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
 
 from friday.core.logging import get_logger
 
@@ -95,6 +95,26 @@ def check_device_availability(device_type: str = "input") -> Tuple[bool, Optiona
         return False, str(e)
 
 
+def normalize_audio_device(device: Optional[Union[int, str]]) -> Optional[Union[int, str]]:
+    """Return a sounddevice-compatible selector from config text.
+
+    ``sounddevice`` accepts either an integer index or a device-name substring.
+    Environment variables arrive as strings, so numeric strings are converted
+    while names are preserved.
+    """
+    if device is None:
+        return None
+    if isinstance(device, int):
+        return device
+    text = str(device).strip()
+    if not text:
+        return None
+    try:
+        return int(text)
+    except ValueError:
+        return text
+
+
 class MicrophoneStream:
     """Continuous non-blocking microphone stream capturing 16kHz 16-bit mono PCM."""
 
@@ -103,12 +123,12 @@ class MicrophoneStream:
         sample_rate: int = 16000,
         channels: int = 1,
         chunk_duration_ms: int = 40,
-        device: Optional[int] = None,
+        device: Optional[Union[int, str]] = None,
         max_queue_size: int = 100,
     ):
         self.sample_rate = sample_rate
         self.channels = channels
-        self.device = device
+        self.device = normalize_audio_device(device)
         self.chunk_duration_ms = max(10, min(chunk_duration_ms, 500))
         self.block_size = int(self.sample_rate * (self.chunk_duration_ms / 1000.0))
         self.max_queue_size = max_queue_size
@@ -262,13 +282,13 @@ class SpeakerStream:
         self,
         sample_rate: int = 24000,
         channels: int = 1,
-        device: Optional[int] = None,
+        device: Optional[Union[int, str]] = None,
         max_buffer_chunks: int = 100,
         prebuffer_ms: float = 100.0,
     ):
         self.sample_rate = sample_rate
         self.channels = channels
-        self.device = device
+        self.device = normalize_audio_device(device)
         # Jitter buffer: accumulate up to prebuffer_ms of audio before playback
         # starts, so minor network delays don't starve the output callback and
         # cause choppy audio. 0 disables pre-buffering (immediate playback).
@@ -408,6 +428,22 @@ class SpeakerStream:
                 pass
             self._queue.put_nowait(data)
             self.played_chunks += 1
+
+    def flush(self) -> None:
+        """Force any held jitter-buffer audio into the playback queue.
+
+        The Live API may finish a short response before enough audio arrives to
+        meet the normal prebuffer threshold. Flushing at turn completion prevents
+        those final words from staying buffered forever.
+        """
+        if not self._active:
+            return
+        with self._lock:
+            self._flush_prebuffer()
+            if not self._playing and (not self._queue.empty() or self._remainder):
+                self._playing = True
+                self._drain_blocks = 0
+                self._mute_mic()
 
     def play_chunk(self, pcm_bytes: bytes) -> None:
         """Enqueue a 24kHz 16-bit PCM chunk; pre-buffers until the jitter threshold."""

@@ -90,8 +90,9 @@ class LiveTranscriptPrinter:
     def on_turn_complete(self, user_text: str, agent_text: str) -> None:
         """Log the turn and print fallbacks only for content the streams missed."""
         self.turn_log.append((self._time(), user_text, agent_text))
-        if not self._state["user_last"]:
+        if user_text and not self._state["user_last"]:
             self._print(f"\nYou: {user_text or '(untranscribed)'}")
-        if not self._state["friday_last"]:
+        if agent_text and not self._state["friday_last"]:
             self._print(f"FRIDAY: {(agent_text or '').strip() or '(untranscribed)'}")
-        self._print("")  # blank separator line between turns
+        if user_text or agent_text:
+            self._print("")  # blank separator line between turns

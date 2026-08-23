@@ -191,8 +191,6 @@ def test_observability_metadata():
     
     assert response.is_done
     assert response.metadata is not None
-    assert response.metadata["iterations"] == 2
+    assert response.metadata["direct_desktop_action"] == "time"
     assert response.metadata["success"] is True
-    assert "get_time_date" in response.metadata["tools_used"]
     assert "duration_seconds" in response.metadata
-    assert response.metadata["provider"] == "mock"

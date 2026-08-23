@@ -348,8 +348,11 @@ async def test_bidirectional_text_save_voice_retrieve(memory_db):
 @pytest.mark.anyio
 async def test_bidirectional_voice_save_text_retrieve(memory_db):
     """Verify voice turn completion saves to memory and is available for text agent retrieval."""
+    from friday.llm.mock_provider import MockLLMProvider
+
     agent = FridayAgent(
-        settings=Settings(env="testing", embedding_provider="mock"),
+        settings=Settings(env="testing", llm_provider="mock", embedding_provider="mock"),
+        llm_provider=MockLLMProvider(),
         memory=memory_db,
     )
     conv_id = agent.conversation_id
@@ -377,7 +380,45 @@ async def test_bidirectional_voice_save_text_retrieve(memory_db):
     history = agent.memory.get_messages(conv_id)
     assert len(history) == 2
     assert "deployment is on Friday" in history[0].content
-    assert "Saved note about Friday deployment" in history[1].content
+    assert "Save project note: deployment is on Friday" in history[1].content
+
+
+@pytest.mark.anyio
+async def test_voice_direct_desktop_command_delegates_to_local_agent(memory_db):
+    """Completed voice desktop commands are executed by the local agent and stored as the real result."""
+    from friday.llm.mock_provider import MockLLMProvider
+
+    agent = FridayAgent(
+        settings=Settings(env="testing", llm_provider="mock", embedding_provider="mock"),
+        llm_provider=MockLLMProvider(),
+        memory=memory_db,
+    )
+    agent.switch_conversation(memory_db.create_conversation(title="Voice Direct Action"))
+    agent.process_message = mock.MagicMock(return_value=mock.MagicMock(content="Done."))
+
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY", agent=agent)
+    session._active = True
+
+    server_content = mock.MagicMock(
+        turn_complete=True,
+        input_transcription=mock.MagicMock(text="search Telugu latest movies in Chrome"),
+        output_transcription=mock.MagicMock(text="I need to confirm first."),
+        interrupted=False,
+        model_turn=None,
+    )
+    msg = MockGenAIServerMessage(server_content=server_content)
+
+    turns = []
+    await session._audio_receiver_loop(
+        MockAsyncSession(receive_messages=[msg]),
+        MockSpeakerStream(),
+        lambda u, a: turns.append((u, a)),
+        asyncio.Event(),
+    )
+
+    agent.process_message.assert_called_once_with("search Telugu latest movies in Chrome")
+    assert turns == [("search Telugu latest movies in Chrome", "Done.")]
+    assert memory_db.get_messages(agent.conversation_id) == []
 
 
 # ===========================================================================
@@ -401,11 +442,7 @@ def test_open_application_tool_in_default_registry_and_live_decl():
     assert "open_application" in names
 
     session = GeminiLiveVoiceSession(api_key="TEST", agent=agent)
-    tools = session._build_tools_config()
-    assert tools is not None
-    decl_names = [fd.name for fd in tools[0].function_declarations]
-    assert "open_application" in decl_names
-    assert "get_time_date" in decl_names
+    assert session._build_tools_config() is None
 
 
 def test_open_application_launch_and_safety(monkeypatch):
@@ -519,8 +556,8 @@ def test_system_instruction_carries_current_time_hint():
 # ===========================================================================
 
 
-def test_every_default_registry_tool_is_exposed_to_live_voice():
-    """ALL registry tools (incl. open_application, type_text) must appear in Live declarations."""
+def test_default_registry_tools_are_local_agent_owned_in_live_voice():
+    """Live voice does not expose tools directly; the local agent owns tool execution."""
     from friday.llm.mock_provider import MockLLMProvider
     from friday.memory.in_memory import InMemoryConversationMemory
 
@@ -535,9 +572,7 @@ def test_every_default_registry_tool_is_exposed_to_live_voice():
 
     session = GeminiLiveVoiceSession(api_key="TEST", agent=agent)
     tools = session._build_tools_config()
-    declared = {fd.name for fd in tools[0].function_declarations}
-    missing = registry_names - declared
-    assert not missing, f"Tools missing from Live function-calling schema: {missing}"
+    assert tools is None
 
 
 @pytest.mark.anyio

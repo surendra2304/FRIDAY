@@ -13,8 +13,8 @@ from friday.vision.mock_vision import MockVisionProvider
 from friday.voice.gemini_live_session import GeminiLiveVoiceSession
 
 
-def test_gemini_live_session_declares_screen_snapshot_tool():
-    """Verify GeminiLiveVoiceSession exposes get_screen_snapshot tool declaration in Live config."""
+def test_gemini_live_session_keeps_screen_snapshot_local():
+    """Verify GeminiLiveVoiceSession leaves screen tools with the local agent."""
     mock_cap = MockScreenCaptureProvider()
     mock_vis = MockVisionProvider()
     tool = ScreenSnapshotTool(capture_provider=mock_cap, vision_provider=mock_vis)
@@ -23,14 +23,7 @@ def test_gemini_live_session_declares_screen_snapshot_tool():
     agent.tools.register(tool)
 
     session = GeminiLiveVoiceSession(agent=agent)
-    tools_config = session._build_tools_config()
-
-    assert tools_config is not None
-    assert len(tools_config) > 0
-    func_decls = tools_config[0].function_declarations
-    tool_names = [f.name for f in func_decls]
-
-    assert "get_screen_snapshot" in tool_names
+    assert session._build_tools_config() is None
 
 
 def test_voice_vision_system_instruction_mentions_screen_tool():

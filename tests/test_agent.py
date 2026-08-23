@@ -87,6 +87,105 @@ def test_agent_empty_message():
     assert "listening" in response.content.lower()
 
 
+def test_agent_direct_notepad_type_fast_path(monkeypatch):
+    """Common laptop command opens Notepad and types without LLM planning."""
+    actions = []
+
+    class Driver:
+        def type_text(self, text):
+            actions.append(("type_text", text))
+            return True
+
+    agent = FridayAgent(settings=Settings(env="testing", llm_provider="mock", embedding_provider="none"))
+    monkeypatch.setattr(agent, "_launch_process", lambda *args: actions.append(("launch", args)))
+    monkeypatch.setattr(agent, "_focus_window_for_direct_action", lambda title: actions.append(("focus", title)) or True)
+    monkeypatch.setattr("friday.agent.agent.WindowsNativeInputDriver", Driver)
+
+    response = agent.process_message("Open notepad and type I am Friday")
+
+    assert response.content == "Done."
+    assert response.metadata["direct_desktop_action"] == "notepad_type"
+    assert ("launch", ("notepad.exe",)) in actions
+    assert ("focus", "Notepad") in actions
+    assert ("type_text", "I am Friday") in actions
+
+
+def test_agent_direct_chrome_search_fast_path(monkeypatch):
+    """Chrome search opens a Google search URL directly instead of web-searching in the agent."""
+    actions = []
+    agent = FridayAgent(settings=Settings(env="testing", llm_provider="mock", embedding_provider="none"))
+    monkeypatch.setattr(agent, "_launch_process", lambda *args: actions.append(args))
+
+    response = agent.process_message("search Telugu latest movies in Chrome")
+
+    assert response.content == "Done."
+    assert response.metadata["direct_desktop_action"] == "chrome_search"
+    assert actions == [("chrome.exe", "https://www.google.com/search?q=Telugu+latest+movies")]
+
+    actions.clear()
+    response = agent.process_message("Chrome and search latest Telugu movies latest Telugu movies")
+    assert response.content == "Done."
+    assert actions == [("chrome.exe", "https://www.google.com/search?q=latest+Telugu+movies")]
+
+
+def test_agent_direct_close_chrome_fast_path(monkeypatch):
+    calls = []
+
+    class Result:
+        returncode = 0
+        stdout = "SUCCESS"
+        stderr = ""
+
+    agent = FridayAgent(settings=Settings(env="testing", llm_provider="mock", embedding_provider="none"))
+    monkeypatch.setattr(
+        "friday.agent.agent.subprocess.run",
+        lambda args, **kwargs: calls.append(args) or Result(),
+    )
+
+    response = agent.process_message("Close Chrome.")
+
+    assert response.content == "Done."
+    assert response.metadata["direct_desktop_action"] == "close_chrome"
+    assert calls == [["taskkill.exe", "/IM", "chrome.exe", "/T"]]
+
+
+def test_agent_direct_time_and_specs_fast_paths():
+    agent = FridayAgent(settings=Settings(env="testing", llm_provider="mock", embedding_provider="none"))
+
+    time_response = agent.process_message("What time it is?")
+    specs_response = agent.process_message("What are the specs of my laptop?")
+    identity_response = agent.process_message("Which laptop is this?")
+    listening_response = agent.process_message("Are you listening?")
+
+    assert time_response.metadata["direct_desktop_action"] == "time"
+    assert time_response.content.startswith("It is ")
+    assert specs_response.metadata["direct_desktop_action"] == "laptop_specs"
+    assert "logical CPU cores" in specs_response.content
+    assert identity_response.metadata["direct_desktop_action"] == "laptop_identity"
+    assert "local Windows laptop" in identity_response.content
+    assert listening_response.metadata["direct_desktop_action"] == "listening_check"
+    assert listening_response.content == "Yes. I am listening."
+
+
+def test_agent_direct_settings_and_update_fast_paths(monkeypatch):
+    actions = []
+    agent = FridayAgent(settings=Settings(env="testing", llm_provider="mock", embedding_provider="none"))
+    monkeypatch.setattr(agent, "_launch_process", lambda *args: actions.append(args))
+
+    settings_response = agent.process_message("Open settings.")
+    update_response = agent.process_message("if there are any updates for my laptop")
+    natural_update_response = agent.process_message("Are there any updates for my laptop?")
+
+    assert settings_response.content == "Done."
+    assert update_response.content == "Done."
+    assert natural_update_response.content == "Done."
+    assert settings_response.metadata["direct_desktop_action"] == "open_settings"
+    assert update_response.metadata["direct_desktop_action"] == "open_windows_update"
+    assert natural_update_response.metadata["direct_desktop_action"] == "open_windows_update"
+    assert ("explorer.exe", "ms-settings:") in actions
+    assert ("explorer.exe", "ms-settings:windowsupdate") in actions
+
+
 def test_agent_valid_tool_execution():
     """Agent identifies intent, invokes tool, and synthesizes final answer."""
     call_count = 0
@@ -439,26 +538,12 @@ def test_agent_memory_persists_tool_calls():
 
 
 def test_agent_time_query():
-    call_count = 0
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            return Message(
-                role=Role.ASSISTANT,
-                content="Checking time...",
-                tool_calls=[ToolCall(id="t1", name="get_time_date", arguments={})],
-            )
-        tool_msg = next((m for m in messages if m.role == Role.TOOL), None)
-        assert tool_msg is not None
-        assert "Current Local Date" in tool_msg.content
-        return Message(role=Role.ASSISTANT, content="The time is 12:00 PM.")
-
-    provider = MockLLMProvider(custom_responder=mock_responder)
+    provider = MockLLMProvider()
     agent = FridayAgent(settings=Settings(env="testing"), llm_provider=provider)
     response = agent.process_message("What time is it?")
     assert response.is_done
-    assert "The time is 12:00 PM." in response.content
+    assert response.metadata["direct_desktop_action"] == "time"
+    assert response.content.startswith("It is ")
 
 
 def test_agent_math_query():
@@ -528,5 +613,3 @@ def test_agent_read_file_query():
     response = agent.process_message("Read this text file.")
     assert response.is_done
     assert "I read the file." in response.content
-
-

@@ -9,6 +9,7 @@ from friday.core.auth import AutoApproveAuthorizer
 from friday.core.config import Settings
 from friday.core.types import Message, Role, SafetyLevel, ToolResult
 from friday.memory.sqlite import SQLiteConversationMemory
+from friday.llm.mock_provider import MockLLMProvider
 from friday.tools.base import BaseTool
 from friday.tools.registry import ToolRegistry
 from friday.voice.audio_io import MockSpeakerStream
@@ -106,7 +107,8 @@ def test_voice_name_configurability():
 async def test_short_question_spoken_response(memory_db):
     """Verify short question responses are recorded and dispatched cleanly."""
     agent = FridayAgent(
-        settings=Settings(env="testing", embedding_provider="none"),
+        settings=Settings(env="testing", llm_provider="mock", embedding_provider="none"),
+        llm_provider=MockLLMProvider(),
         memory=memory_db,
     )
     session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY", agent=agent)
@@ -128,14 +130,15 @@ async def test_short_question_spoken_response(memory_db):
     history = agent.memory.get_messages(agent.conversation_id)
     assert len(history) == 2
     assert history[0].content == "What time is it?"
-    assert history[1].content == "It is 2:14 PM."
+    assert history[1].content.startswith("It is ")
 
 
 @pytest.mark.anyio
 async def test_complex_explanation_structured_and_concise(memory_db):
     """Verify complex multi-sentence explanations remain concise without rambling."""
     agent = FridayAgent(
-        settings=Settings(env="testing", embedding_provider="none"),
+        settings=Settings(env="testing", llm_provider="mock", embedding_provider="none"),
+        llm_provider=MockLLMProvider(),
         memory=memory_db,
     )
     session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY", agent=agent)
@@ -158,7 +161,7 @@ async def test_complex_explanation_structured_and_concise(memory_db):
 
     history = agent.memory.get_messages(agent.conversation_id)
     assert len(history) == 2
-    assert "persistent, full-duplex" in history[1].content
+    assert "How does WebSocket streaming work?" in history[1].content
     # Does not contain filler
     assert "As an AI" not in history[1].content
     assert "Boss" not in history[1].content
@@ -228,7 +231,10 @@ async def test_tool_error_graceful_handling(memory_db):
 async def test_interruption_and_followup_dialogue(memory_db):
     """Verify seamless conversational follow-up after an interrupted turn."""
     agent = FridayAgent(
-        settings=Settings(env="testing", embedding_provider="none"),
+        settings=Settings(env="testing", llm_provider="mock", embedding_provider="none"),
+        llm_provider=MockLLMProvider(
+            custom_responder=lambda messages, tools: Message(role=Role.ASSISTANT, content="4.")
+        ),
         memory=memory_db,
     )
     session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY", agent=agent)

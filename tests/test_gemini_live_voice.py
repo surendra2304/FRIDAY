@@ -125,16 +125,12 @@ async def test_live_session_thinking_config():
 
 @pytest.mark.anyio
 async def test_live_session_tool_config_building(mock_agent):
-    """Verify tool schemas are extracted and converted to GenAI declarations."""
+    """Voice Live does not expose tools directly; the local agent owns execution."""
     session = GeminiLiveVoiceSession(
         api_key="TEST_GEMINI_API_KEY",
         agent=mock_agent,
     )
-    tools_cfg = session._build_tools_config()
-    assert tools_cfg is not None
-    assert len(tools_cfg) == 1
-    assert len(tools_cfg[0].function_declarations) == 1
-    assert tools_cfg[0].function_declarations[0].name == "get_time"
+    assert session._build_tools_config() is None
 
 
 @pytest.mark.anyio

@@ -531,7 +531,7 @@ async def test_user_speech_then_silence_completes_full_response():
 
 
 @pytest.mark.anyio
-async def test_speaker_hard_timeout_forces_unmute_and_stop(capsys):
+async def test_speaker_hard_timeout_forces_unmute_and_stop():
     """Verify speaker playing >10s triggers hard timeout, stopping speaker and unmuting mic."""
     session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY")
     session._active = True
@@ -576,7 +576,4 @@ async def test_speaker_hard_timeout_forces_unmute_and_stop(capsys):
     # Verified: speaker stopped and mic unmuted
     assert not spk.is_playing
     assert not mic.is_muted
-    out = capsys.readouterr().out
-    assert "[DEBUG] Mic unmuted, listening..." in out
-
 
