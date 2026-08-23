@@ -808,12 +808,35 @@ class GeminiLiveVoiceSession:
                     else:
                         self._consecutive_speech_frames = 0
 
-                    # 3. Server VAD is sole authority for interruptions.
-                    # Update conversational state indicators for diagnostics.
-                    if not is_speaker_active:
+                    # 3. Handle Barge-In Interruption while FRIDAY is speaking (High-threshold local barge-in)
+                    if is_speaker_active:
+                        is_cooldown_active = (now - self._last_interruption_time) < self.barge_in_cooldown_seconds
+                        allow_local_barge_in = self.headphones_mode or self.local_barge_in_during_playback
+                        
+                        if (
+                            allow_local_barge_in
+                            and not is_cooldown_active
+                            and self._consecutive_speech_frames >= self.barge_in_consecutive_frames
+                            and self._state != LiveSessionState.INTERRUPTED
+                        ):
+                            self._local_interruption_active = True
+                            logger.info(
+                                f"Local barge-in: sustained user speech detected (RMS: {rms:.1f}, "
+                                f"noise_floor: {self._ambient_noise_floor:.1f}, "
+                                f"frames: {self._consecutive_speech_frames}), purging speaker buffer"
+                            )
+                            self._set_state(LiveSessionState.INTERRUPTED)
+                            self._last_interruption_time = now
+                            self._consecutive_speech_frames = 0
+                            self.user_interruptions += 1
+                            self.speaker_playback_interruptions += 1
+                            spk.stop()
+                        else:
+                            self._local_interruption_active = False
+                    else:
+                        self._local_interruption_active = False
                         if rms > candidate_threshold and self._state == LiveSessionState.CONNECTED:
                             self._set_state(LiveSessionState.USER_SPEAKING)
-                    self._local_interruption_active = False
 
                     # 4. Continuous Realtime Audio Dispatch to Gemini Live
                     blob = genai_types.Blob(

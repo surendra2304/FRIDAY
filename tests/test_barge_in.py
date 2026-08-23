@@ -77,16 +77,19 @@ def test_pcm_rms_calculation():
 
 
 @pytest.mark.anyio
-async def test_sender_loop_streams_audio_continuously_without_client_barge_in_purge():
-    """Verify sender loop streams audio to server without client RMS purging active speaker buffer."""
+async def test_high_threshold_local_barge_in():
+    """Verify high-threshold sustained user speech (e.g. shouting) triggers local barge-in."""
     session = GeminiLiveVoiceSession(
         api_key="TEST_GEMINI_API_KEY",
+        barge_in_rms_threshold=4000.0,
+        local_barge_in_during_playback=True,
+        headphones_mode=True,
     )
-    session.headphones_mode = True
+    session.barge_in_consecutive_frames = 2
     session._active = True
 
-    loud_pcm = struct.pack("<800h", *[2000] * 800)
-    # Provide 3 chunks
+    # Very loud PCM (RMS > 4000)
+    loud_pcm = struct.pack("<800h", *[6000] * 800)
     mic = MockMicrophoneStream(chunks=[loud_pcm, loud_pcm, loud_pcm])
     mic.start()
 
@@ -103,8 +106,36 @@ async def test_sender_loop_streams_audio_continuously_without_client_barge_in_pu
     stop_event.set()
     await task
 
-    # Speaker stream is NOT interrupted locally; frames are forwarded to server VAD
-    assert spk.is_playing
+    # Speaker stream purged by high-threshold local barge-in
+    assert not spk.is_playing
+    assert spk.queue_size == 0
+
+
+@pytest.mark.anyio
+async def test_sender_loop_streams_audio_continuously_when_speaker_idle():
+    """Verify sender loop continuously sends microphone audio to Google when speaker is idle."""
+    session = GeminiLiveVoiceSession(
+        api_key="TEST_GEMINI_API_KEY",
+        headphones_mode=False,
+    )
+    session._active = True
+
+    speech_pcm = struct.pack("<800h", *[1200] * 800)
+    mic = MockMicrophoneStream(chunks=[speech_pcm, speech_pcm, speech_pcm])
+    mic.start()
+
+    spk = SpeakerStream(sample_rate=24000)
+    spk._active = False  # Speaker not playing
+
+    mock_ws_session = MockAsyncSession()
+    stop_event = asyncio.Event()
+
+    task = asyncio.create_task(session._audio_sender_loop(mock_ws_session, mic, spk, stop_event))
+    await asyncio.sleep(0.05)
+    stop_event.set()
+    await task
+
+    # Microphone audio is continuously dispatched to Gemini
     assert len(mock_ws_session.sent_realtime_chunks) == 3
 
 

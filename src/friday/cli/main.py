@@ -270,10 +270,12 @@ Modes:
             from friday.voice.gemini_live_session import GeminiLiveVoiceSession
             from friday.voice.transcripts import LiveTranscriptPrinter
 
-            logger.info("Starting REAL Gemini Live voice session...")
+            # High-threshold client-side barge-in (allows user shouting interruption, ignores background noise)
             voice_session = GeminiLiveVoiceSession(
                 agent=agent,
                 credential_pool=credential_pool,
+                barge_in_rms_threshold=4000.0,
+                local_barge_in_during_playback=True,
             )
             printer = LiveTranscriptPrinter()
 
