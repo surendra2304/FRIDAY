@@ -42,7 +42,7 @@ def test_factory_creates_cerebras_provider():
     provider = create_llm_provider(settings)
     assert isinstance(provider, CerebrasLLMProvider)
     assert provider.provider_name == "cerebras"
-    assert provider.model == CEREBRAS_DEFAULT_MODEL == "llama3.1-8b-8192"
+    assert provider.model == CEREBRAS_DEFAULT_MODEL == "llama3.1-8b"
     assert provider.base_url == CEREBRAS_DEFAULT_BASE_URL
 
 

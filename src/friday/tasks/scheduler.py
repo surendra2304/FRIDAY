@@ -2,11 +2,13 @@ import threading
 import time
 from datetime import datetime, timedelta
 
-from .models import Task, ScheduleType, SafetyLevel
+from .models import Task, ScheduleType, SafetyLevel, TaskRunLog
 from .sqlite_store import get_all_tasks, save_task, log_task_run
 from friday.core.config import get_settings
 from friday.agent.agent import FridayAgent
 from friday.core.auth import DefaultSecureAuthorizer
+from friday.core.types import AuthorizationRequest
+from friday.core.types import SafetyLevel as CoreSafetyLevel
 
 class TaskScheduler:
     """Background scheduler for proactive tasks.
@@ -79,13 +81,18 @@ class TaskScheduler:
         return False
 
     def _run_task(self, task: Task) -> None:
-        # Authorization based on safety level
+        # Authorization based on safety level (SAFE auto-runs; SENSITIVE/DANGEROUS
+        # require an authorizer that can grant interactive approval).
         if task.safety_level == SafetyLevel.SAFE:
             authorized = True
-        elif task.safety_level == SafetyLevel.SENSITIVE:
-            authorized = self.authorizer.authorize_sensitive(task.name)
-        else:  # DANGEROUS
-            authorized = self.authorizer.authorize_dangerous(task.name, require_confirmation=True)
+        else:
+            auth_req = AuthorizationRequest(
+                tool_name=f"scheduled_task:{task.name}",
+                safety_level=CoreSafetyLevel[task.safety_level.name],
+                arguments={"task": task.name},
+                purpose="Scheduled proactive task execution",
+            )
+            authorized = self.authorizer.authorize(auth_req).decision.value == "APPROVED"
 
         if not authorized:
             self.agent.logger.warning(f"Task {task.name} not authorized, skipping")
@@ -132,12 +139,3 @@ class TaskScheduler:
         # Notification
         msg = f"Task '{task.name}' completed: {'success' if success else 'failure'}"
         self.agent.logger.info(msg)
-        if self.settings.voice_enabled:
-            try:
-                from friday.voice.session import VoiceSession
-                from friday.voice.gemini_provider import GeminiVoiceProvider
-                provider = GeminiVoiceProvider()
-                vs = VoiceSession(provider, self.agent)
-                vs.speak(msg)
-            except Exception:
-                pass

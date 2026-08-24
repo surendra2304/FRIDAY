@@ -480,6 +480,13 @@ class SpeakerStream:
                 self._drain_blocks = 0
                 self._mute_mic()
 
+    def drain(self, timeout_seconds: float = 0.5) -> None:
+        """Gracefully wait for pending queued playback blocks to finish playing."""
+        self.flush()
+        deadline = time.time() + max(0.05, timeout_seconds)
+        while self.is_playing and time.time() < deadline:
+            time.sleep(0.02)
+
     def stop(self) -> None:
         """Instantly purge all buffered playback chunks and remainder (barge-in interruption)."""
         with self._lock:

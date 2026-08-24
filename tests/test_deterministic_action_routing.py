@@ -70,6 +70,10 @@ def test_cursor_corners_and_explicit_coordinates_fastpath(monkeypatch):
     mock_displays = [{"id": "primary", "index": 0, "is_primary": True, "x": 0, "y": 0, "width": 1920, "height": 1080}]
     monkeypatch.setattr(WindowsScreenCaptureProvider, "list_displays", lambda self: mock_displays)
 
+    # Routing test: inject deterministic driver so no live-desktop input race can fail it.
+    mock_driver = MockWindowsInputDriver(screen_width=1920, screen_height=1080)
+    monkeypatch.setattr("friday.vision.computer_control.WindowsNativeInputDriver", lambda: mock_driver)
+
     # Top-left corner
     resp1 = agent.process_message("Move mouse cursor to top-left corner")
     assert resp1.metadata.get("fast_path") is True
@@ -113,6 +117,10 @@ def test_vision_outage_does_not_block_deterministic_cursor_center(monkeypatch):
 
     # Broken/failing displays or vision
     monkeypatch.setattr(WindowsScreenCaptureProvider, "list_displays", lambda self: [])
+
+    # Routing/resilience test: deterministic mock driver (no live-desktop race).
+    mock_driver = MockWindowsInputDriver(screen_width=1920, screen_height=1080)
+    monkeypatch.setattr("friday.vision.computer_control.WindowsNativeInputDriver", lambda: mock_driver)
 
     resp = agent.process_message("Move cursor to center of screen")
     assert resp.metadata.get("fast_path") is True

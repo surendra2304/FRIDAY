@@ -63,9 +63,9 @@ def test_legacy_model_generate_content_config_preserves_temperature():
 
 
 def test_gemini_vision_provider_model_and_parameter_sanitization():
-    """Verify GeminiVisionProvider defaults to gemini-1.5-flash and omits temperature for 3.7."""
+    """Verify GeminiVisionProvider defaults to gemini-3.6-flash and omits temperature for 3.7."""
     vision = GeminiVisionProvider(api_key="TEST_API_KEY")
-    assert vision.model == "gemini-1.5-flash"
+    assert vision.model == "gemini-3.6-flash"
 
     # For 3.7-family models temperature must be omitted from GenerateContentConfig
     mock_client = mock.MagicMock()

@@ -2,8 +2,13 @@ import argparse
 import json
 import logging
 import sys
+import warnings
 from datetime import datetime
 from pathlib import Path
+
+# The google-genai SDK emits a noisy UserWarning on every direct generate_content
+# call; FRIDAY intentionally calls Models.generate_content (no chat wrapper).
+warnings.filterwarnings("ignore", message=".*automatic function calling.*")
 
 from friday.agent.agent import FridayAgent
 from friday.cli.auth import CLIAuthorizer
@@ -341,7 +346,13 @@ Modes:
             loop = asyncio.new_event_loop()
 
             def _stdin_listener() -> None:
-                """Background thread: typed lines become Live text prompts."""
+                """Background thread: typed lines become Live text prompts.
+
+                Instant device commands (volume, battery, chrome, time, etc.)
+                are executed locally via the agent and the verified result is
+                sent back to the Live model for speaking. Conversational text
+                is forwarded directly to the Live model.
+                """
                 while True:
                     try:
                         line = sys.stdin.readline()
@@ -352,7 +363,7 @@ Modes:
                     text = line.strip()
                     if text:
                         asyncio.run_coroutine_threadsafe(
-                            voice_session.send_text(text), loop
+                            voice_session.process_typed_input(text), loop
                         )
 
             stdin_thread = threading.Thread(target=_stdin_listener, name="voice_stdin", daemon=True)

@@ -270,6 +270,13 @@ class Settings(BaseSettings):
     )
     voice_vad_prefix_padding_ms: int = Field(default=300, ge=0, le=1000, description="VAD prefix audio padding (ms)")
     voice_vad_silence_duration_ms: int = Field(default=800, ge=100, le=2000, description="VAD silence duration before turn complete (ms)")
+    voice_speaker_timeout_ms: int = Field(
+        default=10000,
+        ge=1000,
+        le=60000,
+        validation_alias=AliasChoices("FRIDAY_VOICE_SPEAKER_TIMEOUT_MS", "VOICE_SPEAKER_TIMEOUT_MS", "voice_speaker_timeout_ms", "speaker_timeout_ms"),
+        description="Maximum continuous speaker playback timeout before auto-unmuting mic (1000ms to 60000ms)",
+    )
     voice_barge_in_rms_threshold: float = Field(default=350.0, ge=50.0, le=5000.0, description="RMS energy threshold for local zero-latency barge-in")
     voice_barge_in_consecutive_frames: int = Field(default=4, ge=1, le=20, description="Consecutive frames exceeding threshold required to confirm user barge-in (debounce)")
     voice_barge_in_playback_factor: float = Field(default=3.0, ge=1.0, le=20.0, description="Multiplier for barge-in threshold when FRIDAY is actively playing audio (echo protection)")
@@ -300,7 +307,7 @@ class Settings(BaseSettings):
     
     # Vision & Multimodal Settings
     vision_model: str = Field(
-        default="gemini-1.5-flash",
+        default="gemini-3.6-flash",
         validation_alias=AliasChoices("FRIDAY_VISION_MODEL", "VISION_MODEL", "vision_model"),
         description="Multimodal Gemini vision model identifier",
     )

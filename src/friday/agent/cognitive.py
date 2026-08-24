@@ -183,11 +183,14 @@ class CognitiveIntelligenceEngine:
 
         # Compute goal understanding via GoalEngine
         try:
-            goal_obj = self.goal_engine.normalize_and_decompose(clean_input)
+            goal_obj = self.goal_engine.analyze_goal(clean_input)
             if goal_obj.request_type == GoalRequestType.AMBIGUOUS_REQUEST:
                 lacks_info = True
                 confidence.understanding_confidence = 0.4
-                clarification_prompt = goal_obj.clarification_prompt or "Could you provide more details on what you want to achieve?"
+                clarification_prompt = (
+                    goal_obj.clarification_needed
+                    or "Could you provide more details on what you want to achieve?"
+                )
         except Exception:
             pass
 

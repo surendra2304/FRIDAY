@@ -19,18 +19,17 @@ from friday.memory.embeddings.gemini import GeminiEmbeddingProvider
 # Authoritative active model configuration
 AUTHORITATIVE_MODELS = {
     "text_llm": "gemini-1.5-flash-latest",
-    "vision": "gemini-1.5-flash",
+    "vision": "gemini-3.6-flash",
     "voice_live": "gemini-3.1-flash-live-preview",
     "embeddings": "gemini-embedding-2",
 }
 
 DISALLOWED_LEGACY_PATTERNS = [
-    # Policy update (2026-08-22, rev 2): gemini-1.5-flash-latest is the ACTIVE
-    # model for text, vision, AND Live voice. gemini-2.0-flash-exp is
-    # unsupported for bidiGenerateContent; Google denies the 3.x previews
-    # with 1008 access errors. Both generations are disallowed legacy refs.
+    # Policy update (2026-08-23, rev 3): gemini-3.6-flash is the ACTIVE vision
+    # model (Google retires gemini-1.5/2.5 for new users; the API explicitly
+    # recommends 3.6). gemini-2.0-flash-exp is unsupported for
+    # bidiGenerateContent; Google denies gemini-3.7 previews with 1008 errors.
     r"\bgemini-3\.7\b",
-    r"\bgemini-3\.6\b",
     r"\bgemini-3\.1(?!-flash-live)\b",
     r"\bgemini-1\.0\b",
     r"\bgemini-1\.5-pro\b",

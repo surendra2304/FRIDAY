@@ -307,10 +307,10 @@ class ExecuteComputerActionTool(BaseTool):
         if x is None and y is None and "center" in intent.lower():
             try:
                 from friday.vision.windows_screen import WindowsScreenCaptureProvider
-                displays = WindowsScreenCaptureProvider.list_displays()
+                displays = WindowsScreenCaptureProvider().list_displays()
                 if displays:
-                    x = displays[0]["width"] // 2
-                    y = displays[0]["height"] // 2
+                    x = int(displays[0].get("x", 0)) + int(displays[0]["width"]) // 2
+                    y = int(displays[0].get("y", 0)) + int(displays[0]["height"]) // 2
                 else:
                     x = 1920 // 2
                     y = 1080 // 2

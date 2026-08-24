@@ -301,7 +301,7 @@ def test_groq_universal_fallback_model_updated():
 def test_cerebras_default_model_updated():
     from friday.llm.cerebras_provider import CEREBRAS_DEFAULT_MODEL
 
-    assert CEREBRAS_DEFAULT_MODEL == "llama3.1-8b-8192"
+    assert CEREBRAS_DEFAULT_MODEL == "llama3.1-8b"
 
 
 # ---------------------------------------------------------------------------

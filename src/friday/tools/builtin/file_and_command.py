@@ -92,18 +92,31 @@ class FileOperationsTool(BaseTool):
                 return ToolResult(name=self.name, content=listing, is_error=False,
                                   safety_level=self.safety_level)
 
-            if act == "move":
+            if act in ("move", "copy", "rename"):
                 if not destination:
-                    return ToolResult(name=self.name, content="action='move' requires destination.",
+                    return ToolResult(name=self.name, content=f"action='{act}' requires destination.",
                                       is_error=True, safety_level=self.safety_level)
                 if not p.exists():
                     return ToolResult(name=self.name, content=f"Not found: {p}", is_error=True,
                                       safety_level=self.safety_level)
                 dest = Path(destination).expanduser()
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.move(str(p), str(dest))
-                return ToolResult(name=self.name, content=f"Moved {p} -> {dest}.", is_error=False,
-                                  safety_level=self.safety_level)
+                if act == "copy":
+                    if p.is_dir():
+                        shutil.copytree(p, dest, dirs_exist_ok=True)
+                    else:
+                        shutil.copy2(p, dest)
+                    return ToolResult(name=self.name, content=f"Copied {p} -> {dest}.",
+                                      is_error=False, safety_level=self.safety_level)
+                else:
+                    shutil.move(str(p), str(dest))
+                    return ToolResult(name=self.name, content=f"{'Renamed' if act == 'rename' else 'Moved'} {p} -> {dest}.",
+                                      is_error=False, safety_level=self.safety_level)
+
+            if act == "mkdir":
+                p.mkdir(parents=True, exist_ok=True)
+                return ToolResult(name=self.name, content=f"Created directory: {p}",
+                                  is_error=False, safety_level=self.safety_level)
 
             return ToolResult(name=self.name, content=f"Unknown action '{act}'.", is_error=True,
                               safety_level=self.safety_level)
@@ -160,7 +173,7 @@ class ExecuteCommandTool(BaseTool):
                               safety_level=self.safety_level)
 
         lowered = f" {cmd.lower()} "
-        program = cmd.split()[0].lower().rstrip(".exe")
+        program = cmd.split()[0].lower().removesuffix(".exe")
 
         if program not in _ALLOWED_COMMANDS:
             return ToolResult(

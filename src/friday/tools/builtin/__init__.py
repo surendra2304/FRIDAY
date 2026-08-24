@@ -16,6 +16,10 @@ from friday.tools.builtin.os_control import ManageVolumeTool, SystemPowerControl
 from friday.tools.builtin.web_tools import WebSearchTool, FetchWebpageTool
 from friday.tools.builtin.file_and_command import FileOperationsTool, ExecuteCommandTool
 from friday.tools.builtin.screen_ocr import ReadScreenTextTool, FindOnScreenTool
+from friday.tools.builtin.launch_application import LaunchApplicationTool
+from friday.tools.builtin.system_control import SystemControlTool
+from friday.tools.builtin.health_monitor import HealthCheckTool
+from friday.vision.screen_prediction import ScreenPredictionTool
 
 __all__ = [
     "CalculatorTool",
@@ -39,4 +43,8 @@ __all__ = [
     "ExecuteCommandTool",
     "ReadScreenTextTool",
     "FindOnScreenTool",
+    "LaunchApplicationTool",
+    "SystemControlTool",
+    "HealthCheckTool",
+    "ScreenPredictionTool",
 ]

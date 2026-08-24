@@ -22,12 +22,24 @@ logger = get_logger("tools.os_control")
 
 
 def _get_endpoint_volume():
-    """Lazily resolve the default audio endpoint volume control via pycaw."""
+    """Lazily resolve the default audio endpoint volume control via pycaw.
+
+    Compatible with both legacy pycaw (GetSpeakers() returns the raw COM
+    IMMDevice exposing .Activate) and 2025+ pycaw (returns a high-level
+    AudioDevice wrapper whose ._dev holds the COM device).
+    """
+    try:
+        import comtypes
+
+        comtypes.CoInitialize()
+    except Exception:
+        pass
     from comtypes import CLSCTX_ALL
     from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
 
-    devices = AudioUtilities.GetSpeakers()
-    interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+    device = AudioUtilities.GetSpeakers()
+    raw = getattr(device, "_dev", device)
+    interface = raw.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
     return interface.QueryInterface(IAudioEndpointVolume)
 
 

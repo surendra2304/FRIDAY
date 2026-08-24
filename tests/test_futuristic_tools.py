@@ -428,3 +428,64 @@ def test_new_tools_are_safe_level():
                 WebSearchTool, FetchWebpageTool, FileOperationsTool, ExecuteCommandTool,
                 ReadScreenTextTool, FindOnScreenTool):
         assert cls.safety_level == SafetyLevel.SAFE, cls.name
+
+
+def test_launch_application_tool(monkeypatch):
+    from friday.tools.builtin.launch_application import LaunchApplicationTool
+    tool = LaunchApplicationTool()
+
+    # Empty
+    _err(tool.execute(application=""))
+
+    # Blocked
+    res = _err(tool.execute(application="format.com"))
+    assert "restricted" in res.content
+
+    # URI scheme
+    with mock.patch("subprocess.Popen") as mock_popen:
+        res = _ok(tool.execute(application="ms-settings:"))
+        assert "ms-settings:" in res.content
+        mock_popen.assert_called()
+
+
+def test_system_control_tool():
+    from friday.tools.builtin.system_control import SystemControlTool
+    tool = SystemControlTool()
+
+    # Status
+    res = _ok(tool.execute(action="system_status"))
+    assert "System Status" in res.content
+    assert "CPU Usage" in res.content
+
+    # List processes
+    res = _ok(tool.execute(action="list_processes", limit=5))
+    assert "PID" in res.content
+
+    # Protected process termination refusal
+    res = _err(tool.execute(action="terminate_process", process_name="csrss.exe"))
+    assert "critical system process" in res.content
+
+
+def test_health_monitor_tool(tmp_path):
+    from friday.tools.builtin.health_monitor import SystemHealthMonitor, HealthCheckTool
+    monitor = SystemHealthMonitor(log_dir=tmp_path)
+    tool = HealthCheckTool(monitor=monitor)
+
+    res = _ok(tool.execute())
+    assert "Proactive Health Status" in res.content
+    assert (tmp_path / "system_health.log").exists()
+
+
+def test_screen_prediction_tool():
+    from friday.vision.screen_prediction import ScreenPredictionEngine, ScreenPredictionTool
+    engine = ScreenPredictionEngine()
+    tool = ScreenPredictionTool(engine=engine)
+
+    # Empty / clean
+    res = _ok(tool.execute(screen_text="Just normal text", active_window="Desktop"))
+    assert "No specific proactive suggestions" in res.content
+
+    # Traceback trigger
+    res = _ok(tool.execute(screen_text="Traceback (most recent call last): \n SyntaxError: invalid syntax", active_window="VS Code"))
+    assert "error traceback on screen" in res.content
+

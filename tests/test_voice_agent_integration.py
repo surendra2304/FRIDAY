@@ -376,11 +376,14 @@ async def test_bidirectional_voice_save_text_retrieve(memory_db):
 
     await session._audio_receiver_loop(mock_ws, spk, None, stop_event)
 
-    # Text agent queries the same conversation
+    # Text agent queries the same conversation.
+    # Conversational turns are answered by the Live model itself (no local
+    # re-processing), so the committed assistant turn is the model's own
+    # spoken transcript.
     history = agent.memory.get_messages(conv_id)
     assert len(history) == 2
-    assert "deployment is on Friday" in history[0].content
-    assert "Save project note: deployment is on Friday" in history[1].content
+    assert "Save project note: deployment is on Friday" in history[0].content
+    assert "Saved note about Friday deployment." in history[1].content
 
 
 @pytest.mark.anyio
@@ -548,7 +551,11 @@ def test_system_instruction_carries_current_time_hint():
     session = GeminiLiveVoiceSession(api_key="TEST")
     prompt = session._build_system_instruction().parts[0].text
     assert "current local time at session start" in prompt
-    assert "get_time_date tool for exact current time" in prompt
+    # Live has NO tools: the prompt must not advertise any tool names (the model
+    # would otherwise role-play fake tool calls as spoken text).
+    assert "get_time_date" not in prompt
+    assert "get_screen_snapshot" not in prompt
+    assert "read_screen_text" not in prompt
 
 
 # ===========================================================================

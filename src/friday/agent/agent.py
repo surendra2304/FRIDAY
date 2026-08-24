@@ -50,6 +50,10 @@ from friday.tools.builtin import (
     ExecuteCommandTool,
     ReadScreenTextTool,
     FindOnScreenTool,
+    LaunchApplicationTool,
+    SystemControlTool,
+    HealthCheckTool,
+    ScreenPredictionTool,
 )
 from friday.agent.state import TaskState, ReasoningStateMachine
 from friday.agent.planner import TaskPlan, GoalDecomposer
@@ -252,6 +256,37 @@ class FridayAgent:
         r"^\s*(?:are\s+you\s+listening|can\s+you\s+hear\s+me)\??\s*$",
         re.IGNORECASE,
     )
+    _VOLUME_UP_PATTERN = re.compile(
+        r"^\s*(?:please\s+)?(?:increase|raise|turn\s+up)\s+(?:the\s+)?volume"
+        r"(?:\s+(?:by\s+)?(?P<step>\d{1,3})\s*(?:%|percent)?)?[\.\!]?\s*$",
+        re.IGNORECASE,
+    )
+    _VOLUME_DOWN_PATTERN = re.compile(
+        r"^\s*(?:please\s+)?(?:decrease|reduce|lower|turn\s+down)\s+(?:the\s+)?volume"
+        r"(?:\s+(?:by\s+)?(?P<step>\d{1,3})\s*(?:%|percent)?)?[\.\!]?\s*$",
+        re.IGNORECASE,
+    )
+    _SET_VOLUME_PATTERN = re.compile(
+        r"^\s*(?:please\s+)?(?:set\s+)?volume\s+(?:to\s+)?(?P<level>\d{1,3})\s*(?:%|percent)?[\.\!]?\s*$",
+        re.IGNORECASE,
+    )
+    _MUTE_PATTERN = re.compile(
+        r"^\s*(?:please\s+)?(?P<action>mute|unmute)(?:\s+the\s+volume)?[\.\!]?\s*$",
+        re.IGNORECASE,
+    )
+    _BATTERY_PATTERN = re.compile(
+        r"^\s*(?:please\s+)?"
+        r"(?:what(?:'s|\s+is)\s+(?:my\s+)?battery(?:\s+(?:level|percentage|status))?"
+        r"|how\s+much\s+battery(?:\s+do\s+i\s+have)?"
+        r"|(?:check\s+)?(?:my\s+)?battery\s+(?:level|percentage|status))"
+        r"[\.\?]?\s*$",
+        re.IGNORECASE,
+    )
+    _SCREEN_DESCRIBE_PATTERN = re.compile(
+        r"^\s*(?:please\s+)?(?:what'?s?\s+(?:currently\s+)?on\s+(?:my\s+)?(?:the\s+)?screen"
+        r"|describe\s+(?:my\s+)?(?:the\s+)?screen|what\s+do\s+you\s+see)[\.\?]?\s*$",
+        re.IGNORECASE,
+    )
 
     def _launch_process(self, executable: str, *args: str) -> None:
         """Launch a desktop process without blocking the agent turn."""
@@ -291,6 +326,93 @@ class FridayAgent:
             if words[-size:] == words[-2 * size:-size]:
                 return " ".join(words[:-size]).strip()
         return query.strip()
+
+    def _adjust_volume(
+        self,
+        delta: Optional[int] = None,
+        set_to: Optional[int] = None,
+    ) -> str:
+        """Raise/lower or absolutely set master volume via pycaw; returns spoken result."""
+        from friday.tools.builtin.os_control import _get_endpoint_volume
+
+        vol = _get_endpoint_volume()
+        current = int(round(float(vol.GetMasterVolumeLevelScalar()) * 100))
+        if set_to is not None:
+            target = max(0, min(100, int(set_to)))
+        else:
+            target = max(0, min(100, current + int(delta or 10)))
+        if target == current:
+            return f"Volume is already at {current}%."
+        vol.SetMasterVolumeLevelScalar(target / 100.0, None)
+        direction = "raised" if target > current else "lowered"
+        return f"Volume {direction} from {current}% to {target}%."
+
+    def _read_battery_status(self) -> str:
+        """Read battery level/charging state via Win32 GetSystemPowerStatus."""
+        import ctypes
+
+        class SYSTEM_POWER_STATUS(ctypes.Structure):
+            _fields_ = [
+                ("ACLineStatus", ctypes.c_ubyte),
+                ("BatteryFlag", ctypes.c_ubyte),
+                ("BatteryLifePercent", ctypes.c_ubyte),
+                ("Reserved1", ctypes.c_ubyte),
+                ("BatteryLifeTime", ctypes.c_ulong),
+                ("BatteryFullLifeTime", ctypes.c_ulong),
+            ]
+
+        status = SYSTEM_POWER_STATUS()
+        if not ctypes.windll.kernel32.GetSystemPowerStatus(ctypes.byref(status)):
+            return "I could not read the battery status on this machine."
+        pct = status.BatteryLifePercent
+        charging = status.ACLineStatus == 1
+        if pct == 255:
+            base = "This machine has no battery reported (desktop or missing sensor)."
+            return base
+        state = "charging" if charging else "on battery"
+        remaining = ""
+        if status.BatteryLifeTime > 0 and not charging:
+            mins = status.BatteryLifeTime // 60
+            remaining = f" About {mins} minute{'s' if mins != 1 else ''} remaining."
+        return f"Battery is at {pct}% and {state}.{remaining}"
+
+    def _complete_fast_path(
+        self,
+        clean_input: str,
+        start_time: float,
+        action_key: str,
+        planning_reason: str,
+        executing_reason: str,
+        action: Callable[[], str],
+        verifying_reason: str = "Checking direct action result",
+    ) -> AgentResponse:
+        """Run a local deterministic fast-path action and build the final response."""
+        self.memory.add_message(Message(role=Role.USER, content=clean_input))
+        self.state_machine.transition_to(TaskState.PLANNING, reason=planning_reason)
+        self.state_machine.transition_to(TaskState.EXECUTING, reason=executing_reason)
+        try:
+            content = action()
+            success = True
+        except Exception as e:
+            logger.warning(f"Fast-path '{action_key}' failed: {e}")
+            content = f"I could not complete that: {type(e).__name__}."
+            success = False
+        self.state_machine.transition_to(TaskState.VERIFYING, reason=verifying_reason)
+        self.state_machine.transition_to(
+            TaskState.COMPLETED if success else TaskState.FAILED, reason=content
+        )
+        self.memory.add_message(Message(role=Role.ASSISTANT, content=content))
+        return AgentResponse(
+            content=content,
+            is_done=True,
+            metadata={
+                "fast_path": True,
+                "direct_desktop_action": action_key,
+                "success": success,
+                "duration_seconds": time.perf_counter() - start_time,
+                "task_state": self.state_machine.current_state.value,
+            },
+        )
 
     def _format_local_specs(self) -> str:
         """Return concise laptop specs for spoken responses."""
@@ -573,6 +695,129 @@ class FridayAgent:
                 },
             )
 
+        volume_up_match = self._VOLUME_UP_PATTERN.match(clean_input)
+        if volume_up_match:
+            step = int(volume_up_match.group("step") or 10)
+            return self._complete_fast_path(
+                clean_input, start_time, "volume_up",
+                "Direct volume up command", f"Raising volume by {step}%",
+                lambda: self._adjust_volume(delta=step),
+            )
+
+        volume_down_match = self._VOLUME_DOWN_PATTERN.match(clean_input)
+        if volume_down_match:
+            step = int(volume_down_match.group("step") or 10)
+            return self._complete_fast_path(
+                clean_input, start_time, "volume_down",
+                "Direct volume down command", f"Lowering volume by {step}%",
+                lambda: self._adjust_volume(delta=-step),
+            )
+
+        set_volume_match = self._SET_VOLUME_PATTERN.match(clean_input)
+        if set_volume_match:
+            level = int(set_volume_match.group("level"))
+            return self._complete_fast_path(
+                clean_input, start_time, "set_volume",
+                "Direct set-volume command", f"Setting volume to {level}%",
+                lambda: self._adjust_volume(set_to=level),
+            )
+
+        mute_match = self._MUTE_PATTERN.match(clean_input)
+        if mute_match:
+            action = mute_match.group("action").lower()
+
+            def _mute_toggle() -> str:
+                from friday.tools.builtin.os_control import ManageVolumeTool
+
+                res = ManageVolumeTool().execute(action=action)
+                if res.is_error:
+                    raise RuntimeError(res.content)
+                return res.content
+
+            return self._complete_fast_path(
+                clean_input, start_time, f"volume_{action}",
+                f"Direct {action} command", f"{action.capitalize()}ing master volume",
+                _mute_toggle,
+            )
+
+        if self._BATTERY_PATTERN.match(clean_input):
+            return self._complete_fast_path(
+                clean_input, start_time, "battery_status",
+                "Direct battery query", "Reading battery status",
+                self._read_battery_status,
+                verifying_reason="Formatting battery report",
+            )
+
+        if self._SCREEN_DESCRIBE_PATTERN.match(clean_input):
+            def _describe_screen() -> str:
+                res = ScreenSnapshotTool().execute(query="Describe what is on my screen concisely.")
+                if res.is_error:
+                    raise RuntimeError(res.content)
+                raw = res.content
+                marker = "):\n"
+                return raw.split(marker, 1)[1].strip() if marker in raw else raw
+
+            return self._complete_fast_path(
+                clean_input, start_time, "screen_describe",
+                "Direct screen description query", "Capturing and analyzing screen",
+                _describe_screen,
+                verifying_reason="Validating screen analysis",
+            )
+
+        return None
+
+    def classify_instant_command(self, text: str) -> Optional[str]:
+        """Return an instant-command key when this utterance must be executed
+        locally (deterministically) instead of being answered by the voice model.
+
+        Mirrors the ordering of _direct_desktop_action_fast_path so voice mode
+        routes exactly the same utterances to the same deterministic handlers.
+        """
+        clean = (text or "").strip()
+        if not clean:
+            return None
+        if self._NOTEPAD_TYPE_PATTERN.match(clean):
+            return "notepad_type"
+        if self._CHROME_SEARCH_PATTERN.match(clean):
+            return "chrome_search"
+        if self._CLOSE_CHROME_PATTERN.match(clean):
+            return "close_chrome"
+        if self._SETTINGS_PATTERN.match(clean):
+            return "open_settings"
+        if self._WINDOWS_UPDATE_PATTERN.match(clean):
+            return "open_windows_update"
+        if self._TIME_PATTERN.match(clean):
+            return "time"
+        if self._LISTENING_CHECK_PATTERN.match(clean):
+            return "listening_check"
+        if self._LAPTOP_IDENTITY_PATTERN.match(clean):
+            return "laptop_identity"
+        if self._LAPTOP_SPECS_PATTERN.match(clean):
+            return "laptop_specs"
+        if self._VOLUME_UP_PATTERN.match(clean):
+            return "volume_up"
+        if self._VOLUME_DOWN_PATTERN.match(clean):
+            return "volume_down"
+        if self._SET_VOLUME_PATTERN.match(clean):
+            return "set_volume"
+        if self._MUTE_PATTERN.match(clean):
+            return "volume_mute"
+        if self._BATTERY_PATTERN.match(clean):
+            return "battery_status"
+        if self._SCREEN_DESCRIBE_PATTERN.match(clean):
+            return "screen_describe"
+        try:
+            det_intent = DeterministicActionDetector.detect(clean)
+            if det_intent and det_intent.confidence >= 0.95:
+                return "deterministic"
+        except Exception:
+            pass
+        try:
+            intent_result = IntentDetector.detect(clean)
+            if intent_result.intent.name == "SEMANTIC_UI_ACTION" and intent_result.confidence >= 0.90:
+                return "semantic_ui"
+        except Exception:
+            pass
         return None
 
     def _execute_semantic_ui_action(self, intent_result, user_input: str) -> Optional[AgentResponse]:
@@ -702,6 +947,10 @@ class FridayAgent:
         registry.register(ExecuteCommandTool())
         registry.register(ReadScreenTextTool())
         registry.register(FindOnScreenTool())
+        registry.register(LaunchApplicationTool())
+        registry.register(SystemControlTool())
+        registry.register(HealthCheckTool())
+        registry.register(ScreenPredictionTool())
         return registry
 
     def _execute_single_tool_call_internal(self, tc: ToolCall, timeout: Optional[float] = None) -> ToolResult:

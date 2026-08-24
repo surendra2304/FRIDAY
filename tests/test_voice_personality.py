@@ -161,7 +161,9 @@ async def test_complex_explanation_structured_and_concise(memory_db):
 
     history = agent.memory.get_messages(agent.conversation_id)
     assert len(history) == 2
-    assert "How does WebSocket streaming work?" in history[1].content
+    # Conversational turns are answered by the Live model directly; the
+    # assistant response is the model's own spoken transcript.
+    assert "WebSocket provides" in history[1].content
     # Does not contain filler
     assert "As an AI" not in history[1].content
     assert "Boss" not in history[1].content

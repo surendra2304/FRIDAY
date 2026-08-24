@@ -27,13 +27,16 @@ def test_gemini_live_session_keeps_screen_snapshot_local():
 
 
 def test_voice_vision_system_instruction_mentions_screen_tool():
-    """Verify Gemini Live system prompt instructs model to use get_screen_snapshot on visual screen queries."""
+    """Verify Gemini Live system prompt tells the model it has NO tools (tool names deliberately excluded)."""
     session = GeminiLiveVoiceSession()
     sys_content = session._build_system_instruction()
 
     assert sys_content is not None
     prompt_text = sys_content.parts[0].text
-    assert "get_screen_snapshot" in prompt_text
+    # Live model has NO tools: tool names must NOT appear (avoids fake tool calls)
+    assert "get_screen_snapshot" not in prompt_text
+    assert "read_screen_text" not in prompt_text
+    # But the safety rule for untrusted visual data is still present
     assert "UNTRUSTED DATA" in prompt_text
 
 
