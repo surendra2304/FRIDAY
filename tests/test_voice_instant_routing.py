@@ -49,7 +49,7 @@ class TestClassifyInstantCommand:
         assert agent.classify_instant_command("search telugu movies in chrome") == "chrome_search"
         assert agent.classify_instant_command("close chrome") == "close_chrome"
         assert agent.classify_instant_command("open settings") in ("open_settings", "semantic_ui")
-        assert agent.classify_instant_command("open calculator") in ("semantic_ui", None)
+        assert agent.classify_instant_command("open calculator") in ("open_calculator", "semantic_ui", None)
         assert agent.classify_instant_command("move mouse cursor to center of screen") == "deterministic"
 
     def test_conversation_does_not_route_locally(self):

@@ -213,7 +213,11 @@ class FridayAgent:
         )
 
     _NOTEPAD_TYPE_PATTERN = re.compile(
-        r"^\s*(?:please\s+)?(?:open|launch|start)\s+notepad\s+and\s+type\s+(?P<text>.+?)\s*$",
+        r"^\s*(?:please\s+)?(?:open|launch|start)\s+notepad\s+and\s+(?:type|write|say)\s+(?P<text>.+?)\s*$",
+        re.IGNORECASE,
+    )
+    _OPEN_APP_PATTERN = re.compile(
+        r"^\s*(?:please\s+)?(?:open|launch|start|run)\s+(?:the\s+)?(?P<app>[a-zA-Z0-9\s_\-\.]+?)(?:\s+(?:app|application|program|window))?[\.\!]?\s*$",
         re.IGNORECASE,
     )
     _CHROME_SEARCH_PATTERN = re.compile(
@@ -566,6 +570,39 @@ class FridayAgent:
                 },
             )
 
+        open_app_match = self._OPEN_APP_PATTERN.match(clean_input)
+        if open_app_match:
+            app_raw = open_app_match.group("app").strip().lower()
+            if app_raw in IntentDetector.APP_LAUNCH_MAP:
+                exe = IntentDetector.APP_LAUNCH_MAP[app_raw]
+                self.memory.add_message(Message(role=Role.USER, content=clean_input))
+                self.state_machine.transition_to(TaskState.PLANNING, reason=f"Direct launch command for {app_raw}")
+                self.state_machine.transition_to(TaskState.EXECUTING, reason=f"Opening {app_raw}")
+                ok = False
+                try:
+                    if exe.startswith("ms-"):
+                        self._launch_process("explorer.exe", exe)
+                    else:
+                        self._launch_process(exe)
+                    ok = True
+                except Exception as e:
+                    logger.warning(f"Opening '{app_raw}' failed: {e}")
+                self.state_machine.transition_to(TaskState.VERIFYING, reason=f"Checking {app_raw} launch")
+                content = "Done." if ok else f"I could not open {app_raw}."
+                self.state_machine.transition_to(TaskState.COMPLETED if ok else TaskState.FAILED, reason=content)
+                self.memory.add_message(Message(role=Role.ASSISTANT, content=content))
+                return AgentResponse(
+                    content=content,
+                    is_done=True,
+                    metadata={
+                        "fast_path": True,
+                        "direct_desktop_action": f"open_{app_raw}",
+                        "success": ok,
+                        "duration_seconds": time.perf_counter() - start_time,
+                        "task_state": self.state_machine.current_state.value,
+                    },
+                )
+
         if self._SETTINGS_PATTERN.match(clean_input):
             self.memory.add_message(Message(role=Role.USER, content=clean_input))
             self.state_machine.transition_to(TaskState.PLANNING, reason="Direct Settings command")
@@ -782,6 +819,11 @@ class FridayAgent:
             return "chrome_search"
         if self._CLOSE_CHROME_PATTERN.match(clean):
             return "close_chrome"
+        open_app_match = self._OPEN_APP_PATTERN.match(clean)
+        if open_app_match:
+            app_raw = open_app_match.group("app").strip().lower()
+            if app_raw in IntentDetector.APP_LAUNCH_MAP:
+                return f"open_{app_raw}"
         if self._SETTINGS_PATTERN.match(clean):
             return "open_settings"
         if self._WINDOWS_UPDATE_PATTERN.match(clean):
