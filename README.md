@@ -2,11 +2,11 @@
 
 > **F**ully **R**esponsive **I**ntelligent **D**igital **A**ssistant for **Y**ou
 
-FRIDAY is a modular, extensible, **Autonomous Multi-Agent AI Operating System** built with a cloud-first, safety-first architecture, clean component separation, a high-throughput **Unified Multi-Provider AI Gateway** (`Groq` -> `Cerebras` -> `Mistral` -> `OpenRouter`), dedicated Gemini Real-Time Voice/Vision isolation, foundational **Multi-Agent Specialist Delegation** (`BaseAgent`, `AgentRegistry`, `TaskDecomposer`, `AgentRouter`), tiered tool execution policies, contextual persistent memory, proactive system health telemetry, and sub-second real-time Gemini Live voice streaming.
+FRIDAY is a modular, extensible, **Autonomous Multi-Agent AI Operating System** built with a cloud-first, safety-first architecture, clean component separation, a high-throughput **Unified Multi-Provider AI Gateway** (`Groq` -> `Cerebras` -> `Mistral` -> `OpenRouter`), dedicated Gemini Real-Time Voice/Vision isolation, foundational **Multi-Agent Specialist Delegation** (`BaseAgent`, `AgentRegistry`, `TaskDecomposer`, `AgentRouter`), tiered tool execution policies, contextual persistent memory, proactive background monitoring, scientific experimentation framework (`FRIDAY Lab`), futuristic split-view observability, and external AI Universe SDK integration.
 
 ---
 
-## 🌟 Architecture & Capabilities (Phases 5, 11, 12, 13, 16)
+## 🌟 Architecture & Capabilities (Phases 5–21)
 
 - **Phase 12: Unified Multi-Provider AI Gateway (`FallbackChainLLMProvider`)** `[IMPLEMENTED | REAL-TESTED]`:
   - Intelligent cross-provider failover chain: **Groq (`openai/gpt-oss-120b`) -> Cerebras (`gpt-oss-120b`) -> Mistral (`mistral-large-latest`) -> OpenRouter (`meta-llama/llama-3.3-70b-instruct`)**.
@@ -16,16 +16,31 @@ FRIDAY is a modular, extensible, **Autonomous Multi-Agent AI Operating System** 
   - `BaseAgent` identity & state package: role instructions, preferred models, scoped allowed tools, task-scoped working memory.
   - `AgentRegistry`: pool of registered specialist agents (`researcher`, `system_controller`, `coder`, `general`).
   - `TaskDecomposer`: LLM-driven structured subtask decomposition for complex, multi-step goals into executable JSON workflows.
-  - `AgentRouter`: multi-attribute matching and scoring of candidate agents based on capability fit and tool coverage.
-- **Phase 5 & 11: Stable Low-Latency Voice Streaming Pipeline** `[IMPLEMENTED | REAL-TESTED]`:
-  - Half-duplex echo suppression with dynamic mic unmuting and configurable speaker timeout buffer (up to 60s).
-  - 100% Server-Side Google VAD for natural interruption handling without client-side chopping.
-  - Voice biometrics security gating (`SpeakerVerificationEngine`) with lazy imports for zero startup CPU strain.
+  - `AgentRouter`: multi-attribute matching and scoring of candidate agents based on capability fit, tool coverage, and historical lab trial metrics.
+- **Phase 14: Memory 2.0 Structured Knowledge Base & Compactor** `[IMPLEMENTED | REAL-TESTED]`:
+  - 4-layer memory taxonomy: `working` (current turn), `episodic` (past events), `semantic` (facts/knowledge), and `task` (outcomes of workflows).
+  - Metadata indexing (`importance`, `recency`, `source`, `confidence`, `privacy`) with FTS5 virtual tables and BM25 bounded retrieval.
+  - `MemoryCompactor` using LLM synthesis to consolidate verbose episodic history into permanent semantic knowledge.
 - **Phase 16: Productized Computer Control** `[IMPLEMENTED | REAL-TESTED]`:
   - Smart auto-focus typing with top-level window detection and Win32 foreground restoration.
   - Universal application launching (Notepad, Calculator, Word, Excel, Paint, Wordpad, Settings, Web Browsers).
   - Local Tesseract OCR preference with cloud visual screenshot fallback.
-  - Strict prompt sequencing ensuring applications are fully initialized before text entry.
+- **Phase 17: Proactive FRIDAY (Background Monitoring & Notifications)** `[IMPLEMENTED | REAL-TESTED]`:
+  - `WorkflowScheduler`: interval and cron-like task triggering bounded by `DefaultSecureAuthorizer`.
+  - `BackgroundMonitorService`: automated background webpage diffing and filesystem state tracking.
+  - `NotificationManager`: asynchronous findings queued and announced upon user conversation initiation ("I noticed that X changed while you were away.").
+- **Phase 18: FRIDAY Lab (Benchmarking & Dynamic Routing)** `[IMPLEMENTED | REAL-TESTED]`:
+  - `ExperimentRunner`: concurrent A/B multi-provider performance evaluation across accuracy, latency ($ms$), success rate, token usage, and failure modes.
+  - Persistent `experiments` SQLite metrics storage and comparative CLI benchmark table (`friday --run-lab`).
+  - Dynamic `AgentRouter` scoring prioritization leveraging empirical historical stats.
+- **Phase 19: Observability & Futuristic Interface** `[IMPLEMENTED | REAL-TESTED]`:
+  - Split-view Rich terminal UI: top panel displays transcript/thoughts; bottom panel displays live `Status Panel` (Cognitive Phase, Active Agent, Provider, Active Tool, Latency).
+  - `ExecutionTimeline` with circular event buffering and chronological replay (`history`).
+  - Strict log routing sending `INFO` and `WARNING` streams to file, keeping terminal quiet and clean.
+- **Phases 20 & 21: AI Universe Integration Preparation** `[IMPLEMENTED | REAL-TESTED]`:
+  - `BaseUniverseAPI` abstract contract (`create_world`, `create_agent`, `start_simulation`, `stop_simulation`, `get_world_state`, `get_experiment_results`).
+  - `MockUniverseClient` simulating multi-agent population dynamics.
+  - `UniverseOrchestrator` wired into `FridayAgent` for natural language world creation and automated experiment metrics logging.
 
 ---
 
@@ -33,11 +48,15 @@ FRIDAY is a modular, extensible, **Autonomous Multi-Agent AI Operating System** 
 
 | Subsystem / Capability | Implementation | Mock Tested | Real Tested | Status |
 | :--- | :--- | :---: | :---: | :---: |
-| **Unified AI Provider Gateway (Groq->Cerebras->Mistral->OpenRouter)** | `src/friday/llm/factory.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Unified Multi-Provider AI Gateway (Groq->Cerebras->Mistral->OpenRouter)** | `src/friday/llm/factory.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Multi-Agent Specialist Delegation (BaseAgent, Registry, Decomposer, Router)** | `src/friday/agents/` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Memory 2.0 Knowledge Base & Compactor (4-Layer, BM25, FTS5)** | `src/friday/memory/` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Stable Gemini Live Voice Streaming (Server-Side VAD)** | `src/friday/voice/gemini_live_session.py` | ✅ PASS | ✅ PASS | **REAL-TESTED** |
 | **Phase 16 Computer Control & Auto-Focus Typing** | `src/friday/tools/builtin/type_text.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
-| **Universal App Launcher & Windows Automation** | `src/friday/tools/builtin/open_application.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Proactive FRIDAY (Scheduler, Monitor, Notifications)** | `src/friday/workflows/`, `src/friday/observability/` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **FRIDAY Lab (A/B Benchmarking & Dynamic Routing)** | `src/friday/lab/` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Futuristic Split-View UI & Timeline Replay** | `src/friday/cli/main.py`, `src/friday/observability/timeline.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **AI Universe SDK Contract & Orchestrator (Phases 20-21)** | `src/friday/integrations/` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **10-Phase Cognitive Intelligence Loop** | `src/friday/agent/cognitive.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Multi-Attribute Capability Router** | `src/friday/routing/capability_router.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Unified 15-Category Domain Error Taxonomy** | `src/friday/core/exceptions.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
@@ -179,14 +198,18 @@ FRIDAY also maintains a permanent engineering diary, architectural decision reco
 
 ---
 
-## 🗺️ Roadmap
+## 🗺️ Roadmap Execution Matrix
 
-- [x] **V0.1 — Core Architecture & Foundation**
-- [x] **V0.2 — Basic Agent Reasoning**
-- [x] **V0.3 — Tool System Expansion & Interactive Confirmation Gating**
-- [x] **V0.4 — Persistent SQLite Memory & Multi-Conversation Management** *(Current)*
-- [ ] **V0.4.5 — Long-Term Semantic Vector Memory**
-- [ ] **V0.5 — Local Voice Interface (Whisper & Kokoro/EdgeTTS)**
-- [ ] **V0.6 — Safe Computer Control & Desktop Automation**
-- [ ] **V0.7 — Autonomous Workflows & Proactive Actions**
-- [ ] **V1.0 — FRIDAY Personal AI**
+- [x] **Phase 1-4 — Core Architecture, Basic Reasoning, Safety Authorizer, & SQLite Memory**
+- [x] **Phase 5 & 11 — Gemini Live Voice Streaming (Half-Duplex Echo Suppression & Server-Side VAD)**
+- [x] **Phase 6-10 — Perception Pipeline, Checkpoints, Task Manager, & Error Taxonomy**
+- [x] **Phase 12 — Unified Multi-Provider AI Gateway (`Groq` -> `Cerebras` -> `Mistral` -> `OpenRouter`)**
+- [x] **Phase 13 — Multi-Agent Specialist Delegation (`BaseAgent`, `Registry`, `Decomposer`, `Router`)**
+- [x] **Phase 14 — Memory 2.0 Structured Knowledge Base & LLM Compactor**
+- [x] **Phase 15 — Autonomous Operating System Kernel Integration & Fast-Paths**
+- [x] **Phase 16 — Computer Control, Auto-Focus Typing, & Universal App Launching**
+- [x] **Phase 17 — Proactive FRIDAY (Background Monitoring, File Watchers, & Notifications)**
+- [x] **Phase 18 — FRIDAY Lab (Multi-Provider A/B Benchmarking & Dynamic Routing)**
+- [x] **Phase 19 — Observability & Futuristic Interface (Split-View Dashboard & Timeline Replay)**
+- [x] **Phases 20 & 21 — AI Universe Integration Preparation (API SDK Contract & Mock Client)**
+- [x] **Master Roadmap Freeze (All 21 Phases Completed & Verified)**
