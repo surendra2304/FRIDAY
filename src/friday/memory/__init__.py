@@ -8,6 +8,7 @@ from friday.memory.embeddings.mock import MockEmbeddingProvider
 from friday.memory.factory import create_memory
 from friday.memory.in_memory import InMemoryConversationMemory
 from friday.memory.sqlite import SQLiteConversationMemory
+from friday.memory.compactor import MemoryCompactor
 from friday.memory.task_context import ActiveTaskContext, TaskObservation
 
 __all__ = [
@@ -19,6 +20,7 @@ __all__ = [
     "InMemoryConversationMemory",
     "MockEmbeddingProvider",
     "SQLiteConversationMemory",
+    "MemoryCompactor",
     "ActiveTaskContext",
     "TaskObservation",
 ]

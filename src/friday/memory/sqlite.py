@@ -145,6 +145,46 @@ class SQLiteConversationMemory(BaseMemory):
                         VALUES (new.id, new.conversation_id, new.content);
                     END;
 
+                    CREATE TABLE IF NOT EXISTS memory_nodes (
+                        id TEXT PRIMARY KEY,
+                        conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+                        memory_type TEXT NOT NULL CHECK(memory_type IN ('working', 'episodic', 'semantic', 'task')),
+                        content TEXT NOT NULL,
+                        source TEXT DEFAULT 'user',
+                        importance REAL DEFAULT 0.5,
+                        confidence REAL DEFAULT 1.0,
+                        privacy TEXT DEFAULT 'private',
+                        recency TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        metadata TEXT
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_memory_nodes_type ON memory_nodes(memory_type, recency DESC);
+                    CREATE INDEX IF NOT EXISTS idx_memory_nodes_conv ON memory_nodes(conversation_id, memory_type);
+
+                    CREATE VIRTUAL TABLE IF NOT EXISTS memory_nodes_fts USING fts5(
+                        node_id UNINDEXED,
+                        conversation_id UNINDEXED,
+                        memory_type UNINDEXED,
+                        content,
+                        tokenize = 'porter unicode61'
+                    );
+
+                    CREATE TRIGGER IF NOT EXISTS trg_memory_nodes_ai AFTER INSERT ON memory_nodes BEGIN
+                        INSERT INTO memory_nodes_fts(node_id, conversation_id, memory_type, content)
+                        VALUES (new.id, new.conversation_id, new.memory_type, new.content);
+                    END;
+
+                    CREATE TRIGGER IF NOT EXISTS trg_memory_nodes_ad AFTER DELETE ON memory_nodes BEGIN
+                        DELETE FROM memory_nodes_fts WHERE node_id = old.id;
+                    END;
+
+                    CREATE TRIGGER IF NOT EXISTS trg_memory_nodes_au AFTER UPDATE ON memory_nodes BEGIN
+                        DELETE FROM memory_nodes_fts WHERE node_id = old.id;
+                        INSERT INTO memory_nodes_fts(node_id, conversation_id, memory_type, content)
+                        VALUES (new.id, new.conversation_id, new.memory_type, new.content);
+                    END;
+
                     CREATE TABLE IF NOT EXISTS embeddings (
                         id TEXT PRIMARY KEY,
                         conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
@@ -991,6 +1031,187 @@ class SQLiteConversationMemory(BaseMemory):
                 for m in messages
             ],
         }
+
+    def add_memory_node(
+        self,
+        content: str,
+        memory_type: str = "episodic",
+        conversation_id: Optional[str] = None,
+        source: str = "user",
+        importance: float = 0.5,
+        confidence: float = 1.0,
+        privacy: str = "private",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Store a structured memory node (working, episodic, semantic, task)."""
+        valid_types = {"working", "episodic", "semantic", "task"}
+        if memory_type not in valid_types:
+            raise ValueError(f"Invalid memory_type '{memory_type}'. Must be one of {valid_types}")
+        
+        node_id = str(uuid.uuid4())
+        conv_id = conversation_id or self.active_conversation_id
+        now = datetime.now(timezone.utc).isoformat()
+        clean_content = filter_secrets(content) or ""
+        meta_str = json.dumps(metadata or {})
+
+        with self._lock:
+            with self._get_connection() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO memory_nodes (
+                        id, conversation_id, memory_type, content, source,
+                        importance, confidence, privacy, recency, created_at, metadata
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        node_id,
+                        conv_id,
+                        memory_type,
+                        clean_content,
+                        source,
+                        max(0.0, min(1.0, float(importance))),
+                        max(0.0, min(1.0, float(confidence))),
+                        privacy,
+                        now,
+                        now,
+                        meta_str,
+                    ),
+                )
+                conn.commit()
+        return node_id
+
+    def get_memory_nodes(
+        self,
+        memory_type: Optional[str] = None,
+        conversation_id: Optional[str] = None,
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        """Retrieve stored memory nodes ordered by recency."""
+        conv_id = conversation_id or self.active_conversation_id
+        with self._lock:
+            with self._get_connection() as conn:
+                sql = "SELECT * FROM memory_nodes WHERE 1=1"
+                params: List[Any] = []
+                if conversation_id:
+                    sql += " AND conversation_id = ?"
+                    params.append(conv_id)
+                if memory_type:
+                    sql += " AND memory_type = ?"
+                    params.append(memory_type)
+                sql += " ORDER BY recency DESC LIMIT ?"
+                params.append(limit)
+
+                rows = conn.execute(sql, params).fetchall()
+
+        results = []
+        for r in rows:
+            results.append({
+                "id": r["id"],
+                "conversation_id": r["conversation_id"],
+                "memory_type": r["memory_type"],
+                "content": r["content"],
+                "source": r["source"],
+                "importance": float(r["importance"]),
+                "confidence": float(r["confidence"]),
+                "privacy": r["privacy"],
+                "recency": r["recency"],
+                "created_at": r["created_at"],
+                "metadata": json.loads(r["metadata"]) if r["metadata"] else {},
+            })
+        return results
+
+    def search_bounded_memories(
+        self,
+        query: str,
+        memory_type: Optional[str] = None,
+        top_k: int = 5,
+        min_importance: float = 0.0,
+    ) -> List[Dict[str, Any]]:
+        """Bounded retrieval using FTS5 and importance ranking to fetch top-K relevant memories."""
+        if not query or not query.strip():
+            return []
+        
+        fts_query = self._format_fts_query(query.strip())
+        with self._lock:
+            with self._get_connection() as conn:
+                sql = """
+                    SELECT n.id, n.conversation_id, n.memory_type, n.content,
+                           n.source, n.importance, n.confidence, n.privacy,
+                           n.recency, n.created_at, n.metadata,
+                           bm25(memory_nodes_fts) AS rank_score
+                    FROM memory_nodes_fts f
+                    JOIN memory_nodes n ON f.node_id = n.id
+                    WHERE memory_nodes_fts MATCH ?
+                      AND n.importance >= ?
+                """
+                params: List[Any] = [fts_query, min_importance]
+                if memory_type:
+                    sql += " AND n.memory_type = ?"
+                    params.append(memory_type)
+                sql += " ORDER BY rank_score ASC, n.importance DESC LIMIT ?"
+                params.append(top_k)
+
+                try:
+                    rows = conn.execute(sql, params).fetchall()
+                except Exception as e:
+                    logger.debug(f"FTS5 memory node search failed: {e}")
+                    rows = []
+
+        results = []
+        for r in rows:
+            results.append({
+                "id": r["id"],
+                "conversation_id": r["conversation_id"],
+                "memory_type": r["memory_type"],
+                "content": r["content"],
+                "source": r["source"],
+                "importance": float(r["importance"]),
+                "confidence": float(r["confidence"]),
+                "privacy": r["privacy"],
+                "recency": r["recency"],
+                "created_at": r["created_at"],
+                "metadata": json.loads(r["metadata"]) if r["metadata"] else {},
+                "score": float(r["rank_score"]),
+            })
+        return results
+
+    def delete_memory_node(self, node_id: str) -> bool:
+        """User-controlled explicit deletion of a specific memory node."""
+        with self._lock:
+            with self._get_connection() as conn:
+                cursor = conn.execute("DELETE FROM memory_nodes WHERE id = ?", (node_id,))
+                conn.commit()
+                deleted = cursor.rowcount > 0
+        if deleted:
+            logger.info(f"User deleted memory node '{node_id}'")
+        return deleted
+
+    def export_all_memories(self, target_path: Optional[str] = None) -> Dict[str, Any]:
+        """Export all conversations, messages, and memory nodes to a structured dictionary or JSON file."""
+        with self._lock:
+            with self._get_connection() as conn:
+                conv_rows = conn.execute("SELECT * FROM conversations").fetchall()
+                msg_rows = conn.execute("SELECT * FROM messages").fetchall()
+                node_rows = conn.execute("SELECT * FROM memory_nodes").fetchall()
+
+        export_data = {
+            "exported_at": datetime.now(timezone.utc).isoformat(),
+            "conversations_count": len(conv_rows),
+            "messages_count": len(msg_rows),
+            "memory_nodes_count": len(node_rows),
+            "conversations": [dict(r) for r in conv_rows],
+            "messages": [dict(r) for r in msg_rows],
+            "memory_nodes": [dict(r) for r in node_rows],
+        }
+
+        if target_path:
+            p = Path(target_path).resolve()
+            p.parent.mkdir(parents=True, exist_ok=True)
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump(export_data, f, indent=2)
+            logger.info(f"Exported memories to '{p}'")
+
+        return export_data
 
     def close(self) -> None:
         """Close SQLite memory resources cleanly."""

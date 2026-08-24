@@ -125,4 +125,7 @@ A chronological list:
 4. **Voice Pipeline Stability**: Rock-solid half-duplex echo suppression, 100% server-side Google VAD, voice biometrics with `SpeakerVerificationEngine`, and lazy module imports eliminating CPU startup strain.
 **Verification**: `pytest -m "not live and not hardware" -q` passed (1053 passed, 4 skipped, 9 deselected in 177.16s, 100% green pass rate).
 
+**Session 27 — Phase 14: Memory 2.0 Structured Knowledge Base & Compactor (2026-08-24)**: Upgraded SQLite storage engine to a 4-layer structured memory architecture in `src/friday/memory/sqlite.py`: `working` (current turn), `episodic` (past events), `semantic` (consolidated facts/knowledge), and `task` (workflow outcomes). Added metadata attributes: `importance` (0.0–1.0), `confidence`, `privacy`, `source`, `recency`, with automated FTS5 virtual table indexing (`memory_nodes_fts`) and synchronizing triggers. Implemented bounded memory retrieval (`search_bounded_memories`) using BM25 ranking and importance thresholds to prevent prompt bloat. Created `MemoryCompactor` (`src/friday/memory/compactor.py`) using LLM synthesis to periodically compact verbose episodic history into permanent semantic facts. Implemented user controls for explicit memory node deletion (`delete_memory_node`) and structured JSON backup exports (`export_all_memories`). **Verification**: `pytest -m "not live and not hardware" -q` passed (1058 passed, 4 skipped, 9 deselected in 180.95s, 100% green pass rate).
+
+
 
