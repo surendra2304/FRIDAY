@@ -62,6 +62,7 @@ from friday.agents.base_agent import AgentTask, BaseAgent
 from friday.agents.decomposer import TaskDecomposer
 from friday.agents.registry import AgentRegistry
 from friday.agents.router import AgentRouter
+from friday.observability.notifications import NotificationManager
 from friday.agent.checkpoint import TaskCheckpoint, TaskCheckpointStore
 from friday.agent.cognitive import CognitiveIntelligenceEngine, CognitivePhase
 from friday.routing.capability_router import CapabilityRouter
@@ -122,9 +123,10 @@ class FridayAgent:
             authorizer=self.authorizer,
         )
         self.capability_router: CapabilityRouter = CapabilityRouter()
-        self.agent_registry: AgentRegistry = self._init_default_agent_registry()
-        self.task_decomposer: TaskDecomposer = TaskDecomposer(llm_provider=self.llm)
-        self.agent_router: AgentRouter = AgentRouter(registry=self.agent_registry)
+        self._agent_registry: Optional[AgentRegistry] = None
+        self._task_decomposer: Optional[TaskDecomposer] = None
+        self._agent_router: Optional[AgentRouter] = None
+        self.notifications: NotificationManager = NotificationManager()
 
         if self.settings.memory_retention_days:
             self.prune_memory(self.settings.memory_retention_days)
@@ -134,6 +136,27 @@ class FridayAgent:
             f"(model: '{self.llm.model}') and {len(self.tools.list_tools())} loaded tools. "
             f"Max tool iterations: {self.max_tool_iterations}."
         )
+
+    @property
+    def agent_registry(self) -> AgentRegistry:
+        """Lazy-loaded specialist agent registry."""
+        if self._agent_registry is None:
+            self._agent_registry = self._init_default_agent_registry()
+        return self._agent_registry
+
+    @property
+    def task_decomposer(self) -> TaskDecomposer:
+        """Lazy-loaded task decomposer."""
+        if self._task_decomposer is None:
+            self._task_decomposer = TaskDecomposer(llm_provider=self.llm)
+        return self._task_decomposer
+
+    @property
+    def agent_router(self) -> AgentRouter:
+        """Lazy-loaded agent router."""
+        if self._agent_router is None:
+            self._agent_router = AgentRouter(registry=self.agent_registry)
+        return self._agent_router
 
     @property
     def conversation_id(self) -> Optional[str]:
@@ -1391,6 +1414,10 @@ class FridayAgent:
         # and the tool-calling state machine entirely.
         greeting_response = self._greeting_fast_path(clean_input)
         if greeting_response is not None:
+            if hasattr(self, "notifications") and self.notifications:
+                proactive = self.notifications.pop_notifications_summary()
+                if proactive:
+                    greeting_response.content = f"{proactive}\n\n{greeting_response.content}"
             return greeting_response
 
         direct_desktop_response = self._direct_desktop_action_fast_path(clean_input, start_time)
@@ -1835,7 +1862,15 @@ class FridayAgent:
             if summary_msg:
                 self.memory.add_message(summary_msg)
 
-        # 5. Persist final assistant turn in conversation memory
+        # 5. Check and prepend any pending proactive notifications
+        proactive_summary = None
+        if hasattr(self, "notifications") and self.notifications:
+            proactive_summary = self.notifications.pop_notifications_summary()
+
+        if proactive_summary:
+            final_content = f"{proactive_summary}\n\n{final_content}"
+
+        # 6. Persist final assistant turn in conversation memory
         final_msg = Message(role=Role.ASSISTANT, content=final_content)
         self.memory.add_message(final_msg)
 
@@ -1927,9 +1962,9 @@ class FridayAgent:
             except Exception as e:
                 logger.debug(f"Error shutting down tool executor: {e}")
 
-        if hasattr(self, "agent_registry") and self.agent_registry:
+        if hasattr(self, "_agent_registry") and self._agent_registry:
             try:
-                self.agent_registry.close()
+                self._agent_registry.close()
             except Exception as e:
                 logger.debug(f"Error closing agent registry: {e}")
 
