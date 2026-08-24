@@ -45,3 +45,13 @@ class AgentRegistry:
             del self._agents[agent_id]
             return True
         return False
+
+    def close(self) -> None:
+        """Close and clean up all specialist agents."""
+        for agent in self._agents.values():
+            if hasattr(agent, "close"):
+                try:
+                    agent.close()
+                except Exception:
+                    pass
+        self._agents.clear()

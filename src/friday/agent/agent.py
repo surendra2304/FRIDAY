@@ -1927,8 +1927,11 @@ class FridayAgent:
             except Exception as e:
                 logger.debug(f"Error shutting down tool executor: {e}")
 
-        if hasattr(self, "task_context") and self.task_context:
-            self.task_context.clear()
+        if hasattr(self, "agent_registry") and self.agent_registry:
+            try:
+                self.agent_registry.close()
+            except Exception as e:
+                logger.debug(f"Error closing agent registry: {e}")
 
         if hasattr(self, "memory") and hasattr(self.memory, "close"):
             try:

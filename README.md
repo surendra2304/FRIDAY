@@ -1,24 +1,30 @@
-# FRIDAY — Autonomous Personal AI Operating System
+# FRIDAY — Autonomous Multi-Agent AI Operating System
 
 > **F**ully **R**esponsive **I**ntelligent **D**igital **A**ssistant for **Y**ou
 
-FRIDAY is a modular, extensible, **Fully Autonomous AI Operating System** built with a cloud-first, safety-first architecture, clean component separation, a high-throughput **Unified Multi-Provider AI Gateway** (`Groq` -> `Cerebras` -> `Mistral` -> `OpenRouter`), dedicated Gemini Real-Time Voice/Vision isolation, tiered tool execution policies, contextual persistent memory, proactive system health telemetry, and sub-second real-time Gemini Live voice streaming.
+FRIDAY is a modular, extensible, **Autonomous Multi-Agent AI Operating System** built with a cloud-first, safety-first architecture, clean component separation, a high-throughput **Unified Multi-Provider AI Gateway** (`Groq` -> `Cerebras` -> `Mistral` -> `OpenRouter`), dedicated Gemini Real-Time Voice/Vision isolation, foundational **Multi-Agent Specialist Delegation** (`BaseAgent`, `AgentRegistry`, `TaskDecomposer`, `AgentRouter`), tiered tool execution policies, contextual persistent memory, proactive system health telemetry, and sub-second real-time Gemini Live voice streaming.
 
 ---
 
-## 🌟 Unified AI Gateway & Real-Time Voice Architecture (Phases 5, 11, 12, 16)
+## 🌟 Architecture & Capabilities (Phases 5, 11, 12, 13, 16)
 
-- **Unified Multi-Provider Reasoning Gateway (`FallbackChainLLMProvider`)** `[IMPLEMENTED | REAL-TESTED]`:
-  - Intelligent cross-provider failover chain: **Groq (`openai/gpt-oss-120b`) -> Cerebras (`gpt-oss-120b`) -> Mistral -> OpenRouter (`meta-llama/llama-3.3-70b-instruct`)**.
+- **Phase 12: Unified Multi-Provider AI Gateway (`FallbackChainLLMProvider`)** `[IMPLEMENTED | REAL-TESTED]`:
+  - Intelligent cross-provider failover chain: **Groq (`openai/gpt-oss-120b`) -> Cerebras (`gpt-oss-120b`) -> Mistral (`mistral-large-latest`) -> OpenRouter (`meta-llama/llama-3.3-70b-instruct`)**.
   - Sub-second text reasoning and tool calling with zero local GPU/CPU load.
   - Strict provider isolation: Gemini dedicated strictly for Voice (`gemini-2.0-flash-exp` / `gemini-2.0-flash-realtime-exp`), Vision OCR (`gemini-1.5-flash`), and Semantic Embeddings (`text-embedding-004`).
-- **Stable Low-Latency Voice Streaming Pipeline** `[IMPLEMENTED | REAL-TESTED]`:
+- **Phase 13: Foundational Multi-Agent Specialist Delegation** `[IMPLEMENTED | REAL-TESTED]`:
+  - `BaseAgent` identity & state package: role instructions, preferred models, scoped allowed tools, task-scoped working memory.
+  - `AgentRegistry`: pool of registered specialist agents (`researcher`, `system_controller`, `coder`, `general`).
+  - `TaskDecomposer`: LLM-driven structured subtask decomposition for complex, multi-step goals into executable JSON workflows.
+  - `AgentRouter`: multi-attribute matching and scoring of candidate agents based on capability fit and tool coverage.
+- **Phase 5 & 11: Stable Low-Latency Voice Streaming Pipeline** `[IMPLEMENTED | REAL-TESTED]`:
   - Half-duplex echo suppression with dynamic mic unmuting and configurable speaker timeout buffer (up to 60s).
   - 100% Server-Side Google VAD for natural interruption handling without client-side chopping.
   - Voice biometrics security gating (`SpeakerVerificationEngine`) with lazy imports for zero startup CPU strain.
-- **Phase 16 Productized Computer Control** `[IMPLEMENTED | REAL-TESTED]`:
+- **Phase 16: Productized Computer Control** `[IMPLEMENTED | REAL-TESTED]`:
   - Smart auto-focus typing with top-level window detection and Win32 foreground restoration.
   - Universal application launching (Notepad, Calculator, Word, Excel, Paint, Wordpad, Settings, Web Browsers).
+  - Local Tesseract OCR preference with cloud visual screenshot fallback.
   - Strict prompt sequencing ensuring applications are fully initialized before text entry.
 
 ---
@@ -28,7 +34,8 @@ FRIDAY is a modular, extensible, **Fully Autonomous AI Operating System** built 
 | Subsystem / Capability | Implementation | Mock Tested | Real Tested | Status |
 | :--- | :--- | :---: | :---: | :---: |
 | **Unified AI Provider Gateway (Groq->Cerebras->Mistral->OpenRouter)** | `src/friday/llm/factory.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
-| **Stable Gemini Live Voice Streaming** | `src/friday/voice/gemini_live_session.py` | ✅ PASS | ✅ PASS | **REAL-TESTED** |
+| **Multi-Agent Specialist Delegation (BaseAgent, Registry, Decomposer, Router)** | `src/friday/agents/` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Stable Gemini Live Voice Streaming (Server-Side VAD)** | `src/friday/voice/gemini_live_session.py` | ✅ PASS | ✅ PASS | **REAL-TESTED** |
 | **Phase 16 Computer Control & Auto-Focus Typing** | `src/friday/tools/builtin/type_text.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Universal App Launcher & Windows Automation** | `src/friday/tools/builtin/open_application.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **10-Phase Cognitive Intelligence Loop** | `src/friday/agent/cognitive.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
@@ -39,7 +46,7 @@ FRIDAY is a modular, extensible, **Fully Autonomous AI Operating System** built 
 | **Durable Checkpoints & Resumption Engine** | `src/friday/agent/checkpoint.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **HMAC-SHA256 Authorization & Safety Gating** | `src/friday/core/auth.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Zero-Secret Scrubber & Redaction Engine** | `src/friday/security/scrubber.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
-| **Multimodal Perception & Screen Caching** | `src/friday/vision/perception_pipeline.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Multimodal Perception & Local Screen OCR** | `src/friday/vision/perception_pipeline.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Persistent SQLite Memory (WAL + ACID + FTS5)**| `src/friday/memory/sqlite.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Cloud-First Gemini Embeddings (`text-embedding-004`)** | `src/friday/memory/embeddings/` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 

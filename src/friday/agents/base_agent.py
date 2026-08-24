@@ -182,3 +182,11 @@ class BaseAgent:
             tool_results=executed_results,
             metadata={"iterations": iterations},
         )
+
+    def close(self) -> None:
+        """Clean up working memory and agent resources."""
+        if hasattr(self, "memory") and hasattr(self.memory, "clear"):
+            try:
+                self.memory.clear()
+            except Exception:
+                pass
