@@ -58,6 +58,10 @@ from friday.tools.builtin import (
 from friday.agent.state import TaskState, ReasoningStateMachine
 from friday.agent.planner import TaskPlan, GoalDecomposer
 from friday.agent.executor import TaskExecutionEngine, TaskExecutionResult, ExecutionProgress
+from friday.agents.base_agent import AgentTask, BaseAgent
+from friday.agents.decomposer import TaskDecomposer
+from friday.agents.registry import AgentRegistry
+from friday.agents.router import AgentRouter
 from friday.agent.checkpoint import TaskCheckpoint, TaskCheckpointStore
 from friday.agent.cognitive import CognitiveIntelligenceEngine, CognitivePhase
 from friday.routing.capability_router import CapabilityRouter
@@ -118,6 +122,9 @@ class FridayAgent:
             authorizer=self.authorizer,
         )
         self.capability_router: CapabilityRouter = CapabilityRouter()
+        self.agent_registry: AgentRegistry = self._init_default_agent_registry()
+        self.task_decomposer: TaskDecomposer = TaskDecomposer(llm_provider=self.llm)
+        self.agent_router: AgentRouter = AgentRouter(registry=self.agent_registry)
 
         if self.settings.memory_retention_days:
             self.prune_memory(self.settings.memory_retention_days)
@@ -1004,6 +1011,83 @@ class FridayAgent:
         registry.register(ScreenPredictionTool())
         return registry
 
+    def _init_default_agent_registry(self) -> AgentRegistry:
+        """Instantiate default specialist agent pool for Phase 13 Multi-Agent architecture."""
+        reg = AgentRegistry()
+        reg.register_agent(
+            BaseAgent(
+                agent_id="researcher_01",
+                role="researcher",
+                instructions="Conduct thorough investigations, web queries, reading files, and summarizing findings.",
+                llm_provider=self.llm,
+                tool_registry=self.tools,
+                allowed_tools=["web_search", "fetch_webpage", "read_file", "list_files", "memory_search"],
+            )
+        )
+        reg.register_agent(
+            BaseAgent(
+                agent_id="system_controller_01",
+                role="system_controller",
+                instructions="Manage desktop windows, open and close apps, adjust volume, launch commands, and control system state.",
+                llm_provider=self.llm,
+                tool_registry=self.tools,
+                allowed_tools=[
+                    "open_application",
+                    "launch_application",
+                    "close_application",
+                    "manage_windows",
+                    "manage_volume",
+                    "system_control",
+                    "health_check",
+                    "type_text",
+                ],
+            )
+        )
+        reg.register_agent(
+            BaseAgent(
+                agent_id="coder_01",
+                role="coder",
+                instructions="Inspect codebase, manipulate files, parse code structures, and run test/build commands.",
+                llm_provider=self.llm,
+                tool_registry=self.tools,
+                allowed_tools=["read_file", "list_files", "file_operations", "execute_command", "calculator"],
+            )
+        )
+        reg.register_agent(
+            BaseAgent(
+                agent_id="general_01",
+                role="general",
+                instructions="General purpose reasoning, conversation, and fallback execution.",
+                llm_provider=self.llm,
+                tool_registry=self.tools,
+            )
+        )
+        return reg
+
+    async def _execute_via_specialist_agents(self, goal: str, decomposition) -> str:
+        """Orchestrate execution across multiple specialist agents and return synthesized outcome."""
+        subtask_summaries: List[str] = []
+        for idx, subtask in enumerate(decomposition.subtasks):
+            decision = self.agent_router.route_subtask(subtask)
+            agent = decision.selected_agent
+            logger.info(
+                f"[MULTI-AGENT] Routing subtask '{subtask.title}' to specialist '{agent.role}' "
+                f"(Score: {decision.score}, Reason: {decision.rationale})"
+            )
+            task_obj = AgentTask(
+                goal=f"{subtask.title}: {subtask.description}",
+                subtask_index=idx,
+                total_subtasks=len(decomposition.subtasks),
+            )
+            result = await agent.execute_task(task_obj)
+            subtask_summaries.append(f"- **{subtask.title}** ({agent.role}): {result.output.strip()}")
+
+        synthesized = (
+            f"Completed complex workflow via {len(decomposition.subtasks)} specialist agents:\n\n"
+            + "\n".join(subtask_summaries)
+        )
+        return synthesized
+
     def _execute_single_tool_call_internal(self, tc: ToolCall, timeout: Optional[float] = None) -> ToolResult:
         """Internal helper handling validation, authorization, and execution of a single tool call."""
         # Replay prevention within turn
@@ -1506,8 +1590,54 @@ class FridayAgent:
         else:
             base_sys_msg = self.system_message
 
-        # 4. State: PLANNING (constructing working context and evaluating tool schemas)
+        # 4. State: PLANNING (evaluating task complexity and action plan)
         self.state_machine.transition_to(TaskState.PLANNING, reason="Evaluating context and determining action plan")
+
+        # Multi-Agent Complex Workflow Routing (Phase 13)
+        # Trigger specialist multi-agent workflows for explicit project/research/multi-agent goals
+        has_complex_cues = any(cue in clean_input.lower() for cue in [
+            "step by step workflow", "multi-agent", "delegate to specialist",
+            "research and write", "analyze and summarize project", "build and test workflow"
+        ])
+        if has_complex_cues:
+            try:
+                decomposition = self.task_decomposer.decompose(clean_input)
+                if decomposition.is_complex and len(decomposition.subtasks) > 1:
+                    logger.info(
+                        f"[MULTI-AGENT] Goal decomposed into {len(decomposition.subtasks)} subtasks. "
+                        f"Rationale: {decomposition.rationale}"
+                    )
+                    self.state_machine.transition_to(
+                        TaskState.EXECUTING,
+                        reason=f"Delegating to {len(decomposition.subtasks)} specialist agents",
+                    )
+                    import asyncio
+                    try:
+                        loop = asyncio.get_running_loop()
+                        multi_res = loop.run_until_complete(
+                            self._execute_via_specialist_agents(clean_input, decomposition)
+                        )
+                    except RuntimeError:
+                        multi_res = asyncio.run(
+                            self._execute_via_specialist_agents(clean_input, decomposition)
+                        )
+
+                    self.state_machine.transition_to(TaskState.VERIFYING, reason="Verifying specialist agent outputs")
+                    self.state_machine.transition_to(TaskState.COMPLETED, reason="Multi-agent workflow completed")
+                    self.memory.add_message(Message(role=Role.ASSISTANT, content=multi_res))
+                    return AgentResponse(
+                        content=multi_res,
+                        is_done=True,
+                        metadata={
+                            "multi_agent": True,
+                            "subtasks_count": len(decomposition.subtasks),
+                            "duration_seconds": time.perf_counter() - start_time,
+                            "task_state": self.state_machine.current_state.value,
+                        },
+                    )
+            except Exception as e:
+                logger.warning(f"[MULTI-AGENT] Multi-agent orchestration fallback to single agent loop: {e}")
+
         working_context: List[Message] = [base_sys_msg] + self.memory.get_context_window(
             self.settings.memory_max_messages
         )
