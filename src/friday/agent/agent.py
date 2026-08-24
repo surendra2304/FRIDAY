@@ -303,7 +303,8 @@ class FridayAgent:
                 os.startfile(executable)
 
     def _focus_window_for_direct_action(self, title_substring: str, timeout: float = 3.0) -> bool:
-        """Best-effort focus for a newly opened desktop window."""
+        """Best-effort focus for a newly opened desktop window with Win32 foreground activation."""
+        import ctypes
         deadline = time.time() + max(0.1, timeout)
         needle = title_substring.lower()
         while time.time() < deadline:
@@ -313,8 +314,16 @@ class FridayAgent:
                 windows = Desktop(backend="uia").windows()
                 matches = [w for w in windows if needle in (w.window_text() or "").lower()]
                 if matches:
-                    matches[0].set_focus()
-                    time.sleep(0.25)
+                    w = matches[0]
+                    hwnd = getattr(w, "handle", None)
+                    if hwnd:
+                        try:
+                            ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                            ctypes.windll.user32.SetForegroundWindow(hwnd)
+                        except Exception:
+                            pass
+                    w.set_focus()
+                    time.sleep(0.4)  # Allow RichEdit / Tab to become ready for keystrokes
                     return True
             except Exception as e:
                 logger.debug(f"Direct action focus attempt failed for '{title_substring}': {e}")

@@ -384,27 +384,26 @@ class WindowsNativeInputDriver(BaseWindowsInputDriver):
         if not text:
             return True
 
-        input_list = []
+        # Send characters with short interval to allow Windows RichEdit/UIA controls to process them cleanly
+        all_sent = True
         for ch in text:
-            inp_down = INPUT()
-            inp_down.type = INPUT_KEYBOARD
-            inp_down.ki.wVk = 0
-            inp_down.ki.wScan = ord(ch)
-            inp_down.ki.dwFlags = KEYEVENTF_UNICODE
-            input_list.append(inp_down)
+            inputs = (INPUT * 2)()
+            inputs[0].type = INPUT_KEYBOARD
+            inputs[0].ki.wVk = 0
+            inputs[0].ki.wScan = ord(ch)
+            inputs[0].ki.dwFlags = KEYEVENTF_UNICODE
 
-            inp_up = INPUT()
-            inp_up.type = INPUT_KEYBOARD
-            inp_up.ki.wVk = 0
-            inp_up.ki.wScan = ord(ch)
-            inp_up.ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP
-            input_list.append(inp_up)
+            inputs[1].type = INPUT_KEYBOARD
+            inputs[1].ki.wVk = 0
+            inputs[1].ki.wScan = ord(ch)
+            inputs[1].ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP
 
-        n = len(input_list)
-        inputs = (INPUT * n)(*input_list)
-        sent = self._user32.SendInput(n, inputs, ctypes.sizeof(INPUT))
-        time.sleep(0.02)
-        return sent == n
+            sent = self._user32.SendInput(2, inputs, ctypes.sizeof(INPUT))
+            if sent != 2:
+                all_sent = False
+            time.sleep(0.015)
+
+        return all_sent
 
     def hotkey(self, keys: List[str]) -> bool:
         if not keys:
