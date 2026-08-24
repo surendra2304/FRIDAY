@@ -15,7 +15,12 @@ from friday.tools.builtin.close_application import CloseApplicationTool
 from friday.tools.builtin.os_control import ManageVolumeTool, SystemPowerControlTool, ManageWindowsTool
 from friday.tools.builtin.web_tools import WebSearchTool, FetchWebpageTool
 from friday.tools.builtin.file_and_command import FileOperationsTool, ExecuteCommandTool
-from friday.tools.builtin.screen_ocr import ReadScreenTextTool, FindOnScreenTool
+from friday.tools.builtin.screen_ocr import (
+    ReadScreenTextTool,
+    FindOnScreenTool,
+    GetActiveAppContextTool,
+    ReadActiveWindowTextTool,
+)
 from friday.tools.builtin.launch_application import LaunchApplicationTool
 from friday.tools.builtin.system_control import SystemControlTool
 from friday.tools.builtin.health_monitor import HealthCheckTool
@@ -43,6 +48,8 @@ __all__ = [
     "ExecuteCommandTool",
     "ReadScreenTextTool",
     "FindOnScreenTool",
+    "GetActiveAppContextTool",
+    "ReadActiveWindowTextTool",
     "LaunchApplicationTool",
     "SystemControlTool",
     "HealthCheckTool",

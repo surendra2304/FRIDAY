@@ -167,3 +167,100 @@ class FindOnScreenTool(BaseTool):
                     )
         return ToolResult(name=self.name, content=f"'{needle}' not found on screen.",
                           is_error=False, safety_level=self.safety_level)
+
+
+class GetActiveAppContextTool(BaseTool):
+    """Return the title, process name, and active URL of the currently focused window."""
+
+    name = "get_active_app_context"
+    description = (
+        "Get information about the application and window currently in foreground focus "
+        "(process name, window title, and active URL if a web browser)."
+    )
+    safety_level = SafetyLevel.SAFE
+    parameters = {
+        "type": "object",
+        "properties": {},
+        "required": [],
+    }
+
+    def execute(self, **kwargs: Any) -> ToolResult:
+        try:
+            from friday.vision.active_context import get_active_window_context
+            ctx = get_active_window_context()
+            title = ctx.get("title", "Unknown")
+            proc = ctx.get("process_name", "Unknown")
+            url = ctx.get("url")
+            url_str = f", URL: {url}" if url else ""
+            msg = f"Active Window: {proc} - '{title}'{url_str}"
+            return ToolResult(
+                name=self.name,
+                content=msg,
+                is_error=False,
+                safety_level=self.safety_level,
+                metadata=ctx,
+            )
+        except Exception as e:
+            return ToolResult(
+                name=self.name,
+                content=f"Failed to query active app context: {e}",
+                is_error=True,
+                safety_level=self.safety_level,
+            )
+
+
+class ReadActiveWindowTextTool(BaseTool):
+    """Use local Tesseract OCR to read text specifically within the currently active/focused window."""
+
+    name = "read_active_window_text"
+    description = (
+        "Read only the text visible within the currently focused active window using fast local OCR. "
+        "Avoids reading the whole screen."
+    )
+    safety_level = SafetyLevel.SAFE
+    parameters = {
+        "type": "object",
+        "properties": {},
+        "required": [],
+    }
+
+    def execute(self, **kwargs: Any) -> ToolResult:
+        import sys
+        region = None
+        if sys.platform == "win32":
+            try:
+                import win32gui
+                hwnd = win32gui.GetForegroundWindow()
+                if hwnd:
+                    rect = win32gui.GetWindowRect(hwnd)
+                    # rect is (left, top, right, bottom)
+                    if rect and (rect[2] > rect[0]) and (rect[3] > rect[1]):
+                        region = (max(0, rect[0]), max(0, rect[1]), rect[2], rect[3])
+            except Exception as ex:
+                logger.debug(f"Failed to get active window rect for OCR: {ex}")
+
+        try:
+            image = _capture_screen(region)
+        except Exception as e:
+            return ToolResult(name=self.name, content=f"Screen capture failed: {e}",
+                              is_error=True, safety_level=self.safety_level)
+        try:
+            words = _run_ocr(image)
+        except Exception as e:
+            return _ocr_unavailable_result(self.name, e)
+
+        if not words:
+            return ToolResult(name=self.name, content="No readable text found in the active window.",
+                              is_error=False, safety_level=self.safety_level)
+
+        lines: List[Tuple[int, List[str]]] = []
+        for word, (l, t, r, b) in words:
+            if lines and abs(lines[-1][0] - t) <= 6:
+                lines[-1][1].append(word)
+            else:
+                lines.append((t, [word]))
+        text = "\n".join(" ".join(ws) for _, ws in lines)
+        trimmed = text[:8000] + ("... [truncated]" if len(text) > 8000 else "")
+        return ToolResult(name=self.name, content=trimmed, is_error=False,
+                          safety_level=self.safety_level)
+

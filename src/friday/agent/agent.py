@@ -50,6 +50,8 @@ from friday.tools.builtin import (
     ExecuteCommandTool,
     ReadScreenTextTool,
     FindOnScreenTool,
+    GetActiveAppContextTool,
+    ReadActiveWindowTextTool,
     LaunchApplicationTool,
     SystemControlTool,
     HealthCheckTool,
@@ -1028,6 +1030,8 @@ class FridayAgent:
         registry.register(ExecuteCommandTool())
         registry.register(ReadScreenTextTool())
         registry.register(FindOnScreenTool())
+        registry.register(GetActiveAppContextTool())
+        registry.register(ReadActiveWindowTextTool())
         registry.register(LaunchApplicationTool())
         registry.register(SystemControlTool())
         registry.register(HealthCheckTool())

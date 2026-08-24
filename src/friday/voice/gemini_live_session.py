@@ -236,11 +236,21 @@ class GeminiLiveVoiceSession:
             now_str = datetime.now().astimezone().strftime("%I:%M %p on %A, %d %B %Y")
         except Exception:
             now_str = "unknown"
+        active_window_info = ""
+        try:
+            from friday.vision.active_context import format_active_window_prompt
+            ambient_ctx = format_active_window_prompt()
+            if ambient_ctx:
+                active_window_info = f"- AMBIENT SCREEN CONTEXT: {ambient_ctx}\n"
+        except Exception:
+            active_window_info = ""
+
         base_prompt = (
             f"You are FRIDAY (Fully Responsive Intelligent Digital Assistant), a premium, personal AI assistant "
             f"communicating in real-time spoken voice.\n\n"
             f"IDENTITY & CONTEXT:\n"
             f"- You are FRIDAY, a voice assistant. The user's name is {user_name}.\n"
+            f"{active_window_info}"
             f"- The local timezone is {local_tz} (Indian Standard Time, UTC+5:30).\n"
             f"- The current local time at session start is {now_str} ({local_tz}).\n"
             f"- CRITICAL CONVERSATION RULES:\n"

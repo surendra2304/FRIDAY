@@ -150,6 +150,13 @@ A chronological list:
 2. **Non-Blocking Background Indexing**: Automatically embeds and indexes newly persisted `semantic` and `episodic` memories into ChromaDB using background `threading.Thread` workers without delaying conversational or voice streaming turns.
 **Verification**: `pytest -m "not live and not hardware" -q` passed (**1,077 passed, 0 failures, 4 skipped, 9 deselected in 198.84s**, 100% green pass rate).
 
+**Session 34 — Phase 23: Active Screen Awareness (Foreground Window Tracking, Ambient Prompts, & Focused OCR) (2026-08-24)**: Implemented lightweight foreground window awareness and focused screen extraction under `src/friday/vision/active_context.py` using `pywinauto` Win32 and UI Automation APIs with zero perceivable latency.
+1. **Active Window Tracker (`get_active_window_context`, `format_active_window_prompt`)**: Automatically queries foreground window title, process executable (`Code.exe`, `chrome.exe`), and active web browser URL.
+2. **Ambient System Prompt Injection**: Enhanced `get_default_system_prompt()` (`src/friday/agent/prompts.py`) and Gemini Live voice session (`src/friday/voice/gemini_live_session.py`) to ambiently inject: *"The user is currently looking at: [App Name] - [Window Title]."*
+3. **Context Tools in ToolRegistry**: Added `GetActiveAppContextTool` (`get_active_app_context`) and `ReadActiveWindowTextTool` (`read_active_window_text` using local Tesseract OCR over foreground window bounding box).
+**Verification**: `pytest -m "not live and not hardware" -q` passed (**1,081 passed, 0 failures, 4 skipped, 9 deselected in 192.18s**, 100% green pass rate).
+
+
 
 
 
