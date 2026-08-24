@@ -1,25 +1,25 @@
-# FRIDAY — Autonomous Personal AI Agent
+# FRIDAY — Autonomous Personal AI Operating System
 
 > **F**ully **R**esponsive **I**ntelligent **D**igital **A**ssistant for **Y**ou
 
-FRIDAY is a modular, extensible, autonomous personal AI assistant built with a cloud-first, safety-first architecture, clean component separation, pluggable LLM backends, tiered tool execution policies, contextual persistent memory, and sub-second real-time Gemini Live voice streaming.
+FRIDAY is a modular, extensible, **Fully Autonomous AI Operating System** built with a cloud-first, safety-first architecture, clean component separation, a high-throughput **Unified Multi-Provider AI Gateway** (`Groq` -> `Cerebras` -> `Mistral` -> `OpenRouter`), dedicated Gemini Real-Time Voice/Vision isolation, tiered tool execution policies, contextual persistent memory, proactive system health telemetry, and sub-second real-time Gemini Live voice streaming.
 
 ---
 
-## 🌟 Real-Time Voice Architecture (Phase 5 Complete)
+## 🌟 Unified AI Gateway & Real-Time Voice Architecture (Phases 5, 11, 12, 16)
 
-- **Full-Duplex Gemini Live Streaming (`gemini-3.1-flash-live-preview`)** `[IMPLEMENTED | REAL-TESTED]`:
-  - Bidirectional WebSocket session handling live audio input and output turns simultaneously.
-  - Non-blocking 16 kHz 16-bit linear PCM microphone capture streaming in 40ms frames.
-  - Immediate 24 kHz 16-bit linear PCM speaker playback starting on the first response chunk without waiting for turn completion.
-  - Dual-layer instant barge-in: local RMS energy detection (**1.935 ms** speaker queue flush) and server-side interruption handling.
-  - Server-side VAD with automatic speech activity detection.
-  - Zero local AI model overhead: 0% GPU, < 1% CPU, < 5 MB RAM (Strictly cloud-first: no Ollama, no local Whisper, no local TTS).
-- **Unified Single-Brain Intelligence Layer** `[IMPLEMENTED | REAL-TESTED]`:
-  - Voice directly dispatches functions through `ToolRegistry` and commits turns to `SQLiteConversationMemory`.
-  - Dynamic tool schema translation to Gemini Live function declarations.
-  - Tiered safety policies (`SAFE`, `SENSITIVE`, `DANGEROUS`) and authorizer gating fully enforced in voice.
-  - Bidirectional memory sync: text saved -> voice recalled; voice saved -> text recalled.
+- **Unified Multi-Provider Reasoning Gateway (`FallbackChainLLMProvider`)** `[IMPLEMENTED | REAL-TESTED]`:
+  - Intelligent cross-provider failover chain: **Groq (`openai/gpt-oss-120b`) -> Cerebras (`gpt-oss-120b`) -> Mistral -> OpenRouter (`meta-llama/llama-3.3-70b-instruct`)**.
+  - Sub-second text reasoning and tool calling with zero local GPU/CPU load.
+  - Strict provider isolation: Gemini dedicated strictly for Voice (`gemini-2.0-flash-exp` / `gemini-2.0-flash-realtime-exp`), Vision OCR (`gemini-1.5-flash`), and Semantic Embeddings (`text-embedding-004`).
+- **Stable Low-Latency Voice Streaming Pipeline** `[IMPLEMENTED | REAL-TESTED]`:
+  - Half-duplex echo suppression with dynamic mic unmuting and configurable speaker timeout buffer (up to 60s).
+  - 100% Server-Side Google VAD for natural interruption handling without client-side chopping.
+  - Voice biometrics security gating (`SpeakerVerificationEngine`) with lazy imports for zero startup CPU strain.
+- **Phase 16 Productized Computer Control** `[IMPLEMENTED | REAL-TESTED]`:
+  - Smart auto-focus typing with top-level window detection and Win32 foreground restoration.
+  - Universal application launching (Notepad, Calculator, Word, Excel, Paint, Wordpad, Settings, Web Browsers).
+  - Strict prompt sequencing ensuring applications are fully initialized before text entry.
 
 ---
 
@@ -27,6 +27,10 @@ FRIDAY is a modular, extensible, autonomous personal AI assistant built with a c
 
 | Subsystem / Capability | Implementation | Mock Tested | Real Tested | Status |
 | :--- | :--- | :---: | :---: | :---: |
+| **Unified AI Provider Gateway (Groq->Cerebras->Mistral->OpenRouter)** | `src/friday/llm/factory.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Stable Gemini Live Voice Streaming** | `src/friday/voice/gemini_live_session.py` | ✅ PASS | ✅ PASS | **REAL-TESTED** |
+| **Phase 16 Computer Control & Auto-Focus Typing** | `src/friday/tools/builtin/type_text.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Universal App Launcher & Windows Automation** | `src/friday/tools/builtin/open_application.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **10-Phase Cognitive Intelligence Loop** | `src/friday/agent/cognitive.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Multi-Attribute Capability Router** | `src/friday/routing/capability_router.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Unified 15-Category Domain Error Taxonomy** | `src/friday/core/exceptions.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
@@ -35,15 +39,9 @@ FRIDAY is a modular, extensible, autonomous personal AI assistant built with a c
 | **Durable Checkpoints & Resumption Engine** | `src/friday/agent/checkpoint.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **HMAC-SHA256 Authorization & Safety Gating** | `src/friday/core/auth.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Zero-Secret Scrubber & Redaction Engine** | `src/friday/security/scrubber.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
-| **Google Gemini Intelligence Provider (`gemini-3.7-flash`)** | `src/friday/llm/gemini_provider.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
-| **OpenAI / Non-Gemini Multimodal Provider** | `src/friday/vision/openai_vision.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Multimodal Perception & Screen Caching** | `src/friday/vision/perception_pipeline.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
-| **Windows DPI Virtual Screen Capture** | `src/friday/vision/windows_screen.py` | ✅ PASS | ⚠️ BLOCKED (Headless) | **IMPLEMENTED** |
-| **Real Streaming Microphone Capture (16kHz)** | `src/friday/voice/audio_io.py` | ✅ PASS | ✅ REAL PASS (17 devs) | **REAL-TESTED** |
-| **Immediate Streaming Speaker (24kHz)** | `src/friday/voice/audio_io.py` | ✅ PASS | ✅ REAL PASS (Dev 3) | **REAL-TESTED** |
-| **Gemini Live WebSocket Voice (`gemini-3.1-flash-live-preview`)** | `src/friday/voice/gemini_live_session.py` | ✅ PASS | ✅ PASS | **REAL-TESTED** |
 | **Persistent SQLite Memory (WAL + ACID + FTS5)**| `src/friday/memory/sqlite.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
-| **Cloud-First Gemini Embeddings (`gemini-embedding-2`)** | `src/friday/memory/embeddings/` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Cloud-First Gemini Embeddings (`text-embedding-004`)** | `src/friday/memory/embeddings/` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 
 ---
 
