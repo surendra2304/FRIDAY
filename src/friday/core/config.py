@@ -201,6 +201,13 @@ class Settings(BaseSettings):
         description="Optional Mistral model override (default: mistral-large-latest)",
     )
 
+    # GitHub Integration
+    github_token: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("FRIDAY_GITHUB_TOKEN", "GITHUB_TOKEN", "github_token"),
+        description="Personal Access Token for GitHub Automation",
+    )
+
     # Memory & Semantic Settings
     memory_backend: str = Field(default="sqlite", description="Memory backend: 'sqlite', 'in_memory'")
     memory_db_path: str = Field(default="data/friday.db", description="Path to SQLite database file")

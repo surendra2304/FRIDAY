@@ -52,6 +52,11 @@ from friday.tools.builtin import (
     FindOnScreenTool,
     GetActiveAppContextTool,
     ReadActiveWindowTextTool,
+    GitStatusTool,
+    GitCommitTool,
+    GitPushTool,
+    ListGitHubIssuesTool,
+    CreateGitHubIssueTool,
     LaunchApplicationTool,
     SystemControlTool,
     HealthCheckTool,
@@ -1032,6 +1037,11 @@ class FridayAgent:
         registry.register(FindOnScreenTool())
         registry.register(GetActiveAppContextTool())
         registry.register(ReadActiveWindowTextTool())
+        registry.register(GitStatusTool())
+        registry.register(GitCommitTool())
+        registry.register(GitPushTool())
+        registry.register(ListGitHubIssuesTool())
+        registry.register(CreateGitHubIssueTool())
         registry.register(LaunchApplicationTool())
         registry.register(SystemControlTool())
         registry.register(HealthCheckTool())

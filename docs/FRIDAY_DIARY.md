@@ -156,6 +156,14 @@ A chronological list:
 3. **Context Tools in ToolRegistry**: Added `GetActiveAppContextTool` (`get_active_app_context`) and `ReadActiveWindowTextTool` (`read_active_window_text` using local Tesseract OCR over foreground window bounding box).
 **Verification**: `pytest -m "not live and not hardware" -q` passed (**1,081 passed, 0 failures, 4 skipped, 9 deselected in 192.18s**, 100% green pass rate).
 
+**Session 35 — Phase 24: Git & GitHub Automation (CLI Worktree Controls, Remote Sync, & PyGithub API) (2026-08-24)**: Integrated Git repository management and GitHub automation tools for text and voice orchestration.
+1. **Dependency & Configuration**: Added `PyGithub>=2.0.0` to `pyproject.toml`, added `github_token` (`FRIDAY_GITHUB_TOKEN`) to `src/friday/core/config.py` and `.env.example`.
+2. **Git Tools (`src/friday/tools/builtin/git_tools.py`)**: Built `GitStatusTool` (`git_status`, SAFE), `GitCommitTool` (`git_commit`, SENSITIVE, requiring Authorizer), and `GitPushTool` (`git_push`, SENSITIVE, requiring Authorizer).
+3. **GitHub Tools (`src/friday/tools/builtin/github_tools.py`)**: Built `ListGitHubIssuesTool` (`list_github_issues`, SAFE) and `CreateGitHubIssueTool` (`create_github_issue`, SENSITIVE, requiring Authorizer).
+4. **Registration**: Exported and registered all tools in `ToolRegistry` and wired into `FridayAgent`.
+**Verification**: `pytest -m "not live and not hardware" -q` passed (**1,086 passed, 0 failures, 4 skipped, 9 deselected in 199.28s**, 100% green pass rate).
+
+
 
 
 
