@@ -23,6 +23,7 @@ from friday.tools.builtin.screen_ocr import (
 )
 from friday.tools.builtin.git_tools import GitStatusTool, GitCommitTool, GitPushTool
 from friday.tools.builtin.github_tools import ListGitHubIssuesTool, CreateGitHubIssueTool
+from friday.tools.builtin.system_monitor import GetSystemResourcesTool, KillProcessTool
 from friday.tools.builtin.launch_application import LaunchApplicationTool
 from friday.tools.builtin.system_control import SystemControlTool
 from friday.tools.builtin.health_monitor import HealthCheckTool
@@ -57,6 +58,8 @@ __all__ = [
     "GitPushTool",
     "ListGitHubIssuesTool",
     "CreateGitHubIssueTool",
+    "GetSystemResourcesTool",
+    "KillProcessTool",
     "LaunchApplicationTool",
     "SystemControlTool",
     "HealthCheckTool",

@@ -163,6 +163,15 @@ A chronological list:
 4. **Registration**: Exported and registered all tools in `ToolRegistry` and wired into `FridayAgent`.
 **Verification**: `pytest -m "not live and not hardware" -q` passed (**1,086 passed, 0 failures, 4 skipped, 9 deselected in 199.28s**, 100% green pass rate).
 
+**Session 36 — Phase 25: System Resource Manager (Telemetry, Process Termination, & Proactive CPU Alerts) (2026-08-24)**: Implemented real-time system performance diagnostics and process control using `psutil`.
+1. **System Monitor Tools (`src/friday/tools/builtin/system_monitor.py`)**:
+   - `GetSystemResourcesTool` (`get_system_resources`, SAFE): Queries CPU usage (%), RAM consumption, and enumerates top memory-consuming applications, with support for specific process filtering (e.g. "How much RAM is Chrome using?").
+   - `KillProcessTool` (`kill_process`, DANGEROUS): Safely terminates or kills lagging processes by PID or name (e.g. "Kill Spotify"), gated by strict Authorizer security policies.
+2. **Proactive Alerting Integration**: Hooked `check_system_resources_proactive()` into `WorkflowScheduler` (`src/friday/workflows/scheduler.py`). If CPU usage sustains $\ge 90\%$ for more than 2 minutes, FRIDAY automatically buffers a proactive notification: *"I noticed your CPU is maxed out at X% by [Process Name]. Would you like me to close it?"*.
+3. **Registration & Voice Exposure**: Exported tools in `ToolRegistry` and exposed them to Gemini Live and text reasoning agents.
+**Verification**: `pytest -m "not live and not hardware" -q` passed (**1,090 passed, 0 failures, 4 skipped, 9 deselected in 193.09s**, 100% green pass rate).
+
+
 
 
 

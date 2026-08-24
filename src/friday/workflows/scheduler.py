@@ -42,13 +42,50 @@ class WorkflowScheduler:
         self,
         authorizer: Optional[BaseAuthorizer] = None,
         tick_interval: float = 1.0,
+        notification_manager: Optional[Any] = None,
     ) -> None:
         self.authorizer: BaseAuthorizer = authorizer or DefaultSecureAuthorizer()
         self.tick_interval = tick_interval
+        self.notification_manager = notification_manager
         self._jobs: Dict[str, ScheduledJob] = {}
         self._lock = threading.RLock()
         self._stop_event = threading.Event()
         self._worker_thread: Optional[threading.Thread] = None
+
+        # Tracking for high CPU sustained spikes (Phase 25)
+        self._high_cpu_start_time: Optional[float] = None
+        self._last_alerted_cpu_time: float = 0.0
+
+    def check_system_resources_proactive(self, cpu_threshold: float = 90.0, sustained_seconds: float = 120.0) -> Optional[Dict[str, Any]]:
+        """Check for sustained high CPU utilization and queue proactive alerts."""
+        try:
+            from friday.tools.builtin.system_monitor import get_current_system_resources
+            stats = get_current_system_resources()
+            cpu = stats.get("cpu_percent", 0.0)
+            now = time.time()
+
+            if cpu >= cpu_threshold:
+                if self._high_cpu_start_time is None:
+                    self._high_cpu_start_time = now
+                elif (now - self._high_cpu_start_time) >= sustained_seconds:
+                    if (now - self._last_alerted_cpu_time) > 300.0:  # alert at most every 5m
+                        top_proc = stats.get("top_processes", [{}])[0].get("name", "an application")
+                        msg = f"I noticed your CPU is maxed out at {cpu}% by {top_proc}. Would you like me to close it?"
+                        if self.notification_manager is not None:
+                            self.notification_manager.post_notification(
+                                message=msg,
+                                category="system_health",
+                                severity="warning",
+                                metadata={"cpu_percent": cpu, "process": top_proc},
+                            )
+                        self._last_alerted_cpu_time = now
+                        return {"alert": True, "message": msg, "cpu": cpu, "process": top_proc}
+            else:
+                self._high_cpu_start_time = None
+            return {"alert": False, "cpu": cpu}
+        except Exception as e:
+            logger.debug(f"Proactive system resource check error: {e}")
+            return None
 
     def register_interval_job(
         self,

@@ -57,6 +57,8 @@ from friday.tools.builtin import (
     GitPushTool,
     ListGitHubIssuesTool,
     CreateGitHubIssueTool,
+    GetSystemResourcesTool,
+    KillProcessTool,
     LaunchApplicationTool,
     SystemControlTool,
     HealthCheckTool,
@@ -1042,6 +1044,8 @@ class FridayAgent:
         registry.register(GitPushTool())
         registry.register(ListGitHubIssuesTool())
         registry.register(CreateGitHubIssueTool())
+        registry.register(GetSystemResourcesTool())
+        registry.register(KillProcessTool())
         registry.register(LaunchApplicationTool())
         registry.register(SystemControlTool())
         registry.register(HealthCheckTool())
