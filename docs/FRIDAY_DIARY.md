@@ -145,6 +145,12 @@ A chronological list:
 - **AI Universe Integration API**: SDK abstraction and orchestration connecting FRIDAY to simulated worlds and agent experiments.
 - **Final Master Repository Verification**: Full regression test suite passed cleanly with **1,075 passed, 0 failures, 4 skipped, 9 deselected in 188.67s** (100% green pass rate across all 32 sessions).
 
+**Session 33 — Phase 22: True Semantic Vector Memory (ChromaDB Local-First Vector Store & Background Indexing) (2026-08-24)**: Upgraded Memory 2.0 with true concept-based semantic search. Integrated `chromadb` as a lightweight, local-first CPU vector store (`src/friday/memory/vector_store.py`) backed by Gemini embeddings (`gemini-embedding-2`). Enhanced `SQLiteConversationMemory` (`src/friday/memory/sqlite.py`):
+1. **Semantic Concept Search**: Upgraded `search_bounded_memories` to perform cosine similarity vector queries in ChromaDB merged with SQLite FTS5 BM25 ranking, allowing FRIDAY to retrieve relevant memories across synonymous concepts (e.g. "coding" retrieves "programming").
+2. **Non-Blocking Background Indexing**: Automatically embeds and indexes newly persisted `semantic` and `episodic` memories into ChromaDB using background `threading.Thread` workers without delaying conversational or voice streaming turns.
+**Verification**: `pytest -m "not live and not hardware" -q` passed (**1,077 passed, 0 failures, 4 skipped, 9 deselected in 198.84s**, 100% green pass rate).
+
+
 
 
 
