@@ -242,6 +242,7 @@ Modes:
     parser.add_argument("--doctor", action="store_true", help="Run FRIDAY system diagnostics and exit")
     parser.add_argument("--action-audit", action="store_true", help="List and validate FRIDAY's registered action surface")
     parser.add_argument("--enroll-voice", action="store_true", help="Record 5 seconds of speech to enroll your voice profile for speaker recognition")
+    parser.add_argument("--run-lab", action="store_true", help="Run FRIDAY Lab multi-provider benchmark suite and print comparison")
     parser.add_argument("--text", action="store_true", help="Start explicitly in interactive text conversation mode")
     parser.add_argument("--debug", action="store_true", help="Enable verbose debug logging in terminal console")
     args, unknown = parser.parse_known_args()
@@ -259,6 +260,22 @@ Modes:
         print(f"\n[Configuration Error]: Failed to validate application configuration.")
         print(f"Details: {e}\n")
         sys.exit(1)
+
+    if args.run_lab:
+        from friday.lab.experiment import run_standard_lab_suite
+        from friday.memory.sqlite import SQLiteConversationMemory
+        print("\n==================================================")
+        print("  🔬 FRIDAY LAB: Multi-Provider Performance Matrix")
+        print("==================================================")
+        mem = SQLiteConversationMemory(db_path=settings.sqlite_db_path)
+        trials = run_standard_lab_suite(memory=mem)
+        print(f"  {'Provider':<14} | {'Model':<20} | {'Latency':<9} | {'Accuracy':<8} | {'Success':<7} | {'Tokens':<6}")
+        print("  " + "-" * 72)
+        for t in trials:
+            status_str = "PASS" if t.success else "FAIL"
+            print(f"  {t.provider_name:<14} | {t.model_name:<20} | {t.latency_ms:>7.1f}ms | {t.accuracy*100:>6.1f}%  | {status_str:<7} | {t.token_usage:>6}")
+        print("==================================================\n")
+        sys.exit(0)
 
     voice_requested = (args.voice or getattr(settings, "voice_enabled", False)) and not args.text
     # Clean console: default mode shows only errors; voice mode suppresses

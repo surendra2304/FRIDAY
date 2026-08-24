@@ -200,6 +200,26 @@ class SQLiteConversationMemory(BaseMemory):
                     CREATE INDEX IF NOT EXISTS idx_embeddings_conv ON embeddings(conversation_id);
                     CREATE INDEX IF NOT EXISTS idx_embeddings_msg ON embeddings(message_id);
 
+                    CREATE TABLE IF NOT EXISTS experiments (
+                        id TEXT PRIMARY KEY,
+                        experiment_name TEXT NOT NULL,
+                        task_prompt TEXT NOT NULL,
+                        task_type TEXT NOT NULL,
+                        provider_name TEXT NOT NULL,
+                        model_name TEXT NOT NULL,
+                        accuracy REAL DEFAULT 0.0,
+                        success INTEGER NOT NULL,
+                        latency_ms REAL NOT NULL,
+                        token_usage INTEGER DEFAULT 0,
+                        failure_mode TEXT,
+                        response_content TEXT,
+                        created_at TEXT NOT NULL,
+                        metadata TEXT
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_experiments_task_provider ON experiments(task_type, provider_name);
+                    CREATE INDEX IF NOT EXISTS idx_experiments_created ON experiments(created_at DESC);
+
                     INSERT INTO messages_fts(message_id, conversation_id, content)
                     SELECT id, conversation_id, content FROM messages
                     WHERE id NOT IN (SELECT message_id FROM messages_fts);
@@ -1212,6 +1232,93 @@ class SQLiteConversationMemory(BaseMemory):
             logger.info(f"Exported memories to '{p}'")
 
         return export_data
+
+    def record_experiment(
+        self,
+        experiment_name: str,
+        task_prompt: str,
+        task_type: str,
+        provider_name: str,
+        model_name: str,
+        accuracy: float,
+        success: bool,
+        latency_ms: float,
+        token_usage: int = 0,
+        failure_mode: Optional[str] = None,
+        response_content: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Record an experiment trial in the experiments table."""
+        exp_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        meta_str = json.dumps(metadata or {})
+
+        with self._lock:
+            conn = self._get_connection()
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO experiments (
+                        id, experiment_name, task_prompt, task_type, provider_name,
+                        model_name, accuracy, success, latency_ms, token_usage,
+                        failure_mode, response_content, created_at, metadata
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        exp_id,
+                        experiment_name,
+                        task_prompt,
+                        task_type,
+                        provider_name,
+                        model_name,
+                        float(accuracy),
+                        1 if success else 0,
+                        float(latency_ms),
+                        int(token_usage),
+                        failure_mode,
+                        response_content,
+                        now,
+                        meta_str,
+                    ),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+        return exp_id
+
+    def get_provider_performance_stats(self, task_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Calculate historical latency and success rates per provider for dynamic routing."""
+        with self._lock:
+            conn = self._get_connection()
+            try:
+                sql = """
+                    SELECT provider_name, model_name,
+                           AVG(latency_ms) as avg_latency_ms,
+                           AVG(accuracy) as avg_accuracy,
+                           AVG(success) as success_rate,
+                           COUNT(*) as trial_count
+                    FROM experiments
+                """
+                params: List[Any] = []
+                if task_type:
+                    sql += " WHERE task_type = ?"
+                    params.append(task_type)
+                sql += " GROUP BY provider_name, model_name ORDER BY success_rate DESC, avg_latency_ms ASC"
+                rows = conn.execute(sql, params).fetchall()
+            finally:
+                conn.close()
+
+        return [
+            {
+                "provider_name": r["provider_name"],
+                "model_name": r["model_name"],
+                "avg_latency_ms": float(r["avg_latency_ms"]),
+                "avg_accuracy": float(r["avg_accuracy"]),
+                "success_rate": float(r["success_rate"]),
+                "trial_count": int(r["trial_count"]),
+            }
+            for r in rows
+        ]
 
     def close(self) -> None:
         """Close SQLite memory resources cleanly."""

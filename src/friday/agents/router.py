@@ -6,7 +6,7 @@ and tool availability, then selects the best specialist agent for a subtask.
 """
 
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from friday.agents.base_agent import BaseAgent
 from friday.agents.decomposer import DecomposedSubtask
@@ -28,9 +28,15 @@ class AgentRoutingDecision:
 class AgentRouter:
     """Matches subtasks to the most capable registered specialist agent."""
 
-    def __init__(self, registry: AgentRegistry, default_agent: Optional[BaseAgent] = None) -> None:
+    def __init__(
+        self,
+        registry: AgentRegistry,
+        default_agent: Optional[BaseAgent] = None,
+        memory: Optional[Any] = None,
+    ) -> None:
         self.registry = registry
         self.default_agent = default_agent
+        self.memory = memory
 
     def route_subtask(self, subtask: DecomposedSubtask) -> AgentRoutingDecision:
         """Score available agents and return the best match for the subtask."""
@@ -79,6 +85,22 @@ class AgentRouter:
             else:
                 score += 0.05
                 rationale_parts.append("Has full tool access (+0.05)")
+
+            # 4. Dynamic routing via Lab Experiment performance history
+            if self.memory is not None and hasattr(self.memory, "get_provider_performance_stats"):
+                try:
+                    stats = self.memory.get_provider_performance_stats(task_type=subtask.suggested_role)
+                    if not stats:
+                        stats = self.memory.get_provider_performance_stats()
+                    for s in stats:
+                        model_match = agent.preferred_models and s["model_name"] in agent.preferred_models
+                        provider_match = s["provider_name"] == getattr(agent.llm, "provider_name", "")
+                        if model_match or provider_match:
+                            bonus = min(0.2, (s["success_rate"] * 0.15) + (max(0.0, 500.0 - s["avg_latency_ms"]) / 5000.0))
+                            score += bonus
+                            rationale_parts.append(f"Historical experiment score bonus (+{bonus:.2f})")
+                except Exception as ex:
+                    logger.debug(f"Could not load experiment stats in router: {ex}")
 
             if score > best_score:
                 best_score = score
