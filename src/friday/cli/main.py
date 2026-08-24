@@ -117,6 +117,9 @@ def print_history(agent: FridayAgent) -> None:
             print(f"  [{idx}] [{time_str}] {msg.role.value.upper()}: {msg.content}")
     print("----------------------------------------------------\n")
 
+    from friday.observability.timeline import global_timeline
+    print(global_timeline.format_replay(limit=15) + "\n")
+
 
 def print_conversations(agent: FridayAgent) -> None:
     convs = agent.list_conversations()
@@ -209,15 +212,48 @@ def print_action_audit(agent: FridayAgent) -> None:
     print("==================================================\n")
 
 
+from friday.observability.timeline import global_timeline
+
 _active_status = {"obj": None}
 
 
+def render_status_panel() -> Panel:
+    """Generate the live futuristic Status Panel showing cognitive phase, agent, provider, tool, and latency."""
+    st = global_timeline.get_status()
+    phase = st.get("cognitive_phase", "IDLE")
+    agent_name = st.get("active_agent", "General")
+    provider = st.get("selected_provider", "Default")
+    tool = st.get("active_tool", "None")
+    latency = st.get("last_latency_ms", 0.0)
+
+    content = Text()
+    content.append("🧠 Cognitive: ", style="bold cyan")
+    content.append(f"{phase:<10} ", style="bold green")
+    content.append("🤖 Agent: ", style="bold cyan")
+    content.append(f"{agent_name:<10} ", style="bold yellow")
+    content.append("⚡ Provider: ", style="bold cyan")
+    content.append(f"{provider:<10} ", style="bold magenta")
+    content.append("🔧 Tool: ", style="bold cyan")
+    content.append(f"{tool:<16} ", style="bold blue")
+    content.append("⏱ Latency: ", style="bold cyan")
+    content.append(f"{latency:>6.1f}ms", style="bold green")
+
+    return Panel(content, title="[bold white]FRIDAY Live Telemetry & Status[/]", border_style="blue", padding=(0, 1))
+
+
 def on_tool_event(tool_call, tool_result) -> None:
-    """Update the Rich spinner while a tool executes; no-op without an active status."""
+    """Update timeline and Rich spinner while a tool executes."""
+    tool_name = getattr(tool_call, "name", "unknown")
+    global_timeline.update_status(active_tool=tool_name)
+    global_timeline.record_event(
+        event_type="tool_execution",
+        description=f"Executed tool '{tool_name}'",
+        details={"parameters": getattr(tool_call, "parameters", {})},
+    )
     status = _active_status.get("obj")
-    if status is not None and getattr(tool_call, "name", None):
+    if status is not None and tool_name:
         try:
-            status.update(f"[magenta]Executing Tool: {tool_call.name}...")
+            status.update(f"[magenta]Executing Tool: {tool_name}...")
         except Exception:
             pass
 
@@ -570,8 +606,30 @@ Modes:
                 print(f"\n[Error exporting conversation]: {e}\n")
             continue
 
-        # Process standard conversation turn with Rich UI
+        elif cmd in ("/history", "history"):
+            print_history(agent)
+            continue
+        elif cmd in ("/status", "status"):
+            print_status(agent)
+            continue
+        elif cmd in ("/help", "help"):
+            print_help()
+            continue
+
+        # Process standard conversation turn with Rich UI & Split-View Status Panel
         try:
+            start_t = datetime.now()
+            global_timeline.update_status(
+                cognitive_phase="PROCESSING",
+                active_agent="General",
+                selected_provider=getattr(agent.llm, "provider_name", "FallbackChain"),
+                active_tool="None",
+            )
+            global_timeline.record_event(
+                event_type="user_prompt",
+                description=f"Received prompt: {user_input[:40]}...",
+            )
+
             if _console is not None:
                 with _console.status("[bold cyan]FRIDAY is thinking...", spinner="dots") as status:
                     _active_status["obj"] = status
@@ -579,13 +637,30 @@ Modes:
                         response = agent.process_message(user_input)
                     finally:
                         _active_status["obj"] = None
+
+                elapsed_ms = (datetime.now() - start_t).total_seconds() * 1000.0
+                phase_val = response.metadata.get("cognitive_phase", "COMPLETED") if hasattr(response, "metadata") and response.metadata else "COMPLETED"
+                global_timeline.update_status(
+                    cognitive_phase=phase_val,
+                    last_latency_ms=elapsed_ms,
+                )
+                global_timeline.record_event(
+                    event_type="agent_response",
+                    description=f"Generated response ({len(response.content or '')} chars)",
+                    duration_ms=elapsed_ms,
+                )
+
+                # Split-view output: Top half = response panel, Bottom half = Live Status Panel
                 _console.print(
                     Panel(Text(response.content or "(no response)"), title=settings.agent_name,
                           border_style="cyan", padding=(0, 1)),
                 )
+                _console.print(render_status_panel())
                 _console.print()
             else:
                 response = agent.process_message(user_input)
+                elapsed_ms = (datetime.now() - start_t).total_seconds() * 1000.0
+                global_timeline.update_status(last_latency_ms=elapsed_ms)
                 print(f"\n{settings.agent_name} > {response.content}\n")
         except Exception as e:
             print(f"\n[Error]: {e}\n")

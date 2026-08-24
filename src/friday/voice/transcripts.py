@@ -95,4 +95,12 @@ class LiveTranscriptPrinter:
         if agent_text and not self._state["friday_last"]:
             self._print(f"FRIDAY: {(agent_text or '').strip() or '(untranscribed)'}")
         if user_text or agent_text:
+            try:
+                from friday.cli.main import _console, render_status_panel
+                from friday.observability.timeline import global_timeline
+                global_timeline.update_status(cognitive_phase="LIVE_VOICE", active_agent="VoiceAgent", selected_provider="GeminiLive")
+                if _console is not None:
+                    _console.print(render_status_panel())
+            except Exception:
+                pass
             self._print("")  # blank separator line between turns
