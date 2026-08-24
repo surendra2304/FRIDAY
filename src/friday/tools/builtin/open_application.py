@@ -21,14 +21,16 @@ logger = get_logger("tools.open_application")
 # Applications that must NOT be launched via the SAFE voice/text tool path
 _BLOCKED_APPLICATIONS = {"cmd.exe", "powershell.exe", "wt.exe", "taskmgr.exe"}
 
+APP_LAUNCH_MAP = IntentDetector.APP_LAUNCH_MAP
+
 
 class OpenApplicationTool(BaseTool):
-    """Launch a known Windows application by name (e.g. 'notepad', 'calculator')."""
+    """Launch a known Windows application by name (e.g. 'notepad', 'calculator', 'word', 'excel', 'wordpad', 'paint')."""
 
     name = "open_application"
     description = (
         "Open a Windows application by its common name (e.g. 'notepad', 'calculator', "
-        "'paint', 'file explorer', 'edge', 'chrome'). Use this whenever the user asks "
+        "'paint', 'file explorer', 'edge', 'chrome', 'word', 'excel', 'wordpad'). Use this whenever the user asks "
         "to open, launch, or start an application."
     )
     safety_level = SafetyLevel.SAFE

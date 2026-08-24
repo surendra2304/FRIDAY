@@ -7,7 +7,7 @@ special keys, or key sequences can be injected through this tool, which is
 what makes plain text typing SAFE by construction.
 """
 
-from typing import Any
+from typing import Any, Tuple
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel, ToolResult
@@ -67,6 +67,47 @@ def _focus_window(title_substring: str) -> bool:
         return False
 
 
+def _auto_focus_top_window() -> Tuple[bool, str]:
+    """Find the most recently opened top-level window (excluding the terminal) and focus it.
+
+    Returns (focused: bool, window_title: str).
+    """
+    import time as _time
+
+    from pywinauto import Desktop
+
+    terminal_needles = {
+        "powershell",
+        "command prompt",
+        "cmd.exe",
+        "terminal",
+        "windows terminal",
+        "friday",
+        "python",
+    }
+    try:
+        windows = Desktop(backend="uia").windows()
+        for w in windows:
+            title = (w.window_text() or "").strip()
+            if not title:
+                continue
+            title_lower = title.lower()
+            if any(term in title_lower for term in terminal_needles):
+                continue
+            # Found candidate top-level application window
+            try:
+                w.set_focus()
+                _time.sleep(0.5)
+                logger.info(f"Auto-focused top-level window '{title}' for typing.")
+                return True, title
+            except Exception as fe:
+                logger.warning(f"Failed to focus top-level window '{title}': {fe}")
+                continue
+    except Exception as e:
+        logger.warning(f"Auto-focus scan failed: {e}")
+    return False, ""
+
+
 class TypeTextTool(BaseTool):
     """Type text into a window (optionally focusing it first), exactly as provided."""
 
@@ -75,8 +116,8 @@ class TypeTextTool(BaseTool):
         "Type a piece of text into an application window, character by character, exactly "
         "as provided (no hotkeys or special keys are possible). ALWAYS pass window_title "
         "when the text belongs in a specific application you just opened (e.g. "
-        "window_title='Notepad') so the tool focuses that window before typing; otherwise "
-        "the text goes to whatever currently has focus (often the terminal)."
+        "window_title='Notepad') so the tool focuses that window before typing; if not provided, "
+        "the tool will automatically focus the most recently opened application window."
     )
     safety_level = SafetyLevel.SAFE
     parameters = {
@@ -115,20 +156,24 @@ class TypeTextTool(BaseTool):
             )
 
         focused = False
+        target_name = ""
         if window_title and window_title.strip():
             focused = _focus_window(window_title)
+            target_name = f"window '{window_title}'" if focused else "current focus"
+        else:
+            focused, auto_title = _auto_focus_top_window()
+            target_name = f"window '{auto_title}'" if (focused and auto_title) else "current focus"
 
         try:
             send_keys(_escape_literal(payload), with_spaces=True, pause=0.005)
-            target = f"window '{window_title}'" if focused else "current focus"
-            logger.info(f"Typed {len(payload)} characters into {target}.")
+            logger.info(f"Typed {len(payload)} characters into {target_name}.")
             return ToolResult(
                 name=self.name,
                 content=(
-                    f"Typed into {target}: {payload[:80]}{'...' if len(payload) > 80 else ''}"
+                    f"Typed into {target_name}: {payload[:80]}{'...' if len(payload) > 80 else ''}"
                     + ("" if focused else " (note: target window not found; typed into current focus)")
                     if window_title
-                    else f"Typed: {payload[:80]}{'...' if len(payload) > 80 else ''}"
+                    else f"Typed into {target_name}: {payload[:80]}{'...' if len(payload) > 80 else ''}"
                 ),
                 is_error=False,
                 safety_level=self.safety_level,

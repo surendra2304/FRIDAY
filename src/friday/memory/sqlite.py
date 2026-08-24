@@ -79,11 +79,14 @@ class SQLiteConversationMemory(BaseMemory):
         if self.db_path != ":memory:":
             import sys
             is_testing = os.getenv("FRIDAY_ENV") == "testing" or "pytest" in sys.modules
-            if not is_testing:
-                conn.execute("PRAGMA journal_mode = WAL;")
-                conn.execute("PRAGMA synchronous = NORMAL;")
-            else:
-                conn.execute("PRAGMA journal_mode = DELETE;")
+            try:
+                if not is_testing:
+                    conn.execute("PRAGMA journal_mode = WAL;")
+                    conn.execute("PRAGMA synchronous = NORMAL;")
+                else:
+                    conn.execute("PRAGMA journal_mode = DELETE;")
+            except sqlite3.OperationalError:
+                pass
             conn.execute("PRAGMA cache_size = -64000;")
         return conn
 
