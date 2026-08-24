@@ -295,13 +295,13 @@ def test_focus_window_matches_title_substring_and_sleeps(monkeypatch):
 def test_groq_universal_fallback_model_updated():
     from friday.llm.groq_provider import GROQ_UNIVERSAL_FALLBACK_MODEL
 
-    assert GROQ_UNIVERSAL_FALLBACK_MODEL == "llama-3.1-8b-instant"
+    assert GROQ_UNIVERSAL_FALLBACK_MODEL == "openai/gpt-oss-120b"
 
 
 def test_cerebras_default_model_updated():
     from friday.llm.cerebras_provider import CEREBRAS_DEFAULT_MODEL
 
-    assert CEREBRAS_DEFAULT_MODEL == "llama3.1-8b"
+    assert CEREBRAS_DEFAULT_MODEL == "gpt-oss-120b"
 
 
 # ---------------------------------------------------------------------------

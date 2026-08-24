@@ -160,7 +160,7 @@ class Settings(BaseSettings):
         description="Optional Groq model override (default: llama-3.3-70b-versatile)",
     )
     groq_fallback_model: str = Field(
-        default="llama-3.1-8b-instant",
+        default="openai/gpt-oss-20b",
         validation_alias=AliasChoices("FRIDAY_GROQ_FALLBACK_MODEL", "GROQ_FALLBACK_MODEL", "groq_fallback_model"),
         description="Groq fallback model used on 429 rate limits",
     )

@@ -213,7 +213,7 @@ class FridayAgent:
         )
 
     _NOTEPAD_TYPE_PATTERN = re.compile(
-        r"^\s*(?:please\s+)?(?:open|launch|start)\s+notepad\s+and\s+(?:type|write|say)\s+(?P<text>.+?)\s*$",
+        r"^\s*(?:please\s+)?(?:open|launch|start)?\s*(?:a\s+)?(?:new\s+)?(?:tab\s+in\s+)?(?:the\s+)?note\s*pad(?:\s+(?:in\s+)?(?:a\s+)?new\s+tab)?(?:\s+and)?\s+(?:type|write|say|enter)\s+(?P<text>.+?)\s*$",
         re.IGNORECASE,
     )
     _OPEN_APP_PATTERN = re.compile(

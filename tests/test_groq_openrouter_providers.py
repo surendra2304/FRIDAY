@@ -54,8 +54,8 @@ def test_factory_creates_groq_provider():
     provider = create_llm_provider(settings)
     assert isinstance(provider, GroqLLMProvider)
     assert provider.provider_name == "groq"
-    assert provider.model == GROQ_DEFAULT_MODEL == "llama-3.3-70b-versatile"
-    assert provider.fallback_model == "llama-3.1-8b-instant"
+    assert provider.model == GROQ_DEFAULT_MODEL == "openai/gpt-oss-120b"
+    assert provider.fallback_model == "openai/gpt-oss-20b"
 
 
 def test_factory_creates_openrouter_provider():
@@ -309,7 +309,7 @@ def test_groq_404_on_primary_retries_with_universal_model():
     provider._client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions))
     result = provider.generate([Message(role=Role.USER, content="hi")])
     assert result.content == "universal rescue"
-    assert calls == ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+    assert calls == ["openai/gpt-oss-120b", "openai/gpt-oss-120b"]
 
 
 def test_groq_404_on_primary_and_universal_raises_for_chain_failover():
@@ -326,7 +326,7 @@ def test_groq_404_on_primary_and_universal_raises_for_chain_failover():
     with pytest.raises(LLMProviderError) as exc_info:
         provider.generate([Message(role=Role.USER, content="hi")])
     assert "model_not_found" in str(exc_info.value) or "404" in str(exc_info.value)
-    assert calls == ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+    assert calls == ["openai/gpt-oss-120b", "openai/gpt-oss-120b"]
 
 
 def test_groq_429_then_fallback_404_uses_universal_model():
@@ -347,7 +347,7 @@ def test_groq_429_then_fallback_404_uses_universal_model():
     provider._client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions))
     result = provider.generate([Message(role=Role.USER, content="hi")])
     assert result.content == "cascade rescue"
-    assert calls == ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama-3.1-8b-instant"]
+    assert calls == ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "openai/gpt-oss-120b"]
 
 
 def test_groq_429_on_universal_after_404_raises():
@@ -366,7 +366,7 @@ def test_groq_429_on_universal_after_404_raises():
     provider._client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions))
     with pytest.raises(LLMProviderError):
         provider.generate([Message(role=Role.USER, content="hi")])
-    assert calls == ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+    assert calls == ["openai/gpt-oss-120b", "openai/gpt-oss-120b"]
 
 
 def test_groq_universal_fallback_model_configurable():
