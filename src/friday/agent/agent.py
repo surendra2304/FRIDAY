@@ -1462,6 +1462,38 @@ class FridayAgent:
         )
         logger.info(f"Capability routed to: {routing_decision.selected_capability.value}")
 
+        # Universe Orchestration fast-path (Phases 20-21)
+        if not hasattr(self, "_universe_orchestrator"):
+            from friday.integrations.universe_orchestrator import UniverseOrchestrator
+            self._universe_orchestrator = UniverseOrchestrator(
+                memory=self.memory,
+                decomposer=getattr(self, "decomposer", None),
+            )
+        if self._universe_orchestrator.can_handle(clean_input):
+            logger.info(f"AI Universe orchestration triggered for: '{clean_input}'")
+            self.state_machine.transition_to(TaskState.PLANNING, reason="Decomposing Universe goal")
+            self.state_machine.transition_to(TaskState.EXECUTING, reason="Executing Universe simulation")
+            sim_res = self._universe_orchestrator.execute_universe_goal(clean_input)
+            self.state_machine.transition_to(TaskState.VERIFYING, reason="Validating Universe experiment outcomes")
+            self.state_machine.transition_to(TaskState.COMPLETED, reason="Universe experiment complete")
+
+            user_msg = Message(role=Role.USER, content=clean_input)
+            self.memory.add_message(user_msg)
+            asst_msg = Message(role=Role.ASSISTANT, content=sim_res["synthesis"])
+            self.memory.add_message(asst_msg)
+
+            return AgentResponse(
+                content=sim_res["synthesis"],
+                is_done=True,
+                metadata={
+                    "universe_world_id": sim_res["world_id"],
+                    "agent_count": sim_res["agent_count"],
+                    "total_steps": sim_res["total_steps"],
+                    "metrics": sim_res["metrics"],
+                    "task_state": self.state_machine.current_state.value,
+                },
+            )
+
         # Intent detection for semantic UI actions
         intent_result = IntentDetector.detect(clean_input)
         if intent_result.intent == ActionIntent.SEMANTIC_UI_ACTION and intent_result.confidence >= 0.90:
