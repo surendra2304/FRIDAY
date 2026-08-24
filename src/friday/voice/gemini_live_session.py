@@ -135,7 +135,7 @@ class GeminiLiveVoiceSession:
         # while the speaker plays, frames below the interrupt threshold are dropped
         # as speaker echo; louder frames pass through so server VAD hears real interruptions.
         self._echo_suppression = False
-        self.echo_interrupt_rms_threshold = 2500.0
+        self.echo_interrupt_rms_threshold = getattr(settings, "voice_echo_interrupt_rms_threshold", 4000.0)
         self.echo_suppressed_frames = 0
 
         # Speaker recognition (voice biometrics): when enabled AND a profile is
@@ -199,8 +199,6 @@ class GeminiLiveVoiceSession:
         # Live model cannot keep executing stale desktop/search actions across
         # later turns.
         return None
-        if not self.agent:
-            return None
         registry = getattr(self.agent, "tools", getattr(self.agent, "tool_registry", None))
         if not registry:
             return None

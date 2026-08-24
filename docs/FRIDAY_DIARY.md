@@ -171,6 +171,12 @@ A chronological list:
 3. **Registration & Voice Exposure**: Exported tools in `ToolRegistry` and exposed them to Gemini Live and text reasoning agents.
 **Verification**: `pytest -m "not live and not hardware" -q` passed (**1,090 passed, 0 failures, 4 skipped, 9 deselected in 193.09s**, 100% green pass rate).
 
+**Session 37 — Voice Pipeline Stabilization & Context-Aware Focus Typing (2026-08-24)**:
+1. **Acoustic Echo Shield Optimization**: Enhanced energy-gated echo suppression in `src/friday/voice/gemini_live_session.py` with configurable `voice_echo_interrupt_rms_threshold` (default 4000.0 RMS) so FRIDAY's own voice during laptop speaker playback does not cause self-interruption or sentence-breaking in Gemini Live.
+2. **Active Window Focus Typing Fast Path**: Added `_ACTIVE_WINDOW_TYPE_PATTERN` and `active_window_type` fast-path execution in `FridayAgent` (`src/friday/agent/agent.py`). Spoken or typed commands such as *"write AI universe here"*, *"type [text] at the cursor"*, or *"enter [text]"* now directly dispatch native Windows keystrokes to the focused application / cursor location via `WindowsNativeInputDriver`.
+**Verification**: Full regression test suite passed cleanly (**1,090 passed, 0 failures, 4 skipped, 9 deselected in 204.56s**, 100% green pass rate).
+
+
 
 
 

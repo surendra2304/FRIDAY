@@ -330,6 +330,10 @@ class FridayAgent:
         r"|describe\s+(?:my\s+)?(?:the\s+)?screen|what\s+do\s+you\s+see)[\.\?]?\s*$",
         re.IGNORECASE,
     )
+    _ACTIVE_WINDOW_TYPE_PATTERN = re.compile(
+        r"^\s*(?:please\s+)?(?:(?:now|just|okay|ok|yeah|yes)\s*,?\s*)*(?:type|write|enter)\s+(?P<text>.+?)(?:\s+(?:here|in\s+this|at\s+the\s+cursor|where\s+the\s+mouse\s+pointer\s+is(?:\s+there)?|where\s+i\s+am))?[\.\!]?\s*$",
+        re.IGNORECASE,
+    )
 
     def _launch_process(self, executable: str, *args: str) -> None:
         """Launch a desktop process without blocking the agent turn."""
@@ -849,6 +853,25 @@ class FridayAgent:
                 verifying_reason="Validating screen analysis",
             )
 
+        active_type_match = self._ACTIVE_WINDOW_TYPE_PATTERN.match(clean_input)
+        if active_type_match:
+            payload = active_type_match.group("text").strip()
+            # If payload ends with "here" or similar, clean it
+            payload = re.sub(r"\s+(?:here|in\s+this|at\s+the\s+cursor|where\s+the\s+mouse\s+pointer\s+is(?:\s+there)?|where\s+i\s+am)$", "", payload, flags=re.IGNORECASE).strip()
+
+            def _type_at_focus() -> str:
+                typed = WindowsNativeInputDriver().type_text(payload)
+                if not typed:
+                    raise RuntimeError("Failed to send keystrokes to active window.")
+                return "Typed."
+
+            return self._complete_fast_path(
+                clean_input, start_time, "active_window_type",
+                "Direct active window typing command", f"Typing '{payload}' into active window",
+                _type_at_focus,
+                verifying_reason="Validating text typed into active focus",
+            )
+
         return None
 
     def classify_instant_command(self, text: str) -> Optional[str]:
@@ -896,6 +919,8 @@ class FridayAgent:
             return "battery_status"
         if self._SCREEN_DESCRIBE_PATTERN.match(clean):
             return "screen_describe"
+        if self._ACTIVE_WINDOW_TYPE_PATTERN.match(clean):
+            return "active_window_type"
         try:
             det_intent = DeterministicActionDetector.detect(clean)
             if det_intent and det_intent.confidence >= 0.95:
