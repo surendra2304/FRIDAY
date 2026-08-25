@@ -1092,6 +1092,15 @@ class GeminiLiveVoiceSession:
                             except Exception as mem_err:
                                 logger.debug(f"Could not persist turn to memory: {mem_err}")
 
+                        # Check and speak pending proactive notifications (e.g. from Screen Watcher / System Monitor)
+                        if self.agent is not None and hasattr(self.agent, "notifications") and self.agent.notifications:
+                            proactive_note = self.agent.notifications.pop_notifications_summary()
+                            if proactive_note:
+                                try:
+                                    await self.send_text(f"FRIDAY, proactively say this to the user out loud now: {proactive_note}")
+                                except Exception as n_err:
+                                    logger.debug(f"Could not speak proactive notification: {n_err}")
+
                         user_transcript_accum.clear()
                         agent_text_parts.clear()
                         agent_output_tx.clear()

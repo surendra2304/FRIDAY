@@ -374,6 +374,18 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("FRIDAY_SCREEN_CHANGE_THRESHOLD", "SCREEN_CHANGE_THRESHOLD", "screen_change_threshold"),
         description="Minimum image difference ratio (0.0 to 1.0) required to trigger visual analysis for changed screens",
     )
+    proactive_watcher_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("FRIDAY_PROACTIVE_WATCHER_ENABLED", "PROACTIVE_WATCHER_ENABLED", "proactive_watcher_enabled"),
+        description="Enable Phase 28 Proactive Screen Reading (The Watcher)",
+    )
+    watcher_interval_seconds: float = Field(
+        default=120.0,
+        ge=30.0,
+        le=3600.0,
+        validation_alias=AliasChoices("FRIDAY_WATCHER_INTERVAL_SECONDS", "WATCHER_INTERVAL_SECONDS", "watcher_interval_seconds"),
+        description="Interval in seconds between proactive screen watcher checks",
+    )
 
     task_enabled: bool = Field(default=False, description="Enable proactive task automation")
     task_max_calls: int = Field(default=100, description="Maximum allowed LLM calls per task")

@@ -56,6 +56,35 @@ class WorkflowScheduler:
         self._high_cpu_start_time: Optional[float] = None
         self._last_alerted_cpu_time: float = 0.0
 
+        # Screen Watcher Service (Phase 28)
+        self._screen_watcher: Optional[Any] = None
+        self._last_screen_watcher_time: float = 0.0
+
+    def check_screen_watcher_proactive(self) -> Optional[Dict[str, Any]]:
+        """Check active screen text proactively via fast LLM and queue notifications."""
+        from friday.core.config import get_settings
+        settings = get_settings()
+        if not getattr(settings, "proactive_watcher_enabled", False):
+            return None
+
+        now = time.time()
+        interval = getattr(settings, "watcher_interval_seconds", 120.0)
+        if (now - self._last_screen_watcher_time) < interval:
+            return None
+
+        try:
+            if self._screen_watcher is None:
+                from friday.vision.screen_watcher import ScreenWatcherService
+                self._screen_watcher = ScreenWatcherService(
+                    notification_manager=self.notification_manager
+                )
+            res = self._screen_watcher.check_and_notify()
+            self._last_screen_watcher_time = now
+            return res
+        except Exception as e:
+            logger.debug(f"Proactive screen watcher check error: {e}")
+            return None
+
     def check_system_resources_proactive(self, cpu_threshold: float = 90.0, sustained_seconds: float = 120.0) -> Optional[Dict[str, Any]]:
         """Check for sustained high CPU utilization and queue proactive alerts."""
         try:
@@ -226,6 +255,8 @@ class WorkflowScheduler:
         while not self._stop_event.is_set():
             try:
                 self.run_pending_jobs_once()
+                self.check_system_resources_proactive()
+                self.check_screen_watcher_proactive()
             except Exception as e:
                 logger.error(f"Error in scheduler loop tick: {e}", exc_info=True)
             self._stop_event.wait(self.tick_interval)

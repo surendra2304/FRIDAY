@@ -207,6 +207,14 @@ A chronological list:
 3. **Voice Fast-Path & API Exposure**: Registered tools into `ToolRegistry`, exported to Gemini Live API schemas, and implemented instant regex dispatch (`_CONTROL_LIGHT_PATTERN` / `_CONTROL_PLUG_PATTERN`) for zero-latency voice commands (*"Turn off the lights"*, *"Dim the lights to 50%"*).
 **Verification**: Full regression test suite passed cleanly (**1,101 passed, 0 failures, 4 skipped, 9 deselected in 156.19s**, 100% green pass rate).
 
+**Session 42 — Phase 28: Proactive Screen Reading (The Watcher) (2026-08-25)**:
+1. **The Watcher Service (`src/friday/vision/screen_watcher.py`)**: Combines `ActiveWindowTracker` and local OCR (`ReadScreenTextTool`) with fast LLM intent classification (Groq/Llama-3.1-8B) to identify code errors (`offer_debug`) or email composition (`offer_proofread`).
+2. **Proactive Background Engine Integration (`src/friday/workflows/scheduler.py`)**: Embedded `check_screen_watcher_proactive()` in the background workflow scheduler running at configurable 120s intervals (`watcher_interval_seconds=120.0`) to safeguard CPU consumption.
+3. **Conversational Delivery & Voice Integration**: Queues actionable alerts into `NotificationManager`. When the user completes a turn or pauses speaking in Gemini Live (`src/friday/voice/gemini_live_session.py`), FRIDAY proactively delivers spoken assistance (*"I noticed you hit an error in VS Code. Would you like me to analyze it?"*).
+4. **Configuration**: Added `proactive_watcher_enabled` (`FRIDAY_PROACTIVE_WATCHER_ENABLED=false`) and `watcher_interval_seconds` in `core/config.py` and `.env.example`.
+**Verification**: Full regression test suite passed cleanly (**1,106 passed, 0 failures, 4 skipped, 9 deselected in 159.37s**, 100% green pass rate).
+
+
 
 
 

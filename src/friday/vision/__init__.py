@@ -57,6 +57,7 @@ from friday.vision.cache_manager import (
     PerceptionCacheManager,
     PerceptionCacheTelemetry,
 )
+from friday.vision.screen_watcher import ScreenWatcherService
 
 from friday.vision.region_filter import (
     LocalRegionPreFilter,
