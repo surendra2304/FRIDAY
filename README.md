@@ -65,6 +65,11 @@ FRIDAY is a modular, extensible, **Autonomous Multi-Agent AI Operating System** 
   - Windows OS Settings Tools: `toggle_dark_mode` (registry-based theme switching), `toggle_bluetooth` (SENSITIVE radio control), and `toggle_wifi` (SENSITIVE network adapter toggle).
   - `SendEmailTool` (`send_email`, SENSITIVE): SMTP email delivery with STARTTLS and App Password authentication.
   - `EmailDraftingWorkflow`: Intercepts natural speech intents (*"Draft an email to John about the project update"*), drafts executive subject and body text, and prompts the user for sending confirmation.
+- **Phase 31: Recursive Self-Improvement (Self-Dev Agent & Architecture Evolution)** `[IMPLEMENTED | REAL-TESTED]`:
+  - `ReadOwnCodebaseTool` (`read_own_codebase`): Scans `src/friday/` directory and extracts AST docstrings into a structured architecture map for LLM reasoning.
+  - `SelfDevAgent`: Specialist developer agent with deep knowledge of FRIDAY's internal package layers, responsible for authoring, testing, and integrating new capabilities.
+  - `SelfImprovementWorkflow`: Autonomous end-to-end self-modification loop (*"FRIDAY, add a tool to click the mouse"*): indexes codebase $\rightarrow$ synthesizes Python code with Groq 70B $\rightarrow$ writes tool file $\rightarrow$ runs automated pytest suite $\rightarrow$ commits and pushes changes to GitHub with strict SENSITIVE authorization gating.
+  - Voice Integration: System prompt & Gemini Live session instruction to intercept self-modification voice requests, plan changes, and confirm with the user.
 
 ---
 
@@ -72,6 +77,7 @@ FRIDAY is a modular, extensible, **Autonomous Multi-Agent AI Operating System** 
 
 | Subsystem / Capability | Implementation | Mock Tested | Real Tested | Status |
 | :--- | :--- | :---: | :---: | :---: |
+| **Recursive Self-Improvement & SelfDevAgent (Phase 31)** | `src/friday/agents/specialists/self_dev_agent.py`, `src/friday/workflows/self_improve_workflow.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Autonomous Web Research Specialist (`ResearchAgent`)** | `src/friday/agents/specialists/research_agent.py`, `src/friday/tools/builtin/web_research.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Windows OS Settings Voice Control (Dark Mode, Bluetooth, Wi-Fi)** | `src/friday/tools/builtin/os_settings.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Calendar Schedule & Morning Briefing Workflow** | `src/friday/tools/builtin/calendar.py`, `src/friday/workflows/briefing_workflow.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
@@ -254,6 +260,7 @@ FRIDAY also maintains a permanent engineering diary, architectural decision reco
 - [x] **Phase 28 — Proactive Screen Reading (The Watcher, Local OCR + Fast Groq Intent Classification & Spoken Assistance)**
 - [x] **Phase 29 — Calendar Schedule & Morning Briefing Workflow (`GetTodaysEventsTool`, `MorningBriefingWorkflow`, Proactive 8:00 AM Engine)**
 - [x] **Phase 30 — Autonomous Productivity Suite (`ResearchAgent`, OS Settings Control, Voice Email Drafting & SMTP Delivery)**
-- [x] **Master Roadmap Freeze (All 30 Phases Completed & Verified)**
+- [x] **Phase 31 — Recursive Self-Improvement (`ReadOwnCodebaseTool`, `SelfDevAgent`, `SelfImprovementWorkflow`, Voice Intent Routing)**
+- [x] **Master Roadmap Freeze (All 31 Phases Completed & Verified)**
 
 

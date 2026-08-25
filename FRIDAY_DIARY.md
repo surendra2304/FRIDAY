@@ -286,6 +286,15 @@ A chronological list:
 2. **AgentRouter Specialization**: Enhanced `AgentRouter.route_subtask()` to intercept self-modification requests (*"add a tool"*, *"update your code"*, *"modify yourself"*) and route them with top priority to `SelfDevAgent`.
 **Verification**: Full regression test suite passed cleanly (**1,141 passed, 0 failures, 4 skipped, 9 deselected in 154.95s**, 100% green pass rate).
 
+**Recursive Self-Improvement Feature Sync (Phase 31 Complete) (2026-08-25)**:
+- **Codebase Indexing**: `ReadOwnCodebaseTool` enables FRIDAY to dynamically scan `src/friday/` and understand her own multi-layered architecture before generating extensions.
+- **Specialist Developer Agent**: `SelfDevAgent` is equipped to act as FRIDAY's internal core engineer, managing self-evolution, tool authoring, and test-driven validation.
+- **End-to-End Self-Modification Workflow**: `SelfImprovementWorkflow` orchestrates the complete loop: intent extraction $\rightarrow$ codebase indexing $\rightarrow$ Groq 70B code synthesis $\rightarrow$ file write $\rightarrow$ automated pytest execution $\rightarrow$ git commit and push.
+- **Safety Authorization Boundary**: Writing code files and pushing repository commits are strictly gated by SENSITIVE user authorization.
+- **Voice Activation**: Real-time spoken and text intents (*"FRIDAY, add a tool to click the mouse"*, *"modify yourself"*) trigger the workflow with interactive confirmation.
+- **Master Test Verification**: Verified entire codebase with **1,141 passing tests**, 0 failures, and complete documentation synchronization.
+
+
 
 
 
