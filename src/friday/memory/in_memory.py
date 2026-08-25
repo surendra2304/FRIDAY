@@ -20,6 +20,8 @@ class InMemoryConversationMemory(BaseMemory):
 
     def add_message(self, message: Message) -> None:
         """Store a message and apply sliding window trimming if capacity is exceeded."""
+        if message.role == Role.TOOL and message.content and len(message.content) > 1000:
+            message = message.model_copy(update={"content": message.content[:1000] + "... [truncated to 1000 chars]"})
         self._messages.append(message)
         if len(self._messages) > self.max_messages:
             excess = len(self._messages) - self.max_messages
@@ -35,11 +37,34 @@ class InMemoryConversationMemory(BaseMemory):
         self._messages.clear()
         logger.debug("Cleared memory buffer.")
 
-    def get_context_window(self, max_messages: int) -> List[Message]:
-        """Retrieve recent slice of messages up to max_messages."""
+    def get_context_window(
+        self,
+        max_messages: int = 50,
+        max_turns: Optional[int] = None,
+        max_tokens: int = 3000,
+    ) -> List[Message]:
+        """Retrieve recent slice of messages up to max_messages with turn and token limits."""
         if max_messages <= 0:
             return []
-        return list(self._messages[-max_messages:])
+        if max_turns is not None and max_turns > 0:
+            effective_limit = min(max_messages, max_turns * 2)
+        else:
+            effective_limit = max_messages
+        messages = list(self._messages[-effective_limit:])
+
+        if max_tokens > 0 and messages:
+            char_budget = max_tokens * 4
+            running_chars = 0
+            trimmed_reversed: List[Message] = []
+            for msg in reversed(messages):
+                msg_len = len(msg.content or "") + 100
+                if running_chars + msg_len > char_budget and trimmed_reversed:
+                    break
+                trimmed_reversed.append(msg)
+                running_chars += msg_len
+            messages = list(reversed(trimmed_reversed))
+
+        return messages
 
     def search(
         self,

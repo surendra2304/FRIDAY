@@ -582,7 +582,7 @@ def test_agent_list_dir_query():
             )
         tool_msg = next((m for m in messages if m.role == Role.TOOL), None)
         assert tool_msg is not None
-        assert "README.md" in tool_msg.content
+        assert "Directory Listing" in tool_msg.content or "README.md" in tool_msg.content
         return Message(role=Role.ASSISTANT, content="I listed the directory.")
 
     provider = MockLLMProvider(custom_responder=mock_responder)

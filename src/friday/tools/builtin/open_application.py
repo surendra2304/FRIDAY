@@ -30,7 +30,7 @@ class OpenApplicationTool(BaseTool):
     name = "open_application"
     description = (
         "Open a Windows application by its common name (e.g. 'notepad', 'calculator', "
-        "'paint', 'file explorer', 'edge', 'chrome', 'word', 'excel', 'wordpad'). Use this whenever the user asks "
+        "'paint', 'file explorer', 'edge', 'chrome', 'word', 'excel', 'wordpad', 'microsoft store'). Use this whenever the user asks "
         "to open, launch, or start an application."
     )
     safety_level = SafetyLevel.SAFE

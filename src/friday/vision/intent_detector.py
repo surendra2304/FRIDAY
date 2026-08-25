@@ -73,6 +73,8 @@ class IntentDetector:
         "terminal": "wt.exe",
         "settings": "ms-settings:",
         "control panel": "control.exe",
+        "microsoft store": "ms-windows-store:",
+        "store": "ms-windows-store:",
     }
 
     LAUNCH_PATTERN = re.compile(

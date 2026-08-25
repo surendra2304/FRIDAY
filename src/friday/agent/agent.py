@@ -2100,7 +2100,9 @@ class FridayAgent:
                 logger.warning(f"[MULTI-AGENT] Multi-agent orchestration fallback to single agent loop: {e}")
 
         working_context: List[Message] = [base_sys_msg] + self.memory.get_context_window(
-            self.settings.memory_max_messages
+            max_messages=self.settings.memory_max_messages,
+            max_turns=5,
+            max_tokens=3000,
         )
 
         # 5. Retrieve registered tool schemas
@@ -2118,7 +2120,9 @@ class FridayAgent:
 
             # Rebuild working context from memory dynamically to maintain precise dialogue history
             working_context = [base_sys_msg] + self.memory.get_context_window(
-                self.settings.memory_max_messages
+                max_messages=self.settings.memory_max_messages,
+                max_turns=5,
+                max_tokens=3000,
             )
 
             try:

@@ -46,6 +46,7 @@ class CerebrasLLMProvider(BaseLLMProvider):
                 api_key = credential_pool.get_active_key()
             except Exception:
                 api_key = None
+        self.credential_pool = credential_pool
         self.api_key = api_key or ""
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
@@ -98,8 +99,20 @@ class CerebrasLLMProvider(BaseLLMProvider):
                 response = client.chat.completions.create(**kwargs)
                 return GroqLLMProvider._parse_response(response)
             except Exception as e:
-                transient = _is_rate_limit(e) or "timeout" in str(e).lower() or "connection" in str(e).lower()
                 err_msg = str(e)
+                status_code = getattr(e, "status_code", None)
+                # Catch 402 Payment Required: mark credential unhealthy in pool for instant failover
+                is_payment_required = status_code == 402 or "402" in err_msg or "payment required" in err_msg.lower() or "quota" in err_msg.lower()
+                if is_payment_required:
+                    logger.error(f"Cerebras free tier quota exhausted / 402 Payment Required: {err_msg}")
+                    if self.credential_pool is not None and hasattr(self.credential_pool, "report_unhealthy"):
+                        try:
+                            self.credential_pool.report_unhealthy(self.api_key)
+                        except Exception:
+                            pass
+                    raise LLMProviderError(f"Cerebras API quota exhausted (402 Payment Required): {err_msg}") from e
+
+                transient = _is_rate_limit(e) or "timeout" in err_msg.lower() or "connection" in err_msg.lower()
                 if self.api_key and self.api_key in err_msg:
                     err_msg = err_msg.replace(self.api_key, "***")
                 if transient and attempt < self.max_retries:

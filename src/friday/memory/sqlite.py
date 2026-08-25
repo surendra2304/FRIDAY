@@ -384,6 +384,10 @@ class SQLiteConversationMemory(BaseMemory):
         # Filter secrets and handle content
         content = filter_secrets(message.content)
         
+        # Tool Output Bloat Truncation: truncate tool responses in LLM context to 1000 chars
+        if message.role == Role.TOOL and content and len(content) > 1000:
+            content = content[:1000] + "... [truncated to 1000 chars]"
+
         # Deduplication check
         with self._lock:
             with self._get_connection() as conn:
@@ -546,12 +550,24 @@ class SQLiteConversationMemory(BaseMemory):
         self,
         max_messages: int = 50,
         conversation_id: Optional[str] = None,
+        max_turns: Optional[int] = None,
+        max_tokens: int = 3000,
     ) -> List[Message]:
-        """Retrieve recent slice of messages up to max_messages for active context window."""
+        """Retrieve recent slice of messages for active context window.
+        
+        Enforces a hard limit of recent conversation turns (e.g. last 5 turns)
+        and approximate token limit (~3000 tokens / 12000 chars) to prevent Groq 413 context explosion.
+        """
         if max_messages <= 0:
             return []
 
         conv_id = conversation_id or self._active_conversation_id
+        # Effective message limit: capped by max_messages and turn ceiling (5 turns = ~10 messages)
+        if max_turns is not None and max_turns > 0:
+            effective_limit = min(max_messages, max_turns * 2)
+        else:
+            effective_limit = max_messages
+
         with self._lock:
             with self._get_connection() as conn:
                 rows = conn.execute(
@@ -566,9 +582,24 @@ class SQLiteConversationMemory(BaseMemory):
                     ) sub
                     ORDER BY created_at ASC, rowid ASC
                     """,
-                    (conv_id, max_messages),
+                    (conv_id, effective_limit),
                 ).fetchall()
-                return [self._row_to_message(r) for r in rows]
+                messages = [self._row_to_message(r) for r in rows]
+
+        # Token-aware sliding ceiling (~4 chars per token)
+        if max_tokens > 0 and messages:
+            char_budget = max_tokens * 4
+            running_chars = 0
+            trimmed_reversed: List[Message] = []
+            for msg in reversed(messages):
+                msg_len = len(msg.content or "") + 100  # include structure overhead
+                if running_chars + msg_len > char_budget and trimmed_reversed:
+                    break
+                trimmed_reversed.append(msg)
+                running_chars += msg_len
+            messages = list(reversed(trimmed_reversed))
+
+        return messages
 
     def clear(self, conversation_id: Optional[str] = None, confirm: bool = False) -> None:
         """Clear all messages from the conversation. Requires confirmation."""
