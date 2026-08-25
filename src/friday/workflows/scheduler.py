@@ -60,6 +60,40 @@ class WorkflowScheduler:
         self._screen_watcher: Optional[Any] = None
         self._last_screen_watcher_time: float = 0.0
 
+        # Morning Briefing Tracker (Phase 29)
+        self._last_briefing_date: Optional[str] = None
+
+    def check_morning_briefing_proactive(self) -> Optional[Dict[str, Any]]:
+        """Trigger proactive morning briefing at 8:00 AM."""
+        now = datetime.now().astimezone()
+        today_str = now.strftime("%Y-%m-%d")
+        # Trigger between 8:00 AM and 8:30 AM once per day
+        if now.hour == 8 and self._last_briefing_date != today_str:
+            try:
+                from friday.workflows.briefing_workflow import MorningBriefingWorkflow
+                import asyncio
+                workflow = MorningBriefingWorkflow()
+                try:
+                    loop = asyncio.get_running_loop()
+                    res = loop.run_until_complete(workflow.generate_briefing())
+                except RuntimeError:
+                    res = asyncio.run(workflow.generate_briefing())
+
+                msg = res.get("spoken_text", "")
+                if msg and self.notification_manager is not None:
+                    self.notification_manager.post_notification(
+                        message=msg,
+                        category="morning_briefing",
+                        severity="info",
+                        metadata=res,
+                    )
+                self._last_briefing_date = today_str
+                return res
+            except Exception as e:
+                logger.debug(f"Proactive morning briefing check error: {e}")
+                return None
+        return None
+
     def check_screen_watcher_proactive(self) -> Optional[Dict[str, Any]]:
         """Check active screen text proactively via fast LLM and queue notifications."""
         from friday.core.config import get_settings
@@ -257,6 +291,7 @@ class WorkflowScheduler:
                 self.run_pending_jobs_once()
                 self.check_system_resources_proactive()
                 self.check_screen_watcher_proactive()
+                self.check_morning_briefing_proactive()
             except Exception as e:
                 logger.error(f"Error in scheduler loop tick: {e}", exc_info=True)
             self._stop_event.wait(self.tick_interval)

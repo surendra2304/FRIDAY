@@ -241,6 +241,16 @@ A chronological list:
 2. **Tool Registry & Voice Fast-Paths**: Registered tools into `ToolRegistry`, exposed schemas to Gemini Live, and built zero-latency regex fast-paths (`_TOGGLE_DARK_MODE_PATTERN`, `_TOGGLE_BLUETOOTH_PATTERN`, `_TOGGLE_WIFI_PATTERN`).
 **Verification**: Full regression test suite passed cleanly (**1,121 passed, 0 failures, 4 skipped, 9 deselected in 164.64s**, 100% green pass rate).
 
+**Session 46 — Calendar Integration & Morning Briefing Workflow (2026-08-25)**:
+1. **Dependencies & Configuration**: Added `icalendar>=5.0.0` and `recurring-ical-events>=2.0.0` to `pyproject.toml`, plus `FRIDAY_CALENDAR_ICS_URL` in `core/config.py` and `.env.example`.
+2. **Calendar Tool (`src/friday/tools/builtin/calendar.py`)**:
+   - `GetTodaysEventsTool` (`get_todays_events`, SAFE): Fetches and parses .ics feed, resolving recurring events and returning today's meetings with titles, times, and locations.
+3. **Morning Briefing Workflow (`src/friday/workflows/briefing_workflow.py`)**:
+   - Aggregates daily calendar schedule with real-time weather forecasts via web search to generate natural spoken briefings (*"Good morning Surendra. You have 3 meetings today. The weather is sunny."*).
+   - Hooked into `WorkflowScheduler` for automatic 8:00 AM proactive delivery and into `FridayAgent` for direct voice commands (*"Give me my morning briefing"*).
+**Verification**: Full regression test suite passed cleanly (**1,125 passed, 0 failures, 4 skipped, 9 deselected in 175.81s**, 100% green pass rate).
+
+
 
 
 

@@ -225,6 +225,13 @@ class Settings(BaseSettings):
         description="Bearer token or API key for local Smart Home / IoT Hub",
     )
 
+    # Calendar & Schedule Settings (Phase 29)
+    calendar_ics_url: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("FRIDAY_CALENDAR_ICS_URL", "CALENDAR_ICS_URL", "calendar_ics_url"),
+        description="Public or secret read-only .ics URL for calendar integration",
+    )
+
     # Memory & Semantic Settings
     memory_backend: str = Field(default="sqlite", description="Memory backend: 'sqlite', 'in_memory'")
     memory_db_path: str = Field(default="data/friday.db", description="Path to SQLite database file")

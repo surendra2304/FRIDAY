@@ -31,6 +31,7 @@ from friday.tools.builtin.dev_tools import WriteCodeFileTool, RunTestsTool, Crea
 from friday.tools.builtin.smart_home import ControlLightTool, ControlPlugTool
 from friday.tools.builtin.web_research import FetchWebpageContentTool, SynthesizeInformationTool
 from friday.tools.builtin.os_settings import ToggleDarkModeTool, ToggleBluetoothTool, ToggleWifiTool
+from friday.tools.builtin.calendar import GetTodaysEventsTool
 from friday.vision.screen_prediction import ScreenPredictionTool
 
 __all__ = [
@@ -77,5 +78,6 @@ __all__ = [
     "ToggleDarkModeTool",
     "ToggleBluetoothTool",
     "ToggleWifiTool",
+    "GetTodaysEventsTool",
     "ScreenPredictionTool",
 ]

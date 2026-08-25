@@ -72,6 +72,7 @@ from friday.tools.builtin import (
     ToggleDarkModeTool,
     ToggleBluetoothTool,
     ToggleWifiTool,
+    GetTodaysEventsTool,
     ScreenPredictionTool,
 )
 from friday.agent.state import TaskState, ReasoningStateMachine
@@ -1242,6 +1243,7 @@ class FridayAgent:
         registry.register(ToggleDarkModeTool())
         registry.register(ToggleBluetoothTool())
         registry.register(ToggleWifiTool())
+        registry.register(GetTodaysEventsTool())
         registry.register(ScreenPredictionTool())
         return registry
 
@@ -1752,6 +1754,46 @@ class FridayAgent:
                     "branch": dev_res.get("branch"),
                     "tests_passed": dev_res.get("tests_passed"),
                     "steps_taken": dev_res.get("steps_taken", []),
+                    "task_state": self.state_machine.current_state.value,
+                },
+            )
+
+        # Morning Briefing Workflow fast-path (Phase 29)
+        if not hasattr(self, "_briefing_workflow"):
+            from friday.workflows.briefing_workflow import MorningBriefingWorkflow
+            cal_tool = self.tools.get_tool("get_todays_events")
+            search_tool = self.tools.get_tool("web_search")
+            self._briefing_workflow = MorningBriefingWorkflow(
+                calendar_tool=cal_tool,
+                search_tool=search_tool,
+            )
+        if self._briefing_workflow.can_handle(clean_input):
+            logger.info(f"Morning Briefing Workflow triggered for: '{clean_input}'")
+            self.state_machine.transition_to(TaskState.PLANNING, reason="Aggregating schedule, weather, and daily briefing")
+            self.state_machine.transition_to(TaskState.EXECUTING, reason="Executing calendar fetch and forecast lookup")
+            import asyncio
+            try:
+                loop = asyncio.get_running_loop()
+                briefing_res = loop.run_until_complete(self._briefing_workflow.generate_briefing())
+            except RuntimeError:
+                briefing_res = asyncio.run(self._briefing_workflow.generate_briefing())
+
+            self.state_machine.transition_to(TaskState.VERIFYING, reason="Formatting spoken briefing output")
+            self.state_machine.transition_to(TaskState.COMPLETED, reason="Morning briefing delivered")
+
+            speech_text = briefing_res.get("spoken_text", "Good morning.")
+            user_msg = Message(role=Role.USER, content=clean_input)
+            self.memory.add_message(user_msg)
+            asst_msg = Message(role=Role.ASSISTANT, content=speech_text)
+            self.memory.add_message(asst_msg)
+
+            return AgentResponse(
+                content=speech_text,
+                is_done=True,
+                metadata={
+                    "briefing_workflow": True,
+                    "meeting_count": briefing_res.get("meeting_count", 0),
+                    "weather": briefing_res.get("weather", "clear"),
                     "task_state": self.state_machine.current_state.value,
                 },
             )
