@@ -69,6 +69,9 @@ from friday.tools.builtin import (
     ControlPlugTool,
     FetchWebpageContentTool,
     SynthesizeInformationTool,
+    ToggleDarkModeTool,
+    ToggleBluetoothTool,
+    ToggleWifiTool,
     ScreenPredictionTool,
 )
 from friday.agent.state import TaskState, ReasoningStateMachine
@@ -357,6 +360,21 @@ class FridayAgent:
     _CONTROL_PLUG_PATTERN = re.compile(
         r"^\s*(?:please\s+)?(?:turn|switch)\s+(?P<action>on|off)\s+(?:the\s+)?(?:smart\s+plug|plug|switch)(?:\s+(?:for|called|named)?\s*(?P<device_id>[\w\-_]+))?[\.\!]?\s*$|"
         r"^\s*(?:please\s+)?(?:turn|switch)\s+(?:the\s+)?(?:smart\s+plug|plug|switch)(?:\s+(?:for|called|named)?\s*(?P<device_id2>[\w\-_]+))?\s+(?P<action2>on|off)[\.\!]?\s*$",
+        re.IGNORECASE,
+    )
+    _TOGGLE_DARK_MODE_PATTERN = re.compile(
+        r"^\s*(?:please\s+)?(?:turn|switch|enable|set|toggle)\s+(?:on\s+)?(?:windows\s+)?(?P<mode>dark\s+mode|light\s+mode)(?:\s+on|\s+off)?[\.\!]?\s*$|"
+        r"^\s*(?:please\s+)?(?:turn\s+off\s+dark\s+mode|disable\s+dark\s+mode)[\.\!]?\s*$",
+        re.IGNORECASE,
+    )
+    _TOGGLE_BLUETOOTH_PATTERN = re.compile(
+        r"^\s*(?:please\s+)?(?:turn|switch)\s+(?P<action>on|off)\s+(?:the\s+)?bluetooth[\.\!]?\s*$|"
+        r"^\s*(?:please\s+)?(?:turn|switch)\s+(?:the\s+)?bluetooth\s+(?P<action2>on|off)[\.\!]?\s*$",
+        re.IGNORECASE,
+    )
+    _TOGGLE_WIFI_PATTERN = re.compile(
+        r"^\s*(?:please\s+)?(?:turn|switch)\s+(?P<action>on|off)\s+(?:the\s+)?(?:wi-?fi|wifi|wireless)[\.\!]?\s*$|"
+        r"^\s*(?:please\s+)?(?:turn|switch)\s+(?:the\s+)?(?:wi-?fi|wifi|wireless)\s+(?P<action2>on|off)[\.\!]?\s*$",
         re.IGNORECASE,
     )
 
@@ -949,6 +967,59 @@ class FridayAgent:
                 verifying_reason="Validating smart plug response",
             )
 
+        dark_mode_match = self._TOGGLE_DARK_MODE_PATTERN.match(clean_input)
+        if dark_mode_match:
+            mode_raw = (dark_mode_match.group("mode") or "").lower()
+            is_dark = "dark" in mode_raw or "turn on" in clean_input.lower() or "enable" in clean_input.lower()
+            if "turn off dark mode" in clean_input.lower() or "disable dark mode" in clean_input.lower() or "light" in mode_raw:
+                is_dark = False
+
+            def _toggle_dark() -> str:
+                from friday.tools.builtin.os_settings import ToggleDarkModeTool
+                res = ToggleDarkModeTool().execute(state=is_dark)
+                return res.content
+
+            return self._complete_fast_path(
+                clean_input, start_time, "toggle_dark_mode",
+                "Direct dark mode command", f"Setting Windows theme to {'Dark Mode' if is_dark else 'Light Mode'}",
+                _toggle_dark,
+                verifying_reason="Validating theme registry change",
+            )
+
+        bt_match = self._TOGGLE_BLUETOOTH_PATTERN.match(clean_input)
+        if bt_match:
+            action_raw = bt_match.group("action") or bt_match.group("action2") or "on"
+            state_val = (action_raw.lower() == "on")
+
+            def _toggle_bt() -> str:
+                from friday.tools.builtin.os_settings import ToggleBluetoothTool
+                res = ToggleBluetoothTool().execute(state=state_val)
+                return res.content
+
+            return self._complete_fast_path(
+                clean_input, start_time, "toggle_bluetooth",
+                "Direct bluetooth command", f"Turning Bluetooth {action_raw.lower()}",
+                _toggle_bt,
+                verifying_reason="Validating Bluetooth radio state",
+            )
+
+        wifi_match = self._TOGGLE_WIFI_PATTERN.match(clean_input)
+        if wifi_match:
+            action_raw = wifi_match.group("action") or wifi_match.group("action2") or "on"
+            state_val = (action_raw.lower() == "on")
+
+            def _toggle_wifi_func() -> str:
+                from friday.tools.builtin.os_settings import ToggleWifiTool
+                res = ToggleWifiTool().execute(state=state_val)
+                return res.content
+
+            return self._complete_fast_path(
+                clean_input, start_time, "toggle_wifi",
+                "Direct Wi-Fi command", f"Turning Wi-Fi {action_raw.lower()}",
+                _toggle_wifi_func,
+                verifying_reason="Validating Wi-Fi network interface state",
+            )
+
         return None
 
     def classify_instant_command(self, text: str) -> Optional[str]:
@@ -1002,6 +1073,12 @@ class FridayAgent:
             return "control_light"
         if self._CONTROL_PLUG_PATTERN.match(clean):
             return "control_plug"
+        if self._TOGGLE_DARK_MODE_PATTERN.match(clean):
+            return "toggle_dark_mode"
+        if self._TOGGLE_BLUETOOTH_PATTERN.match(clean):
+            return "toggle_bluetooth"
+        if self._TOGGLE_WIFI_PATTERN.match(clean):
+            return "toggle_wifi"
         try:
             det_intent = DeterministicActionDetector.detect(clean)
             if det_intent and det_intent.confidence >= 0.95:
@@ -1162,6 +1239,9 @@ class FridayAgent:
         registry.register(ControlPlugTool())
         registry.register(FetchWebpageContentTool())
         registry.register(SynthesizeInformationTool())
+        registry.register(ToggleDarkModeTool())
+        registry.register(ToggleBluetoothTool())
+        registry.register(ToggleWifiTool())
         registry.register(ScreenPredictionTool())
         return registry
 

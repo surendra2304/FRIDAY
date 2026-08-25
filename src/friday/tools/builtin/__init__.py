@@ -30,6 +30,7 @@ from friday.tools.builtin.health_monitor import HealthCheckTool
 from friday.tools.builtin.dev_tools import WriteCodeFileTool, RunTestsTool, CreateGitBranchTool
 from friday.tools.builtin.smart_home import ControlLightTool, ControlPlugTool
 from friday.tools.builtin.web_research import FetchWebpageContentTool, SynthesizeInformationTool
+from friday.tools.builtin.os_settings import ToggleDarkModeTool, ToggleBluetoothTool, ToggleWifiTool
 from friday.vision.screen_prediction import ScreenPredictionTool
 
 __all__ = [
@@ -73,5 +74,8 @@ __all__ = [
     "ControlPlugTool",
     "FetchWebpageContentTool",
     "SynthesizeInformationTool",
+    "ToggleDarkModeTool",
+    "ToggleBluetoothTool",
+    "ToggleWifiTool",
     "ScreenPredictionTool",
 ]

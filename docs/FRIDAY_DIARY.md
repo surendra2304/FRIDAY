@@ -232,6 +232,16 @@ A chronological list:
 3. **Multi-Agent & Voice Integration**: Registered tools in `ToolRegistry` and wired natural language research cues into `FridayAgent` (*"research the latest news about Python 3.13 and summarize it"*).
 **Verification**: Full regression test suite passed cleanly (**1,111 passed, 0 failures, 4 skipped, 9 deselected in 151.81s**, 100% green pass rate).
 
+**Session 45 — Voice Control Over Windows OS Settings (2026-08-25)**:
+1. **OS Settings Tools (`src/friday/tools/builtin/os_settings.py`)**:
+   - `ToggleDarkModeTool` (`toggle_dark_mode`, SAFE): Modifies Windows theme registry (`AppsUseLightTheme` / `SystemUsesLightTheme`) for instant system and app Dark/Light mode switching.
+   - `ToggleBluetoothTool` (`toggle_bluetooth`, SENSITIVE): Uses Windows Runtime Radio API via PowerShell to turn Bluetooth on/off with safety gating.
+   - `ToggleWifiTool` (`toggle_wifi`, SENSITIVE): Controls Wi-Fi interface admin state via `netsh interface` with safety gating.
+   - Robust error handling capturing PowerShell stderr and timeouts without crashing the agent.
+2. **Tool Registry & Voice Fast-Paths**: Registered tools into `ToolRegistry`, exposed schemas to Gemini Live, and built zero-latency regex fast-paths (`_TOGGLE_DARK_MODE_PATTERN`, `_TOGGLE_BLUETOOTH_PATTERN`, `_TOGGLE_WIFI_PATTERN`).
+**Verification**: Full regression test suite passed cleanly (**1,121 passed, 0 failures, 4 skipped, 9 deselected in 164.64s**, 100% green pass rate).
+
+
 
 
 
