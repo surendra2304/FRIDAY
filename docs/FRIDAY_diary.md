@@ -1,4 +1,4 @@
-﻿# 🌟 FRIDAY — Executive Engineering Diary & Roadmap Summary
+# 🌟 FRIDAY — Executive Engineering Diary & Roadmap Summary
 
 > **F**ully **R**esponsive **I**ntelligent **D**igital **A**ssistant for **Y**ou  
 > *A Personal Engineering Journey to Build an Autonomous AI Operating System*
@@ -132,3 +132,15 @@ ead_file, list_files).
   - Streamlined the terminal interface: kept user input on a single interactive prompt (Surendra > ) and displayed pure response latency (⏱ XX.Xms) directly under the response bubble.
 - **🛡️ Fixes & Hardening**: Removed duplicate prompt boxes in the CLI, deleted leftover rule files, and rewrote all diary documentation into a clean first-person narrative.
 - **📊 Test Results**: **1,142 passed** (100% green pass rate).
+
+---
+
+### 📝 [Day 9 — 2026-08-26: Self-Improvement Workflow & Documentation](../diary/2026-08-26.md)
+- **🎯 Focus**: Fixing recursive self-improvement intent routing, interactive terminal authorization, and diary documentation polish.
+- **💡 What I Accomplished**:
+  - Enhanced `AgentRouter` with high-priority keyword matching (`'add a tool'`, `'update your code'`, `'modify yourself'`, `'add a feature to yourself'`, `'write a new tool for yourself'`) to route self-modifications directly to `SelfDevAgent`.
+  - Added strict self-improvement rule to text and Gemini Live voice system prompts instructing FRIDAY to use `SelfImprovementWorkflow`.
+  - Upgraded `SelfImprovementWorkflow` to prompt the user with explicit terminal authorization: `"I have generated the code and written it to [filename]. Do I have your authorization to run tests and push this to GitHub? (yes/no)"` before testing and pushing.
+  - Rewrote and organized all 9 daily diary files into clean, readable first-person entries kept under 100 lines each.
+- **🛡️ Fixes & Hardening**: Updated `scripts/update_friday_diary.py`, removed blocking pre-commit hook, and verified full offline test suite.
+- **📊 Test Results**: **1,143 passed** (100% green pass rate).
