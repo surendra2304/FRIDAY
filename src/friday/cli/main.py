@@ -29,30 +29,30 @@ import shutil
 logger = get_logger("cli")
 
 FRIDAY_LOGO_LINES = [
-    r"______ _____  _____ ______   ___  __   __",
-    r"|  ___| ___ \|_   _||  _  \ / _ \ \ \ / /",
-    r"| |_  | |_/ /  | |  | | | |/ /_\ \ \ V / ",
-    r"|  _| |    /   | |  | | | ||  _  |  \ /  ",
-    r"| |   | |\ \  _| |_ | |/ / | | | |  | |  ",
-    r"\_|   \_| \_| \___/ |___/  \_| |_/  \_/  ",
+    r"  ______ _____  _____ ______   ___ __   __ ",
+    r"  |  ___| ___ \|_   _||  _  \ / _ \\ \ / / ",
+    r"  | |_  | |_/ /  | |  | | | |/ /_\ \\ V /  ",
+    r"  |  _| |    /   | |  | | | ||  _  | \ /   ",
+    r"  | |   | |\ \  _| |_ | |/ / | | | | | |   ",
+    r"  \_|   \_| \_| \___/ |___/  \_| |_/ \_/   ",
 ]
 
 
 def render_friday_banner(version: str = "0.4.6") -> str:
-    """Render a cleanly centered, cohesive block-letter FRIDAY startup banner."""
-    terminal_width = shutil.get_terminal_size((80, 20)).columns
-    # Ensure minimum width so the 41-char logo is never clipped
-    width = max(terminal_width, 60)
-
-    lines = [""]
-    for logo_line in FRIDAY_LOGO_LINES:
-        lines.append(logo_line.center(width))
-    lines.append("")
-    lines.append("Fully Responsive Intelligent Digital Assistant for You".center(width))
-    lines.append("")
-    lines.append(f"Version {version}".center(width))
-    lines.append("")
-
+    """Render a clean, modern, cohesive FRIDAY startup banner."""
+    lines = [
+        "",
+        "  ______ _____  _____ ______   ___ __   __ ",
+        "  |  ___| ___ \\|_   _||  _  \\ / _ \\\\ \\ / / ",
+        "  | |_  | |_/ /  | |  | | | |/ /_\\ \\\\ V /  ",
+        "  |  _| |    /   | |  | | | ||  _  | \\ /   ",
+        "  | |   | |\\ \\  _| |_ | |/ / | | | | | |   ",
+        "  \\_|   \\_| \\_| \\___/ |___/  \\_| |_/ \\_/   ",
+        "",
+        "  Fully Responsive Intelligent Digital Assistant for You",
+        f"  Version {version}",
+        "",
+    ]
     return "\n".join(lines)
 
 
@@ -217,8 +217,8 @@ from friday.observability.timeline import global_timeline
 _active_status = {"obj": None}
 
 
-def render_status_panel() -> Panel:
-    """Generate the live futuristic Status Panel showing cognitive phase, agent, provider, tool, and latency."""
+def render_status_panel() -> Text:
+    """Generate a sleek, compact, single-line telemetry footer."""
     st = global_timeline.get_status()
     phase = st.get("cognitive_phase", "IDLE")
     agent_name = st.get("active_agent", "General")
@@ -226,19 +226,26 @@ def render_status_panel() -> Panel:
     tool = st.get("active_tool", "None")
     latency = st.get("last_latency_ms", 0.0)
 
-    content = Text()
-    content.append("🧠 Cognitive: ", style="bold cyan")
-    content.append(f"{phase:<10} ", style="bold green")
-    content.append("🤖 Agent: ", style="bold cyan")
-    content.append(f"{agent_name:<10} ", style="bold yellow")
-    content.append("⚡ Provider: ", style="bold cyan")
-    content.append(f"{provider:<10} ", style="bold magenta")
-    content.append("🔧 Tool: ", style="bold cyan")
-    content.append(f"{tool:<16} ", style="bold blue")
-    content.append("⏱ Latency: ", style="bold cyan")
-    content.append(f"{latency:>6.1f}ms", style="bold green")
+    # Format long chain names cleanly, e.g. 'chain(groq -> mistral -> ...)' -> 'chain(4-tier)'
+    if provider.startswith("chain("):
+        provider_disp = "Chain Fallback"
+    else:
+        provider_disp = provider
 
-    return Panel(content, title="[bold white]FRIDAY Live Telemetry & Status[/]", border_style="blue", padding=(0, 1))
+    content = Text()
+    content.append("  ⚡ ", style="bold cyan")
+    content.append(f"{phase.lower()}", style="bold green" if phase == "COMPLETED" else "bold yellow")
+    content.append("  •  ", style="dim")
+    content.append(f"{agent_name}", style="cyan")
+    content.append("  •  ", style="dim")
+    content.append(f"{provider_disp}", style="magenta")
+    if tool and tool != "None":
+        content.append("  •  ", style="dim")
+        content.append(f"🔧 {tool}", style="blue")
+    content.append("  •  ", style="dim")
+    content.append(f"{latency:.0f}ms", style="dim")
+
+    return content
 
 
 def on_tool_event(tool_call, tool_result) -> None:
@@ -475,9 +482,9 @@ Modes:
     while True:
         try:
             if _console is not None:
-                user_input = _console.input(f"[bold green]{settings.user_name} > [/]").strip()
+                user_input = _console.input(f"[bold cyan]{settings.user_name}[/] [dim]›[/] ").strip()
             else:
-                user_input = input(f"{settings.user_name} > ").strip()
+                user_input = input(f"{settings.user_name} › ").strip()
         except (KeyboardInterrupt, EOFError):
             print(f"\nShutting down FRIDAY. Good day, {settings.user_name}.")
             break
@@ -650,10 +657,15 @@ Modes:
                     duration_ms=elapsed_ms,
                 )
 
-                # Split-view output: Top half = response panel, Bottom half = Live Status Panel
+                # Clean, modern, uncluttered output
                 _console.print(
-                    Panel(Text(response.content or "(no response)"), title=settings.agent_name,
-                          border_style="cyan", padding=(0, 1)),
+                    Panel(
+                        Text(response.content or "(no response)"),
+                        title=f"[bold cyan]{settings.agent_name}[/]",
+                        title_align="left",
+                        border_style="cyan",
+                        padding=(0, 1),
+                    )
                 )
                 _console.print(render_status_panel())
                 _console.print()
