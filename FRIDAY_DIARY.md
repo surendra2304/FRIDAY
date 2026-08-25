@@ -38,7 +38,8 @@
 - **🎯 Focus**: Building a clean, secure personal AI core using pure Python abstractions rather than heavy agent frameworks.
 - **💡 What I Accomplished**:
   - Built the core system: typed schemas, configuration management, logging pipelines, and tool authorizers.
-  - Implemented initial LLM providers (Mock, OpenAI, Gemini) and core system tools (calculator, get_time_date, get_system_info, ead_file, list_files).
+  - Implemented initial LLM providers (Mock, OpenAI, Gemini) and core system tools (calculator, get_time_date, get_system_info, 
+ead_file, list_files).
   - Created 4-layer persistent memory with SQLite ACID transactions, FTS5 full-text indexing, and Reciprocal Rank Fusion (RRF) hybrid search.
   - Designed the interactive terminal interface with 3D ASCII art.
 - **🛡️ Fixes & Hardening**: Fixed Windows terminal cp1252 encoding crashes, scrubbed tracebacks from logs, sanitized JSON serialization in tool arguments, and added path traversal boundaries.
