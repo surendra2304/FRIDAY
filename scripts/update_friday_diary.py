@@ -40,22 +40,22 @@ def main():
     else:
         print(f"Diary for today ({today}) already exists.")
 
-    # Update master FRIDAY_DIARY.md navigation if missing
-    if os.path.exists('FRIDAY_DIARY.md'):
-        with open('FRIDAY_DIARY.md', 'r', encoding='utf-8') as f:
+    # Update master DIARY_SUMMARY.md navigation if missing
+    if os.path.exists('DIARY_SUMMARY.md'):
+        with open('DIARY_SUMMARY.md', 'r', encoding='utf-8') as f:
             content = f.read()
             
         nav_entry = f"- [{today}](diary/{today}.md)"
         if nav_entry not in content:
             # Insert nav entry at the end of Diary Navigation
             content = re.sub(
-                r'(## Diary Navigation\n\nA chronological list:\n\n[\s\S]*?)(?=\n---)',
+                r'(## Diary Navigation\n\nAll detailed daily logs are tracked in chronological order:\n\n[\s\S]*?)(?=\n---)',
                 lambda m: m.group(1).rstrip() + f"\n{nav_entry}\n\n",
                 content
             )
-            with open('FRIDAY_DIARY.md', 'w', encoding='utf-8') as f:
+            with open('DIARY_SUMMARY.md', 'w', encoding='utf-8') as f:
                 f.write(content)
-            print(f"Added {today} to FRIDAY_DIARY.md navigation.")
+            print(f"Added {today} to DIARY_SUMMARY.md navigation.")
             
     print("\nRemember to never commit secrets or .env variables to the diary.")
 
