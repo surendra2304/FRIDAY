@@ -162,7 +162,6 @@ def run_standard_lab_suite(memory: Optional[SQLiteConversationMemory] = None) ->
     # Initialize all active cloud providers for comparison
     for prov_name, model_key in [
         ("groq", settings.groq_model),
-        ("cerebras", settings.cerebras_model),
         ("mistral", settings.mistral_model),
         ("openrouter", settings.openrouter_model),
     ]:

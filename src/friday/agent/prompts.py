@@ -7,7 +7,6 @@ BANNED_PROVIDER_PATTERNS = [
     re.compile(r"\b(?:Google\s+)?Gemini\b", re.IGNORECASE),
     re.compile(r"\bOpenAI\b", re.IGNORECASE),
     re.compile(r"\bGroq\b", re.IGNORECASE),
-    re.compile(r"\bCerebras\b", re.IGNORECASE),
     re.compile(r"\bMistral\b", re.IGNORECASE),
     re.compile(r"\bOpenRouter\b", re.IGNORECASE),
     re.compile(r"\bpowered\s+by\b", re.IGNORECASE),

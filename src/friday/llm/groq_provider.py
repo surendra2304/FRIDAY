@@ -118,7 +118,7 @@ class GroqLLMProvider(BaseLLMProvider):
           universally available `universal_fallback_model` (llama-3.1-8b-instant).
         - A second 429 fails fast (Groq rate limits are organization-wide, so
           further same-org retries waste quota): raise LLMProviderError so the
-          fallback chain advances to Cerebras.
+          fallback chain advances to Mistral/OpenRouter.
         """
         try:
             return self._generate_with_model(self.model, messages, tools)

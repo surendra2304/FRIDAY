@@ -177,18 +177,6 @@ class Settings(BaseSettings):
         description="Optional OpenRouter model override (default: meta-llama/llama-3.3-70b-instruct)",
     )
 
-    # Cerebras (text/reasoning provider; OpenAI-SDK compatible)
-    cerebras_api_key: Optional[str] = Field(
-        default=None,
-        validation_alias=AliasChoices("FRIDAY_CEREBRAS_API_KEY", "CEREBRAS_API_KEY", "cerebras_api_key"),
-        description="API Key for Cerebras (text/reasoning only; never used for voice)",
-    )
-    cerebras_model: Optional[str] = Field(
-        default=None,
-        validation_alias=AliasChoices("FRIDAY_CEREBRAS_MODEL", "CEREBRAS_MODEL", "cerebras_model"),
-        description="Optional Cerebras model override (default: llama3.1-8b-8192)",
-    )
-
     # Mistral (deep-fallback text/reasoning provider; OpenAI-SDK compatible)
     mistral_api_key: Optional[str] = Field(
         default=None,

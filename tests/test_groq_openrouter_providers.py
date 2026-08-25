@@ -351,7 +351,7 @@ def test_groq_429_then_fallback_404_uses_universal_model():
 
 
 def test_groq_429_on_universal_after_404_raises():
-    """404 on primary -> universal 429 -> LLMProviderError (chain advances to Cerebras)."""
+    """404 on primary -> universal 429 -> LLMProviderError (chain advances to Mistral/OpenRouter)."""
     provider = GroqLLMProvider(api_key="k")
     calls = []
 

@@ -321,7 +321,7 @@ def test_system_prompt_is_provider_agnostic():
 
     prompt = get_default_system_prompt(Settings())
     assert "multi-provider architecture" in prompt
-    for banned in ("Google Gemini", "Gemini", "OpenAI", "Groq", "Cerebras", "OpenRouter", "powered by"):
+    for banned in ("Google Gemini", "Gemini", "OpenAI", "Groq", "OpenRouter", "powered by"):
         assert banned.lower() not in prompt.lower(), f"Found '{banned}' in system prompt"
 
 

@@ -1,7 +1,7 @@
 """Cross-provider automatic failover chain.
 
 `FallbackChainLLMProvider` holds an ordered list of LLM providers (e.g.
-Groq -> Cerebras -> OpenRouter) and forwards each `generate()` call to the
+Groq -> Mistral -> OpenRouter -> AIUniverse) and forwards each `generate()` call to the
 first provider, automatically advancing to the next one whenever a provider
 raises `LLMProviderError`. Only `LLMProviderError` triggers failover — any
 other exception is a programming bug and propagates immediately.

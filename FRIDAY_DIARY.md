@@ -350,6 +350,15 @@ A chronological list:
    - Implemented `get_status()` querying `GET /v1/friday/status` with `X-FRIDAY-API-Key` headers, debug logging, and automatic fallback to `get_agents()`.
 **Verification**: Full regression test suite passed cleanly (**1,161 passed, 0 failures, 4 skipped, 9 deselected in 167.84s**, 100% green pass rate).
 
+**Session 58 — Complete Cerebras Decommissioning (2026-08-25)**:
+1. **Full Codebase Decommissioning**:
+   - Removed Cerebras provider (`src/friday/llm/cerebras_provider.py` and `tests/test_cerebras_provider.py`).
+   - Removed Cerebras settings, environment variables (`FRIDAY_CEREBRAS_API_KEY`, `FRIDAY_CEREBRAS_MODEL`), and credential pools.
+   - Updated reasoning fallback chain order: `Groq -> Mistral -> OpenRouter -> AI Universe`.
+   - Cleaned up documentation and prompt configurations.
+**Verification**: Full regression test suite passed cleanly (**1,142 passed, 0 failures, 4 skipped, 9 deselected in 157.29s**, 100% green pass rate).
+
+
 
 
 

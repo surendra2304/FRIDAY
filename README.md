@@ -242,7 +242,7 @@ FRIDAY also maintains a permanent engineering diary, architectural decision reco
 - [x] **Phase 1-4 — Core Architecture, Basic Reasoning, Safety Authorizer, & SQLite Memory**
 - [x] **Phase 5 & 11 — Gemini Live Voice Streaming (Half-Duplex Echo Suppression & Server-Side VAD)**
 - [x] **Phase 6-10 — Perception Pipeline, Checkpoints, Task Manager, & Error Taxonomy**
-- [x] **Phase 12 — Unified Multi-Provider AI Gateway (`Groq` -> `Cerebras` -> `Mistral` -> `OpenRouter`)**
+- [x] **Phase 12 — Unified Multi-Provider AI Gateway (`Groq` -> `Mistral` -> `OpenRouter` -> `AI Universe`)**
 - [x] **Phase 13 — Multi-Agent Specialist Delegation (`BaseAgent`, `Registry`, `Decomposer`, `Router`)**
 - [x] **Phase 14 — Memory 2.0 Structured Knowledge Base & LLM Compactor**
 - [x] **Phase 15 — Autonomous Operating System Kernel Integration & Fast-Paths**

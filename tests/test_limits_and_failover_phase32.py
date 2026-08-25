@@ -6,7 +6,6 @@ import pytest
 
 from friday.core.exceptions import LLMProviderError
 from friday.core.types import Message, Role, SafetyLevel
-from friday.llm.cerebras_provider import CerebrasLLMProvider
 from friday.memory.in_memory import InMemoryConversationMemory
 from friday.memory.sqlite import SQLiteConversationMemory
 from friday.tools.builtin.open_application import OpenApplicationTool
@@ -57,34 +56,6 @@ def test_in_memory_truncates_tool_output_bloat():
     assert len(stored) == 1
     assert len(stored[0].content) <= 1040
     assert "[truncated to 1000 chars]" in stored[0].content
-
-
-def test_cerebras_402_payment_required_marks_credential_unhealthy():
-    """Cerebras provider catches 402, marks credential unhealthy, and raises LLMProviderError."""
-    mock_pool = mock.MagicMock()
-    mock_client = mock.MagicMock()
-
-    class Mock402Exception(Exception):
-        status_code = 402
-
-    mock_client.chat.completions.create.side_effect = Mock402Exception("Payment Required: free tier exhausted")
-
-    provider = CerebrasLLMProvider(
-        api_key="csk-test-key",
-        credential_pool=mock_pool,
-        max_retries=2,
-    )
-    provider._client = mock_client
-
-    messages = [Message(role=Role.USER, content="Hello")]
-
-    with pytest.raises(LLMProviderError) as exc_info:
-        provider.generate(messages=messages)
-
-    assert "402 Payment Required" in str(exc_info.value)
-    # Crucial: no retries should have been attempted, failing immediately
-    assert mock_client.chat.completions.create.call_count == 1
-    mock_pool.report_unhealthy.assert_called_once_with("csk-test-key")
 
 
 def test_microsoft_store_in_allowlist():

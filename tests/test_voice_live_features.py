@@ -298,12 +298,6 @@ def test_groq_universal_fallback_model_updated():
     assert GROQ_UNIVERSAL_FALLBACK_MODEL == "openai/gpt-oss-120b"
 
 
-def test_cerebras_default_model_updated():
-    from friday.llm.cerebras_provider import CEREBRAS_DEFAULT_MODEL
-
-    assert CEREBRAS_DEFAULT_MODEL == "gpt-oss-120b"
-
-
 # ---------------------------------------------------------------------------
 # close_application tool
 # ---------------------------------------------------------------------------

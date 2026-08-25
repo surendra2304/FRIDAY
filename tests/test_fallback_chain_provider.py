@@ -6,7 +6,6 @@ from friday.core.config import Settings
 from friday.core.exceptions import LLMProviderError
 from friday.core.types import Message, Role
 from friday.llm.base import BaseLLMProvider
-from friday.llm.cerebras_provider import CerebrasLLMProvider
 from friday.llm.factory import create_llm_provider
 from friday.llm.fallback_chain_provider import FallbackChainLLMProvider, _BLOCKED_TOOL_OUTPUT
 from friday.llm.groq_provider import GroqLLMProvider
@@ -46,7 +45,7 @@ def test_chain_requires_providers():
 
 def test_chain_first_provider_success():
     a = StubProvider("groq", "from groq")
-    b = StubProvider("cerebras", "from cerebras")
+    b = StubProvider("mistral", "from mistral")
     chain = FallbackChainLLMProvider(providers=[a, b])
     result = chain.generate(MSGS)
     assert result.content == "from groq"
@@ -56,17 +55,17 @@ def test_chain_first_provider_success():
 
 def test_chain_fails_over_to_second_provider():
     a = StubProvider("groq", "from groq", fail_times=1)
-    b = StubProvider("cerebras", "from cerebras")
+    b = StubProvider("mistral", "from mistral")
     chain = FallbackChainLLMProvider(providers=[a, b])
     result = chain.generate(MSGS)
-    assert result.content == "from cerebras"
+    assert result.content == "from mistral"
     assert a.call_count == 1
     assert b.call_count == 1
 
 
 def test_chain_fails_over_twice_to_third_provider():
     a = StubProvider("groq", "x", fail_times=1)
-    b = StubProvider("cerebras", "y", fail_times=1)
+    b = StubProvider("mistral", "y", fail_times=1)
     c = StubProvider("openrouter", "from openrouter")
     chain = FallbackChainLLMProvider(providers=[a, b, c])
     result = chain.generate(MSGS)
@@ -76,12 +75,12 @@ def test_chain_fails_over_twice_to_third_provider():
 
 def test_chain_all_failed_raises_summary():
     a = StubProvider("groq", "x", fail_times=5)
-    b = StubProvider("cerebras", "y", fail_times=5)
+    b = StubProvider("mistral", "y", fail_times=5)
     chain = FallbackChainLLMProvider(providers=[a, b])
     with pytest.raises(LLMProviderError) as exc_info:
         chain.generate(MSGS)
     assert "groq" in str(exc_info.value)
-    assert "cerebras" in str(exc_info.value)
+    assert "mistral" in str(exc_info.value)
 
 
 def test_chain_does_not_catch_non_llm_errors():
@@ -104,9 +103,9 @@ def test_chain_inherits_first_provider_defaults():
 
 def test_chain_provider_name_lists_order():
     a = StubProvider("groq", "x")
-    b = StubProvider("cerebras", "y")
+    b = StubProvider("mistral", "y")
     chain = FallbackChainLLMProvider(providers=[a, b])
-    assert chain.provider_name == "chain(groq -> cerebras)"
+    assert chain.provider_name == "chain(groq -> mistral)"
 
 
 # ---------------------------------------------------------------------------
@@ -114,11 +113,10 @@ def test_chain_provider_name_lists_order():
 # ---------------------------------------------------------------------------
 
 
-def test_factory_creates_chain_in_groq_cerebras_mistral_openrouter_order():
+def test_factory_creates_chain_in_groq_mistral_openrouter_order():
     settings = Settings(
         llm_provider="chain",
         groq_api_key="gk",
-        cerebras_api_key="ck",
         mistral_api_key="mk",
         openrouter_api_key="ork",
         api_key="universe_k",
@@ -126,9 +124,9 @@ def test_factory_creates_chain_in_groq_cerebras_mistral_openrouter_order():
     provider = create_llm_provider(settings)
     assert isinstance(provider, FallbackChainLLMProvider)
     assert [type(p) for p in provider.providers] == [
-        GroqLLMProvider, CerebrasLLMProvider, MistralLLMProvider, OpenRouterLLMProvider, AIUniverseLLMProvider,
+        GroqLLMProvider, MistralLLMProvider, OpenRouterLLMProvider, AIUniverseLLMProvider,
     ]
-    assert provider.provider_name == "chain(groq -> cerebras -> mistral -> openrouter -> ai_universe)"
+    assert provider.provider_name == "chain(groq -> mistral -> openrouter -> ai_universe)"
 
 
 def test_factory_chain_uses_own_pools_not_gemini(monkeypatch):
@@ -141,24 +139,23 @@ def test_factory_chain_uses_own_pools_not_gemini(monkeypatch):
     settings = Settings(
         llm_provider="chain",
         groq_api_key="gk",
-        cerebras_api_key="ck",
         mistral_api_key="mk",
         openrouter_api_key="ork",
         api_key="universe_k",
     )
     provider = create_llm_provider(settings)
     assert isinstance(provider, FallbackChainLLMProvider)
-    assert [p.api_key for p in provider.providers] == ["gk", "ck", "mk", "ork", "universe_k"]
+    assert [p.api_key for p in provider.providers] == ["gk", "mk", "ork", "universe_k"]
 
 
 def test_factory_chain_end_to_end_failover(monkeypatch):
-    """Groq (rate-limited on both models) -> Cerebras (auth failure) -> OpenRouter succeeds."""
+    """Groq (rate-limited on both models) -> Mistral (auth failure) -> OpenRouter succeeds."""
     from types import SimpleNamespace
 
     settings = Settings(
         llm_provider="chain",
         groq_api_key="gk",
-        cerebras_api_key="ck",
+        mistral_api_key="mk",
         openrouter_api_key="ork",
     )
     provider = create_llm_provider(settings)

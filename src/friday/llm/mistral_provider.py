@@ -1,8 +1,8 @@
 """Mistral LLM Provider using the OpenAI-compatible SDK.
 
 Uses the `openai` Python package pointed at Mistral's OpenAI-compatible
-endpoint (https://api.mistral.ai/v1). Serves as the deep fallback in the
-text/reasoning chain (Groq -> Cerebras -> Mistral -> OpenRouter).
+endpoint (https://api.mistral.ai/v1). Serves in the text/reasoning
+chain (Groq -> Mistral -> OpenRouter -> AIUniverse).
 """
 
 import time

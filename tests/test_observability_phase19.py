@@ -61,7 +61,7 @@ def test_render_status_panel():
     global_timeline.update_status(
         cognitive_phase="VERIFY",
         active_agent="Architect",
-        selected_provider="Cerebras",
+        selected_provider="Mistral",
         active_tool="web_fetch",
         last_latency_ms=88.5,
     )

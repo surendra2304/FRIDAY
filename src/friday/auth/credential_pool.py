@@ -507,10 +507,6 @@ openrouter_credential_pool = OpenAICompatibleCredentialPool(
     env_key_names=("FRIDAY_OPENROUTER_API_KEY", "OPENROUTER_API_KEY"),
     state_file_name="data/openrouter_pool_state.json",
 )
-cerebras_credential_pool = OpenAICompatibleCredentialPool(
-    env_key_names=("FRIDAY_CEREBRAS_API_KEY", "CEREBRAS_API_KEY"),
-    state_file_name="data/cerebras_pool_state.json",
-)
 mistral_credential_pool = OpenAICompatibleCredentialPool(
     env_key_names=("FRIDAY_MISTRAL_API_KEY", "MISTRAL_API_KEY"),
     state_file_name="data/mistral_pool_state.json",
@@ -524,7 +520,6 @@ __all__ = [
     "credential_pool",
     "groq_credential_pool",
     "openrouter_credential_pool",
-    "cerebras_credential_pool",
     "mistral_credential_pool",
     "COOLDOWN_DURATIONS",
 ]

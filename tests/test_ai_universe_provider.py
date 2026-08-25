@@ -75,12 +75,11 @@ def test_ai_universe_provider_low_confidence_raises_error():
 
 
 def test_fallback_chain_includes_ai_universe_provider_as_last_resort():
-    """Factory constructs fallback chain: Groq -> Cerebras -> Mistral -> OpenRouter -> AIUniverse."""
+    """Factory constructs fallback chain: Groq -> Mistral -> OpenRouter -> AIUniverse."""
     settings = Settings(
         env="testing",
         llm_provider="chain",
         groq_api_key="gsk-test",
-        cerebras_api_key="csk-test",
         mistral_api_key="msk-test",
         openrouter_api_key="sk-or-test",
         universe_api_url="http://localhost:8000",
@@ -90,4 +89,4 @@ def test_fallback_chain_includes_ai_universe_provider_as_last_resort():
     provider = create_llm_provider(settings)
     assert isinstance(provider, FallbackChainLLMProvider)
     provider_names = [p.provider_name for p in provider.providers]
-    assert provider_names == ["groq", "cerebras", "mistral", "openrouter", "ai_universe"]
+    assert provider_names == ["groq", "mistral", "openrouter", "ai_universe"]

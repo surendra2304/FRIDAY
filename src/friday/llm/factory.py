@@ -4,14 +4,12 @@ from friday.core.config import Settings
 from friday.core.exceptions import ConfigError
 from friday.core.logging import get_logger
 from friday.auth.credential_pool import (
-    cerebras_credential_pool,
     mistral_credential_pool,
     credential_pool,
     groq_credential_pool,
     openrouter_credential_pool,
 )
 from friday.llm.base import BaseLLMProvider
-from friday.llm.cerebras_provider import CEREBRAS_DEFAULT_MODEL, CerebrasLLMProvider
 from friday.llm.mistral_provider import MISTRAL_DEFAULT_MODEL, MistralLLMProvider
 from friday.llm.fallback_chain_provider import FallbackChainLLMProvider
 from friday.llm.gemini_provider import GeminiLLMProvider
@@ -63,7 +61,7 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
         model_name = settings.groq_model or (
             settings.llm_model if settings.llm_model != _DEFAULT_LLM_MODEL else GROQ_DEFAULT_MODEL
         )
-        logger.info(f"Initializing Groq Provider (model: {model_name}, fallback: {settings.groq_fallback_model})")
+        logger.info(f"Initializing Groq Provider (model: {model_name})")
         return GroqLLMProvider(
             api_key=settings.groq_api_key or settings.llm_api_key,
             credential_pool=groq_credential_pool,
@@ -86,26 +84,10 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
             max_tokens=settings.llm_max_tokens,
         )
 
-    if provider_type == "cerebras":
-        model_name = settings.cerebras_model or (
-            settings.llm_model if settings.llm_model != _DEFAULT_LLM_MODEL else CEREBRAS_DEFAULT_MODEL
-        )
-        logger.info(f"Initializing Cerebras Provider (model: {model_name})")
-        return CerebrasLLMProvider(
-            api_key=settings.cerebras_api_key or settings.llm_api_key,
-            credential_pool=cerebras_credential_pool,
-            model=model_name,
-            temperature=settings.llm_temperature,
-            max_tokens=settings.llm_max_tokens,
-        )
-
     if provider_type == "chain":
-        # Cross-provider automatic failover: Groq -> Cerebras -> OpenRouter.
+        # Cross-provider automatic failover: Groq -> Mistral -> OpenRouter -> AIUniverse.
         groq_model = settings.groq_model or (
             settings.llm_model if settings.llm_model != _DEFAULT_LLM_MODEL else GROQ_DEFAULT_MODEL
-        )
-        cerebras_model = settings.cerebras_model or (
-            settings.llm_model if settings.llm_model != _DEFAULT_LLM_MODEL else CEREBRAS_DEFAULT_MODEL
         )
         openrouter_model = settings.openrouter_model or (
             settings.llm_model if settings.llm_model != _DEFAULT_LLM_MODEL else OPENROUTER_DEFAULT_MODEL
@@ -119,13 +101,6 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
                 credential_pool=groq_credential_pool,
                 model=groq_model,
                 fallback_model=settings.groq_fallback_model,
-                temperature=settings.llm_temperature,
-                max_tokens=settings.llm_max_tokens,
-            ),
-            CerebrasLLMProvider(
-                api_key=settings.cerebras_api_key or settings.llm_api_key,
-                credential_pool=cerebras_credential_pool,
-                model=cerebras_model,
                 temperature=settings.llm_temperature,
                 max_tokens=settings.llm_max_tokens,
             ),
@@ -186,5 +161,5 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
 
     raise ConfigError(
         f"Unsupported LLM provider: '{settings.llm_provider}'. "
-        "Supported: 'mock', 'openai', 'gemini', 'groq', 'openrouter', 'cerebras', 'mistral', 'chain', 'ollama'"
+        "Supported: 'mock', 'openai', 'gemini', 'groq', 'openrouter', 'mistral', 'chain', 'ai_universe', 'ollama'"
     )
