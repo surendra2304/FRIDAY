@@ -29,30 +29,29 @@ import shutil
 logger = get_logger("cli")
 
 FRIDAY_LOGO_LINES = [
-    r"  ______ _____  _____ ______   ___ __   __ ",
-    r"  |  ___| ___ \|_   _||  _  \ / _ \\ \ / / ",
-    r"  | |_  | |_/ /  | |  | | | |/ /_\ \\ V /  ",
-    r"  |  _| |    /   | |  | | | ||  _  | \ /   ",
-    r"  | |   | |\ \  _| |_ | |/ / | | | | | |   ",
-    r"  \_|   \_| \_| \___/ |___/  \_| |_/ \_/   ",
+    r"______ _____  _____ ______   ___  __   __",
+    r"|  ___| ___ \|_   _||  _  \ / _ \ \ \ / /",
+    r"| |_  | |_/ /  | |  | | | |/ /_\ \ \ V / ",
+    r"|  _| |    /   | |  | | | ||  _  |  \ /  ",
+    r"| |   | |\ \  _| |_ | |/ / | | | |  | |  ",
+    r"\_|   \_| \_| \___/ |___/  \_| |_/  \_/  ",
 ]
 
 
 def render_friday_banner(version: str = "0.4.6") -> str:
-    """Render a clean, modern, cohesive FRIDAY startup banner."""
-    lines = [
-        "",
-        "  ______ _____  _____ ______   ___ __   __ ",
-        "  |  ___| ___ \\|_   _||  _  \\ / _ \\\\ \\ / / ",
-        "  | |_  | |_/ /  | |  | | | |/ /_\\ \\\\ V /  ",
-        "  |  _| |    /   | |  | | | ||  _  | \\ /   ",
-        "  | |   | |\\ \\  _| |_ | |/ / | | | | | |   ",
-        "  \\_|   \\_| \\_| \\___/ |___/  \\_| |_/ \\_/   ",
-        "",
-        "  Fully Responsive Intelligent Digital Assistant for You",
-        f"  Version {version}",
-        "",
-    ]
+    """Render a cleanly centered, cohesive block-letter FRIDAY startup banner."""
+    terminal_width = shutil.get_terminal_size((80, 20)).columns
+    width = max(terminal_width, 60)
+
+    lines = [""]
+    for logo_line in FRIDAY_LOGO_LINES:
+        lines.append(logo_line.center(width))
+    lines.append("")
+    lines.append("Fully Responsive Intelligent Digital Assistant for You".center(width))
+    lines.append("")
+    lines.append(f"Version {version}".center(width))
+    lines.append("")
+
     return "\n".join(lines)
 
 
@@ -217,8 +216,8 @@ from friday.observability.timeline import global_timeline
 _active_status = {"obj": None}
 
 
-def render_status_panel() -> Text:
-    """Generate a sleek, compact, single-line telemetry footer."""
+def render_status_panel() -> Panel:
+    """Generate the live futuristic Status Panel showing cognitive phase, agent, provider, tool, and latency."""
     st = global_timeline.get_status()
     phase = st.get("cognitive_phase", "IDLE")
     agent_name = st.get("active_agent", "General")
@@ -226,26 +225,19 @@ def render_status_panel() -> Text:
     tool = st.get("active_tool", "None")
     latency = st.get("last_latency_ms", 0.0)
 
-    # Format long chain names cleanly, e.g. 'chain(groq -> mistral -> ...)' -> 'chain(4-tier)'
-    if provider.startswith("chain("):
-        provider_disp = "Chain Fallback"
-    else:
-        provider_disp = provider
-
     content = Text()
-    content.append("  ⚡ ", style="bold cyan")
-    content.append(f"{phase.lower()}", style="bold green" if phase == "COMPLETED" else "bold yellow")
-    content.append("  •  ", style="dim")
-    content.append(f"{agent_name}", style="cyan")
-    content.append("  •  ", style="dim")
-    content.append(f"{provider_disp}", style="magenta")
-    if tool and tool != "None":
-        content.append("  •  ", style="dim")
-        content.append(f"🔧 {tool}", style="blue")
-    content.append("  •  ", style="dim")
-    content.append(f"{latency:.0f}ms", style="dim")
+    content.append("🧠 Cognitive: ", style="bold cyan")
+    content.append(f"{phase:<10} ", style="bold green" if phase == "COMPLETED" else "bold yellow")
+    content.append("🤖 Agent: ", style="bold cyan")
+    content.append(f"{agent_name:<10} ", style="bold yellow")
+    content.append("⚡ Provider: ", style="bold cyan")
+    content.append(f"{provider} ", style="bold magenta")
+    content.append("🔧 Tool: ", style="bold cyan")
+    content.append(f"{tool:<10} ", style="bold blue")
+    content.append("⏱ Latency: ", style="bold cyan")
+    content.append(f"{latency:>6.1f}ms", style="bold green")
 
-    return content
+    return Panel(content, title="[bold white]FRIDAY Live Telemetry & Status[/]", border_style="blue", padding=(0, 1))
 
 
 def on_tool_event(tool_call, tool_result) -> None:
@@ -482,9 +474,9 @@ Modes:
     while True:
         try:
             if _console is not None:
-                user_input = _console.input(f"[bold cyan]{settings.user_name}[/] [dim]›[/] ").strip()
+                user_input = _console.input(f"[bold green]{settings.user_name} > [/]").strip()
             else:
-                user_input = input(f"{settings.user_name} › ").strip()
+                user_input = input(f"{settings.user_name} > ").strip()
         except (KeyboardInterrupt, EOFError):
             print(f"\nShutting down FRIDAY. Good day, {settings.user_name}.")
             break
@@ -553,16 +545,15 @@ Modes:
             if len(parts) < 2:
                 print("\n[Usage]: /search <query>\n")
                 continue
-            search_query = parts[1].strip()
-            print_search_results(agent, search_query)
+            query = parts[1].strip()
+            print_search_results(agent, query)
             continue
         elif cmd.startswith("/delete"):
             parts = user_input.split(maxsplit=1)
-            target_id = parts[1].strip() if len(parts) > 1 else agent.conversation_id
-            if not target_id:
-                print("\n[Error]: No conversation to delete.\n")
+            if len(parts) < 2:
+                print("\n[Usage]: /delete <conversation_id>\n")
                 continue
-
+            target_id = parts[1].strip()
             convs = agent.list_conversations()
             matched = [c for c in convs if c["id"].startswith(target_id)]
             if not matched:
@@ -585,14 +576,14 @@ Modes:
             print("\n[WARNING]: This operation is DESTRUCTIVE and will permanently delete ALL stored conversations and history.")
             confirm = input("To proceed, type 'CONFIRM PURGE': ").strip()
             if confirm == "CONFIRM PURGE":
-                count = agent.purge_all_memory()
-                print(f"\nAll persistent memory has been completely purged ({count} conversation(s) deleted).\n")
+                agent.clear_all_conversations()
+                print("\nAll conversations and memory have been permanently wiped.\n")
             else:
-                print("\nPurge operation cancelled.\n")
+                print("\nPurge aborted.\n")
             continue
         elif cmd.startswith("/backup"):
             parts = user_input.split(maxsplit=1)
-            target = parts[1].strip() if len(parts) > 1 else f"data/backups/friday_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+            target = parts[1].strip() if len(parts) > 1 else None
             try:
                 out_path = agent.backup_database(target)
                 print(f"\nDatabase backup successfully created at '{out_path}'.\n")
@@ -623,7 +614,7 @@ Modes:
             print_help()
             continue
 
-        # Process standard conversation turn with Rich UI & Split-View Status Panel
+        # Process standard conversation turn with Rich UI & Status Panel
         try:
             start_t = datetime.now()
             global_timeline.update_status(
@@ -638,6 +629,16 @@ Modes:
             )
 
             if _console is not None:
+                # Render user turn
+                _console.print(
+                    Panel(
+                        Text(user_input),
+                        title=f"[bold green]{settings.user_name}[/]",
+                        border_style="green",
+                        padding=(0, 1),
+                    )
+                )
+                
                 with _console.status("[bold cyan]FRIDAY is thinking...", spinner="dots") as status:
                     _active_status["obj"] = status
                     try:
@@ -657,12 +658,11 @@ Modes:
                     duration_ms=elapsed_ms,
                 )
 
-                # Clean, modern, uncluttered output
+                # Response panel
                 _console.print(
                     Panel(
                         Text(response.content or "(no response)"),
                         title=f"[bold cyan]{settings.agent_name}[/]",
-                        title_align="left",
                         border_style="cyan",
                         padding=(0, 1),
                     )

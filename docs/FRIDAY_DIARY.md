@@ -359,14 +359,13 @@ A chronological list:
 **Verification**: Full regression test suite passed cleanly (**1,142 passed, 0 failures, 4 skipped, 9 deselected in 157.29s**, 100% green pass rate).
 
 **Session 59 — Sleek Minimalist CLI & Telemetry Redesign (2026-08-25)**:
-1. **Uncluttered Single-Line Telemetry Footer**:
-   - Replaced the bulky, heavy double-box telemetry panel with a modern single-line status footer (`⚡ completed • General • Chain Fallback • 18ms`).
-   - Eliminated verbose wrapping and horizontal overflow on standard terminal sizes.
-2. **Refined Conversational Presentation**:
-   - Upgraded FRIDAY's response bubble to an aligned, clean panel with subtle styling.
-   - Styled user prompt input to `Surendra › ` for a clean command-line experience.
-   - Streamlined the startup banner to a clean, focused ASCII identity.
+1. **Centered ASCII Identity & Abbreviation**:
+   - Restored the original centered block-letter ASCII font logo and full abbreviation tagline (*Fully Responsive Intelligent Digital Assistant for You*).
+2. **Turn Bordering & Full Provider Transparency**:
+   - Added distinct styled panels for user questions/inputs as well as FRIDAY's responses.
+   - Displayed full active provider details (e.g. `chain(groq -> mistral -> openrouter -> ai_universe)`) within the telemetry panel.
 **Verification**: All UI and observability test suites passed cleanly.
+
 
 
 
