@@ -17,6 +17,10 @@ def test_self_improve_workflow_intent_detection():
     assert workflow.can_handle("FRIDAY, add a tool to click the mouse")
     assert workflow.can_handle("Add a new tool for downloading youtube audio")
     assert workflow.can_handle("Create a feature that converts currencies")
+    assert workflow.can_handle("update your code to support dark mode")
+    assert workflow.can_handle("modify yourself to capture multi-screens")
+    assert workflow.can_handle("add a feature to yourself")
+    assert workflow.can_handle("write a new tool for yourself to extract audio")
     assert not workflow.can_handle("What is the weather today?")
     assert not workflow.can_handle("Hello FRIDAY")
 
@@ -30,20 +34,91 @@ def test_self_improve_workflow_filename_sanitization():
     assert fn2 == "convert_foreign_currency_exchange.py"
 
 
-def test_self_improve_workflow_requires_authorization():
-    """Workflow enforces safety gating when not authorized."""
+def test_self_improve_workflow_authorization_prompt_denied(capsys):
+    """Workflow prompts user for authorization; if user denies, does not push."""
     import asyncio
 
-    workflow = SelfImprovementWorkflow()
-    res = asyncio.run(
-        workflow.execute_self_improvement(
-            user_prompt="Add a tool to click the mouse",
-            user_authorized=False,
+    mock_write = mock.MagicMock(spec=WriteCodeFileTool)
+    mock_write.name = "write_code_file"
+    mock_write.safety_level = SafetyLevel.SAFE
+    mock_write.execute.return_value = mock.MagicMock(is_error=False, content="Wrote code file.")
+
+    mock_test = mock.MagicMock(spec=RunTestsTool)
+    mock_test.name = "run_tests"
+    mock_push = mock.MagicMock(spec=GitPushTool)
+    mock_push.name = "git_push"
+
+    reg = ToolRegistry()
+    reg.register(mock_write)
+    reg.register(mock_test)
+    reg.register(mock_push)
+
+    workflow = SelfImprovementWorkflow(tool_registry=reg)
+
+    with mock.patch("builtins.input", return_value="no"):
+        res = asyncio.run(
+            workflow.execute_self_improvement(
+                user_prompt="Add a tool to click the mouse",
+                user_authorized=False,
+            )
         )
-    )
-    assert not res["success"]
-    assert res.get("needs_authorization") is True
-    assert "Authorization needed" in res["summary"]
+    assert res["success"] is True
+    assert res["pushed"] is False
+    assert res["tests_passed"] is False
+    assert "Testing and GitHub push were not authorized by the user." in res["summary"]
+    mock_write.execute.assert_called_once()
+    mock_test.execute.assert_not_called()
+    mock_push.execute.assert_not_called()
+
+    captured = capsys.readouterr()
+    assert "I have generated the code and written it to click_mouse.py. Do I have your authorization to run tests and push this to GitHub? (yes/no)" in captured.out
+
+
+def test_self_improve_workflow_authorization_prompt_approved(capsys):
+    """Workflow prompts user for authorization; if approved via terminal, tests and push run."""
+    import asyncio
+
+    mock_write = mock.MagicMock(spec=WriteCodeFileTool)
+    mock_write.name = "write_code_file"
+    mock_write.safety_level = SafetyLevel.SAFE
+    mock_write.execute.return_value = mock.MagicMock(is_error=False, content="Wrote code file.")
+
+    mock_test = mock.MagicMock(spec=RunTestsTool)
+    mock_test.name = "run_tests"
+    mock_test.safety_level = SafetyLevel.SAFE
+    mock_test.execute.return_value = mock.MagicMock(is_error=False, content="1 passed in 0.05s")
+
+    mock_commit = mock.MagicMock(spec=GitCommitTool)
+    mock_commit.name = "git_commit"
+    mock_commit.safety_level = SafetyLevel.SAFE
+    mock_commit.execute.return_value = mock.MagicMock(is_error=False, content="[main 123] feat: add mouse tool")
+
+    mock_push = mock.MagicMock(spec=GitPushTool)
+    mock_push.name = "git_push"
+    mock_push.safety_level = SafetyLevel.SAFE
+    mock_push.execute.return_value = mock.MagicMock(is_error=False, content="Pushed to origin.")
+
+    reg = ToolRegistry()
+    reg.register(mock_write)
+    reg.register(mock_test)
+    reg.register(mock_commit)
+    reg.register(mock_push)
+
+    workflow = SelfImprovementWorkflow(tool_registry=reg)
+
+    with mock.patch("builtins.input", return_value="yes"):
+        res = asyncio.run(
+            workflow.execute_self_improvement(
+                user_prompt="Add a tool to click the mouse",
+                user_authorized=False,
+            )
+        )
+    assert res["success"] is True
+    assert res["pushed"] is True
+    assert res["tests_passed"] is True
+    mock_write.execute.assert_called_once()
+    mock_test.execute.assert_called_once()
+    mock_push.execute.assert_called_once()
 
 
 def test_self_improve_workflow_execution_loop(tmp_path):

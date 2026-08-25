@@ -1868,11 +1868,11 @@ class FridayAgent:
             try:
                 loop = asyncio.get_running_loop()
                 improve_res = loop.run_until_complete(
-                    self._self_improve_workflow.execute_self_improvement(clean_input, user_authorized=True)
+                    self._self_improve_workflow.execute_self_improvement(clean_input)
                 )
             except RuntimeError:
                 improve_res = asyncio.run(
-                    self._self_improve_workflow.execute_self_improvement(clean_input, user_authorized=True)
+                    self._self_improve_workflow.execute_self_improvement(clean_input)
                 )
 
             self.state_machine.transition_to(TaskState.VERIFYING, reason="Verifying test suite outcome")
