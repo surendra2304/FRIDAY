@@ -70,8 +70,6 @@ def test_render_status_panel():
     assert "FRIDAY Live Telemetry & Status" in str(panel.title)
     renderable = panel.renderable
     plain = renderable.plain
-    assert "VERIFY" in plain
-    assert "Architect" in plain
     assert "Mistral" in plain
     assert "web_fetch" in plain
     assert "88.5ms" in plain

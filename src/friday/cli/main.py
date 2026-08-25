@@ -217,7 +217,7 @@ _active_status = {"obj": None}
 
 
 def render_status_panel() -> Panel:
-    """Generate the live futuristic Status Panel showing cognitive phase, agent, provider, tool, and latency."""
+    """Generate the live futuristic Status Panel showing provider, latency, and active tool/phase."""
     st = global_timeline.get_status()
     phase = st.get("cognitive_phase", "IDLE")
     agent_name = st.get("active_agent", "General")
@@ -226,16 +226,13 @@ def render_status_panel() -> Panel:
     latency = st.get("last_latency_ms", 0.0)
 
     content = Text()
-    content.append("🧠 Cognitive: ", style="bold cyan")
-    content.append(f"{phase:<10} ", style="bold green" if phase == "COMPLETED" else "bold yellow")
-    content.append("🤖 Agent: ", style="bold cyan")
-    content.append(f"{agent_name:<10} ", style="bold yellow")
     content.append("⚡ Provider: ", style="bold cyan")
-    content.append(f"{provider} ", style="bold magenta")
-    content.append("🔧 Tool: ", style="bold cyan")
-    content.append(f"{tool:<16} ", style="bold blue")
+    content.append(f"{provider}  ", style="bold magenta")
+    if tool and tool != "None":
+        content.append("🔧 Tool: ", style="bold cyan")
+        content.append(f"{tool}  ", style="bold blue")
     content.append("⏱ Latency: ", style="bold cyan")
-    content.append(f"{latency:>6.1f}ms", style="bold green")
+    content.append(f"{latency:>5.1f}ms", style="bold green")
 
     return Panel(content, title="[bold white]FRIDAY Live Telemetry & Status[/]", border_style="blue", padding=(0, 1))
 
@@ -629,6 +626,16 @@ Modes:
             )
 
             if _console is not None:
+                # Render user turn in its own box
+                _console.print(
+                    Panel(
+                        Text(user_input),
+                        title=settings.user_name,
+                        border_style="green",
+                        padding=(0, 1),
+                    )
+                )
+
                 with _console.status("[bold cyan]FRIDAY is thinking...", spinner="dots") as status:
                     _active_status["obj"] = status
                     try:

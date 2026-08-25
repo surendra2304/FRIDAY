@@ -366,6 +366,14 @@ A chronological list:
    - Displayed full active provider details (e.g. `chain(groq -> mistral -> openrouter -> ai_universe)`) within the live telemetry panel.
 **Verification**: All UI and observability test suites passed cleanly.
 
+**Session 60 — Boxed User Turns & Streamlined Telemetry (2026-08-25)**:
+1. **Bordered User Question Box**:
+   - Rendered user inputs into dedicated green bordered panels with title `Surendra`.
+2. **Focused Telemetry Panel**:
+   - Streamlined telemetry status panel to focus on Provider, Latency, and Active Tool metrics.
+**Verification**: All UI and observability test suites passed cleanly.
+
+
 
 
 
