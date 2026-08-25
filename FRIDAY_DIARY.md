@@ -265,6 +265,16 @@ A chronological list:
 - **Voice Email Automation**: Delivered `SendEmailTool` (SMTP/STARTTLS with App Password authentication) and `EmailDraftingWorkflow` (LLM-powered email generation, preview, and confirmation gating).
 - **Master Test Verification**: Verified entire codebase with **1,130 passing tests**, 0 failures, and complete documentation alignment.
 
+**Session 48 — Recursive Self-Improvement: Codebase Indexing & SelfDevAgent (Phase 31) (2026-08-25)**:
+1. **Codebase Indexing Tool (`src/friday/tools/builtin/dev_tools.py`)**:
+   - `ReadOwnCodebaseTool` (`read_own_codebase`, SAFE): Scans `src/friday/`, extracts AST docstrings, and builds an architectural module map so the LLM understands FRIDAY's internal directory structures and placements.
+2. **Self-Development Specialist Agent (`src/friday/agents/specialists/self_dev_agent.py`)**:
+   - `SelfDevAgent`: Specialist agent inheriting from `DeveloperAgent`, instructed on FRIDAY's multi-layered architecture (`core`, `security`, `tools`, `vision`, `agent`, `agents`, `memory`, `workflows`), with access to `read_own_codebase`, `write_code_file`, `run_tests`, and git tools.
+3. **Agent & Tool Registry Integration**:
+   - Registered `ReadOwnCodebaseTool` in `ToolRegistry` and registered `SelfDevAgent` in `AgentRegistry` (`self_developer`).
+**Verification**: Full regression test suite passed cleanly (**1,134 passed, 0 failures, 4 skipped, 9 deselected in 169.70s**, 100% green pass rate).
+
+
 
 
 

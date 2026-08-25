@@ -74,6 +74,7 @@ from friday.tools.builtin import (
     ToggleWifiTool,
     GetTodaysEventsTool,
     SendEmailTool,
+    ReadOwnCodebaseTool,
     ScreenPredictionTool,
 )
 from friday.agent.state import TaskState, ReasoningStateMachine
@@ -1246,6 +1247,7 @@ class FridayAgent:
         registry.register(ToggleWifiTool())
         registry.register(GetTodaysEventsTool())
         registry.register(SendEmailTool())
+        registry.register(ReadOwnCodebaseTool())
         registry.register(ScreenPredictionTool())
         return registry
 
@@ -1253,11 +1255,20 @@ class FridayAgent:
         """Instantiate default specialist agent pool for Phase 13 Multi-Agent architecture."""
         from friday.agents.specialists.developer_agent import DeveloperAgent
         from friday.agents.specialists.research_agent import ResearchAgent
+        from friday.agents.specialists.self_dev_agent import SelfDevAgent
         reg = AgentRegistry()
         reg.register_agent(
             DeveloperAgent(
                 agent_id="developer_01",
                 role="developer",
+                llm_provider=self.llm,
+                tool_registry=self.tools,
+            )
+        )
+        reg.register_agent(
+            SelfDevAgent(
+                agent_id="self_developer_01",
+                role="self_developer",
                 llm_provider=self.llm,
                 tool_registry=self.tools,
             )

@@ -200,3 +200,93 @@ class CreateGitBranchTool(BaseTool):
             safety_level=self.safety_level,
             metadata={"branch_name": clean_name},
         )
+
+
+class ReadOwnCodebaseTool(BaseTool):
+    """Scan the FRIDAY codebase structure and generate an architectural module map."""
+
+    name = "read_own_codebase"
+    description = (
+        "Scan the src/friday directory structure and return a map of modules, packages, "
+        "and files so the LLM understands FRIDAY's internal architecture to write new features."
+    )
+    safety_level = SafetyLevel.SAFE
+    parameters = {
+        "type": "object",
+        "properties": {
+            "root_dir": {
+                "type": "string",
+                "description": "Optional root directory to scan (defaults to 'src/friday').",
+            },
+            "include_descriptions": {
+                "type": "boolean",
+                "description": "Whether to extract module-level docstrings from Python files (default: True).",
+            },
+        },
+        "required": [],
+    }
+
+    def execute(
+        self,
+        root_dir: Optional[str] = None,
+        include_descriptions: bool = True,
+        **kwargs: Any,
+    ) -> ToolResult:
+        import ast
+
+        target_root = Path(root_dir) if root_dir else Path(__file__).resolve().parent.parent.parent
+        # If target_root is tools (parent.parent), go up one more to friday package root
+        if target_root.name != "friday" and (target_root / "friday").is_dir():
+            target_root = target_root / "friday"
+        elif target_root.name == "builtin":
+            target_root = Path(__file__).resolve().parent.parent.parent
+
+        # Ensure we are pointing at src/friday
+        if not target_root.exists() or not target_root.is_dir():
+            # Try current working directory src/friday
+            candidate = Path("src/friday").resolve()
+            if candidate.exists() and candidate.is_dir():
+                target_root = candidate
+            else:
+                return ToolResult(
+                    name=self.name,
+                    content=f"Error: Target root directory '{target_root}' not found.",
+                    is_error=True,
+                    safety_level=self.safety_level,
+                )
+
+        modules_map = []
+        file_count = 0
+
+        for path in sorted(target_root.rglob("*.py")):
+            if "__pycache__" in path.parts:
+                continue
+            file_count += 1
+            rel_path = path.relative_to(target_root.parent)
+            docstring = ""
+            if include_descriptions:
+                try:
+                    content = path.read_text(encoding="utf-8", errors="ignore")
+                    tree = ast.parse(content)
+                    doc = ast.get_docstring(tree)
+                    if doc:
+                        docstring = doc.strip().split("\n")[0]
+                except Exception:
+                    pass
+
+            entry = f"- {rel_path.as_posix()}"
+            if docstring:
+                entry += f": {docstring}"
+            modules_map.append(entry)
+
+        summary = (
+            f"FRIDAY Codebase Architecture Map ({file_count} Python modules in '{target_root.name}'):\n"
+            + "\n".join(modules_map)
+        )
+
+        return ToolResult(
+            name=self.name,
+            content=summary,
+            is_error=False,
+            safety_level=self.safety_level,
+        )

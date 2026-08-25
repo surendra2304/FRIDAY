@@ -27,7 +27,12 @@ from friday.tools.builtin.system_monitor import GetSystemResourcesTool, KillProc
 from friday.tools.builtin.launch_application import LaunchApplicationTool
 from friday.tools.builtin.system_control import SystemControlTool
 from friday.tools.builtin.health_monitor import HealthCheckTool
-from friday.tools.builtin.dev_tools import WriteCodeFileTool, RunTestsTool, CreateGitBranchTool
+from friday.tools.builtin.dev_tools import (
+    WriteCodeFileTool,
+    RunTestsTool,
+    CreateGitBranchTool,
+    ReadOwnCodebaseTool,
+)
 from friday.tools.builtin.smart_home import ControlLightTool, ControlPlugTool
 from friday.tools.builtin.web_research import FetchWebpageContentTool, SynthesizeInformationTool
 from friday.tools.builtin.os_settings import ToggleDarkModeTool, ToggleBluetoothTool, ToggleWifiTool
@@ -72,6 +77,7 @@ __all__ = [
     "WriteCodeFileTool",
     "RunTestsTool",
     "CreateGitBranchTool",
+    "ReadOwnCodebaseTool",
     "ControlLightTool",
     "ControlPlugTool",
     "FetchWebpageContentTool",
