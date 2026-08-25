@@ -83,13 +83,26 @@ class AIUniverseClient:
             headers["X-FRIDAY-API-Key"] = self.api_key
         return headers
 
+    async def get_status(self) -> Dict[str, Any]:
+        """Fetch AI Universe status and agents configuration from GET /v1/friday/status."""
+        url = f"{self.base_url}/v1/friday/status"
+        headers = self._get_headers()
+        key_preview = f"{self.api_key[:4]}..." if self.api_key else "(none)"
+        print(f"[DEBUG] Sending to {url} with key {key_preview}")
+        logger.info(f"Sending to {url} with key {key_preview}...")
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            resp = await client.get(url, headers=headers)
+            resp.raise_for_status()
+            return resp.json()
+
     async def get_agents(self) -> List[AIAgentInfo]:
         """Discover live roster of all specialist agents from GET /v1/friday/agents."""
         url = f"{self.base_url}/v1/friday/agents"
         headers = self._get_headers()
         key_preview = f"{self.api_key[:4]}..." if self.api_key else "(none)"
         print(f"[DEBUG] Sending to {url} with key {key_preview}")
-        logger.info(f"Sending AI Universe get_agents request to {url} with key {key_preview}")
+        logger.info(f"Sending to {url} with key {key_preview}...")
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await client.get(url, headers=headers)
@@ -100,12 +113,12 @@ class AIUniverseClient:
             return []
 
     async def get_info(self) -> Dict[str, Any]:
-        """Fetch AI Universe platform status and agent catalog from GET /v1/friday/info."""
+        """Fetch AI Universe platform info from GET /v1/friday/info."""
         url = f"{self.base_url}/v1/friday/info"
         headers = self._get_headers()
         key_preview = f"{self.api_key[:4]}..." if self.api_key else "(none)"
         print(f"[DEBUG] Sending to {url} with key {key_preview}")
-        logger.info(f"Sending AI Universe get_info request to {url} with key {key_preview}")
+        logger.info(f"Sending to {url} with key {key_preview}...")
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await client.get(url, headers=headers)
@@ -120,7 +133,7 @@ class AIUniverseClient:
 
         key_preview = f"{self.api_key[:4]}..." if self.api_key else "(none)"
         print(f"[DEBUG] Sending to {url} with key {key_preview}")
-        logger.info(f"Sending AI Universe ask request to {url} with key {key_preview}")
+        logger.info(f"Sending to {url} with key {key_preview}...")
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await client.post(url, json=payload, headers=headers)
@@ -343,3 +356,73 @@ class AIUniverseTool(BaseTool):
                 is_error=True,
                 safety_level=self.safety_level,
             )
+
+
+class GetAIUniverseStatusTool(BaseTool):
+    """SAFE tool to inspect the live status, agents configuration, and active models of the AI Universe."""
+
+    name = "get_ai_universe_status"
+    description = (
+        "Retrieve the live internal configuration, platform status, registered specialist agents, "
+        "and active model pool from the AI Universe system (/v1/friday/status)."
+    )
+    safety_level = SafetyLevel.SAFE
+    parameters = {
+        "type": "object",
+        "properties": {},
+        "required": [],
+    }
+
+    def __init__(self, client: Optional[AIUniverseClient] = None) -> None:
+        super().__init__()
+        self.client = client or AIUniverseClient()
+
+    def execute(self, **kwargs: Any) -> ToolResult:
+        """Execute status check synchronously against the AI Universe API."""
+        import asyncio
+        import json
+
+        try:
+            try:
+                loop = asyncio.get_running_loop()
+                status_data = loop.run_until_complete(self.client.get_status())
+            except RuntimeError:
+                status_data = asyncio.run(self.client.get_status())
+
+            return ToolResult(
+                name=self.name,
+                content=f"### AI Universe Status & Internal Configuration:\n```json\n{json.dumps(status_data, indent=2)}\n```",
+                is_error=False,
+                safety_level=self.safety_level,
+                metadata=status_data,
+            )
+        except Exception as ex:
+            # Fallback to agents list if status endpoint differs
+            try:
+                try:
+                    loop = asyncio.get_running_loop()
+                    agents = loop.run_until_complete(self.client.get_agents())
+                except RuntimeError:
+                    agents = asyncio.run(self.client.get_agents())
+
+                if agents:
+                    lines = ["### AI Universe Active Specialist Agents & Models:"]
+                    for a in agents:
+                        lines.append(f"- **{a.name}** (`{a.id}`) — Role: {a.role} | Provider: {a.provider} | Model: `{a.model}`")
+                    return ToolResult(
+                        name=self.name,
+                        content="\n".join(lines),
+                        is_error=False,
+                        safety_level=self.safety_level,
+                        metadata={"agents": [a.model_dump() for a in agents]},
+                    )
+            except Exception:
+                pass
+
+            return ToolResult(
+                name=self.name,
+                content=f"Failed to query AI Universe status: {str(ex)}. Ensure AI Universe is running at {self.client.base_url}.",
+                is_error=True,
+                safety_level=self.safety_level,
+            )
+

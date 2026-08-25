@@ -343,6 +343,14 @@ A chronological list:
    - Instructed FRIDAY in `src/friday/agent/prompts.py` to always call `ai_universe_query(mode="agents")` whenever asked about agent models or capabilities, completely eliminating placeholder hallucinated names.
 **Verification**: Full regression test suite passed cleanly (**1,159 passed, 0 failures, 4 skipped, 9 deselected in 178.47s**, 100% green pass rate).
 
+**Session 57 — Builtin `get_ai_universe_status` Tool & Configuration Inspection (2026-08-25)**:
+1. **New Builtin Tool (`get_ai_universe_status`)**:
+   - Created `GetAIUniverseStatusTool` in `src/friday/tools/ai_universe_client.py` and exported it via `src/friday/tools/builtin/__init__.py`.
+   - Registered `GetAIUniverseStatusTool` directly into the agent's default `ToolRegistry` (`src/friday/agent/agent.py`).
+   - Implemented `get_status()` querying `GET /v1/friday/status` with `X-FRIDAY-API-Key` headers, debug logging, and automatic fallback to `get_agents()`.
+**Verification**: Full regression test suite passed cleanly (**1,161 passed, 0 failures, 4 skipped, 9 deselected in 167.84s**, 100% green pass rate).
+
+
 
 
 

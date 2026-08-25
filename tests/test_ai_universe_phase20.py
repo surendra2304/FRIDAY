@@ -218,10 +218,60 @@ def test_ai_universe_tool_agents_mode():
 
     mock_client.get_agents = mock_get_agents
     tool = AIUniverseTool(client=mock_client)
-
     result = tool.execute(mode="agents")
     assert not result.is_error
     assert "Lead Strategist" in result.content
     assert "openai/gpt-oss-120b" in result.content
     assert "groq" in result.content
+
+
+@pytest.mark.anyio
+async def test_ai_universe_client_get_status():
+    """AIUniverseClient hits GET /v1/friday/status with X-FRIDAY-API-Key header."""
+    client = AIUniverseClient(
+        base_url="http://localhost:8000",
+        api_key="friday-auth-key-999",
+    )
+
+    mock_status_data = {
+        "status": "online",
+        "version": "1.0.0",
+        "active_models": ["gemini-3.6-flash", "meta/llama-3.1-8b-instruct"],
+        "agents_count": 10,
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url == "http://localhost:8000/v1/friday/status"
+        assert request.headers.get("X-FRIDAY-API-Key") == "friday-auth-key-999"
+        return httpx.Response(200, json=mock_status_data)
+
+    transport = httpx.MockTransport(handler)
+    with mock.patch("httpx.AsyncClient", return_value=httpx.AsyncClient(transport=transport)):
+        status = await client.get_status()
+        assert status["status"] == "online"
+        assert status["version"] == "1.0.0"
+        assert len(status["active_models"]) == 2
+
+
+def test_get_ai_universe_status_tool():
+    """GetAIUniverseStatusTool returns parsed JSON status from AI Universe."""
+    from friday.tools.ai_universe_client import GetAIUniverseStatusTool
+
+    mock_client = mock.MagicMock(spec=AIUniverseClient)
+    mock_status_data = {
+        "status": "online",
+        "active_models": ["gemini-3.6-flash", "mistral-small-latest"],
+    }
+
+    async def mock_get_status():
+        return mock_status_data
+
+    mock_client.get_status = mock_get_status
+    tool = GetAIUniverseStatusTool(client=mock_client)
+
+    result = tool.execute()
+    assert not result.is_error
+    assert "AI Universe Status & Internal Configuration" in result.content
+    assert "gemini-3.6-flash" in result.content
+
 

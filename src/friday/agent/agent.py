@@ -76,6 +76,7 @@ from friday.tools.builtin import (
     SendEmailTool,
     ReadOwnCodebaseTool,
     AIUniverseTool,
+    GetAIUniverseStatusTool,
     ScreenPredictionTool,
 )
 from friday.agent.state import TaskState, ReasoningStateMachine
@@ -1250,6 +1251,7 @@ class FridayAgent:
         registry.register(SendEmailTool())
         registry.register(ReadOwnCodebaseTool())
         registry.register(AIUniverseTool(memory=self.memory))
+        registry.register(GetAIUniverseStatusTool())
         registry.register(ScreenPredictionTool())
         return registry
 
