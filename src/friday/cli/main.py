@@ -216,25 +216,23 @@ from friday.observability.timeline import global_timeline
 _active_status = {"obj": None}
 
 
-def render_status_panel() -> Panel:
-    """Generate the live futuristic Status Panel showing provider, latency, and active tool/phase."""
+def render_status_panel() -> Text:
+    """Generate clean latency and provider text without any box."""
     st = global_timeline.get_status()
-    phase = st.get("cognitive_phase", "IDLE")
-    agent_name = st.get("active_agent", "General")
     provider = st.get("selected_provider", "Default")
     tool = st.get("active_tool", "None")
     latency = st.get("last_latency_ms", 0.0)
 
     content = Text()
-    content.append("⚡ Provider: ", style="bold cyan")
-    content.append(f"{provider}  ", style="bold magenta")
+    content.append("⚡ ", style="bold cyan")
+    content.append(f"{provider}", style="bold magenta")
     if tool and tool != "None":
-        content.append("🔧 Tool: ", style="bold cyan")
-        content.append(f"{tool}  ", style="bold blue")
-    content.append("⏱ Latency: ", style="bold cyan")
-    content.append(f"{latency:>5.1f}ms", style="bold green")
+        content.append("  •  ", style="dim")
+        content.append(f"🔧 {tool}", style="bold blue")
+    content.append("  •  ", style="dim")
+    content.append(f"⏱ {latency:.1f}ms", style="bold green")
 
-    return Panel(content, title="[bold white]FRIDAY Live Telemetry & Status[/]", border_style="blue", padding=(0, 1))
+    return content
 
 
 def on_tool_event(tool_call, tool_result) -> None:
@@ -626,16 +624,6 @@ Modes:
             )
 
             if _console is not None:
-                # Render user turn in its own box
-                _console.print(
-                    Panel(
-                        Text(user_input),
-                        title=settings.user_name,
-                        border_style="green",
-                        padding=(0, 1),
-                    )
-                )
-
                 with _console.status("[bold cyan]FRIDAY is thinking...", spinner="dots") as status:
                     _active_status["obj"] = status
                     try:
@@ -655,7 +643,7 @@ Modes:
                     duration_ms=elapsed_ms,
                 )
 
-                # Split-view output: Top half = response panel, Bottom half = Live Status Panel
+                # Response panel
                 _console.print(
                     Panel(Text(response.content or "(no response)"), title=settings.agent_name,
                           border_style="cyan", padding=(0, 1)),

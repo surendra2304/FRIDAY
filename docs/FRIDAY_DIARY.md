@@ -373,6 +373,14 @@ A chronological list:
    - Streamlined telemetry status panel to focus on Provider, Latency, and Active Tool metrics.
 **Verification**: All UI and observability test suites passed cleanly.
 
+**Session 61 — Single Input Prompt & Clean Boxless Latency Line (2026-08-25)**:
+1. **Eliminated Duplicate User Box**:
+   - Kept user input strictly at the single prompt line (`Surendra > `) without duplicating it into a second box.
+2. **Boxless Latency & Provider Line**:
+   - Replaced the bottom status panel box with a clean single status line displaying provider, tool, and latency directly beneath FRIDAY's response.
+**Verification**: All UI and observability test suites passed cleanly.
+
+
 
 
 

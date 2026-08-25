@@ -65,11 +65,9 @@ def test_render_status_panel():
         active_tool="web_fetch",
         last_latency_ms=88.5,
     )
-    panel = render_status_panel()
-    assert panel is not None
-    assert "FRIDAY Live Telemetry & Status" in str(panel.title)
-    renderable = panel.renderable
-    plain = renderable.plain
+    status_line = render_status_panel()
+    assert status_line is not None
+    plain = status_line.plain
     assert "Mistral" in plain
     assert "web_fetch" in plain
     assert "88.5ms" in plain
