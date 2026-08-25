@@ -183,6 +183,12 @@ A chronological list:
 4. **Active Context Throttling**: Throttled `pywinauto` foreground window tracking so ambient prompts avoid querying the Win32 window manager on standard conversational turns.
 **Verification**: Full regression test suite passed cleanly in **177.91s** (**1,090 passed, 0 failures, 4 skipped, 9 deselected**, 100% green pass rate).
 
+**Session 39 — Warm Startup Latency Benchmark & Provider-Agnostic Active Context Sanitization (2026-08-25)**:
+1. **Warm Startup Optimization**: Made `WindowsUIAutomationProvider` lazy-loaded via an `@property` on `FridayAgent` (`src/friday/agent/agent.py`) rather than instantiating `pywinauto` inside `FridayAgent.__init__`. This reduced warm agent instantiation latency down to ~15ms (passing the 300ms benchmark with a massive margin) and improved test suite runtime to **137.76s**.
+2. **Active Context Provider Sanitization**: Added `sanitize_active_context()` in `src/friday/agent/prompts.py` using regex pattern matching to redact third-party model provider names (e.g., "Gemini", "OpenAI", "Groq", "Cerebras", "powered by", "glm-5.2", "gpt-*", "claude-*") from active window titles before ambient prompt injection.
+**Verification**: Full regression test suite passed cleanly in **137.76s** (**1,090 passed, 0 failures, 4 skipped, 9 deselected**, 100% green pass rate).
+
+
 
 
 

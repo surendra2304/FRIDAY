@@ -1,7 +1,31 @@
-"""System prompts and persona instructions for FRIDAY."""
+import re
 
 from friday.core.config import Settings
 from friday.core.types import Message, Role
+
+BANNED_PROVIDER_PATTERNS = [
+    re.compile(r"\b(?:Google\s+)?Gemini\b", re.IGNORECASE),
+    re.compile(r"\bOpenAI\b", re.IGNORECASE),
+    re.compile(r"\bGroq\b", re.IGNORECASE),
+    re.compile(r"\bCerebras\b", re.IGNORECASE),
+    re.compile(r"\bMistral\b", re.IGNORECASE),
+    re.compile(r"\bOpenRouter\b", re.IGNORECASE),
+    re.compile(r"\bpowered\s+by\b", re.IGNORECASE),
+    re.compile(r"\bglm-[\d\.]+\b", re.IGNORECASE),
+    re.compile(r"\bgpt-[\d\.\-a-z]+\b", re.IGNORECASE),
+    re.compile(r"\bclaude-[\d\.\-a-z]+\b", re.IGNORECASE),
+    re.compile(r"\bAnthropic\b", re.IGNORECASE),
+]
+
+
+def sanitize_active_context(text: str) -> str:
+    """Redact or remove banned third-party AI provider names from active window context."""
+    if not text:
+        return ""
+    sanitized = text
+    for pattern in BANNED_PROVIDER_PATTERNS:
+        sanitized = pattern.sub("[redacted]", sanitized)
+    return sanitized
 
 
 def get_default_system_prompt(settings: Settings, include_active_context: bool = False) -> str:
@@ -13,7 +37,8 @@ def get_default_system_prompt(settings: Settings, include_active_context: bool =
             from friday.vision.active_context import format_active_window_prompt
             active_ctx = format_active_window_prompt()
             if active_ctx:
-                active_ctx_line = f"\nAMBIENT SCREEN CONTEXT:\n- {active_ctx}\n"
+                clean_ctx = sanitize_active_context(active_ctx)
+                active_ctx_line = f"\nAMBIENT SCREEN CONTEXT:\n- {clean_ctx}\n"
         except Exception:
             active_ctx_line = ""
 

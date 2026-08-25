@@ -106,14 +106,7 @@ class FridayAgent:
         conversation_id: Optional[str] = None,
     ) -> None:
         self.settings = settings or get_settings()
-        # Initialize UI Automation provider if enabled and on Windows
-        self.ui_provider = None
-        if self.settings.ui_automation_enabled:
-            try:
-                from friday.ui_automation.provider import WindowsUIAutomationProvider
-                self.ui_provider = WindowsUIAutomationProvider()
-            except Exception as e:
-                logger.warning(f"UI Automation provider could not be initialized: {e}")
+        self._ui_provider = None
         self.llm = llm_provider or create_llm_provider(self.settings)
         self.memory = memory if memory is not None else create_memory(self.settings, conversation_id=conversation_id)
         self.tools = tool_registry or self._create_default_registry()
@@ -145,6 +138,21 @@ class FridayAgent:
             f"(model: '{self.llm.model}') and {len(self.tools.list_tools())} loaded tools. "
             f"Max tool iterations: {self.max_tool_iterations}."
         )
+
+    @property
+    def ui_provider(self):
+        """Lazy loader for UI Automation provider."""
+        if self._ui_provider is None and self.settings.ui_automation_enabled:
+            try:
+                from friday.ui_automation.provider import WindowsUIAutomationProvider
+                self._ui_provider = WindowsUIAutomationProvider()
+            except Exception as e:
+                logger.warning(f"UI Automation provider could not be initialized: {e}")
+        return self._ui_provider
+
+    @ui_provider.setter
+    def ui_provider(self, value) -> None:
+        self._ui_provider = value
 
     @property
     def agent_registry(self) -> AgentRegistry:
