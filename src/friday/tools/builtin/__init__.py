@@ -38,6 +38,7 @@ from friday.tools.builtin.web_research import FetchWebpageContentTool, Synthesiz
 from friday.tools.builtin.os_settings import ToggleDarkModeTool, ToggleBluetoothTool, ToggleWifiTool
 from friday.tools.builtin.calendar import GetTodaysEventsTool
 from friday.tools.builtin.email_tools import SendEmailTool
+from friday.tools.ai_universe_client import AIUniverseTool
 from friday.vision.screen_prediction import ScreenPredictionTool
 
 __all__ = [
@@ -87,5 +88,6 @@ __all__ = [
     "ToggleWifiTool",
     "GetTodaysEventsTool",
     "SendEmailTool",
+    "AIUniverseTool",
     "ScreenPredictionTool",
 ]

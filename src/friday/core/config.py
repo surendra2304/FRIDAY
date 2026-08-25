@@ -254,6 +254,18 @@ class Settings(BaseSettings):
         description="SMTP server port (default: 587 for STARTTLS)",
     )
 
+    # AI Universe Integration Settings (Phase 20)
+    universe_api_url: str = Field(
+        default="http://localhost:8000",
+        validation_alias=AliasChoices("FRIDAY_UNIVERSE_API_URL", "AI_UNIVERSE_API_URL", "FRIDAY_AI_UNIVERSE_API_URL", "universe_api_url"),
+        description="Base URL for external AI Universe multi-agent debate API",
+    )
+    api_key: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("FRIDAY_API_KEY", "FRIDAY_FRIDAY_API_KEY", "friday_api_key", "api_key"),
+        description="API Key for authenticating FRIDAY with external AI Universe services",
+    )
+
     # Memory & Semantic Settings
     memory_backend: str = Field(default="sqlite", description="Memory backend: 'sqlite', 'in_memory'")
     memory_db_path: str = Field(default="data/friday.db", description="Path to SQLite database file")
