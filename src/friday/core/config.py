@@ -209,6 +209,11 @@ class Settings(BaseSettings):
     )
 
     # IoT & Smart Home Hub Settings (Phase 27)
+    iot_hub_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("FRIDAY_IOT_HUB_ENABLED", "IOT_HUB_ENABLED", "iot_hub_enabled"),
+        description="Whether local Smart Home / IoT Hub control is enabled",
+    )
     iot_hub_url: str = Field(
         default="http://localhost:8123",
         validation_alias=AliasChoices("FRIDAY_IOT_HUB_URL", "IOT_HUB_URL", "iot_hub_url"),

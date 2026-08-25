@@ -69,13 +69,25 @@ def test_control_plug_tool_success():
         )
 
 
-def test_control_light_hub_offline_handling():
-    """ControlLightTool handles offline / connection errors gracefully."""
+def test_control_light_hub_disabled():
+    """ControlLightTool returns disabled message when FRIDAY_IOT_HUB_ENABLED=false."""
     tool = ControlLightTool()
-    with mock.patch("httpx.Client.post") as mock_post:
-        mock_post.side_effect = httpx.ConnectError("Connection refused")
+    with mock.patch("friday.tools.builtin.smart_home.get_settings") as mock_set:
+        mock_set.return_value = Settings(iot_hub_enabled=False)
         res = tool.execute(state=True)
-        
         assert res.is_error
-        assert "Unable to control lights" in res.content
-        assert "Could not connect to local IoT Hub" in res.content
+        assert "FRIDAY_IOT_HUB_ENABLED=false" in res.content
+
+
+def test_control_light_hub_offline_handling():
+    """ControlLightTool handles connection errors gracefully when enabled."""
+    tool = ControlLightTool()
+    with mock.patch("friday.tools.builtin.smart_home.get_settings") as mock_set:
+        mock_set.return_value = Settings(iot_hub_enabled=True, iot_hub_url="http://localhost:8123")
+        with mock.patch("httpx.Client.post") as mock_post:
+            mock_post.side_effect = httpx.ConnectError("Connection refused")
+            res = tool.execute(state=True)
+            
+            assert res.is_error
+            assert "Unable to control lights" in res.content
+            assert "Could not connect to local IoT Hub" in res.content

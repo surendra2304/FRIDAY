@@ -220,6 +220,11 @@ A chronological list:
 - **Phase 28 (Proactive Screen Reading - The Watcher)**: Delivered `ScreenWatcherService` combining local OCR and fast intent classification for proactive debug/proofread assistance.
 - **Comprehensive Quality Assurance**: Verified across the master test suite with **1,106 passing tests**, zero regressions, and full documentation sync.
 
+**Session 43 — IoT Hub Toggle & Environment Finalization (2026-08-25)**:
+1. **IoT Hub Gating**: Added `FRIDAY_IOT_HUB_ENABLED` setting in `core/config.py` and `.env.example` (defaulting to `false`). Smart home tools (`control_light`, `control_plug`) now short-circuit and gracefully return offline status when disabled without initiating network requests.
+2. **Environment Finalization**: Updated local `.env` with GitHub Token authentication, enabled Proactive Screen Watcher (`FRIDAY_PROACTIVE_WATCHER_ENABLED=true`), and kept `.env` out of version control.
+
+
 
 
 

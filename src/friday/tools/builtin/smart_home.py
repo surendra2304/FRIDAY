@@ -26,6 +26,10 @@ def _get_iot_config() -> tuple[str, Optional[str]]:
 
 def _send_iot_request(endpoint: str, payload: Dict[str, Any]) -> tuple[bool, str, Optional[Dict[str, Any]]]:
     """Synchronous wrapper to POST commands to the local IoT hub with timeout & offline handling."""
+    settings = get_settings()
+    if not getattr(settings, "iot_hub_enabled", False):
+        return False, "Smart Home / IoT Hub control is currently disabled or offline (FRIDAY_IOT_HUB_ENABLED=false).", None
+
     import httpx
 
     base_url, token = _get_iot_config()
