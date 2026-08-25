@@ -65,6 +65,8 @@ from friday.tools.builtin import (
     WriteCodeFileTool,
     RunTestsTool,
     CreateGitBranchTool,
+    ControlLightTool,
+    ControlPlugTool,
     ScreenPredictionTool,
 )
 from friday.agent.state import TaskState, ReasoningStateMachine
@@ -343,6 +345,16 @@ class FridayAgent:
     )
     _ACTIVE_WINDOW_TYPE_PATTERN = re.compile(
         r"^\s*(?:please\s+)?(?:(?:now|just|okay|ok|yeah|yes)\s*,?\s*)*(?:type|write|enter)\s+(?P<text>.+?)(?:\s+(?:here|in\s+this|at\s+the\s+cursor|where\s+the\s+mouse\s+pointer\s+is(?:\s+there)?|where\s+i\s+am))?[\.\!]?\s*$",
+        re.IGNORECASE,
+    )
+    _CONTROL_LIGHT_PATTERN = re.compile(
+        r"^\s*(?:please\s+)?(?:turn|switch|dim|set)\s+(?:the\s+)?lights?\s+(?P<action>on|off|up|down|to\s+(?P<brightness>\d{1,3})\s*%?)[\.\!]?\s*$|"
+        r"^\s*(?:please\s+)?dim\s+(?:the\s+)?lights?(?:\s+to\s+(?P<dim_brightness>\d{1,3})\s*%?)?[\.\!]?\s*$",
+        re.IGNORECASE,
+    )
+    _CONTROL_PLUG_PATTERN = re.compile(
+        r"^\s*(?:please\s+)?(?:turn|switch)\s+(?P<action>on|off)\s+(?:the\s+)?(?:smart\s+plug|plug|switch)(?:\s+(?:for|called|named)?\s*(?P<device_id>[\w\-_]+))?[\.\!]?\s*$|"
+        r"^\s*(?:please\s+)?(?:turn|switch)\s+(?:the\s+)?(?:smart\s+plug|plug|switch)(?:\s+(?:for|called|named)?\s*(?P<device_id2>[\w\-_]+))?\s+(?P<action2>on|off)[\.\!]?\s*$",
         re.IGNORECASE,
     )
 
@@ -883,6 +895,58 @@ class FridayAgent:
                 verifying_reason="Validating text typed into active focus",
             )
 
+        light_match = self._CONTROL_LIGHT_PATTERN.match(clean_input)
+        if light_match:
+            action_raw = (light_match.group("action") or "").lower()
+            dim_b = light_match.group("dim_brightness")
+            bright_val = light_match.group("brightness") or dim_b
+            
+            if "off" in action_raw:
+                state_val = False
+                b_int = None
+            elif "to" in action_raw and bright_val:
+                state_val = True
+                b_int = int(bright_val)
+            elif dim_b:
+                state_val = True
+                b_int = int(dim_b)
+            elif "dim" in clean_input.lower():
+                state_val = True
+                b_int = 50
+            else:
+                state_val = True
+                b_int = None
+
+            def _toggle_light() -> str:
+                from friday.tools.builtin.smart_home import ControlLightTool
+                res = ControlLightTool().execute(state=state_val, brightness=b_int)
+                return res.content
+
+            return self._complete_fast_path(
+                clean_input, start_time, "control_light",
+                "Direct smart home light command", "Sending command to local smart light",
+                _toggle_light,
+                verifying_reason="Validating smart light response",
+            )
+
+        plug_match = self._CONTROL_PLUG_PATTERN.match(clean_input)
+        if plug_match:
+            action_val = plug_match.group("action") or plug_match.group("action2") or "on"
+            dev_id = plug_match.group("device_id") or plug_match.group("device_id2") or "plug_1"
+            state_val = (action_val.lower() == "on")
+
+            def _toggle_plug() -> str:
+                from friday.tools.builtin.smart_home import ControlPlugTool
+                res = ControlPlugTool().execute(device_id=dev_id, state=state_val)
+                return res.content
+
+            return self._complete_fast_path(
+                clean_input, start_time, "control_plug",
+                "Direct smart plug command", f"Sending {action_val} command to smart plug '{dev_id}'",
+                _toggle_plug,
+                verifying_reason="Validating smart plug response",
+            )
+
         return None
 
     def classify_instant_command(self, text: str) -> Optional[str]:
@@ -932,6 +996,10 @@ class FridayAgent:
             return "screen_describe"
         if self._ACTIVE_WINDOW_TYPE_PATTERN.match(clean):
             return "active_window_type"
+        if self._CONTROL_LIGHT_PATTERN.match(clean):
+            return "control_light"
+        if self._CONTROL_PLUG_PATTERN.match(clean):
+            return "control_plug"
         try:
             det_intent = DeterministicActionDetector.detect(clean)
             if det_intent and det_intent.confidence >= 0.95:
@@ -1088,6 +1156,8 @@ class FridayAgent:
         registry.register(WriteCodeFileTool())
         registry.register(RunTestsTool())
         registry.register(CreateGitBranchTool())
+        registry.register(ControlLightTool())
+        registry.register(ControlPlugTool())
         registry.register(ScreenPredictionTool())
         return registry
 

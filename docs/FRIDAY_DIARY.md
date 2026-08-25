@@ -198,6 +198,16 @@ A chronological list:
 4. **Integration & Test Suite**: Registered tools into `ToolRegistry`, wired fast-path routing into `FridayAgent`, and added 5 unit tests in `tests/test_dev_agent_phase26.py`.
 **Verification**: Full regression test suite passed cleanly (**1,095 passed, 0 failures, 4 skipped, 9 deselected in 153.55s**, 100% green pass rate).
 
+**Session 41 — Phase 27: IoT & Smart Home Control (Local REST Hub Integration) (2026-08-25)**:
+1. **Configuration**: Added `FRIDAY_IOT_HUB_URL` (default `http://localhost:8123`) and `FRIDAY_IOT_HUB_TOKEN` in `src/friday/core/config.py` and `.env.example`.
+2. **Smart Home Tools (`src/friday/tools/builtin/smart_home.py`)**:
+   - `ControlLightTool` (`control_light`, SAFE): Toggles lights and adjusts brightness (0–100%) via local REST API using `httpx`.
+   - `ControlPlugTool` (`control_plug`, SAFE): Toggles smart power switches / plugs by device ID.
+   - Built-in offline error handling for disconnected local IoT hubs.
+3. **Voice Fast-Path & API Exposure**: Registered tools into `ToolRegistry`, exported to Gemini Live API schemas, and implemented instant regex dispatch (`_CONTROL_LIGHT_PATTERN` / `_CONTROL_PLUG_PATTERN`) for zero-latency voice commands (*"Turn off the lights"*, *"Dim the lights to 50%"*).
+**Verification**: Full regression test suite passed cleanly (**1,101 passed, 0 failures, 4 skipped, 9 deselected in 156.19s**, 100% green pass rate).
+
+
 
 
 

@@ -208,6 +208,18 @@ class Settings(BaseSettings):
         description="Personal Access Token for GitHub Automation",
     )
 
+    # IoT & Smart Home Hub Settings (Phase 27)
+    iot_hub_url: str = Field(
+        default="http://localhost:8123",
+        validation_alias=AliasChoices("FRIDAY_IOT_HUB_URL", "IOT_HUB_URL", "iot_hub_url"),
+        description="Base URL for local Smart Home / IoT Hub (e.g. Home Assistant or local bridge)",
+    )
+    iot_hub_token: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("FRIDAY_IOT_HUB_TOKEN", "IOT_HUB_TOKEN", "iot_hub_token"),
+        description="Bearer token or API key for local Smart Home / IoT Hub",
+    )
+
     # Memory & Semantic Settings
     memory_backend: str = Field(default="sqlite", description="Memory backend: 'sqlite', 'in_memory'")
     memory_db_path: str = Field(default="data/friday.db", description="Path to SQLite database file")
