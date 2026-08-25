@@ -328,7 +328,7 @@ A chronological list:
 **Verification**: Full regression test suite passed cleanly (**1,157 passed, 0 failures, 4 skipped, 9 deselected in 161.48s**, 100% green pass rate).
 
 **Session 55 — AI Universe Key Loading & Debug Visibility (2026-08-25)**:
-1. **Explicit Multi-Source Key & URL Resolution**: Updated `AIUniverseClient` in `src/friday/tools/ai_universe_client.py` to exhaustively check `settings.api_key`, `settings.friday_api_key`, `os.getenv("FRIDAY_API_KEY")`, and `os.getenv("FRIDAY_FRIDAY_API_KEY")` to guarantee header injection (`X-FRIDAY-API-Key`) under all execution contexts.
+1. **Explicit Multi-Source Key & URL Resolution**: Updated `AIUniverseClient` in `src/friday/tools/ai_universe_client.py` and `src/friday/core/config.py` to support `FRIDAY_API_KEY`, `FRIDAY_UNIVERSE_KEY`, `UNIVERSE_KEY`, `FRIDAY_UNIVERSE_API_KEY`, and `FRIDAY_FRIDAY_API_KEY` to guarantee header injection (`X-FRIDAY-API-Key`) across custom `.env` variable namings.
 2. **Request Traceability & Debug Logging**: Added explicit debug prints and structured logger output before outbound requests displaying target URL and sanitized key preview (`key[:4]...`).
 **Verification**: Full regression test suite passed cleanly (**1,157 passed, 0 failures, 4 skipped, 9 deselected in 161.25s**, 100% green pass rate).
 

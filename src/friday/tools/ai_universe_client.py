@@ -52,6 +52,9 @@ class AIUniverseClient:
             or getattr(settings, "api_key", None)
             or getattr(settings, "friday_api_key", None)
             or os.getenv("FRIDAY_API_KEY")
+            or os.getenv("FRIDAY_UNIVERSE_KEY")
+            or os.getenv("UNIVERSE_KEY")
+            or os.getenv("FRIDAY_UNIVERSE_API_KEY")
             or os.getenv("FRIDAY_FRIDAY_API_KEY")
             or ""
         ).strip()
