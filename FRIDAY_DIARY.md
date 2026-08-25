@@ -281,6 +281,12 @@ A chronological list:
 3. **Agent Routing & Voice Integration**: Wired self-modification intent detection directly into `FridayAgent.process_message()` with structured execution metadata.
 **Verification**: Full regression test suite passed cleanly (**1,138 passed, 0 failures, 4 skipped, 9 deselected in 171.44s**, 100% green pass rate).
 
+**Session 50 — Voice Integration & Intent Routing for Self-Improvement (Phase 31: Step 3) (2026-08-25)**:
+1. **System Prompt Evolution**: Updated `get_default_system_prompt()` (`src/friday/agent/prompts.py`) and real-time bidirectional audio instruction (`src/friday/voice/gemini_live_session.py`) with explicit self-improvement rules: *"If the user asks you to modify yourself, add a new tool, or change your own code, you MUST trigger the self-improvement workflow. Confirm the plan with the user first."*
+2. **AgentRouter Specialization**: Enhanced `AgentRouter.route_subtask()` to intercept self-modification requests (*"add a tool"*, *"update your code"*, *"modify yourself"*) and route them with top priority to `SelfDevAgent`.
+**Verification**: Full regression test suite passed cleanly (**1,141 passed, 0 failures, 4 skipped, 9 deselected in 154.95s**, 100% green pass rate).
+
+
 
 
 

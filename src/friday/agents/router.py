@@ -6,6 +6,7 @@ and tool availability, then selects the best specialist agent for a subtask.
 """
 
 from dataclasses import dataclass
+import re
 from typing import Any, List, Optional
 
 from friday.agents.base_agent import BaseAgent
@@ -53,6 +54,18 @@ class AgentRouter:
 
         suggested = subtask.suggested_role.lower().strip()
         description = (subtask.description or "").lower()
+
+        # Heuristic for self-modification requests: route to self_developer
+        self_mod_pattern = r"\b(?:add\s+(?:a\s+)?tool|update\s+(?:your\s+)?code|modify\s+yourself|change\s+your\s+code|new\s+tool|add\s+feature|self[\s\-_]dev)\b"
+        if re.search(self_mod_pattern, description) or re.search(self_mod_pattern, suggested):
+            self_dev = self.registry.get_agent("self_developer") or self.registry.get_agent("developer")
+            if self_dev:
+                return AgentRoutingDecision(
+                    subtask_id=subtask.subtask_id,
+                    selected_agent=self_dev,
+                    score=0.98,
+                    rationale="Self-modification intent detected; routed to SelfDevAgent.",
+                )
 
         best_agent: Optional[BaseAgent] = None
         best_score: float = -1.0

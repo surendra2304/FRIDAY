@@ -324,11 +324,11 @@ class Settings(BaseSettings):
     voice_vad_prefix_padding_ms: int = Field(default=300, ge=0, le=1000, description="VAD prefix audio padding (ms)")
     voice_vad_silence_duration_ms: int = Field(default=800, ge=100, le=2000, description="VAD silence duration before turn complete (ms)")
     voice_speaker_timeout_ms: int = Field(
-        default=60000,
-        ge=5000,
-        le=300000,
+        default=10000,
+        ge=1000,
+        le=60000,
         validation_alias=AliasChoices("FRIDAY_VOICE_SPEAKER_TIMEOUT_MS", "VOICE_SPEAKER_TIMEOUT_MS", "voice_speaker_timeout_ms", "speaker_timeout_ms"),
-        description="Maximum continuous speaker playback timeout before auto-unmuting mic (5s to 300s; 60s default keeps long spoken answers from being chopped mid-sentence)",
+        description="Maximum continuous speaker playback timeout before auto-unmuting mic (1000ms to 60000ms)",
     )
     voice_barge_in_rms_threshold: float = Field(default=350.0, ge=50.0, le=5000.0, description="RMS energy threshold for local zero-latency barge-in")
     voice_barge_in_consecutive_frames: int = Field(default=4, ge=1, le=20, description="Consecutive frames exceeding threshold required to confirm user barge-in (debounce)")
@@ -357,51 +357,6 @@ class Settings(BaseSettings):
         description="Thinking level for Gemini 3.1 Live session: MINIMAL, LOW, MEDIUM, HIGH",
     )
     voice_thinking_budget: Optional[int] = Field(default=0, ge=0, le=2048, description="Deprecated: Thinking budget tokens for legacy models")
-
-    # Proactive Health & Futuristic Features
-    health_monitor_enabled: bool = Field(
-        default=True,
-        validation_alias=AliasChoices("FRIDAY_HEALTH_MONITOR_ENABLED", "HEALTH_MONITOR_ENABLED", "health_monitor_enabled"),
-        description="Enable proactive background system health monitoring (battery, disk, RAM)",
-    )
-    health_monitor_interval_seconds: int = Field(
-        default=300,
-        ge=30,
-        le=86400,
-        validation_alias=AliasChoices("FRIDAY_HEALTH_MONITOR_INTERVAL_SECONDS", "HEALTH_MONITOR_INTERVAL_SECONDS", "health_monitor_interval_seconds"),
-        description="Seconds between proactive health checks",
-    )
-    health_log_path: str = Field(
-        default="~/friday/system_health.log",
-        description="Path for the persistent system health log",
-    )
-    health_battery_alert_percent: int = Field(
-        default=20,
-        ge=5,
-        le=50,
-        description="Battery percentage below which FRIDAY proactively alerts the user",
-    )
-    health_disk_alert_percent: int = Field(
-        default=90,
-        ge=50,
-        le=99,
-        description="Disk usage percentage above which FRIDAY proactively alerts the user",
-    )
-    health_memory_alert_percent: int = Field(
-        default=90,
-        ge=50,
-        le=99,
-        description="RAM usage percentage above which FRIDAY proactively alerts the user",
-    )
-    context_tracking_enabled: bool = Field(
-        default=True,
-        description="Track recent desktop actions to power contextual follow-up suggestions",
-    )
-    screen_suggestions_enabled: bool = Field(
-        default=False,
-        validation_alias=AliasChoices("FRIDAY_SCREEN_SUGGESTIONS_ENABLED", "SCREEN_SUGGESTIONS_ENABLED", "screen_suggestions_enabled"),
-        description="Proactively analyze the screen and suggest next actions (uses vision API; combine with screen_aware)",
-    )
 
     # Vision & Multimodal Settings
     vision_model: str = Field(
