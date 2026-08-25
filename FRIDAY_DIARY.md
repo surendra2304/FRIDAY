@@ -250,6 +250,15 @@ A chronological list:
    - Hooked into `WorkflowScheduler` for automatic 8:00 AM proactive delivery and into `FridayAgent` for direct voice commands (*"Give me my morning briefing"*).
 **Verification**: Full regression test suite passed cleanly (**1,125 passed, 0 failures, 4 skipped, 9 deselected in 175.81s**, 100% green pass rate).
 
+**Session 47 — Voice Email Drafting & SMTP Delivery (2026-08-25)**:
+1. **Configuration**: Added `email_address`, `email_app_password`, `email_smtp_host` (default `smtp.gmail.com`), and `email_smtp_port` (default `587`) to `core/config.py` and `.env.example`.
+2. **Email Tools (`src/friday/tools/builtin/email_tools.py`)**:
+   - `SendEmailTool` (`send_email`, SENSITIVE): Connects to SMTP server over STARTTLS using App Password credentials, formats MIME multipart messages, and delivers emails with strict user authorization gating.
+3. **Email Drafting Workflow (`src/friday/workflows/email_workflow.py`)**:
+   - `EmailDraftingWorkflow`: Intercepts natural speech intents (*"Draft an email to John about the project update"*), drafts professional executive email bodies using `FallbackChainLLMProvider`, displays preview in the terminal, and prompts: *"Would you like me to send this?"*.
+**Verification**: Full regression test suite passed cleanly (**1,130 passed, 0 failures, 4 skipped, 9 deselected in 155.25s**, 100% green pass rate).
+
+
 
 
 

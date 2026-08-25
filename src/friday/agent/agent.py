@@ -73,6 +73,7 @@ from friday.tools.builtin import (
     ToggleBluetoothTool,
     ToggleWifiTool,
     GetTodaysEventsTool,
+    SendEmailTool,
     ScreenPredictionTool,
 )
 from friday.agent.state import TaskState, ReasoningStateMachine
@@ -1244,6 +1245,7 @@ class FridayAgent:
         registry.register(ToggleBluetoothTool())
         registry.register(ToggleWifiTool())
         registry.register(GetTodaysEventsTool())
+        registry.register(SendEmailTool())
         registry.register(ScreenPredictionTool())
         return registry
 
@@ -1794,6 +1796,43 @@ class FridayAgent:
                     "briefing_workflow": True,
                     "meeting_count": briefing_res.get("meeting_count", 0),
                     "weather": briefing_res.get("weather", "clear"),
+                    "task_state": self.state_machine.current_state.value,
+                },
+            )
+
+        # Email Drafting Workflow fast-path (Phase 30)
+        if not hasattr(self, "_email_workflow"):
+            from friday.workflows.email_workflow import EmailDraftingWorkflow
+            send_tool = self.tools.get_tool("send_email")
+            self._email_workflow = EmailDraftingWorkflow(send_tool=send_tool)
+        if self._email_workflow.can_handle(clean_input):
+            logger.info(f"Email Drafting Workflow triggered for: '{clean_input}'")
+            self.state_machine.transition_to(TaskState.PLANNING, reason="Drafting email content via LLM")
+            self.state_machine.transition_to(TaskState.EXECUTING, reason="Synthesizing email body and subject line")
+            import asyncio
+            try:
+                loop = asyncio.get_running_loop()
+                draft_res = loop.run_until_complete(self._email_workflow.draft_email(clean_input))
+            except RuntimeError:
+                draft_res = asyncio.run(self._email_workflow.draft_email(clean_input))
+
+            self.state_machine.transition_to(TaskState.VERIFYING, reason="Formatting email preview")
+            self.state_machine.transition_to(TaskState.COMPLETED, reason="Draft email presented to user for review")
+
+            preview_text = draft_res.get("preview_text", "Here is your email draft. Would you like me to send this?")
+            user_msg = Message(role=Role.USER, content=clean_input)
+            self.memory.add_message(user_msg)
+            asst_msg = Message(role=Role.ASSISTANT, content=preview_text)
+            self.memory.add_message(asst_msg)
+
+            return AgentResponse(
+                content=preview_text,
+                is_done=True,
+                metadata={
+                    "email_workflow": True,
+                    "recipient": draft_res.get("recipient"),
+                    "subject": draft_res.get("subject"),
+                    "body": draft_res.get("body"),
                     "task_state": self.state_machine.current_state.value,
                 },
             )

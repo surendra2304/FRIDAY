@@ -232,6 +232,28 @@ class Settings(BaseSettings):
         description="Public or secret read-only .ics URL for calendar integration",
     )
 
+    # Email Integration Settings (Phase 30)
+    email_address: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("FRIDAY_EMAIL_ADDRESS", "EMAIL_ADDRESS", "email_address"),
+        description="User email address for outgoing SMTP mail (e.g. Gmail)",
+    )
+    email_app_password: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("FRIDAY_EMAIL_APP_PASSWORD", "EMAIL_APP_PASSWORD", "email_app_password"),
+        description="App Password / Token for outgoing SMTP mail",
+    )
+    email_smtp_host: str = Field(
+        default="smtp.gmail.com",
+        validation_alias=AliasChoices("FRIDAY_EMAIL_SMTP_HOST", "EMAIL_SMTP_HOST", "email_smtp_host"),
+        description="SMTP server hostname (default: smtp.gmail.com)",
+    )
+    email_smtp_port: int = Field(
+        default=587,
+        validation_alias=AliasChoices("FRIDAY_EMAIL_SMTP_PORT", "EMAIL_SMTP_PORT", "email_smtp_port"),
+        description="SMTP server port (default: 587 for STARTTLS)",
+    )
+
     # Memory & Semantic Settings
     memory_backend: str = Field(default="sqlite", description="Memory backend: 'sqlite', 'in_memory'")
     memory_db_path: str = Field(default="data/friday.db", description="Path to SQLite database file")
