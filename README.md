@@ -56,6 +56,15 @@ FRIDAY is a modular, extensible, **Autonomous Multi-Agent AI Operating System** 
   - `ScreenWatcherService`: Passive background screen observation combining active window tracking and local Tesseract OCR.
   - Fast Groq/Llama-3.1-8B intent classifier detecting code tracebacks (`offer_debug`) or email composition (`offer_proofread`).
   - Proactive conversational notifications delivered via `NotificationManager` and Gemini Live spoken prompts upon speech pauses.
+- **Phase 29: Calendar Schedule & Morning Briefing Workflow** `[IMPLEMENTED | REAL-TESTED]`:
+  - `GetTodaysEventsTool` (`get_todays_events`): Parses `.ics` calendar feeds using `icalendar` and `recurring-ical-events` to extract today's meetings.
+  - `MorningBriefingWorkflow`: Combines today's calendar schedule with live weather forecasts via web search to generate natural spoken morning briefings (*"Good morning Surendra. You have 3 meetings today. The weather is sunny."*).
+  - Proactive 8:00 AM background scheduler hook for automated morning intelligence delivery.
+- **Phase 30: Autonomous Web Research, OS Settings, & Email Automation** `[IMPLEMENTED | REAL-TESTED]`:
+  - `ResearchAgent`: Specialist agent orchestrating `web_search`, `fetch_webpage_content` (HTML clean-up via BeautifulSoup4), and `synthesize_information` (3-bullet-point LLM summaries) with prompt-injection defense.
+  - Windows OS Settings Tools: `toggle_dark_mode` (registry-based theme switching), `toggle_bluetooth` (SENSITIVE radio control), and `toggle_wifi` (SENSITIVE network adapter toggle).
+  - `SendEmailTool` (`send_email`, SENSITIVE): SMTP email delivery with STARTTLS and App Password authentication.
+  - `EmailDraftingWorkflow`: Intercepts natural speech intents (*"Draft an email to John about the project update"*), drafts executive subject and body text, and prompts the user for sending confirmation.
 
 ---
 
@@ -63,6 +72,10 @@ FRIDAY is a modular, extensible, **Autonomous Multi-Agent AI Operating System** 
 
 | Subsystem / Capability | Implementation | Mock Tested | Real Tested | Status |
 | :--- | :--- | :---: | :---: | :---: |
+| **Autonomous Web Research Specialist (`ResearchAgent`)** | `src/friday/agents/specialists/research_agent.py`, `src/friday/tools/builtin/web_research.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Windows OS Settings Voice Control (Dark Mode, Bluetooth, Wi-Fi)** | `src/friday/tools/builtin/os_settings.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Calendar Schedule & Morning Briefing Workflow** | `src/friday/tools/builtin/calendar.py`, `src/friday/workflows/briefing_workflow.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Voice Email Drafting & SMTP Delivery (`send_email`)** | `src/friday/tools/builtin/email_tools.py`, `src/friday/workflows/email_workflow.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Autonomous Self-Coding Dev Agent & Workflow (Phase 26)** | `src/friday/agents/specialists/developer_agent.py`, `src/friday/workflows/dev_workflow.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **IoT & Smart Home Control Hub (Phase 27)** | `src/friday/tools/builtin/smart_home.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Proactive Screen Reading - The Watcher (Phase 28)** | `src/friday/vision/screen_watcher.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
@@ -239,5 +252,8 @@ FRIDAY also maintains a permanent engineering diary, architectural decision reco
 - [x] **Phase 26 — Autonomous Self-Coding Dev Agent (`DeveloperAgent`, `write_code_file`, `run_tests`, `create_git_branch`, `AutonomousDevWorkflow`)**
 - [x] **Phase 27 — IoT & Smart Home Control (`ControlLightTool`, `ControlPlugTool`, Local REST Hub Integration)**
 - [x] **Phase 28 — Proactive Screen Reading (The Watcher, Local OCR + Fast Groq Intent Classification & Spoken Assistance)**
-- [x] **Master Roadmap Freeze (All 28 Phases Completed & Verified)**
+- [x] **Phase 29 — Calendar Schedule & Morning Briefing Workflow (`GetTodaysEventsTool`, `MorningBriefingWorkflow`, Proactive 8:00 AM Engine)**
+- [x] **Phase 30 — Autonomous Productivity Suite (`ResearchAgent`, OS Settings Control, Voice Email Drafting & SMTP Delivery)**
+- [x] **Master Roadmap Freeze (All 30 Phases Completed & Verified)**
+
 
