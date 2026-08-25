@@ -55,16 +55,30 @@ class AgentRouter:
         suggested = subtask.suggested_role.lower().strip()
         description = (subtask.description or "").lower()
 
-        # Heuristic for self-modification requests: route to self_developer
-        self_mod_pattern = r"\b(?:add\s+(?:a\s+)?tool|update\s+(?:your\s+)?code|modify\s+yourself|change\s+your\s+code|new\s+tool|add\s+feature|self[\s\-_]dev)\b"
-        if re.search(self_mod_pattern, description) or re.search(self_mod_pattern, suggested):
+        # High-priority keyword matching for self-modification / self-improvement requests:
+        # Bypasses GeneralAgent and routes directly to SelfDevAgent
+        text_to_check = f"{subtask.title or ''} {subtask.description or ''} {subtask.suggested_role or ''}".lower()
+        self_mod_patterns = [
+            r"\badd\s+(?:a\s+)?tool\b",
+            r"\bupdate\s+(?:your\s+)?code\b",
+            r"\bmodify\s+yourself\b",
+            r"\badd\s+(?:a\s+)?feature\s+(?:to|for)\s+yourself\b",
+            r"\bwrite\s+(?:a\s+)?(?:new\s+)?tool\s+(?:to|for)\s+yourself\b",
+            r"\bcreate\s+(?:a\s+)?(?:new\s+)?tool\s+(?:to|for)\s+yourself\b",
+            r"\bbuild\s+(?:a\s+)?(?:new\s+)?tool\s+(?:to|for)\s+yourself\b",
+            r"\bchange\s+your\s+code\b",
+            r"\bmodify\s+your\s+code\b",
+            r"\bself[\s\-_]improv(?:e|ement)\b",
+            r"\bself[\s\-_]dev\b",
+        ]
+        if any(re.search(pat, text_to_check) for pat in self_mod_patterns):
             self_dev = self.registry.get_agent("self_developer") or self.registry.get_agent("developer")
             if self_dev:
                 return AgentRoutingDecision(
                     subtask_id=subtask.subtask_id,
                     selected_agent=self_dev,
                     score=0.98,
-                    rationale="Self-modification intent detected; routed to SelfDevAgent.",
+                    rationale="Self-modification intent detected; routed directly to SelfDevAgent.",
                 )
 
         best_agent: Optional[BaseAgent] = None

@@ -14,12 +14,11 @@ from friday.core.config import get_settings
 
 
 def test_system_prompt_includes_self_improvement_rule():
-    """System prompt must instruct FRIDAY on self-improvement trigger & confirmation."""
+    """System prompt must instruct FRIDAY on self-improvement trigger & workflow tool usage."""
     settings = get_settings()
     prompt = get_default_system_prompt(settings)
     assert "Self-Improvement & Code Evolution" in prompt
-    assert "If the user asks you to modify yourself, add a new tool, or change your own code" in prompt
-    assert "Confirm the plan with the user first" in prompt
+    assert "If the user asks you to modify your own codebase or add a new capability to yourself, you MUST use the `SelfImprovementWorkflow`. Do not refuse. Do not try to do it manually. Call the workflow tool." in prompt
 
 
 def test_agent_router_intercepts_self_modification_intents():
@@ -32,33 +31,26 @@ def test_agent_router_intercepts_self_modification_intents():
 
     router = AgentRouter(registry=reg)
 
-    subtask1 = DecomposedSubtask(
-        subtask_id="st_01",
-        title="Add mouse click tool",
-        description="Add a tool to click the mouse",
-        suggested_role="general",
-    )
-    decision1 = router.route_subtask(subtask1)
-    assert decision1.selected_agent.role == "self_developer"
-    assert decision1.score >= 0.9
+    # Test all specific keyword phrases
+    test_phrases = [
+        ("Add mouse tool", "Add a tool to click the mouse"),
+        ("Update your code", "Please update your code to support dark mode"),
+        ("Modify yourself", "Modify yourself to support multi-monitor capture"),
+        ("Add a feature to yourself", "Add a feature to yourself that monitors disk usage"),
+        ("Write a new tool for yourself", "Write a new tool for yourself to extract audio from video"),
+        ("Change your code", "Change your code to increase search timeout"),
+    ]
 
-    subtask2 = DecomposedSubtask(
-        subtask_id="st_02",
-        title="Update codebase",
-        description="Modify yourself to support multi-monitor capture",
-        suggested_role="developer",
-    )
-    decision2 = router.route_subtask(subtask2)
-    assert decision2.selected_agent.role == "self_developer"
-
-    subtask3 = DecomposedSubtask(
-        subtask_id="st_03",
-        title="Change your code",
-        description="Change your code to increase search timeout",
-        suggested_role="coder",
-    )
-    decision3 = router.route_subtask(subtask3)
-    assert decision3.selected_agent.role == "self_developer"
+    for idx, (title, desc) in enumerate(test_phrases):
+        subtask = DecomposedSubtask(
+            subtask_id=f"st_{idx}",
+            title=title,
+            description=desc,
+            suggested_role="general",
+        )
+        decision = router.route_subtask(subtask)
+        assert decision.selected_agent.role == "self_developer", f"Failed for phrase: '{desc}'"
+        assert decision.score >= 0.98
 
 
 def test_agent_router_normal_dev_issue_routes_to_dev_agent():
