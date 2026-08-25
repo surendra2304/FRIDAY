@@ -9,6 +9,7 @@ engine: https://github.com/UB-Mannheim/tesseract/wiki
 
 from typing import Any, List, Optional, Tuple
 
+from friday.core.config import get_settings
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel, ToolResult
 from friday.tools.base import BaseTool
@@ -25,10 +26,25 @@ def _capture_screen(region: Optional[Tuple[int, int, int, int]] = None):
     return ImageGrab.grab()
 
 
+def _configure_tesseract() -> None:
+    """Explicitly configure pytesseract's tesseract_cmd from settings or Windows default."""
+    import os
+    import pytesseract
+
+    settings = get_settings()
+    cmd = getattr(settings, "tesseract_cmd", None)
+    if not cmd and os.name == "nt":
+        cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+
+    if cmd:
+        pytesseract.pytesseract.tesseract_cmd = cmd
+
+
 def _run_ocr(image) -> List[Tuple[str, Tuple[int, int, int, int]]]:
     """Run Tesseract OCR; return [(text, bounding_box)] for words/confident chunks."""
     import pytesseract
 
+    _configure_tesseract()
     data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
     results: List[Tuple[str, Tuple[int, int, int, int]]] = []
     n = len(data.get("text", []))

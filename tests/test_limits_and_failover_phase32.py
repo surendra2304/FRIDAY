@@ -98,3 +98,20 @@ def test_microsoft_store_in_allowlist():
 
     exe2 = tool._resolve_executable("store")
     assert exe2 == "ms-windows-store:"
+
+
+def test_tesseract_ocr_path_configuration():
+    """Tesseract OCR path is explicitly set on pytesseract from Settings or Windows default."""
+    import pytesseract
+    from friday.core.config import Settings
+    from friday.tools.builtin.screen_ocr import _configure_tesseract
+
+    test_settings = Settings(
+        env="testing",
+        tesseract_cmd=r"C:\Custom\Tesseract\tesseract.exe",
+    )
+
+    with mock.patch("friday.tools.builtin.screen_ocr.get_settings", return_value=test_settings):
+        _configure_tesseract()
+        assert pytesseract.pytesseract.tesseract_cmd == r"C:\Custom\Tesseract\tesseract.exe"
+

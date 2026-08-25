@@ -421,6 +421,12 @@ class Settings(BaseSettings):
         description="Interval in seconds between proactive screen watcher checks",
     )
 
+    tesseract_cmd: Optional[str] = Field(
+        default=r"C:\Program Files\Tesseract-OCR\tesseract.exe" if os.name == "nt" else None,
+        validation_alias=AliasChoices("FRIDAY_TESSERACT_CMD", "TESSERACT_CMD", "tesseract_cmd"),
+        description="Path to Tesseract OCR executable (e.g. C:\\Program Files\\Tesseract-OCR\\tesseract.exe on Windows)",
+    )
+
     task_enabled: bool = Field(default=False, description="Enable proactive task automation")
     task_max_calls: int = Field(default=100, description="Maximum allowed LLM calls per task")
     task_retry_limit: int = Field(default=3, description="Maximum retry attempts for transient failures")

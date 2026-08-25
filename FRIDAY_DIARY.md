@@ -294,12 +294,14 @@ A chronological list:
 - **Voice Activation**: Real-time spoken and text intents (*"FRIDAY, add a tool to click the mouse"*, *"modify yourself"*) trigger the workflow with interactive confirmation.
 - **Master Test Verification**: Verified entire codebase with **1,141 passing tests**, 0 failures, and complete documentation synchronization.
 
-**Session 51 — Context Limiting, Provider Failover & App Allowlist (Phase 32) (2026-08-25)**:
-1. **Groq Context Limit Guard**: Implemented hard 5-turn and ~3000 token (~12,000 char) active context window sliding truncation in `SQLiteConversationMemory` (`src/friday/memory/sqlite.py`) and `InMemoryConversationMemory` (`src/friday/memory/in_memory.py`), wired directly into `FridayAgent.process_message()` context builder to prevent Groq 413 context explosion errors.
-2. **Cerebras 402 Payment Required Fast Failover**: Updated `CerebrasLLMProvider` (`src/friday/llm/cerebras_provider.py`) to intercept 402/Payment Required errors, report the key as unhealthy to `CredentialPool`, and immediately fail over without retry pauses.
-3. **Microsoft Store Allowlist**: Added `microsoft store` and `store` mapped to URI `ms-windows-store:` in `IntentDetector.APP_LAUNCH_MAP` (`src/friday/vision/intent_detector.py`) and `OpenApplicationTool` (`src/friday/tools/builtin/open_application.py`).
-4. **Tool Output Bloat Truncation**: Enforced automatic truncation of massive `TOOL` role content (such as web fetches or raw terminal dumps) exceeding 1000 characters to prevent prompt bloat while preserving diagnostic outputs.
-**Verification**: Full regression test suite passed cleanly (**1,146 passed, 0 failures, 4 skipped, 9 deselected in 161.79s**, 100% green pass rate).
+**Session 51 — Context Limiting, Provider Failover, OCR Path & App Allowlist (Phase 32) (2026-08-25)**:
+1. **Tesseract OCR Path Configuration**: Added `tesseract_cmd` setting (`FRIDAY_TESSERACT_CMD`) to `core/config.py` and `.env.example` with fallback to `C:\Program Files\Tesseract-OCR\tesseract.exe` on Windows, and wired `pytesseract.pytesseract.tesseract_cmd` dynamically in `src/friday/tools/builtin/screen_ocr.py`.
+2. **Groq Context Limit Guard**: Implemented hard 5-turn and ~3000 token (~12,000 char) active context window sliding truncation in `SQLiteConversationMemory` (`src/friday/memory/sqlite.py`) and `InMemoryConversationMemory` (`src/friday/memory/in_memory.py`), wired directly into `FridayAgent.process_message()` context builder to prevent Groq 413 context explosion errors.
+3. **Cerebras 402 Payment Required Fast Failover**: Updated `CerebrasLLMProvider` (`src/friday/llm/cerebras_provider.py`) to intercept 402/Payment Required errors, report the key as unhealthy to `CredentialPool`, and immediately fail over without retry pauses.
+4. **Microsoft Store Allowlist**: Added `microsoft store` and `store` mapped to URI `ms-windows-store:` in `IntentDetector.APP_LAUNCH_MAP` (`src/friday/vision/intent_detector.py`) and `OpenApplicationTool` (`src/friday/tools/builtin/open_application.py`).
+5. **Tool Output Bloat Truncation**: Enforced automatic truncation of massive `TOOL` role content (such as web fetches or raw terminal dumps) exceeding 1000 characters to prevent prompt bloat while preserving diagnostic outputs.
+**Verification**: Full regression test suite passed cleanly (**1,147 passed, 0 failures, 4 skipped, 9 deselected in 139.30s**, 100% green pass rate).
+
 
 
 
