@@ -233,7 +233,7 @@ def render_status_panel() -> Panel:
     content.append("⚡ Provider: ", style="bold cyan")
     content.append(f"{provider} ", style="bold magenta")
     content.append("🔧 Tool: ", style="bold cyan")
-    content.append(f"{tool:<10} ", style="bold blue")
+    content.append(f"{tool:<16} ", style="bold blue")
     content.append("⏱ Latency: ", style="bold cyan")
     content.append(f"{latency:>6.1f}ms", style="bold green")
 
@@ -629,16 +629,6 @@ Modes:
             )
 
             if _console is not None:
-                # Render user turn
-                _console.print(
-                    Panel(
-                        Text(user_input),
-                        title=f"[bold green]{settings.user_name}[/]",
-                        border_style="green",
-                        padding=(0, 1),
-                    )
-                )
-                
                 with _console.status("[bold cyan]FRIDAY is thinking...", spinner="dots") as status:
                     _active_status["obj"] = status
                     try:
@@ -658,14 +648,10 @@ Modes:
                     duration_ms=elapsed_ms,
                 )
 
-                # Response panel
+                # Split-view output: Top half = response panel, Bottom half = Live Status Panel
                 _console.print(
-                    Panel(
-                        Text(response.content or "(no response)"),
-                        title=f"[bold cyan]{settings.agent_name}[/]",
-                        border_style="cyan",
-                        padding=(0, 1),
-                    )
+                    Panel(Text(response.content or "(no response)"), title=settings.agent_name,
+                          border_style="cyan", padding=(0, 1)),
                 )
                 _console.print(render_status_panel())
                 _console.print()
