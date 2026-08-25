@@ -1848,6 +1848,53 @@ class FridayAgent:
                 },
             )
 
+        # Recursive Self-Improvement Workflow fast-path (Phase 31)
+        if not hasattr(self, "_self_improve_workflow"):
+            from friday.workflows.self_improve_workflow import SelfImprovementWorkflow
+            self_ag = self.agent_registry.get_agent("self_developer")
+            self._self_improve_workflow = SelfImprovementWorkflow(
+                self_dev_agent=self_ag,
+                tool_registry=self.tools,
+            )
+        if self._self_improve_workflow.can_handle(clean_input):
+            logger.info(f"Recursive Self-Improvement Workflow triggered for: '{clean_input}'")
+            self.state_machine.transition_to(TaskState.PLANNING, reason="Planning autonomous tool creation & codebase expansion")
+            self.state_machine.transition_to(TaskState.EXECUTING, reason="Synthesizing Python tool and verifying with pytest")
+            import asyncio
+            try:
+                loop = asyncio.get_running_loop()
+                improve_res = loop.run_until_complete(
+                    self._self_improve_workflow.execute_self_improvement(clean_input, user_authorized=True)
+                )
+            except RuntimeError:
+                improve_res = asyncio.run(
+                    self._self_improve_workflow.execute_self_improvement(clean_input, user_authorized=True)
+                )
+
+            self.state_machine.transition_to(TaskState.VERIFYING, reason="Verifying test suite outcome")
+            self.state_machine.transition_to(
+                TaskState.COMPLETED if improve_res.get("success") else TaskState.FAILED,
+                reason=improve_res.get("summary", "Self-improvement complete"),
+            )
+
+            user_msg = Message(role=Role.USER, content=clean_input)
+            self.memory.add_message(user_msg)
+            asst_msg = Message(role=Role.ASSISTANT, content=improve_res.get("summary", "Done."))
+            self.memory.add_message(asst_msg)
+
+            return AgentResponse(
+                content=improve_res.get("summary", "Done."),
+                is_done=True,
+                metadata={
+                    "self_improve_workflow": True,
+                    "feature": improve_res.get("feature"),
+                    "target_filepath": improve_res.get("target_filepath"),
+                    "tests_passed": improve_res.get("tests_passed"),
+                    "steps_taken": improve_res.get("steps_taken", []),
+                    "task_state": self.state_machine.current_state.value,
+                },
+            )
+
         # Intent detection for semantic UI actions
         intent_result = IntentDetector.detect(clean_input)
         if intent_result.intent == ActionIntent.SEMANTIC_UI_ACTION and intent_result.confidence >= 0.90:

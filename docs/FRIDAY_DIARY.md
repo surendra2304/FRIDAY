@@ -274,6 +274,14 @@ A chronological list:
    - Registered `ReadOwnCodebaseTool` in `ToolRegistry` and registered `SelfDevAgent` in `AgentRegistry` (`self_developer`).
 **Verification**: Full regression test suite passed cleanly (**1,134 passed, 0 failures, 4 skipped, 9 deselected in 169.70s**, 100% green pass rate).
 
+**Session 49 — Recursive Self-Improvement: End-to-End Self-Modification Workflow (Phase 31) (2026-08-25)**:
+1. **Self-Improvement Workflow (`src/friday/workflows/self_improve_workflow.py`)**:
+   - `SelfImprovementWorkflow`: Intercepts feature creation requests (*"FRIDAY, add a tool to click the mouse"*), indexes the architecture via `read_own_codebase`, synthesizes Python code with `FallbackChainLLMProvider` (Groq 70B), writes module to `src/friday/tools/builtin/`, runs automated pytest verification via `run_tests`, and commits/pushes on pass.
+2. **Safety Authorization Gating**: Enforces strict SENSITIVE authorization checks before any code is generated, written, or pushed to the repository.
+3. **Agent Routing & Voice Integration**: Wired self-modification intent detection directly into `FridayAgent.process_message()` with structured execution metadata.
+**Verification**: Full regression test suite passed cleanly (**1,138 passed, 0 failures, 4 skipped, 9 deselected in 171.44s**, 100% green pass rate).
+
+
 
 
 
