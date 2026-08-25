@@ -176,6 +176,14 @@ A chronological list:
 2. **Active Window Focus Typing Fast Path**: Added `_ACTIVE_WINDOW_TYPE_PATTERN` and `active_window_type` fast-path execution in `FridayAgent` (`src/friday/agent/agent.py`). Spoken or typed commands such as *"write AI universe here"*, *"type [text] at the cursor"*, or *"enter [text]"* now directly dispatch native Windows keystrokes to the focused application / cursor location via `WindowsNativeInputDriver`.
 **Verification**: Full regression test suite passed cleanly (**1,090 passed, 0 failures, 4 skipped, 9 deselected in 204.56s**, 100% green pass rate).
 
+**Session 38 — Cognitive Loop & Latency Optimizations (Fast-Path Gating, Vector Cache, & Lazy Imports) (2026-08-25)**:
+1. **Fast-Path & Multi-Agent Decomposition Gating**: Strictly routed simple queries, single-action commands, greetings, and direct desktop controls past `TaskDecomposer` and multi-agent routing. Multi-agent decomposition runs only when explicit complex cues are detected.
+2. **Vector Search 60-Second In-Memory Caching**: Added thread-safe query caching in `ChromaVectorStore` (`src/friday/memory/vector_store.py`) with a 60-second TTL to avoid duplicate embedding requests across consecutive turns.
+3. **Lazy Module Imports**: Made heavy dependencies (`chromadb`, `psutil`, and `PyGithub`) strictly lazy-loaded inside their respective methods, drastically accelerating cold CLI startup and initial turn response times.
+4. **Active Context Throttling**: Throttled `pywinauto` foreground window tracking so ambient prompts avoid querying the Win32 window manager on standard conversational turns.
+**Verification**: Full regression test suite passed cleanly in **177.91s** (**1,090 passed, 0 failures, 4 skipped, 9 deselected**, 100% green pass rate).
+
+
 
 
 

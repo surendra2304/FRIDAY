@@ -4,7 +4,7 @@ from friday.core.config import Settings
 from friday.core.types import Message, Role
 
 
-def get_default_system_prompt(settings: Settings, include_active_context: bool = True) -> str:
+def get_default_system_prompt(settings: Settings, include_active_context: bool = False) -> str:
     """Construct the system prompt for FRIDAY."""
     user_name = getattr(settings, "user_name", "Surendra")
     active_ctx_line = ""
@@ -50,7 +50,7 @@ CORE PERSONA & PRINCIPLES:
 """
 
 
-def build_system_message(settings: Settings, include_active_context: bool = True) -> Message:
+def build_system_message(settings: Settings, include_active_context: bool = False) -> Message:
     """Build the system Message object with current settings."""
     return Message(
         role=Role.SYSTEM,

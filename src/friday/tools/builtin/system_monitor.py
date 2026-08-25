@@ -1,9 +1,5 @@
-# -*- coding: utf-8 -*-
-"""System Resource Monitor and Management tools for Phase 25."""
-
 from typing import Any, Dict, List, Optional
 import os
-import psutil
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel, ToolResult
@@ -15,6 +11,7 @@ logger = get_logger("tools.system_monitor")
 def get_current_system_resources() -> Dict[str, Any]:
     """Retrieve real-time CPU, RAM, and top memory-consuming processes using psutil."""
     try:
+        import psutil
         cpu_percent = psutil.cpu_percent(interval=0.1)
         virtual_mem = psutil.virtual_memory()
         ram_percent = virtual_mem.percent
@@ -90,6 +87,7 @@ class GetSystemResourcesTool(BaseTool):
             )
 
         if process_name:
+            import psutil
             needle = process_name.lower().strip()
             # Match specific process
             matched = []
@@ -153,6 +151,7 @@ class KillProcessTool(BaseTool):
     }
 
     def execute(self, pid_or_name: str, **kwargs: Any) -> ToolResult:
+        import psutil
         target = (pid_or_name or "").strip()
         if not target:
             return ToolResult(

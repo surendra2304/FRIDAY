@@ -4,10 +4,8 @@
 import os
 from pathlib import Path
 import threading
-from typing import Any, Dict, List, Optional
-
-import chromadb
-from chromadb.config import Settings as ChromaSettings
+import time
+from typing import Any, Dict, List, Optional, Tuple
 
 from friday.core.logging import get_logger
 from friday.memory.embeddings.base import BaseEmbeddingProvider
@@ -23,26 +21,42 @@ class ChromaVectorStore:
         persist_dir: str = "data/chroma",
         collection_name: str = "friday_memories",
         embedding_provider: Optional[BaseEmbeddingProvider] = None,
+        cache_ttl_seconds: float = 60.0,
     ) -> None:
         self.persist_dir = persist_dir
         self.collection_name = collection_name
         self.embedding_provider = embedding_provider
+        self.cache_ttl_seconds = cache_ttl_seconds
         self._lock = threading.RLock()
+        self._client = None
+        self._collection = None
+        # In-memory query cache: key -> (timestamp, results)
+        self._query_cache: Dict[str, Tuple[float, List[Dict[str, Any]]]] = {}
 
-        os.makedirs(self.persist_dir, exist_ok=True)
-        try:
-            self._client = chromadb.PersistentClient(
-                path=self.persist_dir,
-                settings=ChromaSettings(anonymized_telemetry=False, is_persistent=True),
-            )
-            self._collection = self._client.get_or_create_collection(
-                name=self.collection_name,
-                metadata={"hnsw:space": "cosine"},
-            )
-            logger.info(f"Initialized ChromaVectorStore at '{self.persist_dir}' with collection '{self.collection_name}'")
-        except Exception as e:
-            logger.error(f"Failed to initialize ChromaDB PersistentClient: {e}")
-            raise
+    def _ensure_initialized(self) -> None:
+        """Lazily initialize ChromaDB client and collection on first use."""
+        if self._collection is not None:
+            return
+        with self._lock:
+            if self._collection is not None:
+                return
+            os.makedirs(self.persist_dir, exist_ok=True)
+            try:
+                import chromadb
+                from chromadb.config import Settings as ChromaSettings
+
+                self._client = chromadb.PersistentClient(
+                    path=self.persist_dir,
+                    settings=ChromaSettings(anonymized_telemetry=False, is_persistent=True),
+                )
+                self._collection = self._client.get_or_create_collection(
+                    name=self.collection_name,
+                    metadata={"hnsw:space": "cosine"},
+                )
+                logger.info(f"Initialized ChromaVectorStore at '{self.persist_dir}' with collection '{self.collection_name}'")
+            except Exception as e:
+                logger.error(f"Failed to initialize ChromaDB PersistentClient: {e}")
+                raise
 
     def add_memory(
         self,
@@ -55,6 +69,7 @@ class ChromaVectorStore:
         if not text or not text.strip():
             return False
 
+        self._ensure_initialized()
         clean_text = text.strip()
         vec = embedding
         if vec is None and self.embedding_provider is not None:
@@ -83,6 +98,8 @@ class ChromaVectorStore:
                     documents=[clean_text],
                     metadatas=[sanitized_meta],
                 )
+                # Invalidate query cache upon new insertions
+                self._query_cache.clear()
                 logger.debug(f"Upserted memory '{memory_id}' into Chroma collection '{self.collection_name}'")
                 return True
             except Exception as e:
@@ -96,17 +113,29 @@ class ChromaVectorStore:
         min_similarity: float = 0.0,
         where_filter: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
-        """Query ChromaDB for semantically similar memories by text embedding."""
+        """Query ChromaDB for semantically similar memories with 60-second caching."""
         if not query_text or not query_text.strip():
             return []
 
+        clean_query = query_text.strip().lower()
+        cache_key = f"{clean_query}:{top_k}:{min_similarity}:{str(where_filter)}"
+        now = time.time()
+
+        # Check 60-second cache
+        with self._lock:
+            if cache_key in self._query_cache:
+                cached_time, cached_res = self._query_cache[cache_key]
+                if (now - cached_time) < self.cache_ttl_seconds:
+                    logger.debug(f"Vector search cache hit for '{clean_query[:30]}'")
+                    return cached_res
+
+        self._ensure_initialized()
         if self.embedding_provider is None:
             logger.debug("No embedding provider configured for ChromaVectorStore query")
             return []
 
-        clean_query = query_text.strip()
         try:
-            query_vec = self.embedding_provider.embed_text(clean_query)
+            query_vec = self.embedding_provider.embed_text(query_text.strip())
         except Exception as e:
             logger.warning(f"Failed to embed query for semantic vector search: {e}")
             return []
@@ -145,13 +174,19 @@ class ChromaVectorStore:
                 "similarity": similarity,
             })
 
+        # Save to cache
+        with self._lock:
+            self._query_cache[cache_key] = (now, results)
+
         return results
 
     def delete_memory(self, memory_id: str) -> bool:
         """Remove a memory record by ID from ChromaDB."""
+        self._ensure_initialized()
         with self._lock:
             try:
                 self._collection.delete(ids=[memory_id])
+                self._query_cache.clear()
                 logger.debug(f"Deleted memory '{memory_id}' from ChromaDB")
                 return True
             except Exception as e:
@@ -160,6 +195,7 @@ class ChromaVectorStore:
 
     def clear(self) -> None:
         """Clear all entries in collection."""
+        self._ensure_initialized()
         with self._lock:
             try:
                 self._client.delete_collection(self.collection_name)
@@ -167,5 +203,6 @@ class ChromaVectorStore:
                     name=self.collection_name,
                     metadata={"hnsw:space": "cosine"},
                 )
+                self._query_cache.clear()
             except Exception as e:
                 logger.warning(f"Error clearing ChromaVectorStore collection: {e}")
