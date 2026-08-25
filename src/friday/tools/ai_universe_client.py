@@ -37,13 +37,24 @@ class AIUniverseClient:
         api_key: Optional[str] = None,
         timeout: float = 45.0,
     ) -> None:
+        import os
         settings = get_settings()
         self.base_url = (
             base_url
             or getattr(settings, "universe_api_url", None)
-            or getattr(settings, "ai_universe_api_url", "http://localhost:8000")
+            or getattr(settings, "ai_universe_api_url", None)
+            or os.getenv("FRIDAY_UNIVERSE_API_URL")
+            or os.getenv("AI_UNIVERSE_API_URL")
+            or "http://localhost:8000"
         ).rstrip("/")
-        self.api_key = api_key or getattr(settings, "api_key", None) or getattr(settings, "friday_api_key", "") or ""
+        self.api_key = (
+            api_key
+            or getattr(settings, "api_key", None)
+            or getattr(settings, "friday_api_key", None)
+            or os.getenv("FRIDAY_API_KEY")
+            or os.getenv("FRIDAY_FRIDAY_API_KEY")
+            or ""
+        ).strip()
         self.timeout = timeout
 
     def _get_headers(self) -> Dict[str, str]:
@@ -58,6 +69,10 @@ class AIUniverseClient:
         payload = {"question": question, "mode": mode}
         headers = self._get_headers()
 
+        key_preview = f"{self.api_key[:4]}..." if self.api_key else "(none)"
+        print(f"[DEBUG] Sending to {url} with key {key_preview}")
+        logger.info(f"Sending AI Universe ask request to {url} with key {key_preview}")
+
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await client.post(url, json=payload, headers=headers)
             resp.raise_for_status()
@@ -69,6 +84,10 @@ class AIUniverseClient:
         url = f"{self.base_url}/v1/friday/debate"
         payload = {"question": question, "max_agents": max_agents}
         headers = self._get_headers()
+
+        key_preview = f"{self.api_key[:4]}..." if self.api_key else "(none)"
+        print(f"[DEBUG] Sending to {url} with key {key_preview}")
+        logger.info(f"Sending AI Universe debate request to {url} with key {key_preview}")
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await client.post(url, json=payload, headers=headers)
