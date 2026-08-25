@@ -188,6 +188,17 @@ A chronological list:
 2. **Active Context Provider Sanitization**: Added `sanitize_active_context()` in `src/friday/agent/prompts.py` using regex pattern matching to redact third-party model provider names (e.g., "Gemini", "OpenAI", "Groq", "Cerebras", "powered by", "glm-5.2", "gpt-*", "claude-*") from active window titles before ambient prompt injection.
 **Verification**: Full regression test suite passed cleanly in **137.76s** (**1,090 passed, 0 failures, 4 skipped, 9 deselected**, 100% green pass rate).
 
+**Session 40 — Phase 26: Autonomous Self-Coding (The Dev Agent) (2026-08-25)**: Implemented autonomous issue-resolution capabilities for FRIDAY.
+1. **Developer Specialist Agent (`src/friday/agents/specialists/developer_agent.py`)**: Built `DeveloperAgent` inheriting from `BaseAgent`, dedicated to writing clean Python code, executing unit tests, and managing branches.
+2. **Dev Tools (`src/friday/tools/builtin/dev_tools.py`)**:
+   - `WriteCodeFileTool` (`write_code_file`, SAFE): Writes source code safely with automated parent directory creation.
+   - `RunTestsTool` (`run_tests`, SAFE): Executes `pytest` in a subprocess and parses test pass/fail results and stderr diagnostics.
+   - `CreateGitBranchTool` (`create_git_branch`, SENSITIVE): Safely creates and checks out git feature/fix branches.
+3. **Autonomous Dev Workflow (`src/friday/workflows/dev_workflow.py`)**: End-to-end orchestration resolving GitHub issues (*"Fix issue #4"*): retrieves issue description, routes to `DeveloperAgent`, applies the fix, executes automated `pytest` verification, and upon passing tests, runs `git_commit` and `git_push`.
+4. **Integration & Test Suite**: Registered tools into `ToolRegistry`, wired fast-path routing into `FridayAgent`, and added 5 unit tests in `tests/test_dev_agent_phase26.py`.
+**Verification**: Full regression test suite passed cleanly (**1,095 passed, 0 failures, 4 skipped, 9 deselected in 153.55s**, 100% green pass rate).
+
+
 
 
 

@@ -62,6 +62,9 @@ from friday.tools.builtin import (
     LaunchApplicationTool,
     SystemControlTool,
     HealthCheckTool,
+    WriteCodeFileTool,
+    RunTestsTool,
+    CreateGitBranchTool,
     ScreenPredictionTool,
 )
 from friday.agent.state import TaskState, ReasoningStateMachine
@@ -157,21 +160,21 @@ class FridayAgent:
     @property
     def agent_registry(self) -> AgentRegistry:
         """Lazy-loaded specialist agent registry."""
-        if self._agent_registry is None:
+        if getattr(self, "_agent_registry", None) is None:
             self._agent_registry = self._init_default_agent_registry()
         return self._agent_registry
 
     @property
     def task_decomposer(self) -> TaskDecomposer:
         """Lazy-loaded task decomposer."""
-        if self._task_decomposer is None:
+        if getattr(self, "_task_decomposer", None) is None:
             self._task_decomposer = TaskDecomposer(llm_provider=self.llm)
         return self._task_decomposer
 
     @property
     def agent_router(self) -> AgentRouter:
         """Lazy-loaded agent router."""
-        if self._agent_router is None:
+        if getattr(self, "_agent_router", None) is None:
             self._agent_router = AgentRouter(registry=self.agent_registry)
         return self._agent_router
 
@@ -1082,12 +1085,24 @@ class FridayAgent:
         registry.register(LaunchApplicationTool())
         registry.register(SystemControlTool())
         registry.register(HealthCheckTool())
+        registry.register(WriteCodeFileTool())
+        registry.register(RunTestsTool())
+        registry.register(CreateGitBranchTool())
         registry.register(ScreenPredictionTool())
         return registry
 
     def _init_default_agent_registry(self) -> AgentRegistry:
         """Instantiate default specialist agent pool for Phase 13 Multi-Agent architecture."""
+        from friday.agents.specialists.developer_agent import DeveloperAgent
         reg = AgentRegistry()
+        reg.register_agent(
+            DeveloperAgent(
+                agent_id="developer_01",
+                role="developer",
+                llm_provider=self.llm,
+                tool_registry=self.tools,
+            )
+        )
         reg.register_agent(
             BaseAgent(
                 agent_id="researcher_01",
@@ -1541,6 +1556,49 @@ class FridayAgent:
                     "agent_count": sim_res["agent_count"],
                     "total_steps": sim_res["total_steps"],
                     "metrics": sim_res["metrics"],
+                    "task_state": self.state_machine.current_state.value,
+                },
+            )
+
+        # Autonomous Dev Workflow fast-path (Phase 26)
+        if not hasattr(self, "_dev_workflow"):
+            from friday.workflows.dev_workflow import AutonomousDevWorkflow
+            dev_ag = self.agent_registry.get_agent("developer")
+            self._dev_workflow = AutonomousDevWorkflow(
+                developer_agent=dev_ag,
+                tool_registry=self.tools,
+            )
+        if self._dev_workflow.can_handle(clean_input):
+            logger.info(f"Autonomous Dev Workflow triggered for: '{clean_input}'")
+            self.state_machine.transition_to(TaskState.PLANNING, reason="Planning autonomous issue fix")
+            self.state_machine.transition_to(TaskState.EXECUTING, reason="Writing code and running automated test verification")
+            import asyncio
+            try:
+                loop = asyncio.get_running_loop()
+                dev_res = loop.run_until_complete(self._dev_workflow.execute_issue_fix(clean_input))
+            except RuntimeError:
+                dev_res = asyncio.run(self._dev_workflow.execute_issue_fix(clean_input))
+
+            self.state_machine.transition_to(TaskState.VERIFYING, reason="Verifying test suite outcome")
+            self.state_machine.transition_to(
+                TaskState.COMPLETED if dev_res.get("success") else TaskState.FAILED,
+                reason=dev_res.get("summary", "Dev workflow complete"),
+            )
+
+            user_msg = Message(role=Role.USER, content=clean_input)
+            self.memory.add_message(user_msg)
+            asst_msg = Message(role=Role.ASSISTANT, content=dev_res.get("summary", "Done."))
+            self.memory.add_message(asst_msg)
+
+            return AgentResponse(
+                content=dev_res.get("summary", "Done."),
+                is_done=True,
+                metadata={
+                    "dev_workflow": True,
+                    "issue_id": dev_res.get("issue_id"),
+                    "branch": dev_res.get("branch"),
+                    "tests_passed": dev_res.get("tests_passed"),
+                    "steps_taken": dev_res.get("steps_taken", []),
                     "task_state": self.state_machine.current_state.value,
                 },
             )

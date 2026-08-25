@@ -53,7 +53,7 @@ class TaskDecomposer:
             "You are the Task Decomposition Engine for the FRIDAY AI Operating System.\n"
             "Analyze the user's goal. Determine if it is a simple single-step action or a complex multi-step workflow.\n"
             "If it is complex, break it down into 2-5 clear, ordered subtasks.\n"
-            "Assign each subtask a suggested specialist role such as: 'researcher', 'coder', 'system_controller', 'writer', or 'general'.\n\n"
+            "Assign each subtask a suggested specialist role such as: 'developer', 'researcher', 'coder', 'system_controller', 'writer', or 'general'.\n\n"
             "Respond ONLY with a valid JSON object matching this structure:\n"
             "{\n"
             '  "is_complex": true/false,\n'
