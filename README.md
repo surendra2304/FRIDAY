@@ -2,14 +2,14 @@
 
 > **F**ully **R**esponsive **I**ntelligent **D**igital **A**ssistant for **Y**ou
 
-FRIDAY is a modular, extensible, **Autonomous Multi-Agent AI Operating System** built with a cloud-first, safety-first architecture, clean component separation, a high-throughput **Unified Multi-Provider AI Gateway** (`Groq` -> `Cerebras` -> `Mistral` -> `OpenRouter`), dedicated Gemini Real-Time Voice/Vision isolation, foundational **Multi-Agent Specialist Delegation** (`BaseAgent`, `AgentRegistry`, `TaskDecomposer`, `AgentRouter`), tiered tool execution policies, contextual persistent memory, proactive background monitoring, scientific experimentation framework (`FRIDAY Lab`), futuristic split-view observability, and external AI Universe SDK integration.
+FRIDAY is a modular, extensible, **Autonomous Multi-Agent AI Operating System** built with a cloud-first, safety-first architecture, clean component separation, a high-throughput **Unified Multi-Provider AI Gateway** (`Groq` -> `Mistral` -> `OpenRouter` -> `AI Universe`), dedicated Gemini Real-Time Voice/Vision isolation, foundational **Multi-Agent Specialist Delegation** (`BaseAgent`, `AgentRegistry`, `TaskDecomposer`, `AgentRouter`), tiered tool execution policies, contextual persistent memory, proactive background monitoring, scientific experimentation framework (`FRIDAY Lab`), futuristic split-view observability, and external AI Universe SDK integration.
 
 ---
 
 ## 🌟 Architecture & Capabilities (Phases 5–21)
 
 - **Phase 12: Unified Multi-Provider AI Gateway (`FallbackChainLLMProvider`)** `[IMPLEMENTED | REAL-TESTED]`:
-  - Intelligent cross-provider failover chain: **Groq (`openai/gpt-oss-120b`) -> Cerebras (`gpt-oss-120b`) -> Mistral (`mistral-large-latest`) -> OpenRouter (`meta-llama/llama-3.3-70b-instruct`)**.
+  - Intelligent cross-provider failover chain: **Groq (`openai/gpt-oss-120b`) -> Mistral (`mistral-large-latest`) -> OpenRouter (`meta-llama/llama-3.3-70b-instruct`) -> AI Universe**.
   - Sub-second text reasoning and tool calling with zero local GPU/CPU load.
   - Strict provider isolation: Gemini dedicated strictly for Voice (`gemini-2.0-flash-exp` / `gemini-2.0-flash-realtime-exp`), Vision OCR (`gemini-1.5-flash`), and Semantic Embeddings (`text-embedding-004`).
 - **Phase 13: Foundational Multi-Agent Specialist Delegation** `[IMPLEMENTED | REAL-TESTED]`:
@@ -87,7 +87,7 @@ FRIDAY is a modular, extensible, **Autonomous Multi-Agent AI Operating System** 
 | **Proactive Screen Reading - The Watcher (Phase 28)** | `src/friday/vision/screen_watcher.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Git & GitHub Issue Automation (Phase 24)** | `src/friday/tools/builtin/git_tools.py`, `src/friday/tools/builtin/github_tools.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **System Resource Manager & CPU Alerting (Phase 25)** | `src/friday/tools/builtin/system_monitor.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
-| **Unified Multi-Provider AI Gateway (Groq->Cerebras->Mistral->OpenRouter)** | `src/friday/llm/factory.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Unified Multi-Provider AI Gateway (Groq->Mistral->OpenRouter->AI Universe)** | `src/friday/llm/factory.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Multi-Agent Specialist Delegation (BaseAgent, Registry, Decomposer, Router)** | `src/friday/agents/` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Memory 2.0 Knowledge Base & Compactor (4-Layer, BM25, FTS5)** | `src/friday/memory/` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Stable Gemini Live Voice Streaming (Server-Side VAD)** | `src/friday/voice/gemini_live_session.py` | ✅ PASS | ✅ PASS | **REAL-TESTED** |
