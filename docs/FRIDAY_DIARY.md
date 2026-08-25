@@ -313,7 +313,11 @@ A chronological list:
    - High-confidence verified debate results automatically persist into long-term memory as structured `validated_fact` entries with provenance tracking `run_id`.
 4. **Tool Exposure & Voice Enablement**:
    - Registered `AIUniverseTool` (`ai_universe_query`, SAFE) into `ToolRegistry` and exposed system prompts / Gemini Live session instructions for voice consultations (*"FRIDAY, ask the AI Universe to debate this architecture."*).
-**Verification**: Full regression test suite passed cleanly (**1,153 passed, 0 failures, 4 skipped, 9 deselected in 162.36s**, 100% green pass rate).
+**Session 53 — Web Research Custom User-Agent & Rate-Limit Optimization (2026-08-25)**:
+1. **Custom User-Agent Header**: Updated `FetchWebpageContentTool` (`src/friday/tools/builtin/web_research.py`) and `FetchWebpageTool` (`src/friday/tools/builtin/web_tools.py`) to pass a dedicated User-Agent string: `FRIDAY_Assistant/1.0 (contact: surendra@example.com)`.
+2. **Scraping Resiliency**: Prevents HTTP 403 blocks and strict rate-limiting on Wikipedia, academic portals, and modern documentation hosts by complying with API/crawler identification guidelines (enabling up to 200 RPM allowances).
+**Verification**: Full regression test suite passed cleanly (**1,154 passed, 0 failures, 4 skipped, 9 deselected in 175.88s**, 100% green pass rate).
+
 
 
 

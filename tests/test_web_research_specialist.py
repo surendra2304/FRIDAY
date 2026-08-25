@@ -103,3 +103,26 @@ def test_research_agent_instantiation():
     assert "web_search" in agent.allowed_tools
     assert "fetch_webpage_content" in agent.allowed_tools
     assert "synthesize_information" in agent.allowed_tools
+
+
+def test_fetch_webpage_content_custom_user_agent_header():
+    """FetchWebpageContentTool sends a custom User-Agent to avoid 403 blocks/throttling."""
+    tool = FetchWebpageContentTool()
+
+    with mock.patch("httpx.Client") as mock_client_cls:
+        mock_client = mock.MagicMock()
+        mock_client_cls.return_value.__enter__.return_value = mock_client
+        mock_resp = mock.MagicMock()
+        mock_resp.text = "<html><body><p>Hello world</p></body></html>"
+        mock_client.get.return_value = mock_resp
+
+        res = tool.execute(url="https://en.wikipedia.org/wiki/Artificial_intelligence")
+        assert not res.is_error
+
+        mock_client_cls.assert_called_once()
+        _, kwargs = mock_client_cls.call_args
+        headers = kwargs.get("headers", {})
+        assert "User-Agent" in headers
+        assert "FRIDAY_Assistant/1.0" in headers["User-Agent"]
+        assert "surendra@example.com" in headers["User-Agent"]
+

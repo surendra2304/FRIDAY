@@ -109,7 +109,7 @@ class FetchWebpageTool(BaseTool):
                               is_error=True, safety_level=self.safety_level)
         try:
             with httpx.Client(timeout=_FETCH_TIMEOUT, follow_redirects=True,
-                              headers={"User-Agent": "Mozilla/5.0 (FRIDAY assistant)"}) as client:
+                              headers={"User-Agent": "FRIDAY_Assistant/1.0 (contact: surendra@example.com)"}) as client:
                 response = client.get(target)
             response.raise_for_status()
         except Exception as e:
