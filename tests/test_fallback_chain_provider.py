@@ -12,6 +12,7 @@ from friday.llm.fallback_chain_provider import FallbackChainLLMProvider, _BLOCKE
 from friday.llm.groq_provider import GroqLLMProvider
 from friday.llm.mistral_provider import MistralLLMProvider
 from friday.llm.openrouter_provider import OpenRouterLLMProvider
+from friday.llm.ai_universe_provider import AIUniverseLLMProvider
 
 
 class StubProvider(BaseLLMProvider):
@@ -120,13 +121,14 @@ def test_factory_creates_chain_in_groq_cerebras_mistral_openrouter_order():
         cerebras_api_key="ck",
         mistral_api_key="mk",
         openrouter_api_key="ork",
+        api_key="universe_k",
     )
     provider = create_llm_provider(settings)
     assert isinstance(provider, FallbackChainLLMProvider)
     assert [type(p) for p in provider.providers] == [
-        GroqLLMProvider, CerebrasLLMProvider, MistralLLMProvider, OpenRouterLLMProvider,
+        GroqLLMProvider, CerebrasLLMProvider, MistralLLMProvider, OpenRouterLLMProvider, AIUniverseLLMProvider,
     ]
-    assert provider.provider_name == "chain(groq -> cerebras -> mistral -> openrouter)"
+    assert provider.provider_name == "chain(groq -> cerebras -> mistral -> openrouter -> ai_universe)"
 
 
 def test_factory_chain_uses_own_pools_not_gemini(monkeypatch):
@@ -142,10 +144,11 @@ def test_factory_chain_uses_own_pools_not_gemini(monkeypatch):
         cerebras_api_key="ck",
         mistral_api_key="mk",
         openrouter_api_key="ork",
+        api_key="universe_k",
     )
     provider = create_llm_provider(settings)
     assert isinstance(provider, FallbackChainLLMProvider)
-    assert [p.api_key for p in provider.providers] == ["gk", "ck", "mk", "ork"]
+    assert [p.api_key for p in provider.providers] == ["gk", "ck", "mk", "ork", "universe_k"]
 
 
 def test_factory_chain_end_to_end_failover(monkeypatch):

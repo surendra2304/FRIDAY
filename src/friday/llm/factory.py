@@ -19,6 +19,7 @@ from friday.llm.groq_provider import GROQ_DEFAULT_MODEL, GroqLLMProvider
 from friday.llm.mock_provider import MockLLMProvider
 from friday.llm.openai_provider import OpenAILLMProvider
 from friday.llm.openrouter_provider import OPENROUTER_DEFAULT_MODEL, OpenRouterLLMProvider
+from friday.llm.ai_universe_provider import AIUniverseLLMProvider
 
 logger = get_logger("llm.factory")
 
@@ -142,12 +143,23 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
                 temperature=settings.llm_temperature,
                 max_tokens=settings.llm_max_tokens,
             ),
+            AIUniverseLLMProvider(
+                base_url=getattr(settings, "universe_api_url", None) or getattr(settings, "ai_universe_api_url", None),
+                api_key=getattr(settings, "api_key", None) or getattr(settings, "friday_api_key", None),
+            ),
         ]
         logger.info(
             "Initializing Fallback Chain Provider: "
             + " -> ".join(p.provider_name for p in chain_providers)
         )
         return FallbackChainLLMProvider(providers=chain_providers)
+
+    if provider_type == "ai_universe":
+        logger.info("Initializing AI Universe LLM Provider")
+        return AIUniverseLLMProvider(
+            base_url=getattr(settings, "universe_api_url", None) or getattr(settings, "ai_universe_api_url", None),
+            api_key=getattr(settings, "api_key", None) or getattr(settings, "friday_api_key", None),
+        )
 
     if provider_type == "mistral":
         model_name = settings.mistral_model or (
