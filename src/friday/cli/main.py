@@ -217,20 +217,12 @@ _active_status = {"obj": None}
 
 
 def render_status_panel() -> Text:
-    """Generate clean latency and provider text without any box."""
+    """Generate clean latency text without any box or provider clutter."""
     st = global_timeline.get_status()
-    provider = st.get("selected_provider", "Default")
-    tool = st.get("active_tool", "None")
     latency = st.get("last_latency_ms", 0.0)
 
     content = Text()
-    content.append("⚡ ", style="bold cyan")
-    content.append(f"{provider}", style="bold magenta")
-    if tool and tool != "None":
-        content.append("  •  ", style="dim")
-        content.append(f"🔧 {tool}", style="bold blue")
-    content.append("  •  ", style="dim")
-    content.append(f"⏱ {latency:.1f}ms", style="bold green")
+    content.append(f"⏱ {latency:.1f}ms", style="dim green")
 
     return content
 

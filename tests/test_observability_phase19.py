@@ -68,6 +68,4 @@ def test_render_status_panel():
     status_line = render_status_panel()
     assert status_line is not None
     plain = status_line.plain
-    assert "Mistral" in plain
-    assert "web_fetch" in plain
     assert "88.5ms" in plain
