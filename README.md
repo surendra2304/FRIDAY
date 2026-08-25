@@ -37,10 +37,25 @@ FRIDAY is a modular, extensible, **Autonomous Multi-Agent AI Operating System** 
   - Split-view Rich terminal UI: top panel displays transcript/thoughts; bottom panel displays live `Status Panel` (Cognitive Phase, Active Agent, Provider, Active Tool, Latency).
   - `ExecutionTimeline` with circular event buffering and chronological replay (`history`).
   - Strict log routing sending `INFO` and `WARNING` streams to file, keeping terminal quiet and clean.
-- **Phases 20 & 21: AI Universe Integration Preparation** `[IMPLEMENTED | REAL-TESTED]`:
-  - `BaseUniverseAPI` abstract contract (`create_world`, `create_agent`, `start_simulation`, `stop_simulation`, `get_world_state`, `get_experiment_results`).
-  - `MockUniverseClient` simulating multi-agent population dynamics.
-  - `UniverseOrchestrator` wired into `FridayAgent` for natural language world creation and automated experiment metrics logging.
+- **Phase 24: Git & GitHub Automation** `[IMPLEMENTED | REAL-TESTED]`:
+  - Safe Git repository tools: `git_status`, `git_commit`, `git_push` with timeout safety and cwd handling.
+  - Remote PyGithub integration: `list_github_issues`, `create_github_issue` with API token authentication.
+- **Phase 25: System Resource Manager** `[IMPLEMENTED | REAL-TESTED]`:
+  - `GetSystemResourcesTool` (`get_system_resources`): real-time CPU %, RAM %, and top memory-consuming processes.
+  - `KillProcessTool` (`kill_process`): process termination marked `DANGEROUS` with sensitive authorization gating.
+  - Proactive high-CPU sustained alert engine (>90% CPU for >2m prompts the user for automated remediation).
+- **Phase 26: Autonomous Self-Coding (The Dev Agent)** `[IMPLEMENTED | REAL-TESTED]`:
+  - `DeveloperAgent` specialist agent for autonomous code generation, bug fixing, and branch management.
+  - Developer tool suite: `write_code_file` (safe path/directory creation), `run_tests` (automated pytest execution and stderr diagnostics), and `create_git_branch` (sensitive branch creation).
+  - `AutonomousDevWorkflow`: End-to-end issue resolution (*"Fix issue #4"*): retrieves GitHub issue, routes to Dev Agent, writes code, runs test suite, and commits/pushes to remote on success.
+- **Phase 27: IoT & Smart Home Control** `[IMPLEMENTED | REAL-TESTED]`:
+  - `ControlLightTool` (`control_light`): toggle smart lights and adjust brightness (0-100%) via local REST API using `httpx`.
+  - `ControlPlugTool` (`control_plug`): toggle smart power plugs and switches by device ID.
+  - Built-in offline error resilience and zero-latency voice fast-paths (*"Turn off the lights"*, *"Dim the lights to 50%"*).
+- **Phase 28: Proactive Screen Reading (The Watcher)** `[IMPLEMENTED | REAL-TESTED]`:
+  - `ScreenWatcherService`: Passive background screen observation combining active window tracking and local Tesseract OCR.
+  - Fast Groq/Llama-3.1-8B intent classifier detecting code tracebacks (`offer_debug`) or email composition (`offer_proofread`).
+  - Proactive conversational notifications delivered via `NotificationManager` and Gemini Live spoken prompts upon speech pauses.
 
 ---
 
@@ -48,6 +63,11 @@ FRIDAY is a modular, extensible, **Autonomous Multi-Agent AI Operating System** 
 
 | Subsystem / Capability | Implementation | Mock Tested | Real Tested | Status |
 | :--- | :--- | :---: | :---: | :---: |
+| **Autonomous Self-Coding Dev Agent & Workflow (Phase 26)** | `src/friday/agents/specialists/developer_agent.py`, `src/friday/workflows/dev_workflow.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **IoT & Smart Home Control Hub (Phase 27)** | `src/friday/tools/builtin/smart_home.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Proactive Screen Reading - The Watcher (Phase 28)** | `src/friday/vision/screen_watcher.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Git & GitHub Issue Automation (Phase 24)** | `src/friday/tools/builtin/git_tools.py`, `src/friday/tools/builtin/github_tools.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **System Resource Manager & CPU Alerting (Phase 25)** | `src/friday/tools/builtin/system_monitor.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Unified Multi-Provider AI Gateway (Groq->Cerebras->Mistral->OpenRouter)** | `src/friday/llm/factory.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Multi-Agent Specialist Delegation (BaseAgent, Registry, Decomposer, Router)** | `src/friday/agents/` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Memory 2.0 Knowledge Base & Compactor (4-Layer, BM25, FTS5)** | `src/friday/memory/` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
@@ -212,4 +232,12 @@ FRIDAY also maintains a permanent engineering diary, architectural decision reco
 - [x] **Phase 18 — FRIDAY Lab (Multi-Provider A/B Benchmarking & Dynamic Routing)**
 - [x] **Phase 19 — Observability & Futuristic Interface (Split-View Dashboard & Timeline Replay)**
 - [x] **Phases 20 & 21 — AI Universe Integration Preparation (API SDK Contract & Mock Client)**
-- [x] **Master Roadmap Freeze (All 21 Phases Completed & Verified)**
+- [x] **Phase 22 — Hybrid Memory (ChromaDB + SQLite BM25 FTS5 with 60s TTL Caching)**
+- [x] **Phase 23 — Active Context Screen Perception & Provider-Agnostic Prompt Sanitization**
+- [x] **Phase 24 — Git & GitHub Automation (`git_status`, `git_commit`, `git_push`, `PyGithub` Issues)**
+- [x] **Phase 25 — System Resource Manager (`psutil` CPU/RAM Monitoring & Proactive Sustained High CPU Alerting)**
+- [x] **Phase 26 — Autonomous Self-Coding Dev Agent (`DeveloperAgent`, `write_code_file`, `run_tests`, `create_git_branch`, `AutonomousDevWorkflow`)**
+- [x] **Phase 27 — IoT & Smart Home Control (`ControlLightTool`, `ControlPlugTool`, Local REST Hub Integration)**
+- [x] **Phase 28 — Proactive Screen Reading (The Watcher, Local OCR + Fast Groq Intent Classification & Spoken Assistance)**
+- [x] **Master Roadmap Freeze (All 28 Phases Completed & Verified)**
+
