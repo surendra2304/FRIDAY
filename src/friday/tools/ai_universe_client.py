@@ -18,6 +18,19 @@ from friday.tools.base import BaseTool
 logger = get_logger("tools.ai_universe")
 
 
+class AIAgentInfo(BaseModel):
+    """Information for a single specialist agent registered in AI Universe."""
+
+    id: str = Field(default="", description="Unique identifier for the agent")
+    name: str = Field(default="", description="Human-readable agent name")
+    role: str = Field(default="", description="Specialist role")
+    purpose: str = Field(default="", description="Core mission or directive")
+    provider: str = Field(default="", description="Cloud or local LLM provider")
+    model: str = Field(default="", description="Live assigned model")
+    strengths: List[str] = Field(default_factory=list, description="Key domain strengths")
+    status: str = Field(default="active", description="Agent availability status")
+
+
 class AIUniverseResponse(BaseModel):
     """Pydantic model for responses received from the AI Universe API."""
 
@@ -26,6 +39,10 @@ class AIUniverseResponse(BaseModel):
     unresolved_disagreements: List[str] = Field(default_factory=list, description="List of lingering agent disagreements")
     key_evidence: List[str] = Field(default_factory=list, description="Key citations and evidence points")
     run_id: str = Field(default="", description="Unique debate run execution identifier")
+    agents_used: List[str] = Field(default_factory=list, description="List of participating agent IDs")
+    models_used: List[str] = Field(default_factory=list, description="List of active models evaluated")
+    mode_used: Optional[str] = Field(default=None, description="Mode utilized (e.g. 'consensus' or 'debate')")
+    provenance: Dict[str, Any] = Field(default_factory=dict, description="Execution provenance and audit metadata")
 
 
 class AIUniverseClient:
@@ -65,6 +82,35 @@ class AIUniverseClient:
         if self.api_key:
             headers["X-FRIDAY-API-Key"] = self.api_key
         return headers
+
+    async def get_agents(self) -> List[AIAgentInfo]:
+        """Discover live roster of all specialist agents from GET /v1/friday/agents."""
+        url = f"{self.base_url}/v1/friday/agents"
+        headers = self._get_headers()
+        key_preview = f"{self.api_key[:4]}..." if self.api_key else "(none)"
+        print(f"[DEBUG] Sending to {url} with key {key_preview}")
+        logger.info(f"Sending AI Universe get_agents request to {url} with key {key_preview}")
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            resp = await client.get(url, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+            if isinstance(data, list):
+                return [AIAgentInfo(**item) for item in data]
+            return []
+
+    async def get_info(self) -> Dict[str, Any]:
+        """Fetch AI Universe platform status and agent catalog from GET /v1/friday/info."""
+        url = f"{self.base_url}/v1/friday/info"
+        headers = self._get_headers()
+        key_preview = f"{self.api_key[:4]}..." if self.api_key else "(none)"
+        print(f"[DEBUG] Sending to {url} with key {key_preview}")
+        logger.info(f"Sending AI Universe get_info request to {url} with key {key_preview}")
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            resp = await client.get(url, headers=headers)
+            resp.raise_for_status()
+            return resp.json()
 
     async def ask(self, question: str, mode: str = "auto") -> AIUniverseResponse:
         """Query AI Universe via POST /v1/friday/ask."""
@@ -113,12 +159,13 @@ class AIUniverseTool(BaseTool):
         "properties": {
             "question": {
                 "type": "string",
-                "description": "The complex problem, strategic decision, or architecture to debate.",
+                "description": "The complex problem, strategic decision, or architecture to debate. Can be omitted or set to 'list' when querying agents.",
+                "default": "",
             },
             "mode": {
                 "type": "string",
-                "enum": ["ask", "debate"],
-                "description": "Mode of query: 'ask' (fast consensus) or 'debate' (multi-agent deliberation).",
+                "enum": ["ask", "debate", "agents", "info"],
+                "description": "Mode: 'debate' (multi-agent deliberation), 'ask' (fast consensus), 'agents' (discover registered specialist agents and their live models), or 'info' (system status).",
                 "default": "debate",
             },
             "max_agents": {
@@ -127,7 +174,7 @@ class AIUniverseTool(BaseTool):
                 "default": 5,
             },
         },
-        "required": ["question"],
+        "required": [],
     }
 
     def __init__(self, client: Optional[AIUniverseClient] = None, memory: Optional[Any] = None) -> None:
@@ -135,11 +182,70 @@ class AIUniverseTool(BaseTool):
         self.client = client or AIUniverseClient()
         self.memory = memory
 
-    def execute(self, question: str, mode: str = "debate", max_agents: int = 5, **kwargs: Any) -> ToolResult:
+    def execute(self, question: str = "", mode: str = "debate", max_agents: int = 5, **kwargs: Any) -> ToolResult:
         """Execute query synchronously by running the async client call."""
         import asyncio
 
         clean_q = (question or "").strip()
+
+        # Handle agent discovery and system info queries directly
+        if mode == "agents" or clean_q.lower() in ("agents", "list agents", "show agents", "roster", "who are you"):
+            try:
+                try:
+                    loop = asyncio.get_running_loop()
+                    agents_list = loop.run_until_complete(self.client.get_agents())
+                except RuntimeError:
+                    agents_list = asyncio.run(self.client.get_agents())
+
+                if not agents_list:
+                    return ToolResult(
+                        name=self.name,
+                        content="AI Universe returned an empty agent roster.",
+                        is_error=False,
+                        safety_level=self.safety_level,
+                    )
+
+                lines = ["### AI Universe Active Specialist Agents & Models Roster:"]
+                for a in agents_list:
+                    lines.append(f"- **{a.name}** (`{a.id}`) — **Role**: {a.role} | **Provider**: {a.provider} | **Model**: `{a.model}`\n  *Purpose*: {a.purpose}")
+                return ToolResult(
+                    name=self.name,
+                    content="\n".join(lines),
+                    is_error=False,
+                    safety_level=self.safety_level,
+                    metadata={"agents": [a.model_dump() for a in agents_list]},
+                )
+            except Exception as ex:
+                return ToolResult(
+                    name=self.name,
+                    content=f"Failed to fetch AI Universe agents roster: {ex}",
+                    is_error=True,
+                    safety_level=self.safety_level,
+                )
+
+        if mode == "info":
+            try:
+                try:
+                    loop = asyncio.get_running_loop()
+                    info_data = loop.run_until_complete(self.client.get_info())
+                except RuntimeError:
+                    info_data = asyncio.run(self.client.get_info())
+
+                return ToolResult(
+                    name=self.name,
+                    content=f"### AI Universe Platform Info:\n```json\n{json.dumps(info_data, indent=2)}\n```",
+                    is_error=False,
+                    safety_level=self.safety_level,
+                    metadata=info_data,
+                )
+            except Exception as ex:
+                return ToolResult(
+                    name=self.name,
+                    content=f"Failed to fetch AI Universe platform info: {ex}",
+                    is_error=True,
+                    safety_level=self.safety_level,
+                )
+
         if not clean_q:
             return ToolResult(
                 name=self.name,
@@ -179,6 +285,8 @@ class AIUniverseTool(BaseTool):
                                 "type": "validated_fact",
                                 "run_id": resp.run_id,
                                 "confidence": resp.confidence,
+                                "agents_used": resp.agents_used,
+                                "models_used": resp.models_used,
                                 "source": "ai_universe",
                             },
                         )
@@ -206,10 +314,14 @@ class AIUniverseTool(BaseTool):
 
             evidence_str = "\n".join(f"- {e}" for e in resp.key_evidence) if resp.key_evidence else "None"
             disagreements_str = "\n".join(f"- {d}" for d in resp.unresolved_disagreements) if resp.unresolved_disagreements else "None"
+            agents_str = ", ".join(resp.agents_used) if resp.agents_used else "Auto-selected ensemble"
+            models_str = ", ".join(resp.models_used) if resp.models_used else "Multi-provider pool"
 
             content = (
                 f"### AI Universe Consensus (Run ID: {resp.run_id})\n"
-                f"**Confidence**: {resp.confidence * 100:.1f}%\n\n"
+                f"**Confidence**: {resp.confidence * 100:.1f}%\n"
+                f"**Participating Agents**: {agents_str}\n"
+                f"**Evaluated Models**: {models_str}\n\n"
                 f"**Synthesized Conclusion**:\n{resp.answer}\n\n"
                 f"**Key Evidence**:\n{evidence_str}\n\n"
                 f"**Unresolved Disagreements**:\n{disagreements_str}"

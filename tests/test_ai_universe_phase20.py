@@ -147,3 +147,81 @@ def test_ai_universe_tool_execution_with_memory_integration():
     assert "AI Universe Validated Fact" in messages[0].content
     assert messages[0].metadata.get("run_id") == "run_tool_01"
     assert messages[0].metadata.get("type") == "validated_fact"
+
+
+@pytest.mark.anyio
+async def test_ai_universe_client_get_agents():
+    """AIUniverseClient discovers live agent roster from GET /v1/friday/agents."""
+    client = AIUniverseClient(
+        base_url="http://localhost:8000",
+        api_key="friday_universe_api",
+    )
+
+    mock_agents_data = [
+        {
+            "id": "researcher",
+            "name": "Primary Researcher",
+            "role": "Researcher",
+            "purpose": "Find, synthesize information.",
+            "provider": "gemini",
+            "model": "gemini-3.6-flash",
+            "strengths": ["information retrieval"],
+            "status": "active",
+        },
+        {
+            "id": "architect",
+            "name": "Principal Architect",
+            "role": "Architect",
+            "purpose": "Design robust software systems.",
+            "provider": "nvidia",
+            "model": "meta/llama-3.1-8b-instruct",
+            "strengths": ["system architecture"],
+            "status": "active",
+        },
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url == "http://localhost:8000/v1/friday/agents"
+        assert request.headers.get("X-FRIDAY-API-Key") == "friday_universe_api"
+        return httpx.Response(200, json=mock_agents_data)
+
+    transport = httpx.MockTransport(handler)
+    with mock.patch("httpx.AsyncClient", return_value=httpx.AsyncClient(transport=transport)):
+        agents = await client.get_agents()
+        assert len(agents) == 2
+        assert agents[0].id == "researcher"
+        assert agents[0].model == "gemini-3.6-flash"
+        assert agents[1].id == "architect"
+        assert agents[1].provider == "nvidia"
+
+
+def test_ai_universe_tool_agents_mode():
+    """Tool in mode='agents' queries live roster and renders exact model and provider names."""
+    from friday.tools.ai_universe_client import AIAgentInfo
+
+    mock_client = mock.MagicMock(spec=AIUniverseClient)
+    mock_roster = [
+        AIAgentInfo(
+            id="strategist",
+            name="Lead Strategist",
+            role="Strategist",
+            purpose="Strategic planning",
+            provider="groq",
+            model="openai/gpt-oss-120b",
+            strengths=["strategy"],
+            status="active",
+        )
+    ]
+
+    async def mock_get_agents():
+        return mock_roster
+
+    mock_client.get_agents = mock_get_agents
+    tool = AIUniverseTool(client=mock_client)
+
+    result = tool.execute(mode="agents")
+    assert not result.is_error
+    assert "Lead Strategist" in result.content
+    assert "openai/gpt-oss-120b" in result.content
+    assert "groq" in result.content
+

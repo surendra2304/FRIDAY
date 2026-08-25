@@ -332,6 +332,17 @@ A chronological list:
 2. **Request Traceability & Debug Logging**: Added explicit debug prints and structured logger output before outbound requests displaying target URL and sanitized key preview (`key[:4]...`).
 **Verification**: Full regression test suite passed cleanly (**1,157 passed, 0 failures, 4 skipped, 9 deselected in 161.25s**, 100% green pass rate).
 
+**Session 56 — Live Agent Roster Discovery & Anti-Hallucination Architecture (2026-08-25)**:
+1. **Live Specialist Discovery (`GET /v1/friday/agents` & `GET /v1/friday/info`)**:
+   - Implemented `get_agents()` and `get_info()` in `AIUniverseClient` (`src/friday/tools/ai_universe_client.py`) with `AIAgentInfo` Pydantic models.
+   - Upgraded `AIUniverseResponse` to capture `agents_used`, `models_used`, `mode_used`, and execution `provenance`.
+2. **AI Universe Tool Upgrades (`ai_universe_query`)**:
+   - Added support for `mode="agents"` and `mode="info"` to query live agent/model rosters directly from the AI Universe server.
+   - Formatted debate outputs to clearly display `Participating Agents` and `Evaluated Models`.
+3. **Anti-Hallucination System Prompt Guidance**:
+   - Instructed FRIDAY in `src/friday/agent/prompts.py` to always call `ai_universe_query(mode="agents")` whenever asked about agent models or capabilities, completely eliminating placeholder hallucinated names.
+**Verification**: Full regression test suite passed cleanly (**1,159 passed, 0 failures, 4 skipped, 9 deselected in 178.47s**, 100% green pass rate).
+
 
 
 
