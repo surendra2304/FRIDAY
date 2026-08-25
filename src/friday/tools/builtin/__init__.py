@@ -29,6 +29,7 @@ from friday.tools.builtin.system_control import SystemControlTool
 from friday.tools.builtin.health_monitor import HealthCheckTool
 from friday.tools.builtin.dev_tools import WriteCodeFileTool, RunTestsTool, CreateGitBranchTool
 from friday.tools.builtin.smart_home import ControlLightTool, ControlPlugTool
+from friday.tools.builtin.web_research import FetchWebpageContentTool, SynthesizeInformationTool
 from friday.vision.screen_prediction import ScreenPredictionTool
 
 __all__ = [
@@ -70,5 +71,7 @@ __all__ = [
     "CreateGitBranchTool",
     "ControlLightTool",
     "ControlPlugTool",
+    "FetchWebpageContentTool",
+    "SynthesizeInformationTool",
     "ScreenPredictionTool",
 ]

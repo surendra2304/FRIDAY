@@ -67,6 +67,8 @@ from friday.tools.builtin import (
     CreateGitBranchTool,
     ControlLightTool,
     ControlPlugTool,
+    FetchWebpageContentTool,
+    SynthesizeInformationTool,
     ScreenPredictionTool,
 )
 from friday.agent.state import TaskState, ReasoningStateMachine
@@ -1158,12 +1160,15 @@ class FridayAgent:
         registry.register(CreateGitBranchTool())
         registry.register(ControlLightTool())
         registry.register(ControlPlugTool())
+        registry.register(FetchWebpageContentTool())
+        registry.register(SynthesizeInformationTool())
         registry.register(ScreenPredictionTool())
         return registry
 
     def _init_default_agent_registry(self) -> AgentRegistry:
         """Instantiate default specialist agent pool for Phase 13 Multi-Agent architecture."""
         from friday.agents.specialists.developer_agent import DeveloperAgent
+        from friday.agents.specialists.research_agent import ResearchAgent
         reg = AgentRegistry()
         reg.register_agent(
             DeveloperAgent(
@@ -1174,13 +1179,11 @@ class FridayAgent:
             )
         )
         reg.register_agent(
-            BaseAgent(
+            ResearchAgent(
                 agent_id="researcher_01",
                 role="researcher",
-                instructions="Conduct thorough investigations, web queries, reading files, and summarizing findings.",
                 llm_provider=self.llm,
                 tool_registry=self.tools,
-                allowed_tools=["web_search", "fetch_webpage", "read_file", "list_files", "memory_search"],
             )
         )
         reg.register_agent(
@@ -1835,7 +1838,8 @@ class FridayAgent:
         # Trigger specialist multi-agent workflows for explicit project/research/multi-agent goals
         has_complex_cues = any(cue in clean_input.lower() for cue in [
             "step by step workflow", "multi-agent", "delegate to specialist",
-            "research and write", "analyze and summarize project", "build and test workflow"
+            "research and write", "analyze and summarize project", "build and test workflow",
+            "research the latest", "research and summarize", "find and summarize", "research about",
         ])
         if has_complex_cues:
             try:
