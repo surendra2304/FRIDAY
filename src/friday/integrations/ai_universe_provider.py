@@ -57,7 +57,10 @@ class AIUniverseTradingConsultant:
         universe_client: Optional[AIUniverseClient] = None
     ) -> None:
         self.bot_operator = bot_operator or TradingBotOperator()
-        self.universe_client = universe_client or AIUniverseClient()
+        self.universe_client = universe_client or AIUniverseClient(
+            base_url=os.getenv("AI_UNIVERSE_URL") or os.getenv("AI_UNIVERSE_API_URL") or os.getenv("FRIDAY_UNIVERSE_API_URL"),
+            api_key=os.getenv("AI_UNIVERSE_API_KEY") or os.getenv("FRIDAY_API_KEY") or os.getenv("FRIDAY_UNIVERSE_API_KEY")
+        )
 
     async def consult_on_bot_performance(
         self,

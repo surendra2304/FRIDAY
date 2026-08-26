@@ -58,21 +58,23 @@ class AIUniverseClient:
         settings = get_settings()
         self.base_url = (
             base_url
+            or os.getenv("AI_UNIVERSE_URL")
+            or os.getenv("AI_UNIVERSE_API_URL")
+            or os.getenv("FRIDAY_UNIVERSE_API_URL")
             or getattr(settings, "universe_api_url", None)
             or getattr(settings, "ai_universe_api_url", None)
-            or os.getenv("FRIDAY_UNIVERSE_API_URL")
-            or os.getenv("AI_UNIVERSE_API_URL")
             or "http://localhost:8000"
         ).rstrip("/")
         self.api_key = (
             api_key
-            or getattr(settings, "api_key", None)
-            or getattr(settings, "friday_api_key", None)
+            or os.getenv("AI_UNIVERSE_API_KEY")
             or os.getenv("FRIDAY_API_KEY")
             or os.getenv("FRIDAY_UNIVERSE_KEY")
             or os.getenv("UNIVERSE_KEY")
             or os.getenv("FRIDAY_UNIVERSE_API_KEY")
             or os.getenv("FRIDAY_FRIDAY_API_KEY")
+            or getattr(settings, "api_key", None)
+            or getattr(settings, "friday_api_key", None)
             or ""
         ).strip()
         self.timeout = timeout

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Unit tests for FRIDAY TradingBotOperator Skill and AI Universe Integration."""
 
+import json
 from unittest.mock import MagicMock, patch
 import pytest
 
@@ -55,6 +56,24 @@ def test_trading_bot_operator_get_status_parsing():
         assert status.profit_factor == 1.72
         assert status.win_rate_pct == 68.5
         assert len(status.open_positions) == 3
+
+
+def test_trading_bot_operator_sends_api_key_header():
+    """Verify X-BOT-API-KEY header is sent when api_key is configured."""
+    operator = TradingBotOperator(api_key="secret_test_key_999")
+    
+    with patch("urllib.request.urlopen") as mock_urlopen:
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps({"status": "PANIC_ACTIVATED"}).encode("utf-8")
+        mock_resp.__enter__.return_value = mock_resp
+        mock_urlopen.return_value = mock_resp
+        
+        operator.trigger_panic()
+        
+        # Verify request had X-BOT-API-KEY header
+        assert mock_urlopen.called
+        req_sent = mock_urlopen.call_args[0][0]
+        assert req_sent.get_header("X-bot-api-key") == "secret_test_key_999"
 
 
 def test_trading_bot_operator_execute_spoken_status():
