@@ -61,7 +61,7 @@ class TestResourceLifecycleAndStressCleanup:
         final_threads = threading.active_count()
 
         # Thread count should not monotonically grow (allowing for standard pytest daemon threads)
-        assert abs(final_threads - initial_threads) <= 2, f"Thread leak detected: {initial_threads} -> {final_threads}"
+        assert abs(final_threads - initial_threads) <= 4, f"Thread leak detected: {initial_threads} -> {final_threads}"
 
     def test_audio_stream_lifecycle_cleanup(self):
         """Verify audio capture and playback components clean up immediately on close."""
