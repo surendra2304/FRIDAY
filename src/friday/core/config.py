@@ -242,6 +242,13 @@ class Settings(BaseSettings):
         description="SMTP server port (default: 587 for STARTTLS)",
     )
 
+    # Device Control Settings (OpenJarvis Device Control Abstraction)
+    active_device: str = Field(
+        default="windows",
+        validation_alias=AliasChoices("FRIDAY_ACTIVE_DEVICE", "ACTIVE_DEVICE", "active_device"),
+        description="Active device controller target platform: 'windows', 'android', 'mock'",
+    )
+
     # AI Universe Integration Settings (Phase 20)
     universe_api_url: str = Field(
         default="http://localhost:8000",
