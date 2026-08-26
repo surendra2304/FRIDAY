@@ -47,6 +47,10 @@ class SelfImprovementWorkflow:
         patterns = [
             r"\b(?:add|create|implement|build|develop|write)\s+(?:a\s+)?(?:new\s+)?(?:tool|feature|capability|module)\b",
             r"\bupdate\s+(?:your\s+)?code\b",
+            r"\bupgrade\s+(?:your\s+)?code\b",
+            r"\bupgrade\s+yourself\b",
+            r"\bupdate\s+yourself\b",
+            r"\bimprove\s+yourself\b",
             r"\bmodify\s+yourself\b",
             r"\badd\s+(?:a\s+)?feature\s+(?:to|for)\s+yourself\b",
             r"\bwrite\s+(?:a\s+)?(?:new\s+)?tool\s+(?:to|for)\s+yourself\b",
