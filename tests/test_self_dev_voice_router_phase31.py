@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Unit tests for Self-Improvement Voice & Router Integration (Phase 31: Step 3)."""
+"""Unit tests for Self-Improvement Voice & Router Integration (Recursive Self-Improvement: Step 3)."""
 
 from unittest import mock
 import pytest

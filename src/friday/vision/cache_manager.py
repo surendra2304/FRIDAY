@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Perception Cache & Cost Optimization Manager for Phase 8.9.
+"""Perception Cache & Cost Optimization Manager for Evidence-Based Verification.9.
 
 Orchestrates multi-level caching for visual observations, element groundings, and screen analysis:
 1. Fast perceptual SHA256 / Mean Absolute Difference (MAD) image hashing.

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Unit tests for Phase 32 Critical Limit & Failover Fixes."""
+"""Unit tests for Skills System & Capability Gating Critical Limit & Failover Fixes."""
 
 from unittest import mock
 import pytest

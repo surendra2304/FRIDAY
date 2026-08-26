@@ -196,7 +196,7 @@ class Settings(BaseSettings):
         description="Personal Access Token for GitHub Automation",
     )
 
-    # IoT & Smart Home Hub Settings (Phase 27)
+    # IoT & Smart Home Hub Settings (IoT & Smart Home Control)
     iot_hub_enabled: bool = Field(
         default=False,
         validation_alias=AliasChoices("FRIDAY_IOT_HUB_ENABLED", "IOT_HUB_ENABLED", "iot_hub_enabled"),
@@ -213,14 +213,14 @@ class Settings(BaseSettings):
         description="Bearer token or API key for local Smart Home / IoT Hub",
     )
 
-    # Calendar & Schedule Settings (Phase 29)
+    # Calendar & Schedule Settings (Calendar & Morning Briefings)
     calendar_ics_url: Optional[str] = Field(
         default=None,
         validation_alias=AliasChoices("FRIDAY_CALENDAR_ICS_URL", "CALENDAR_ICS_URL", "calendar_ics_url"),
         description="Public or secret read-only .ics URL for calendar integration",
     )
 
-    # Email Integration Settings (Phase 30)
+    # Email Integration Settings (Web Research & Email Automation)
     email_address: Optional[str] = Field(
         default=None,
         validation_alias=AliasChoices("FRIDAY_EMAIL_ADDRESS", "EMAIL_ADDRESS", "email_address"),
@@ -249,7 +249,7 @@ class Settings(BaseSettings):
         description="Active device controller target platform: 'windows', 'android', 'mock'",
     )
 
-    # AI Universe Integration Settings (Phase 20)
+    # AI Universe Integration Settings (AI Universe Integration)
     universe_api_url: str = Field(
         default="http://localhost:8000",
         validation_alias=AliasChoices("FRIDAY_UNIVERSE_API_URL", "AI_UNIVERSE_API_URL", "FRIDAY_AI_UNIVERSE_API_URL", "universe_api_url"),
@@ -426,7 +426,7 @@ class Settings(BaseSettings):
     proactive_watcher_enabled: bool = Field(
         default=False,
         validation_alias=AliasChoices("FRIDAY_PROACTIVE_WATCHER_ENABLED", "PROACTIVE_WATCHER_ENABLED", "proactive_watcher_enabled"),
-        description="Enable Phase 28 Proactive Screen Reading (The Watcher)",
+        description="Enable Proactive Screen Reading Proactive Screen Reading (The Watcher)",
     )
     watcher_interval_seconds: float = Field(
         default=120.0,

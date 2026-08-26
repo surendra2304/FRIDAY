@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Comprehensive adversarial unit test suite for Phase 9.10 Autonomous Safety & Authorization Gate.
+"""Comprehensive adversarial unit test suite for Goal Understanding0 Autonomous Safety & Authorization Gate.
 
 Tests:
 1. Hard-blocked destructive operations (format, rm -rf, drop database, kill -9).

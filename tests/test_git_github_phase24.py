@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Unit tests for Phase 24: Git & GitHub Automation."""
+"""Unit tests for Git & GitHub Automation."""
 
 import pytest
 from unittest.mock import MagicMock, patch

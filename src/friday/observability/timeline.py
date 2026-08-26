@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Timeline logger and execution replay for Phase 19 Observability."""
+"""Timeline logger and execution replay for Observability UI Observability."""
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone

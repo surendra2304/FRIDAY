@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Deterministic unit test suite for Phase 7.8 Advanced Tool Orchestration & Multi-Tool Planning.
+"""Deterministic unit test suite for Computer Action Execution.8 Advanced Tool Orchestration & Multi-Tool Planning.
 
 Validates:
 1. Sequential dependency chains: Step 2 uses verified output from Step 1 via dynamic template `{{step_1.result}}` or `{{step_1}}`.

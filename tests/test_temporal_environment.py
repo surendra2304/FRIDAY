@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Comprehensive unit test suite for Phase 8.3: Temporal & Environmental Context.
+"""Comprehensive unit test suite for Evidence-Based Verification.3: Temporal & Environmental Context.
 
 Tests:
 1. Meaningful state change detection (application focus switch, window title changes).

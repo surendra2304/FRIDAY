@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Comprehensive unit test suite for Phase 9.2: Hierarchical Task Planning & Dependency DAG.
+"""Comprehensive unit test suite for Plan Checking: Hierarchical Task Planning & Dependency DAG.
 
 Tests:
 1. Linear task plans with sequential dependencies.
@@ -11,7 +11,7 @@ Tests:
 7. Self-dependency detection.
 8. Unavailable capability validation.
 9. Authorization and safety requirement validation.
-10. Conversion from structured Phase 9.1 Goal to executable TaskPlan.
+10. Conversion from structured Goal Understanding Goal to executable TaskPlan.
 11. Ambiguous & Prohibited Goal planning rejection.
 12. Untrusted / malicious visual and parameter injection defense in plans.
 13. Expected output types and rollback / checkpoint metadata preservation.

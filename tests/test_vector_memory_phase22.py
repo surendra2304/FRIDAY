@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Unit tests for Phase 22: True Semantic Vector Memory (ChromaDB + Gemini Embeddings)."""
+"""Unit tests for Full-Duplex Voice Engine2: True Semantic Vector Memory (ChromaDB + Gemini Embeddings)."""
 
 import os
 import time

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Unit tests for Phase 25: System Resource Manager and Proactive Alerting."""
+"""Unit tests for System Resource Management and Proactive Alerting."""
 
 import pytest
 from unittest.mock import MagicMock, patch

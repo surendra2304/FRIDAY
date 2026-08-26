@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Comprehensive unit test suite for Phase 8.5: Visual Memory & Episodic Environmental Memory.
+"""Comprehensive unit test suite for Evidence-Based Verification.5: Visual Memory & Episodic Environmental Memory.
 
 Tests:
 1. Storing derived observations as structured episodic facts without raw screenshots.

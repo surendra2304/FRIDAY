@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Comprehensive unit test suite for Phase 8.9: Perception Reliability, Caching & Cost Optimization.
+"""Comprehensive unit test suite for Evidence-Based Verification.9: Perception Reliability, Caching & Cost Optimization.
 
 Tests:
 1. Unchanged screen suppression (proves identical screen byte payloads do not trigger redundant vision calls).

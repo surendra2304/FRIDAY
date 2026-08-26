@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Task Decomposer for FRIDAY Phase 13 Multi-Agent System.
+"""Task Decomposer for FRIDAY Multi-Agent Specialist System.
 
 Breaks down complex goals into explicit, ordered subtasks formatted as JSON.
 """

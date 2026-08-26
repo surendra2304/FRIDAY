@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Comprehensive unit test suite for Phase 8.8: Perception-Driven Safe Action Preparation.
+"""Comprehensive unit test suite for Evidence-Based Verification.8: Perception-Driven Safe Action Preparation.
 
 Tests:
 1. Exact target identification and coordinate grounding from BoundingBox to screen pixels.

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Unit tests for Phase 13 Multi-Agent System: BaseAgent, Registry, Decomposer, Router."""
+"""Unit tests for Multi-Agent Specialist System: BaseAgent, Registry, Decomposer, Router."""
 
 import asyncio
 from unittest import mock

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Deterministic unit test suite for Phase 7.9 Long-Running Task Management & Background Progress.
+"""Deterministic unit test suite for Computer Action Execution.9 Long-Running Task Management & Background Progress.
 
 Validates:
 1. Task creation and asynchronous background dispatching via `LongRunningTaskManager`.

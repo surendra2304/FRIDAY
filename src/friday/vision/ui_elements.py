@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Structured UI element and visual region models for Phase 8.2.
+"""Structured UI element and visual region models for Evidence-Based Verification.2.
 
 Provides normalized bounding boxes, typed UI element categories, confidence scores,
 and structured parsing for fine-grained desktop screen understanding.

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Comprehensive unit test suite for Phase 9.1: Autonomous Goal Understanding & Decomposition.
+"""Comprehensive unit test suite for Goal Understanding: Autonomous Goal Understanding & Decomposition.
 
 Tests:
 1. Simple informational goals (read-only queries, low risk, single subgoal).

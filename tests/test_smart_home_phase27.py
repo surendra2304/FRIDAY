@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Unit tests for Phase 27: IoT & Smart Home Control."""
+"""Unit tests for IoT & Smart Home Control."""
 
 from unittest import mock
 import pytest

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Agent Registry for FRIDAY Phase 13 Multi-Agent System.
+"""Agent Registry for FRIDAY Multi-Agent Specialist System.
 
 Maintains available specialist agent definitions and instances.
 """

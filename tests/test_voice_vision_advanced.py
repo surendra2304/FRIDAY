@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Deterministic unit test suite for Phase 8.7: Advanced Voice + Vision Interaction.
+"""Deterministic unit test suite for Evidence-Based Verification.7: Advanced Voice + Vision Interaction.
 
 Tests:
 1. Voice request classifying visual intent vs non-visual intent.

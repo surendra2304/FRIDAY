@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Comprehensive unit test suite for Phase 9.6: Autonomous Failure Recovery & Strategy Adaptation.
+"""Comprehensive unit test suite for Cognitive Task Planning.6: Autonomous Failure Recovery & Strategy Adaptation.
 
 Tests:
 1. Classification of transient network/socket failures -> RETRY.

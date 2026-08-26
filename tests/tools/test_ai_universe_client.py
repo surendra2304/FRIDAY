@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Unit tests for AI Universe Client (Phase 20) with httpx mocking."""
+"""Unit tests for AI Universe Client (AI Universe Integration) with httpx mocking."""
 
 import os
 from unittest import mock

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Comprehensive unit test suite for Phase 9.8: Advanced Tool Orchestration & Capability Routing.
+"""Comprehensive unit test suite for Cognitive Task Planning.8: Advanced Tool Orchestration & Capability Routing.
 
 Tests:
 1. Capability discovery and deterministic tool selection scoring.

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Developer Specialist Agent for Phase 26: Autonomous Self-Coding."""
+"""Developer Specialist Agent for Autonomous Self-Coding Dev Agent."""
 
 from typing import Any, Dict, List, Optional
 

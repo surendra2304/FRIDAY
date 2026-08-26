@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Unit tests for Email Tools & Email Drafting Workflow (Phase 30)."""
+"""Unit tests for Email Tools & Email Drafting Workflow (Web Research & Email Automation)."""
 
 import smtplib
 from unittest import mock
@@ -100,12 +100,12 @@ def test_email_drafting_workflow():
     mock_llm = mock.MagicMock()
     mock_llm.generate.return_value = Message(
         role=Role.ASSISTANT,
-        content="Subject: Project Alpha Update\n\nHi John,\n\nWe have made substantial progress on Phase 30.\n\nBest,\nSurendra",
+        content="Subject: Project Alpha Update\n\nHi John,\n\nWe have made substantial progress on Web Research & Email Automation.\n\nBest,\nSurendra",
     )
 
     with mock.patch("friday.llm.factory.create_llm_provider", return_value=mock_llm):
         draft = asyncio.run(workflow.draft_email("Draft an email to John about the project update"))
         assert draft["recipient"] == "John"
         assert draft["subject"] == "Project Alpha Update"
-        assert "substantial progress on Phase 30" in draft["body"]
+        assert "substantial progress on Web Research & Email Automation" in draft["body"]
         assert "Would you like me to send this?" in draft["preview_text"]

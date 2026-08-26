@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Verification logic for external AI Universe multi-agent debate responses (Phase 20)."""
+"""Verification logic for external AI Universe multi-agent debate responses (AI Universe Integration)."""
 
 from typing import Any, Dict, List, Optional, Tuple
 from friday.core.logging import get_logger

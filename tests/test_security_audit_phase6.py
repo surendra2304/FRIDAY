@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Comprehensive security audit and prompt-injection regression test suite for Phase 6.
+"""Comprehensive security audit and prompt-injection regression test suite for Multimodal Screen Perception.
 
 Validates the 10 critical security vectors:
 1. Malicious instructions visible on webpage.

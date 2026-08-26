@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Comprehensive unit test suite for Phase 9.5: Active Working Memory & Task Context.
+"""Comprehensive unit test suite for Cognitive Task Planning.5: Active Working Memory & Task Context.
 
 Tests:
 1. ActiveTaskContext isolation between concurrent/independent tasks.

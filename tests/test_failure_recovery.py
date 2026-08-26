@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Deterministic unit test suite for Phase 7.6 Autonomous Failure Recovery & Strategy Adaptation.
+"""Deterministic unit test suite for Computer Action Execution.6 Autonomous Failure Recovery & Strategy Adaptation.
 
 Validates:
 1. Classification of failures into FailureType (TRANSIENT_NETWORK, QUOTA_EXHAUSTED, TOOL_ERROR, INVALID_PARAMETERS, AUTHORIZATION_DENIED, UNRECOVERABLE_SAFETY_REJECTION).

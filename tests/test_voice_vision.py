@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Deterministic unit tests for Phase 6.6 Voice + Vision Integration."""
+"""Deterministic unit tests for Multimodal Screen Perception.6 Voice + Vision Integration."""
 
 import asyncio
 from unittest import mock

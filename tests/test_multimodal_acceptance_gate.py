@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Phase 6.10 Multimodal Acceptance Gate Test Suite.
+"""Multimodal Screen Perception.10 Multimodal Acceptance Gate Test Suite.
 
 Verifies the complete integrated multimodal pipeline:
 1. Screen capture produces valid image bytes.
@@ -16,7 +16,7 @@ Verifies the complete integrated multimodal pipeline:
 12. Credential-pool failover remains functional.
 13. Raw screenshots are not persisted.
 14. Existing security protections remain active.
-15. Existing Phase 6 functionality does not regress.
+15. Existing Multimodal Screen Perception functionality does not regress.
 """
 
 from unittest import mock
@@ -206,9 +206,9 @@ def test_acceptance_13_raw_screenshots_not_persisted(tmp_path):
     assert "A text editor with markdown notes" in stored_text
 
 
-# 14 & 15. Comprehensive Phase 6 Multimodal Acceptance Gate Final Assert
+# 14 & 15. Comprehensive Multimodal Screen Perception Multimodal Acceptance Gate Final Assert
 def test_acceptance_14_and_15_multimodal_acceptance_gate_pipeline():
-    """End-to-end composite verification confirming all Phase 6 multimodal components cooperate safely."""
+    """End-to-end composite verification confirming all Multimodal Screen Perception multimodal components cooperate safely."""
     # Build complete mock stack
     mock_screen = MockScreenCaptureProvider(width=2560, height=1440)
     mock_vis = MockVisionProvider(default_response="User working on Python tests in VS Code.")

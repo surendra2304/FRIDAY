@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Temporal and environmental state tracking for multimodal perception in Phase 8.3.
+"""Temporal and environmental state tracking for multimodal perception in Evidence-Based Verification.3.
 
 Provides structured tracking of CURRENT_STATE, PREVIOUS_STATE, meaningful CHANGE events,
 change timestamps, relevant task context associations, and confidence metrics over time.

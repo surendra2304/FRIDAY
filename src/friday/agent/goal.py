@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Goal Understanding, Normalization, Classification and Hierarchical Decomposition for Phase 9.1.
+"""Goal Understanding, Normalization, Classification and Hierarchical Decomposition for Goal Understanding.
 
 Converts high-level natural language user requests into structured, validated Goal instances:
 - goal_id, original_request, normalized_intent, desired_outcome, constraints, required_capabilities,

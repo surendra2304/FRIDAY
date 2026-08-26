@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Universe API contract and data abstractions for FRIDAY AI Universe Integration (Phases 20-21)."""
+"""Universe API contract and data abstractions for FRIDAY AI Universe Integration (AI Universe Integration)."""
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field

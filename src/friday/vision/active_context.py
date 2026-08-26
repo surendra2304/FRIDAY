@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Active Window Tracker for Phase 23: Active Screen Awareness.
+"""Active Window Tracker for Full-Duplex Voice Engine3: Active Screen Awareness.
 
 Uses pywinauto (UI Automation / Win32) to extract the title, process name,
 and active URL (for web browsers) of the window currently in foreground focus.

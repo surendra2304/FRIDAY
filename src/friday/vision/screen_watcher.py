@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Proactive Screen Reading (The Watcher) for Phase 28.
+"""Proactive Screen Reading (The Watcher) for Proactive Screen Reading.
 
 Passively reads active screen context via local OCR (Tesseract) and active window tracking,
 evaluating screen text using a fast Groq LLM call (or active provider) to offer proactive

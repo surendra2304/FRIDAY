@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Developer Tools for Phase 26 Autonomous Self-Coding.
+"""Developer Tools for Autonomous Self-Coding Autonomous Self-Coding.
 
 Provides safe & sensitive tools for writing code files, running tests via pytest,
 and creating git branches.

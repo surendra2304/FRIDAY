@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Comprehensive unit test suite for Phase 8.6: Active Perception & Information Seeking.
+"""Comprehensive unit test suite for Evidence-Based Verification.6: Active Perception & Information Seeking.
 
 Tests:
 1. Sufficient-context no-call behavior (skips redundant screenshot and vision calls).

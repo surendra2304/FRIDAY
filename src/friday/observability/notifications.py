@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Notification Queue for FRIDAY Phase 17 Proactive System.
+"""Notification Queue for FRIDAY Proactive Background Monitoring Proactive System.
 
 Buffers proactive discoveries and alerts so FRIDAY can surface them during conversation turns.
 """

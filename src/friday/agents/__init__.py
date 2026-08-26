@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Specialist Agents module for FRIDAY Phase 13 Multi-Agent System."""
+"""Specialist Agents module for FRIDAY Multi-Agent Specialist System."""
 
 from friday.agents.base_agent import AgentTask, AgentTaskResult, BaseAgent
 from friday.agents.decomposer import DecomposedSubtask, DecompositionResult, TaskDecomposer

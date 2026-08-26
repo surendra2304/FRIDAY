@@ -1,4 +1,4 @@
-"""Unit and integration tests for FRIDAY Phase 5.6: Futuristic Voice Persona."""
+"""Unit and integration tests for FRIDAY Security & Authorization Boundary.6: Futuristic Voice Persona."""
 
 import asyncio
 from unittest import mock

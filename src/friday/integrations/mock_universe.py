@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Mock Universe API Client for standalone testing and simulation (Phases 20-21)."""
+"""Mock Universe API Client for standalone testing and simulation (AI Universe Integration)."""
 
 from datetime import datetime, timezone
 import random

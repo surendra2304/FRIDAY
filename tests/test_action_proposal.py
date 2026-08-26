@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Deterministic unit tests for Phase 6.7 Computer Action Proposal Layer & Safety Gating."""
+"""Deterministic unit tests for Multimodal Screen Perception.7 Computer Action Proposal Layer & Safety Gating."""
 
 import pytest
 
