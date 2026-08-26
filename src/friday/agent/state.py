@@ -37,9 +37,9 @@ VALID_TRANSITIONS: Dict[TaskState, List[TaskState]] = {
     TaskState.NOT_STARTED: [TaskState.UNDERSTANDING, TaskState.PLANNING, TaskState.CANCELLED, TaskState.FAILED],
     TaskState.UNDERSTANDING: [TaskState.PLANNING, TaskState.CANCELLED, TaskState.FAILED],
     TaskState.PLANNING: [TaskState.EXECUTING, TaskState.PAUSED, TaskState.VERIFYING, TaskState.CANCELLED, TaskState.FAILED],
-    TaskState.EXECUTING: [TaskState.PAUSED, TaskState.VERIFYING, TaskState.CANCELLED, TaskState.FAILED],
+    TaskState.EXECUTING: [TaskState.PLANNING, TaskState.EXECUTING, TaskState.PAUSED, TaskState.VERIFYING, TaskState.CANCELLED, TaskState.FAILED],
     TaskState.PAUSED: [TaskState.EXECUTING, TaskState.CANCELLED, TaskState.FAILED],
-    TaskState.VERIFYING: [TaskState.COMPLETED, TaskState.EXECUTING, TaskState.CANCELLED, TaskState.FAILED],
+    TaskState.VERIFYING: [TaskState.COMPLETED, TaskState.PLANNING, TaskState.EXECUTING, TaskState.CANCELLED, TaskState.FAILED],
     TaskState.COMPLETED: [],  # Terminal state
     TaskState.CANCELLED: [],  # Terminal state
     TaskState.FAILED: [],     # Terminal state
