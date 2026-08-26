@@ -10,6 +10,7 @@ from friday.integrations.universe_api import (
     WorldState,
 )
 from friday.integrations.universe_orchestrator import UniverseOrchestrator
+from friday.integrations.ai_universe_provider import AIUniverseTradingConsultant, TradingConsultationResult
 
 __all__ = [
     "BaseUniverseAPI",
@@ -19,4 +20,6 @@ __all__ = [
     "UniverseExperimentResult",
     "MockUniverseClient",
     "UniverseOrchestrator",
+    "AIUniverseTradingConsultant",
+    "TradingConsultationResult",
 ]
