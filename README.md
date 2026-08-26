@@ -41,11 +41,15 @@ FRIDAY is a modular, extensible, **Autonomous Multi-Agent AI Operating System** 
 - **Voice Email Workflow (`EmailDraftingWorkflow`)**: Composes professional emails from voice commands and securely delivers via SMTP with STARTTLS.
 - **Smart Home Integration**: Controls IoT lights, plugs, and switches via local REST APIs.
 
-### 💾 6. Memory 2.0 & Intelligence Gateway
-- **4-Layer Structured Memory**: `working` (current conversation turn), `episodic` (chronological events), `semantic` (facts and knowledge), and `task` (workflow outcomes).
-- **Hybrid Search**: Full-text indexing with SQLite FTS5 and BM25 ranking combined with `text-embedding-004` vector recall.
-- **Periodic Memory Compactor (`MemoryCompactor`)**: Consolidates verbose conversation turns into compact, lasting semantic knowledge.
-- **Multi-Provider AI Gateway (`FallbackChainLLMProvider`)**: Sub-second text reasoning failover chain: **Groq ➔ Mistral ➔ OpenRouter ➔ AI Universe**.
+### 📈 7. Algorithmic Trading Bot Integration (Binance Futures Testnet)
+- **Trading Bot Operator Skill (`TradingBotOperator`)**: Direct REST client communicating with the cloud-hosted trading engine (`https://algorithmic-trading-bot-fra.onrender.com`).
+- **REST Endpoints Monitored & Controlled**:
+  - `GET /api/status`: Queries live equity, unrealized/realized PnL, profit factor, win rate, and open positions.
+  - `GET /api/recent-actions`: Retrieves real-time candidate filter decisions and execution status logs.
+  - `POST /api/panic`: Emergency kill-switch blocking all new order submissions (gated by FRIDAY's `AUTHORIZE` cognitive phase).
+  - `POST /api/panic {"release": true}`: Releases safety kill-switch to resume testnet trading operations.
+- **AI Universe Deliberative Strategy Advisory (`AIUniverseTradingConsultant`)**: FRIDAY queries AI Universe's `Trading Analyst` specialist agent via `/v1/friday/ask` or `/v1/friday/debate` to receive empirical parameter recommendations (e.g. SL/TP tightening, position scaling) without auto-executing changes.
+
 
 ---
 
@@ -79,6 +83,7 @@ FRIDAY is a modular, extensible, **Autonomous Multi-Agent AI Operating System** 
 | **Unified 15-Category Domain Error Taxonomy** | `src/friday/core/exceptions.py` | ✅ PASS | **PRODUCTION** |
 | **FridayDoctor System Health Diagnostics** | `src/friday/core/doctor.py` | ✅ PASS | **PRODUCTION** |
 | **HMAC-SHA256 Authorization & Safety Gating** | `src/friday/core/auth.py` | ✅ PASS | **PRODUCTION** |
+| **Trading Bot Operator (Binance Futures Testnet)** | `src/friday/skills/trading_bot_operator.py` | ✅ PASS | **PRODUCTION** |
 
 ---
 
