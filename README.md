@@ -70,6 +70,24 @@ FRIDAY is a modular, extensible, **Autonomous Multi-Agent AI Operating System** 
   - `SelfDevAgent`: Specialist developer agent with deep knowledge of FRIDAY's internal package layers, responsible for authoring, testing, and integrating new capabilities.
   - `SelfImprovementWorkflow`: Autonomous end-to-end self-modification loop (*"FRIDAY, add a tool to click the mouse"*): indexes codebase $\rightarrow$ synthesizes Python code with Groq 70B $\rightarrow$ writes tool file $\rightarrow$ runs automated pytest suite $\rightarrow$ commits and pushes changes to GitHub with strict SENSITIVE authorization gating.
   - Voice Integration: System prompt & Gemini Live session instruction to intercept self-modification voice requests, plan changes, and confirm with the user.
+- **Phase 32: Skills System & Capability Gating (Inspired by OpenJarvis)** `[IMPLEMENTED | REAL-TESTED]`:
+  - `BaseSkill` & `SkillRegistry` (`src/friday/skills/`): Encapsulates multi-tool workflows, specialized system prompts, and explicit declared `required_capabilities` (e.g. `["shell_exec", "file_read", "network_access"]`).
+  - Strict Capability Gating: `ToolAuthorizer.check_skill_capabilities()` evaluates skills against active environment permissions before execution.
+  - Built-in skills: `NetworkDiagnosticSkill` (ping -> screen text -> synthesize), `SystemHealthAuditSkill` (resources -> disk -> health report), `FileSearchAndReadSkill`.
+- **Phase 33: Persistent Event-Driven Operators (Inspired by OpenJarvis)** `[IMPLEMENTED | REAL-TESTED]`:
+  - `BaseOperator` & `OperatorManager` (`src/friday/operators/`): Continuous and scheduled background state machines monitoring system state over time.
+  - Event-Driven Triggers: `FileSystemTrigger` (using `watchdog`), `ProcessTrigger` (using `psutil`), `ConditionTrigger`, and `IntervalTrigger`.
+  - Operator Chaining (`op1 | op2` / `op1.pipe_to(op2)`): Feeds output from one operator directly into subsequent operator triggers.
+  - `WorkflowScheduler` integration for resilient background asyncio execution.
+- **Phase 34: Trace-Based Learning & Dynamic Routing Optimization** `[IMPLEMENTED | REAL-TESTED]`:
+  - `execution_traces` SQLite memory table recording task goals, tools used, models used, provider, latency, and success/failure status.
+  - `TraceAnalyzer` (`src/friday/learning/`): Discovers empirical tool success rates and provider reliability patterns.
+  - Dynamic Priority Routing: +0.35 scoring boost for historically fast/successful tool-provider pairs (< 2s) and automatic de-prioritization of unreliable providers.
+- **Phase 35: Device Control Abstraction - Windows & Android (Inspired by OpenJarvis)** `[IMPLEMENTED | REAL-TESTED]`:
+  - `BaseDeviceController` (`src/friday/core/device_controller.py`): Platform-agnostic interface (`open_app`, `click`, `type_text`, `screenshot`, `read_screen_text`).
+  - `WindowsDeviceController` (`src/friday/devices/windows_controller.py`): Native Win32 UI Automation, pywinauto, and Tesseract OCR.
+  - `AndroidDeviceController` (`src/friday/devices/android_controller.py`): Scaffolding and ADB bridge architecture for mobile device control.
+  - `get_device_controller()` factory resolving `FRIDAY_ACTIVE_DEVICE` configuration.
 
 ---
 
@@ -77,6 +95,10 @@ FRIDAY is a modular, extensible, **Autonomous Multi-Agent AI Operating System** 
 
 | Subsystem / Capability | Implementation | Mock Tested | Real Tested | Status |
 | :--- | :--- | :---: | :---: | :---: |
+| **Skills System & Capability Gating (Phase 32)** | `src/friday/skills/` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Persistent Event-Driven Operators (Phase 33)** | `src/friday/operators/` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Trace-Based Learning & Dynamic Routing (Phase 34)** | `src/friday/learning/` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
+| **Device Control Abstractions - Windows/Android (Phase 35)** | `src/friday/devices/` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Recursive Self-Improvement & SelfDevAgent (Phase 31)** | `src/friday/agents/specialists/self_dev_agent.py`, `src/friday/workflows/self_improve_workflow.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Autonomous Web Research Specialist (`ResearchAgent`)** | `src/friday/agents/specialists/research_agent.py`, `src/friday/tools/builtin/web_research.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |
 | **Windows OS Settings Voice Control (Dark Mode, Bluetooth, Wi-Fi)** | `src/friday/tools/builtin/os_settings.py` | ✅ PASS | ✅ PASS | **IMPLEMENTED** |

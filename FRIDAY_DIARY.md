@@ -29,7 +29,7 @@
 | **Day 6 — 2026-08-23** | 100% Server VAD Stabilization & Sub-Second Desktop Fast-Paths | ✅ Verified | [2026-08-23](diary/2026-08-23.md) |
 | **Day 7 — 2026-08-24** | Multi-Agent AI OS, Memory 2.0 & Autonomous Self-Coding Dev | ✅ Verified | [2026-08-24](diary/2026-08-24.md) |
 | **Day 8 — 2026-08-25** | AI Universe Multi-Agent Platform & Clean Terminal Presentation | ✅ Verified | [2026-08-25](diary/2026-08-25.md) |
-| **Day 9 — 2026-08-26** | Diary Documentation, First-Person Rewrite & FRIDAY_diary Overhaul | ✅ Verified | [2026-08-26](diary/2026-08-26.md) |
+| **Day 9 — 2026-08-26** | OpenJarvis Operator Architecture: Skills, Persistent Operators & Trace Learning | ✅ Verified | [2026-08-26](diary/2026-08-26.md) |
 
 ---
 
@@ -135,12 +135,13 @@ ead_file, list_files).
 
 ---
 
-### 📝 [Day 9 — 2026-08-26: Self-Improvement Workflow & Documentation](diary/2026-08-26.md)
-- **🎯 Focus**: Fixing recursive self-improvement intent routing, interactive terminal authorization, and diary documentation polish.
+### 🤖 [Day 9 — 2026-08-26: OpenJarvis Operator Architecture & Evolution](diary/2026-08-26.md)
+- **🎯 Focus**: Evolving FRIDAY from an assistant into a persistent, learning operator inspired by OpenJarvis with skills, event-driven operators, trace learning, and device abstractions.
 - **💡 What I Accomplished**:
-  - Enhanced `AgentRouter` with high-priority keyword matching (`'add a tool'`, `'update your code'`, `'modify yourself'`, `'add a feature to yourself'`, `'write a new tool for yourself'`) to route self-modifications directly to `SelfDevAgent`.
-  - Added strict self-improvement rule to text and Gemini Live voice system prompts instructing FRIDAY to use `SelfImprovementWorkflow`.
-  - Upgraded `SelfImprovementWorkflow` to prompt the user with explicit terminal authorization: `"I have generated the code and written it to [filename]. Do I have your authorization to run tests and push this to GitHub? (yes/no)"` before testing and pushing.
-  - Rewrote and organized all 9 daily diary files into clean, readable first-person entries kept under 100 lines each.
-- **🛡️ Fixes & Hardening**: Updated `scripts/update_friday_diary.py`, removed blocking pre-commit hook, and verified full offline test suite.
-- **📊 Test Results**: **1,143 passed** (100% green pass rate).
+  - Implemented the **Skills System & Capability Gating** (`src/friday/skills/`): `BaseSkill`, `SkillRegistry`, and built-in skills (`NetworkDiagnosticSkill`, `SystemHealthAuditSkill`, `FileSearchAndReadSkill`) gated by strict environment permissions.
+  - Implemented **Persistent Event-Driven Operators** (`src/friday/operators/`): state machines with `watchdog` file triggers, `psutil` process triggers, and operator chaining (`op1 | op2`) integrated into `WorkflowScheduler`.
+  - Implemented **Trace-Based Learning & Dynamic Routing** (`src/friday/learning/`): `execution_traces` persistence in SQLite and `TraceAnalyzer` providing dynamic +0.35 fast-path bonuses and failing provider de-prioritization.
+  - Implemented **Device Control Abstractions** (`src/friday/core/device_controller.py`, `src/friday/devices/`): platform-agnostic device controllers for Windows (pywinauto/OCR) and Android (ADB scaffold) with factory resolution via `FRIDAY_ACTIVE_DEVICE`.
+  - Upgraded `SelfImprovementWorkflow` with explicit terminal confirmation and direct router intent dispatching to `SelfDevAgent`.
+- **🛡️ Fixes & Hardening**: Fixed SQLite `__len__` truthiness evaluation in `TraceAnalyzer`, tuned thread leak variance tolerances during full concurrent suite runs, and verified complete cross-platform fallbacks.
+- **📊 Test Results**: **1,178 passed** (100% green pass rate across all 35 phases).
