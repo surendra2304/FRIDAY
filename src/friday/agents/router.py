@@ -35,6 +35,7 @@ class AgentRouter:
         default_agent: Optional[BaseAgent] = None,
         memory: Optional[Any] = None,
         skill_registry: Optional[Any] = None,
+        trace_analyzer: Optional[Any] = None,
     ) -> None:
         self.registry = registry
         self.default_agent = default_agent
@@ -48,11 +49,26 @@ class AgentRouter:
         else:
             self.skill_registry = skill_registry
 
+        if trace_analyzer is None:
+            try:
+                from friday.learning.trace_analyzer import TraceAnalyzer
+                self.trace_analyzer = TraceAnalyzer(memory=self.memory)
+            except Exception:
+                self.trace_analyzer = None
+        else:
+            self.trace_analyzer = trace_analyzer
+
     def find_matching_skill(self, user_request: str, threshold: float = 0.80) -> Optional[Tuple[Any, float]]:
         """Look up if user request directly activates an installed Skill."""
         if self.skill_registry:
             return self.skill_registry.find_matching_skill(user_request, threshold=threshold)
         return None
+
+    def get_prioritized_providers(self, candidate_providers: List[str]) -> List[str]:
+        """De-prioritize failing providers to the bottom of the fallback chain."""
+        if self.trace_analyzer:
+            return self.trace_analyzer.filter_and_rank_fallback_providers(candidate_providers)
+        return candidate_providers
 
     def route_subtask(self, subtask: DecomposedSubtask) -> AgentRoutingDecision:
         """Score available agents and return the best match for the subtask."""
@@ -143,6 +159,35 @@ class AgentRouter:
                             rationale_parts.append(f"Historical experiment score bonus (+{bonus:.2f})")
                 except Exception as ex:
                     logger.debug(f"Could not load experiment stats in router: {ex}")
+
+            # 5. Trace-Based Learning Optimization (Inspired by OpenJarvis)
+            if self.trace_analyzer:
+                try:
+                    optimal_combo = self.trace_analyzer.get_optimal_tool_and_provider(
+                        goal=f"{subtask.title or ''} {subtask.description or ''}"
+                    )
+                    if optimal_combo:
+                        pref_tool = optimal_combo.get("preferred_tool")
+                        pref_prov = optimal_combo.get("preferred_provider")
+                        if (pref_tool and (not agent.allowed_tools or pref_tool in agent.allowed_tools)) or \
+                           (pref_prov and pref_prov == getattr(agent.llm, "provider_name", "")):
+                            trace_bonus = 0.35 if optimal_combo.get("fast_path") else 0.20
+                            score += trace_bonus
+                            rationale_parts.append(
+                                f"Trace-Based Learning bonus for high-success/fast history (+{trace_bonus:.2f})"
+                            )
+
+                    # Provider de-prioritization if historical failure rate is high (e.g. >= 50% or 90%)
+                    agent_prov = getattr(agent.llm, "provider_name", "")
+                    failing_provs = self.trace_analyzer.get_failing_providers(failure_threshold=0.50)
+                    if agent_prov in failing_provs:
+                        penalty = 0.50
+                        score -= penalty
+                        rationale_parts.append(
+                            f"Trace-Based Learning penalty for unreliable provider '{agent_prov}' (-{penalty:.2f})"
+                        )
+                except Exception as trace_ex:
+                    logger.debug(f"Could not apply trace-based routing: {trace_ex}")
 
             if score > best_score:
                 best_score = score

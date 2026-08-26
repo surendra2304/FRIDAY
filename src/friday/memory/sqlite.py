@@ -223,6 +223,25 @@ class SQLiteConversationMemory(BaseMemory):
                     CREATE INDEX IF NOT EXISTS idx_experiments_task_provider ON experiments(task_type, provider_name);
                     CREATE INDEX IF NOT EXISTS idx_experiments_created ON experiments(created_at DESC);
 
+                    CREATE TABLE IF NOT EXISTS execution_traces (
+                        id TEXT PRIMARY KEY,
+                        goal TEXT NOT NULL,
+                        task_type TEXT,
+                        tools_used TEXT,
+                        models_used TEXT,
+                        provider TEXT,
+                        latency_ms REAL,
+                        success INTEGER NOT NULL,
+                        error_message TEXT,
+                        created_at TEXT NOT NULL,
+                        metadata TEXT
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_execution_traces_goal ON execution_traces(goal);
+                    CREATE INDEX IF NOT EXISTS idx_execution_traces_provider ON execution_traces(provider, success);
+                    CREATE INDEX IF NOT EXISTS idx_execution_traces_task_type ON execution_traces(task_type, success);
+                    CREATE INDEX IF NOT EXISTS idx_execution_traces_created ON execution_traces(created_at DESC);
+
                     INSERT INTO messages_fts(message_id, conversation_id, content)
                     SELECT id, conversation_id, content FROM messages
                     WHERE id NOT IN (SELECT message_id FROM messages_fts);
@@ -1465,6 +1484,135 @@ class SQLiteConversationMemory(BaseMemory):
             }
             for r in rows
         ]
+
+    def log_execution_trace(
+        self,
+        goal: str,
+        tools_used: Optional[List[str]] = None,
+        models_used: Optional[List[str]] = None,
+        provider: Optional[str] = None,
+        latency_ms: float = 0.0,
+        success: bool = True,
+        task_type: Optional[str] = None,
+        error_message: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        trace_id: Optional[str] = None,
+    ) -> str:
+        """Persist an execution trace for trace-based learning and routing optimization."""
+        tid = trace_id or f"tr_{uuid.uuid4().hex[:12]}"
+        now = datetime.now(timezone.utc).isoformat()
+        tools_json = json.dumps(tools_used or [])
+        models_json = json.dumps(models_used or [])
+        meta_json = json.dumps(metadata or {})
+
+        with self._lock:
+            conn = self._get_connection()
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO execution_traces (
+                        id, goal, task_type, tools_used, models_used,
+                        provider, latency_ms, success, error_message,
+                        created_at, metadata
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        tid,
+                        goal,
+                        task_type or "general",
+                        tools_json,
+                        models_json,
+                        provider or "default",
+                        float(latency_ms),
+                        1 if success else 0,
+                        error_message,
+                        now,
+                        meta_json,
+                    ),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+        return tid
+
+    def get_execution_traces(
+        self,
+        limit: int = 100,
+        task_type: Optional[str] = None,
+        provider: Optional[str] = None,
+        success_only: Optional[bool] = None,
+        goal_query: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Retrieve execution traces matching filter criteria."""
+        with self._lock:
+            conn = self._get_connection()
+            try:
+                sql = "SELECT * FROM execution_traces WHERE 1=1"
+                params: List[Any] = []
+                if task_type:
+                    sql += " AND task_type = ?"
+                    params.append(task_type)
+                if provider:
+                    sql += " AND provider = ?"
+                    params.append(provider)
+                if success_only is not None:
+                    sql += " AND success = ?"
+                    params.append(1 if success_only else 0)
+                if goal_query:
+                    sql += " AND goal LIKE ?"
+                    params.append(f"%{goal_query}%")
+                sql += " ORDER BY created_at DESC LIMIT ?"
+                params.append(limit)
+
+                rows = conn.execute(sql, params).fetchall()
+            finally:
+                conn.close()
+
+        traces = []
+        for r in rows:
+            traces.append({
+                "trace_id": r["id"],
+                "goal": r["goal"],
+                "task_type": r["task_type"],
+                "tools_used": json.loads(r["tools_used"] or "[]"),
+                "models_used": json.loads(r["models_used"] or "[]"),
+                "provider": r["provider"],
+                "latency_ms": float(r["latency_ms"] or 0.0),
+                "success": bool(r["success"]),
+                "error_message": r["error_message"],
+                "created_at": r["created_at"],
+                "metadata": json.loads(r["metadata"] or "{}"),
+            })
+        return traces
+
+    def get_trace_stats(self) -> Dict[str, Any]:
+        """Aggregate statistical summary across execution traces."""
+        with self._lock:
+            conn = self._get_connection()
+            try:
+                row = conn.execute(
+                    """
+                    SELECT COUNT(*) as total_traces,
+                           SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successful_traces,
+                           AVG(latency_ms) as avg_latency_ms
+                    FROM execution_traces
+                    """
+                ).fetchone()
+            finally:
+                conn.close()
+
+        total = int(row["total_traces"] or 0)
+        successes = int(row["successful_traces"] or 0)
+        avg_lat = float(row["avg_latency_ms"] or 0.0)
+        rate = (successes / total) if total > 0 else 0.0
+
+        return {
+            "total_traces": total,
+            "successful_traces": successes,
+            "failed_traces": total - successes,
+            "success_rate": rate,
+            "avg_latency_ms": avg_lat,
+        }
 
     def close(self) -> None:
         """Close SQLite memory resources cleanly."""
