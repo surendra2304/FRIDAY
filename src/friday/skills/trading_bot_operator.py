@@ -64,20 +64,22 @@ class TradingBotOperator(BaseSkill):
         r"\b(?:trading\s+bot\s+signals?|bot\s+signals?|recent\s+signals?|recent\s+trades?)\b",
     ]
 
-    def __init__(self, base_url: Optional[str] = None, timeout: float = 15.0) -> None:
+    def __init__(self, base_url: Optional[str] = None, api_key: Optional[str] = None, timeout: float = 15.0) -> None:
         self.base_url = (base_url or os.getenv("TRADING_BOT_URL") or DEFAULT_BOT_URL).rstrip("/")
+        self.api_key = (api_key or os.getenv("TRADING_BOT_API_KEY") or os.getenv("BOT_API_KEY") or "").strip()
         self.timeout = timeout
 
     def _http_get(self, endpoint: str) -> Dict[str, Any]:
         """Perform HTTP GET request to Trading Bot."""
         url = f"{self.base_url}{endpoint}"
-        req = urllib.request.Request(
-            url,
-            headers={
-                "User-Agent": "FRIDAY-Agent/1.0",
-                "Accept": "application/json"
-            }
-        )
+        headers = {
+            "User-Agent": "FRIDAY-Agent/1.0",
+            "Accept": "application/json"
+        }
+        if self.api_key:
+            headers["X-BOT-API-KEY"] = self.api_key
+
+        req = urllib.request.Request(url, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as response:
                 body = response.read().decode("utf-8")
@@ -90,17 +92,21 @@ class TradingBotOperator(BaseSkill):
             raise RuntimeError(f"Failed to connect to Trading Bot at {url}: {e}") from e
 
     def _http_post(self, endpoint: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Perform HTTP POST request to Trading Bot."""
+        """Perform HTTP POST request to Trading Bot with X-BOT-API-KEY security header."""
         url = f"{self.base_url}{endpoint}"
         data = json.dumps(payload or {}).encode("utf-8")
+        headers = {
+            "User-Agent": "FRIDAY-Agent/1.0",
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
+        if self.api_key:
+            headers["X-BOT-API-KEY"] = self.api_key
+
         req = urllib.request.Request(
             url,
             data=data,
-            headers={
-                "User-Agent": "FRIDAY-Agent/1.0",
-                "Content-Type": "application/json",
-                "Accept": "application/json"
-            },
+            headers=headers,
             method="POST"
         )
         try:
