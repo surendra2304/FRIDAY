@@ -105,6 +105,19 @@ import uuid
 logger = get_logger("agent.core")
 
 
+def strip_thought_tags(text: str) -> str:
+    """Strip <thought>...</thought> scratchpad tags for clean user presentation."""
+    if not text:
+        return ""
+    cleaned = re.sub(r"<thought>.*?</thought>", "", text, flags=re.DOTALL).strip()
+    if cleaned:
+        return cleaned
+    match = re.search(r"<thought>(.*?)</thought>", text, flags=re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    return text.strip()
+
+
 class FridayAgent:
     """The central FRIDAY agent orchestrating reasoning, memory, multi-step tool calling, and output."""
 
@@ -2116,8 +2129,10 @@ class FridayAgent:
         all_tool_results: List[ToolResult] = []
         final_content = ""
         iterations = 0
+        tool_error_retries = 0
+        max_self_correction_retries = 3
 
-        # 6. Multi-step Reasoning & Tool-calling Loop
+        # 6. Multi-step Reasoning & Autonomous Tool-calling Loop
         while iterations < self.max_tool_iterations:
             iterations += 1
             logger.debug(f"Agent decision iteration {iterations}/{self.max_tool_iterations}")
@@ -2152,7 +2167,6 @@ class FridayAgent:
                 elif "connection" in err_str or "timeout" in err_str or "dns" in err_str:
                     err_text = "I'm having trouble connecting to my intelligence core. Please check your internet connection and try again."
 
-                
                 self.memory.add_message(Message(role=Role.ASSISTANT, content=err_text))
                 return AgentResponse(
                     content=err_text,
@@ -2168,9 +2182,22 @@ class FridayAgent:
                     },
                 )
 
-            # If model returned direct answer without requesting tools -> proceed to verification
+            # Log and track inner monologue (<thought> scratchpad) if present
+            if assistant_msg.content and "<thought>" in assistant_msg.content:
+                thought_match = re.search(r"<thought>(.*?)</thought>", assistant_msg.content, flags=re.DOTALL)
+                if thought_match:
+                    thought_text = thought_match.group(1).strip()
+                    logger.info(f"[THOUGHT] {thought_text}")
+                    if self.task_context:
+                        self.task_context.add_observation(
+                            step_id=f"thought_{iterations}",
+                            content=thought_text,
+                            source_tool="inner_monologue",
+                        )
+
+            # If model returned direct answer without requesting tools -> finalize
             if not assistant_msg.tool_calls:
-                final_content = assistant_msg.content or "Task completed."
+                final_content = strip_thought_tags(assistant_msg.content or "Task completed.")
                 break
 
             # Model requested one or more tool calls -> State: EXECUTING
@@ -2179,6 +2206,16 @@ class FridayAgent:
 
             logger.info(f"Iteration {iterations}: Model requested {len(assistant_msg.tool_calls)} tool call(s)")
             
+            # Progress reporting: notify callbacks / logs before tool execution for background visibility
+            for tc in assistant_msg.tool_calls:
+                if self.tool_callback:
+                    try:
+                        self.tool_callback(tc, None)
+                    except Exception as cb_err:
+                        logger.debug(f"Pre-execution tool callback error: {cb_err}")
+                if tc.name in ("fetch_webpage", "web_search", "fetch_webpage_content", "read_own_codebase", "run_tests"):
+                    logger.info(f"Progress: Currently executing long-running task '{tc.name}'...")
+
             # Persist assistant's tool call intent message to memory
             self.memory.add_message(assistant_msg)
 
@@ -2231,6 +2268,7 @@ class FridayAgent:
                 logger.info(f"Coordinated sequential execution completed in {latency:.4f}s.")
 
             # Process batch results in the exact requested order
+            iteration_had_error = False
             for tc, result in zip(assistant_msg.tool_calls, batch_results):
                 all_tool_calls.append(tc)
                 all_tool_results.append(result)
@@ -2246,10 +2284,6 @@ class FridayAgent:
                         step_id=tc.id,
                         result=result.content,
                     )
-
-                # Verify step execution outcome (log any tool error detected)
-                if result.is_error:
-                    logger.warning(f"Step verification notice for '{tc.name}': tool returned an error — {result.content[:120]!r}")
 
                 # Notify callback if registered (e.g. for CLI status display)
                 if self.tool_callback:
@@ -2274,24 +2308,73 @@ class FridayAgent:
                     )
                 )
 
+                # Verify step execution outcome and trigger self-correction on tool error
+                if result.is_error:
+                    iteration_had_error = True
+                    tool_error_retries += 1
+                    logger.warning(f"Tool error in '{tc.name}': {result.content[:120]!r} (retry {tool_error_retries}/{max_self_correction_retries})")
+
+                    if tool_error_retries <= max_self_correction_retries:
+                        # Feed error back into context with explicit self-correction prompt
+                        self_correction_prompt = (
+                            f"Your previous tool call '{tc.name}' failed with this error: {result.content}. "
+                            f"Analyze it, adjust your plan, and try a different approach or tool."
+                        )
+                        if self.state_machine.current_state == TaskState.EXECUTING:
+                            self.state_machine.transition_to(
+                                TaskState.PLANNING,
+                                reason=f"Self-correcting after error in '{tc.name}' (attempt {tool_error_retries}/{max_self_correction_retries})",
+                            )
+                            self.state_machine.transition_to(
+                                TaskState.EXECUTING,
+                                reason="Executing adjusted plan after tool error",
+                            )
+                        self.memory.add_message(
+                            Message(
+                                role=Role.SYSTEM,
+                                content=self_correction_prompt,
+                                trust_level=TrustLevel.SYSTEM_INSTRUCTION,
+                            )
+                        )
+                    else:
+                        logger.warning(f"Exceeded max autonomous retries ({max_self_correction_retries}) for tool errors.")
+
+            # If all tool calls in this batch succeeded, reset error retry counter
+            if not iteration_had_error:
+                tool_error_retries = 0
+
+            # If error retry budget exceeded, break out of loop to provide user with summary
+            if iteration_had_error and tool_error_retries > max_self_correction_retries:
+                break
+
         # If iteration limit was hit without a final text response, synthesize from results
         if not final_content:
             if all_tool_results:
-                logger.warning(f"Agent reached max iterations ({self.max_tool_iterations}). Summarizing executed tools.")
-                summaries = "\n\n".join(r.content for r in all_tool_results)
-                final_content = f"I completed the requested tool operations:\n\n{summaries}"
+                has_errors = any(r.is_error for r in all_tool_results)
+                if has_errors and tool_error_retries >= max_self_correction_retries:
+                    err_summaries = "\n".join(f"- {r.name}: {r.content}" for r in all_tool_results if r.is_error)
+                    final_content = (
+                        f"I attempted to complete your request, but encountered persistent errors:\n\n{err_summaries}\n\n"
+                        f"Could you please check the target or provide additional details?"
+                    )
+                else:
+                    summaries = "\n\n".join(r.content for r in all_tool_results)
+                    final_content = f"I completed the requested tool operations:\n\n{summaries}"
             else:
                 final_content = "I reached my reasoning iteration limit before completing the response."
+        else:
+            final_content = strip_thought_tags(final_content)
 
         # State: VERIFYING (checking outcome and ensuring response integrity)
-        self.state_machine.transition_to(TaskState.VERIFYING, reason="Verifying response content and execution integrity")
+        if self.state_machine.current_state != TaskState.VERIFYING:
+            self.state_machine.transition_to(TaskState.VERIFYING, reason="Verifying response content and execution integrity")
 
         # Check if all tools succeeded or if any tool returned an unrecoverable failure
         has_tool_errors = any(r.is_error for r in all_tool_results) if all_tool_results else False
 
         # State: COMPLETED or FAILED
-        if has_tool_errors and not final_content:
-            self.state_machine.fail(reason="All tool operations failed during execution", metadata={"tool_errors": True})
+        if has_tool_errors and tool_error_retries > max_self_correction_retries:
+            self.state_machine.fail(reason="Tool operations failed after autonomous self-correction retries", metadata={"tool_errors": True})
         else:
             self.state_machine.transition_to(TaskState.COMPLETED, reason="Response verified and completed successfully")
 
@@ -2300,7 +2383,7 @@ class FridayAgent:
         # summary would corrupt tests that assert exact message counts and add noise to context.
         if self.task_context and len(self.task_context.observations) >= 2:
             self.task_context.set_state(self.state_machine.current_state)
-            summary_msg = self.task_context.finalize_and_extract_long_term_summary(success=(not has_tool_errors))
+            summary_msg = self.task_context.finalize_and_extract_long_term_summary(success=(self.state_machine.current_state == TaskState.COMPLETED))
             if summary_msg:
                 self.memory.add_message(summary_msg)
 
@@ -2339,7 +2422,7 @@ class FridayAgent:
                 "iterations": iterations,
                 "request_count": iterations,
                 "tools_used": list(set(tc.name for tc in all_tool_calls)),
-                "success": (not has_tool_errors) and (self.state_machine.current_state == TaskState.COMPLETED),
+                "success": (self.state_machine.current_state == TaskState.COMPLETED),
                 "provider": self.llm.provider_name,
                 "model": self.llm.model,
                 "cost_mode": getattr(self.settings, "cost_mode", "free_first"),
