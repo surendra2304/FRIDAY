@@ -43,10 +43,20 @@ class WorkflowScheduler:
         authorizer: Optional[BaseAuthorizer] = None,
         tick_interval: float = 1.0,
         notification_manager: Optional[Any] = None,
+        operator_manager: Optional[Any] = None,
     ) -> None:
         self.authorizer: BaseAuthorizer = authorizer or DefaultSecureAuthorizer()
         self.tick_interval = tick_interval
         self.notification_manager = notification_manager
+        if operator_manager is not None:
+            self.operator_manager = operator_manager
+        else:
+            try:
+                from friday.operators.manager import operator_manager as default_op_mgr
+                self.operator_manager = default_op_mgr
+            except Exception:
+                self.operator_manager = None
+
         self._jobs: Dict[str, ScheduledJob] = {}
         self._lock = threading.RLock()
         self._stop_event = threading.Event()
@@ -211,28 +221,53 @@ class WorkflowScheduler:
         with self._lock:
             return list(self._jobs.values())
 
+    def register_operator(self, operator: Any) -> None:
+        """Register and start a persistent background operator."""
+        if self.operator_manager:
+            if not operator.notification_manager and self.notification_manager:
+                operator.notification_manager = self.notification_manager
+            if not operator.authorizer and self.authorizer:
+                operator.authorizer = self.authorizer
+            self.operator_manager.register_operator(operator)
+
+    def unregister_operator(self, operator_id: str) -> bool:
+        """Stop and unregister an operator."""
+        if self.operator_manager:
+            return self.operator_manager.unregister_operator(operator_id)
+        return False
+
+    def list_operators(self) -> List[Any]:
+        """Return list of all registered persistent operators."""
+        if self.operator_manager:
+            return self.operator_manager.list_operators()
+        return []
+
     def start(self) -> None:
-        """Start the background scheduler loop."""
+        """Start the background scheduler loop and operators."""
         if self._worker_thread and self._worker_thread.is_alive():
             return
         self._stop_event.clear()
+        if self.operator_manager:
+            self.operator_manager.start_all()
         self._worker_thread = threading.Thread(
             target=self._run_loop,
             name="WorkflowSchedulerThread",
             daemon=True,
         )
         self._worker_thread.start()
-        logger.info("Started WorkflowScheduler daemon thread.")
+        logger.info("Started WorkflowScheduler daemon thread and persistent operators.")
 
     def stop(self) -> None:
-        """Stop scheduler and wait for background thread to exit."""
+        """Stop scheduler, persistent operators, and wait for background thread to exit."""
         self._stop_event.set()
+        if self.operator_manager:
+            self.operator_manager.stop_all()
         if self._worker_thread and self._worker_thread.is_alive():
             self._worker_thread.join(timeout=2.0)
         logger.info("Stopped WorkflowScheduler.")
 
     def run_pending_jobs_once(self, force_interval: bool = False) -> int:
-        """Check all registered jobs and trigger due ones immediately (useful for testing/deterministic ticks)."""
+        """Check all registered jobs and persistent operators, triggering due ones immediately."""
         now = datetime.now(timezone.utc)
         executed_count = 0
 
@@ -282,6 +317,14 @@ class WorkflowScheduler:
                     logger.info(f"Executed scheduled job '{job.name}' successfully.")
                 except Exception as e:
                     logger.error(f"Error running scheduled job '{job.name}': {e}", exc_info=True)
+
+        # 3. Persistent Operators Trigger Evaluation
+        if self.operator_manager:
+            try:
+                op_results = self.operator_manager.tick_all()
+                executed_count += len(op_results)
+            except Exception as op_err:
+                logger.error(f"Error ticking persistent operators: {op_err}", exc_info=True)
 
         return executed_count
 
