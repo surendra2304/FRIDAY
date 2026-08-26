@@ -132,6 +132,7 @@ class FridayAgent:
         authorizer: Optional[BaseAuthorizer] = None,
         tool_timeout: float = 30.0,
         conversation_id: Optional[str] = None,
+        skill_registry: Optional[Any] = None,
     ) -> None:
         self.settings = settings or get_settings()
         self._ui_provider = None
@@ -157,6 +158,7 @@ class FridayAgent:
         self._task_decomposer: Optional[TaskDecomposer] = None
         self._agent_router: Optional[AgentRouter] = None
         self.notifications: NotificationManager = NotificationManager()
+        self._skill_registry: Optional[Any] = skill_registry
 
         if self.settings.memory_retention_days:
             self.prune_memory(self.settings.memory_retention_days)
@@ -202,6 +204,21 @@ class FridayAgent:
         if getattr(self, "_agent_router", None) is None:
             self._agent_router = AgentRouter(registry=self.agent_registry)
         return self._agent_router
+
+    @property
+    def skill_registry(self):
+        """Lazy-loaded skill registry."""
+        if getattr(self, "_skill_registry", None) is None:
+            try:
+                from friday.skills.registry import skill_registry as default_skill_reg
+                self._skill_registry = default_skill_reg
+            except Exception:
+                self._skill_registry = None
+        return self._skill_registry
+
+    @skill_registry.setter
+    def skill_registry(self, value) -> None:
+        self._skill_registry = value
 
     @property
     def conversation_id(self) -> Optional[str]:
@@ -1911,6 +1928,76 @@ class FridayAgent:
                     "task_state": self.state_machine.current_state.value,
                 },
             )
+
+        # OpenJarvis-inspired Skills Execution Fast-Path
+        if self.skill_registry:
+            matched_skill_tuple = self.skill_registry.find_matching_skill(clean_input)
+            if matched_skill_tuple:
+                matched_skill, match_score = matched_skill_tuple
+                logger.info(f"Skill match detected: '{matched_skill.name}' (score: {match_score:.2f})")
+
+                # Capability Gating Check
+                is_auth, auth_reason = self.authorizer.authorize_skill(matched_skill)
+                if not is_auth:
+                    logger.warning(f"Skill '{matched_skill.name}' rejected by Capability Gating: {auth_reason}")
+                    blocked_msg = f"Skill execution blocked: {auth_reason}"
+                    user_msg = Message(role=Role.USER, content=clean_input)
+                    self.memory.add_message(user_msg)
+                    asst_msg = Message(role=Role.ASSISTANT, content=blocked_msg)
+                    self.memory.add_message(asst_msg)
+                    self.state_machine.fail(reason=auth_reason, metadata={"skill_blocked": True})
+
+                    return AgentResponse(
+                        content=blocked_msg,
+                        is_done=True,
+                        metadata={
+                            "skill_name": matched_skill.name,
+                            "skill_blocked": True,
+                            "reason": auth_reason,
+                            "success": False,
+                            "task_state": self.state_machine.current_state.value,
+                            "state_history": [r.to_dict() for r in self.state_machine.history],
+                        },
+                    )
+
+                # Skill Authorized -> Autonomous Execution
+                self.state_machine.transition_to(TaskState.PLANNING, reason=f"Planning skill execution: {matched_skill.name}")
+                self.state_machine.transition_to(TaskState.EXECUTING, reason=f"Executing autonomous skill: {matched_skill.name}")
+
+                user_msg = Message(role=Role.USER, content=clean_input)
+                self.memory.add_message(user_msg)
+
+                exec_res = matched_skill.execute(
+                    user_request=clean_input,
+                    agent=self,
+                    tool_registry=self.tools,
+                    llm_provider=self.llm,
+                    authorizer=self.authorizer,
+                )
+
+                self.state_machine.transition_to(TaskState.VERIFYING, reason="Verifying skill execution result")
+                if exec_res.success:
+                    self.state_machine.transition_to(TaskState.COMPLETED, reason="Skill completed successfully")
+                else:
+                    self.state_machine.fail(reason=exec_res.error or "Skill execution failed")
+
+                final_content = exec_res.output
+                asst_msg = Message(role=Role.ASSISTANT, content=final_content)
+                self.memory.add_message(asst_msg)
+
+                return AgentResponse(
+                    content=final_content,
+                    is_done=True,
+                    metadata={
+                        "skill_name": matched_skill.name,
+                        "skill_executed": True,
+                        "match_score": match_score,
+                        "success": exec_res.success,
+                        "step_results": exec_res.step_results,
+                        "task_state": self.state_machine.current_state.value,
+                        "state_history": [r.to_dict() for r in self.state_machine.history],
+                    },
+                )
 
         # Intent detection for semantic UI actions
         intent_result = IntentDetector.detect(clean_input)

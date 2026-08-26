@@ -176,6 +176,51 @@ class ToolAuthorizer:
 
         return True, "Authorized"
 
+    def check_skill_capabilities(
+        self,
+        skill_name: str,
+        required_capabilities: list,
+        environment: Optional[str] = None,
+        blocked_capabilities: Optional[Set[str]] = None,
+        allowed_capabilities: Optional[Set[str]] = None,
+    ) -> Tuple[bool, str]:
+        """Verify if a Skill's declared required capabilities are permitted in the current environment."""
+        import os
+
+        env = (environment or os.getenv("FRIDAY_ENV", "development")).strip().lower()
+
+        # Parse blocked capabilities from environment variable if not explicitly passed
+        env_blocked_str = os.getenv("FRIDAY_BLOCKED_CAPABILITIES", "")
+        effective_blocked: Set[str] = set(blocked_capabilities or set())
+        if env_blocked_str:
+            effective_blocked.update(c.strip() for c in env_blocked_str.split(",") if c.strip())
+
+        # Parse permitted capabilities from environment variable if set
+        env_permitted_str = os.getenv("FRIDAY_PERMITTED_CAPABILITIES", "")
+        effective_allowed: Optional[Set[str]] = allowed_capabilities
+        if effective_allowed is None and env_permitted_str:
+            effective_allowed = set(c.strip() for c in env_permitted_str.split(",") if c.strip())
+
+        # Default environment security policies
+        if env in ("sandboxed", "restricted"):
+            effective_blocked.update({"destructive_shell", "unrestricted_admin", "kernel_exec"})
+
+        # Check each required capability
+        for cap in required_capabilities:
+            cap_clean = str(cap).strip().lower()
+            if cap_clean in effective_blocked:
+                return (
+                    False,
+                    f"Capability Gating Block: Skill '{skill_name}' requires capability '{cap_clean}', which is blocked in '{env}' environment.",
+                )
+            if effective_allowed is not None and cap_clean not in effective_allowed:
+                return (
+                    False,
+                    f"Capability Gating Block: Skill '{skill_name}' requires capability '{cap_clean}', which is not in the permitted capabilities list for '{env}' environment.",
+                )
+
+        return True, f"All {len(required_capabilities)} required capability(ies) permitted for skill '{skill_name}'."
+
 
 # Process-level default authorizer singleton
 tool_authorizer = ToolAuthorizer()

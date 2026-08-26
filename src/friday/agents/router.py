@@ -7,7 +7,7 @@ and tool availability, then selects the best specialist agent for a subtask.
 
 from dataclasses import dataclass
 import re
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
 
 from friday.agents.base_agent import BaseAgent
 from friday.agents.decomposer import DecomposedSubtask
@@ -34,10 +34,25 @@ class AgentRouter:
         registry: AgentRegistry,
         default_agent: Optional[BaseAgent] = None,
         memory: Optional[Any] = None,
+        skill_registry: Optional[Any] = None,
     ) -> None:
         self.registry = registry
         self.default_agent = default_agent
         self.memory = memory
+        if skill_registry is None:
+            try:
+                from friday.skills.registry import skill_registry as default_skill_reg
+                self.skill_registry = default_skill_reg
+            except Exception:
+                self.skill_registry = None
+        else:
+            self.skill_registry = skill_registry
+
+    def find_matching_skill(self, user_request: str, threshold: float = 0.80) -> Optional[Tuple[Any, float]]:
+        """Look up if user request directly activates an installed Skill."""
+        if self.skill_registry:
+            return self.skill_registry.find_matching_skill(user_request, threshold=threshold)
+        return None
 
     def route_subtask(self, subtask: DecomposedSubtask) -> AgentRoutingDecision:
         """Score available agents and return the best match for the subtask."""

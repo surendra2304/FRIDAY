@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any, Optional, Tuple
 from friday.core.types import (
     AuthorizationDecision,
     AuthorizationRequest,
@@ -25,6 +25,24 @@ class BaseAuthorizer(ABC):
             tool_call_id=request.tool_call_id or "",
             purpose=request.purpose or "",
             affected_resource=request.affected_resource or "",
+        )
+
+    def authorize_skill(
+        self,
+        skill: Any,
+        environment: Optional[str] = None,
+        blocked_capabilities: Optional[Any] = None,
+        allowed_capabilities: Optional[Any] = None,
+    ) -> Tuple[bool, str]:
+        """Validate if a Skill is permitted to execute under capability gating policies."""
+        skill_name = getattr(skill, "name", "unknown_skill")
+        required_caps = getattr(skill, "required_capabilities", [])
+        return self.tool_authorizer.check_skill_capabilities(
+            skill_name=skill_name,
+            required_capabilities=required_caps,
+            environment=environment,
+            blocked_capabilities=blocked_capabilities,
+            allowed_capabilities=allowed_capabilities,
         )
 
     @abstractmethod
