@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Deterministic unit tests for Phase 6.5 Vision Memory & FTS/Embedding Fallback."""
+"""Deterministic unit tests for Multimodal Screen Perception.5 Vision Memory & FTS/Embedding Fallback."""
 
 import os
 from unittest import mock

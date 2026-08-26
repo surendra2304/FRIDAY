@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Comprehensive Memory, Context Stress & Scalability Test Suite for Phase 10.6.
+"""Comprehensive Memory, Context Stress & Scalability Test Suite for Core Architecture & Types0.6.
 
 Validates:
 1. Long conversation history scaling without unbounded RAM growth.

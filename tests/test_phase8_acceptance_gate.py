@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Comprehensive End-to-End Acceptance & Security Gate for Phase 8 Multimodal Perception.
+"""Comprehensive End-to-End Acceptance & Security Gate for Evidence-Based Verification Multimodal Perception.
 
 Verifies:
 1. End-to-End Multimodal Lifecycle: Screen Capture -> Structured UI Understanding -> Coordinate Grounding -> Action Proposal -> Authorization Gate -> Simulated Execution -> State Verification -> Memory Recording.

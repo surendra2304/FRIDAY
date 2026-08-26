@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Comprehensive unit test suite for Phase 9.9: Long-Running Task Management & Background Goals.
+"""Comprehensive unit test suite for Cognitive Task Planning.9: Long-Running Task Management & Background Goals.
 
 Tests:
 1. Task creation, status querying, progress tracking, and lifecycle states.

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Smart Home & IoT Control tools for Phase 27.
+"""Smart Home & IoT Control tools for IoT & Smart Home Control.
 
 Controls physical devices (lights, smart plugs, switches) via local network HTTP APIs
 (e.g., Home Assistant or standard local IoT REST bridges) using httpx.

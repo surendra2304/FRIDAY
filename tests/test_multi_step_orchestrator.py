@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Comprehensive unit test suite for Phase 9.3: Intelligent Multi-Step Execution Orchestrator.
+"""Comprehensive unit test suite for Execution Planning: Intelligent Multi-Step Execution Orchestrator.
 
 Tests:
 1. Multi-step task successful end-to-end execution.

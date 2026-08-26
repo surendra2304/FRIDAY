@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Comprehensive Adversarial Red-Team & Prompt-Injection Test Suite for Phase 10.9.
+"""Comprehensive Adversarial Red-Team & Prompt-Injection Test Suite for Core Architecture & Types0.9.
 
 Attacks tested across the entire autonomous cognitive lifecycle:
 1. Malicious Screen Text / OCR Injection (Fake system prompts inside images).

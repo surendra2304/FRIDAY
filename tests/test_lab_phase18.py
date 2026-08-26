@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Unit tests for Phase 18 FRIDAY Lab: Experiments, SQLite Metrics, CLI runner, and Dynamic Routing."""
+"""Unit tests for FRIDAY Lab FRIDAY Lab: Experiments, SQLite Metrics, CLI runner, and Dynamic Routing."""
 
 import pytest
 from friday.lab.experiment import ExperimentRunner, ExperimentTask, TrialResult, run_standard_lab_suite

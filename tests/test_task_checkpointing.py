@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Deterministic unit test suite for Phase 7.7 Interruption, Checkpointing & Resumption.
+"""Deterministic unit test suite for Computer Action Execution.7 Interruption, Checkpointing & Resumption.
 
 Validates:
 1. Task state machine pause/resume/cancel transitions (PAUSED, EXECUTING, CANCELLED).

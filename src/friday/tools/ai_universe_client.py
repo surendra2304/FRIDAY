@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""AI Universe Client and Tool Integration (Phase 20).
+"""AI Universe Client and Tool Integration (AI Universe Integration).
 
 Communicates asynchronously with the external AI Universe multi-agent debate API
 hosted locally at http://localhost:8000 (or configured via FRIDAY_UNIVERSE_API_URL).

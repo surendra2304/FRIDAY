@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Agent Router for FRIDAY Phase 13 Multi-Agent System.
+"""Agent Router for FRIDAY Multi-Agent Specialist System.
 
 Scores candidates from the Agent Registry based on role alignment, capabilities,
 and tool availability, then selects the best specialist agent for a subtask.

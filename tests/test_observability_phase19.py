@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Unit tests for Phase 19: Observability, Timeline Replay, and Unified Status Panel."""
+"""Unit tests for Observability UI: Observability, Timeline Replay, and Unified Status Panel."""
 
 import pytest
 from friday.observability.timeline import ExecutionTimeline, TimelineEvent, global_timeline

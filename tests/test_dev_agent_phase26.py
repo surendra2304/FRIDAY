@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Unit tests for Phase 26: Autonomous Self-Coding (The Dev Agent)."""
+"""Unit tests for Autonomous Self-Coding Dev Agent."""
 
 import os
 from unittest import mock

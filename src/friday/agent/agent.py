@@ -1286,7 +1286,7 @@ class FridayAgent:
         return registry
 
     def _init_default_agent_registry(self) -> AgentRegistry:
-        """Instantiate default specialist agent pool for Phase 13 Multi-Agent architecture."""
+        """Instantiate default specialist agent pool for Multi-Agent Specialist Architecture."""
         from friday.agents.specialists.developer_agent import DeveloperAgent
         from friday.agents.specialists.research_agent import ResearchAgent
         from friday.agents.specialists.self_dev_agent import SelfDevAgent
@@ -1730,7 +1730,7 @@ class FridayAgent:
         )
         logger.info(f"Capability routed to: {routing_decision.selected_capability.value}")
 
-        # Universe Orchestration fast-path (Phases 20-21)
+        # Universe Orchestration fast-path (AI Universe Integration)
         if not hasattr(self, "_universe_orchestrator"):
             from friday.integrations.universe_orchestrator import UniverseOrchestrator
             self._universe_orchestrator = UniverseOrchestrator(
@@ -1762,7 +1762,7 @@ class FridayAgent:
                 },
             )
 
-        # Autonomous Dev Workflow fast-path (Phase 26)
+        # Autonomous Dev Workflow fast-path (Autonomous Self-Coding)
         if not hasattr(self, "_dev_workflow"):
             from friday.workflows.dev_workflow import AutonomousDevWorkflow
             dev_ag = self.agent_registry.get_agent("developer")
@@ -1805,7 +1805,7 @@ class FridayAgent:
                 },
             )
 
-        # Morning Briefing Workflow fast-path (Phase 29)
+        # Morning Briefing Workflow fast-path (Calendar & Morning Briefings)
         if not hasattr(self, "_briefing_workflow"):
             from friday.workflows.briefing_workflow import MorningBriefingWorkflow
             cal_tool = self.tools.get_tool("get_todays_events")
@@ -1845,7 +1845,7 @@ class FridayAgent:
                 },
             )
 
-        # Email Drafting Workflow fast-path (Phase 30)
+        # Email Drafting Workflow fast-path (Web Research & Email Automation)
         if not hasattr(self, "_email_workflow"):
             from friday.workflows.email_workflow import EmailDraftingWorkflow
             send_tool = self.tools.get_tool("send_email")
@@ -1882,7 +1882,7 @@ class FridayAgent:
                 },
             )
 
-        # Recursive Self-Improvement Workflow fast-path (Phase 31)
+        # Recursive Self-Improvement Workflow fast-path (Recursive Self-Improvement)
         if not hasattr(self, "_self_improve_workflow"):
             from friday.workflows.self_improve_workflow import SelfImprovementWorkflow
             self_ag = self.agent_registry.get_agent("self_developer")
@@ -2157,7 +2157,7 @@ class FridayAgent:
         # 4. State: PLANNING (evaluating task complexity and action plan)
         self.state_machine.transition_to(TaskState.PLANNING, reason="Evaluating context and determining action plan")
 
-        # Multi-Agent Complex Workflow Routing (Phase 13)
+        # Multi-Agent Complex Workflow Routing (Multi-Agent Specialist Architecture)
         # Trigger specialist multi-agent workflows for explicit project/research/multi-agent goals
         has_complex_cues = any(cue in clean_input.lower() for cue in [
             "step by step workflow", "multi-agent", "delegate to specialist",

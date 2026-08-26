@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Base Specialist Agent definition for FRIDAY Phase 13 Multi-Agent System.
+"""Base Specialist Agent definition for FRIDAY Multi-Agent Specialist System.
 
 Encapsulates an identity, role, scoped memory, allowed tools, and execution loop
 utilizing the Unified Multi-Provider AI Gateway.

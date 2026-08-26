@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Self-Development Specialist Agent for Recursive Self-Improvement (Phase 31).
+"""Self-Development Specialist Agent for Recursive Self-Improvement (Recursive Self-Improvement).
 
 Inherits from DeveloperAgent, specialized in introspecting FRIDAY's internal codebase architecture,
 planning self-modifications, extending agent tools, and executing safe automated code updates.

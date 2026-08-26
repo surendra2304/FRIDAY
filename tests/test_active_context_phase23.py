@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Unit tests for Phase 23: Active Screen Awareness."""
+"""Unit tests for Full-Duplex Voice Engine3: Active Screen Awareness."""
 
 import pytest
 from unittest.mock import patch, MagicMock

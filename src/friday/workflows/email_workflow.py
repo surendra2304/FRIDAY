@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Email Drafting & Delivery Workflow for Phase 30.
+"""Email Drafting & Delivery Workflow for Web Research & Email Automation.
 
 Orchestrates voice/text email drafting using the FallbackChainLLMProvider,
 presents the draft to the user with a confirmation prompt ("Would you like me to send this?"),

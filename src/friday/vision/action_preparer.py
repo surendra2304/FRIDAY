@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Perception-Driven Safe Action Preparation & Grounded Element Resolver for Phase 8.8.
+"""Perception-Driven Safe Action Preparation & Grounded Element Resolver for Evidence-Based Verification.8.
 
 Bridges structured visual UI observations and the safe ComputerActionProposal system.
 Enforces:

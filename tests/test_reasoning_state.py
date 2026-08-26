@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Deterministic unit test suite for Phase 7.1 Reasoning State Foundation & Task State Machine.
+"""Deterministic unit test suite for Computer Action Execution.1 Reasoning State Foundation & Task State Machine.
 
 Validates:
 1. Initial state is NOT_STARTED.
@@ -113,10 +113,10 @@ def test_reasoning_state_machine_invalid_transitions_rejected():
 # 6. Serialization and Audit History
 def test_reasoning_state_machine_serialization():
     sm = ReasoningStateMachine(task_id="audit-123")
-    sm.transition_to(TaskState.UNDERSTANDING, reason="Phase 1")
-    sm.transition_to(TaskState.PLANNING, reason="Phase 2")
-    sm.transition_to(TaskState.VERIFYING, reason="Phase 3")
-    sm.transition_to(TaskState.COMPLETED, reason="Phase 4")
+    sm.transition_to(TaskState.UNDERSTANDING, reason="Core Architecture & Types")
+    sm.transition_to(TaskState.PLANNING, reason="Full-Duplex Voice Engine")
+    sm.transition_to(TaskState.VERIFYING, reason="Persistent Memory Core")
+    sm.transition_to(TaskState.COMPLETED, reason="Audio Pipeline & Live Streaming")
 
     d = sm.to_dict()
     assert d["task_id"] == "audit-123"

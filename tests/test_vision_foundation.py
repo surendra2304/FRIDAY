@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Deterministic unit tests for Phase 6.1 Vision Foundation."""
+"""Deterministic unit tests for Multimodal Screen Perception.1 Vision Foundation."""
 
 from unittest import mock
 import pytest

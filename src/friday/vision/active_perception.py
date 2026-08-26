@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Active Perception & Information Seeking Engine for Phase 8.6.
+"""Active Perception & Information Seeking Engine for Evidence-Based Verification.6.
 
 Determines whether current multimodal / task context is sufficient to proceed or if
 further targeted visual observation or memory retrieval is necessary.

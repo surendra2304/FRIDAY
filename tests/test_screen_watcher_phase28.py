@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Unit tests for Phase 28: Proactive Screen Reading (The Watcher)."""
+"""Unit tests for Proactive Screen Reading (The Watcher) (The Watcher)."""
 
 from unittest import mock
 import pytest

@@ -1,4 +1,4 @@
-"""Phase 5.10 — Voice Tool Execution Security Hardening Tests.
+"""Security & Authorization Boundary.10 — Voice Tool Execution Security Hardening Tests.
 
 Verifies:
 A. Tool arguments are NOT emitted verbatim into logs.

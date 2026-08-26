@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Deterministic unit test suite for Phase 7.3 Multi-Step Task Execution Engine & Progress Tracker.
+"""Deterministic unit test suite for Computer Action Execution.3 Multi-Step Task Execution Engine & Progress Tracker.
 
 Validates:
 1. Sequential execution of single-step and multi-step plans.

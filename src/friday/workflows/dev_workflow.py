@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Autonomous Self-Coding Dev Workflow for Phase 26.
+"""Autonomous Self-Coding Dev Workflow for Autonomous Self-Coding.
 
 Resolves GitHub issues by fetching issue details, routing to DeveloperAgent,
 applying code modifications, running automated test suites, and pushing branches.

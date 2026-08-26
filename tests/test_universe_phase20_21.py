@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Unit tests for Phases 20-21: AI Universe Integration API, Mock Client, and Orchestration."""
+"""Unit tests for AI Universe Integration: AI Universe Integration API, Mock Client, and Orchestration."""
 
 import pytest
 from friday.integrations.universe_api import WorldConfig, UniverseAgentConfig

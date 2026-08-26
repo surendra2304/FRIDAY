@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Unit tests for Phase 17 Proactive FRIDAY: Scheduler, Background Monitor, Notification Manager, and Safety Gating."""
+"""Unit tests for Proactive Background Monitoring Proactive FRIDAY: Scheduler, Background Monitor, Notification Manager, and Safety Gating."""
 
 import os
 import time

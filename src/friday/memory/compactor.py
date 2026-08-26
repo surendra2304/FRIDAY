@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Memory Compactor for FRIDAY Phase 14 Memory 2.0.
+"""Memory Compactor for FRIDAY Memory Knowledge Base Memory 2.0.
 
 Summarizes old episodic memories into concise semantic knowledge facts using LLM reasoning.
 """

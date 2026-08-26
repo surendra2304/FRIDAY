@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Deterministic unit tests for Phase 6.2 Windows Screen Capture and ScreenSnapshotTool."""
+"""Deterministic unit tests for Multimodal Screen Perception.2 Windows Screen Capture and ScreenSnapshotTool."""
 
 from unittest import mock
 import pytest

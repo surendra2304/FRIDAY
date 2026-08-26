@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Deterministic unit tests for Phase 6.4 Controlled Screen Awareness & Deduplication."""
+"""Deterministic unit tests for Multimodal Screen Perception.4 Controlled Screen Awareness & Deduplication."""
 
 import time
 from unittest import mock

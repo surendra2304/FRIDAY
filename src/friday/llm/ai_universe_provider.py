@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""AI Universe LLM Provider (Phase 20 Fallback Integration).
+"""AI Universe LLM Provider (AI Universe Integration Fallback Integration).
 
 Provides ultimate fallback in FRIDAY's reasoning chain by routing user prompts
 to the external AI Universe multi-agent deliberation API when cloud LLM providers

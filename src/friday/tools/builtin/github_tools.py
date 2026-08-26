@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""GitHub API automation tools using PyGithub for Phase 24."""
+"""GitHub API automation tools using PyGithub for Git & GitHub Automation."""
 
 from typing import Any, Dict, Optional
 import os

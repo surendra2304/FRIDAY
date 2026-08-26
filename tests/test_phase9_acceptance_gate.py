@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Comprehensive End-to-End Multimodal Acceptance Gate for Phase 9.11.
+"""Comprehensive End-to-End Multimodal Acceptance Gate for Goal Understanding1.
 
 Validates the complete autonomous cognitive pipeline:
 1. User Goal Understanding & Normalization (GoalUnderstandingEngine)
@@ -261,7 +261,7 @@ def test_long_running_background_task_governance(test_environment):
 
 # 6. Provider Independence: Verify 100% Mock Operation
 def test_multimodal_autonomous_provider_independence():
-    """Verify entire Phase 9 cognitive stack operates offline with zero cloud SDK calls."""
+    """Verify entire Cognitive Task Planning cognitive stack operates offline with zero cloud SDK calls."""
     import friday.agent.goal as goal_mod
     import friday.agent.planner as plan_mod
     import friday.agent.executor as exec_mod

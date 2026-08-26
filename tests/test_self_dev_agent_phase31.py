@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Unit tests for ReadOwnCodebaseTool and SelfDevAgent (Phase 31: Recursive Self-Improvement)."""
+"""Unit tests for ReadOwnCodebaseTool and SelfDevAgent (Recursive Self-Improvement)."""
 
 from pathlib import Path
 from unittest import mock

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Deterministic unit test suite for Phase 7.4 Verification, Assertions & Self-Correction Loops.
+"""Deterministic unit test suite for Computer Action Execution.4 Verification, Assertions & Self-Correction Loops.
 
 Validates:
 1. Successful step and overall plan verification.

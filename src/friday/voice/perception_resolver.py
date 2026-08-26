@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Voice-to-Perception Reference Resolver for Phase 8.7.
+"""Voice-to-Perception Reference Resolver for Evidence-Based Verification.7.
 
 Resolves spoken contextual references (e.g. "what is this", "what changed", "look at the error",
 "open the thing we discussed") against ActiveTaskContext, TemporalEnvironmentTracker, and EpisodicMemory

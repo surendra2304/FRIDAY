@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Recursive Self-Improvement Workflow for Phase 31.
+"""Recursive Self-Improvement Workflow for Recursive Self-Improvement.
 
 Orchestrates FRIDAY's autonomous self-modification and feature creation loop:
 1. Detects self-modification intent (e.g., "FRIDAY, add a tool to click the mouse").

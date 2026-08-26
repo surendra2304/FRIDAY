@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Background Monitoring Service for FRIDAY Phase 17 Proactive System.
+"""Background Monitoring Service for FRIDAY Proactive Background Monitoring Proactive System.
 
 Executes continuous bounded checks (e.g. web page diffing, file modifications) and alerts NotificationManager.
 """

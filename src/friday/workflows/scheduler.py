@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Workflow Scheduler for FRIDAY Phase 17 Proactive System.
+"""Workflow Scheduler for FRIDAY Proactive Background Monitoring Proactive System.
 
 Executes periodic (interval/cron-like) and condition-based background workflows.
 """
@@ -62,15 +62,15 @@ class WorkflowScheduler:
         self._stop_event = threading.Event()
         self._worker_thread: Optional[threading.Thread] = None
 
-        # Tracking for high CPU sustained spikes (Phase 25)
+        # Tracking for high CPU sustained spikes (System Resource Management)
         self._high_cpu_start_time: Optional[float] = None
         self._last_alerted_cpu_time: float = 0.0
 
-        # Screen Watcher Service (Phase 28)
+        # Screen Watcher Service (Proactive Screen Reading)
         self._screen_watcher: Optional[Any] = None
         self._last_screen_watcher_time: float = 0.0
 
-        # Morning Briefing Tracker (Phase 29)
+        # Morning Briefing Tracker (Calendar & Morning Briefings)
         self._last_briefing_date: Optional[str] = None
 
     def check_morning_briefing_proactive(self) -> Optional[Dict[str, Any]]:

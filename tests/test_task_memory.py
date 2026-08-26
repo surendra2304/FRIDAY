@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Deterministic unit test suite for Phase 7.5 Active Working Task Memory & Context Isolation.
+"""Deterministic unit test suite for Computer Action Execution.5 Active Working Task Memory & Context Isolation.
 
 Validates:
 1. Context initialization with goal, plan, and initial state.

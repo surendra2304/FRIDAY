@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Git CLI automation tools for Phase 24: Git & GitHub Automation."""
+"""Git CLI automation tools for Git & GitHub Automation."""
 
 import subprocess
 import os

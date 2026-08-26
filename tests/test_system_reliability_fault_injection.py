@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Comprehensive System Reliability & Failure-Injection Test Suite for Phase 10.3.
+"""Comprehensive System Reliability & Failure-Injection Test Suite for Core Architecture & Types0.3.
 
 Tests:
 1. LLM Provider failure & malformed JSON responses.

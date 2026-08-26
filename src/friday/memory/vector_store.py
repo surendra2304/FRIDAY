@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""ChromaDB local-first vector store for Phase 22 Semantic Vector Memory."""
+"""ChromaDB local-first vector store for Full-Duplex Voice Engine2 Semantic Vector Memory."""
 
 import os
 from pathlib import Path

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""FRIDAY Lab Experimentation Framework for Phase 18.
+"""FRIDAY Lab Experimentation Framework for FRIDAY Lab.
 
 Runs multi-provider A/B benchmarking across defined tasks, records performance metrics
 (latency, accuracy, success rate, failure modes) into SQLite, and provides CLI comparison reporting.

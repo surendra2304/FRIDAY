@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Comprehensive Computer Control Safety and Real-Machine Validation Test Suite for Phase 10.7.
+"""Comprehensive Computer Control Safety and Real-Machine Validation Test Suite for Core Architecture & Types0.7.
 
 Validates:
 1. Proposal != Execution invariant.

@@ -31,7 +31,7 @@ class StepStatus(str, Enum):
     IN_PROGRESS = "IN_PROGRESS"  # Alias
     WAITING = "WAITING"
     COMPLETED = "COMPLETED"
-    SUCCEEDED = "COMPLETED"      # Phase 9.3 standard status mapped to COMPLETED for complete backward compatibility
+    SUCCEEDED = "COMPLETED"      # Execution Planning standard status mapped to COMPLETED for complete backward compatibility
     FAILED = "FAILED"
     SKIPPED = "SKIPPED"
     BLOCKED = "BLOCKED"
@@ -288,7 +288,7 @@ class GoalDecomposer:
 
     @staticmethod
     def create_from_goal(goal: Goal, tool_registry: Optional[ToolRegistry] = None) -> TaskPlan:
-        """Convert a Phase 9.1 structured Goal into an executable DAG TaskPlan."""
+        """Convert a Goal Understanding structured Goal into an executable DAG TaskPlan."""
         if goal.is_ambiguous:
             raise PlanValidationError(f"Cannot generate plan for ambiguous goal: {goal.clarification_needed}")
 

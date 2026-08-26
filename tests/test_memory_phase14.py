@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Unit tests for Phase 14 Memory 2.0: 4-layer schema, bounded retrieval, compactor, and user controls."""
+"""Unit tests for Memory Knowledge Base Memory 2.0: 4-layer schema, bounded retrieval, compactor, and user controls."""
 
 import os
 import json

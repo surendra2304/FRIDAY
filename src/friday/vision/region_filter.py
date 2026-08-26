@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Local Text, Region-of-Interest (ROI) Slicing & Perceptual Pre-Filtering for Phase 8.4 (Quota Saver).
+"""Local Text, Region-of-Interest (ROI) Slicing & Perceptual Pre-Filtering for Evidence-Based Verification.4 (Quota Saver).
 
 Provides offline, lightweight, deterministic image region slicing, perceptual ROI hashing,
 text-density heuristic estimation, and feeding verified visual deltas into ActiveTaskContext.
@@ -266,7 +266,7 @@ def estimate_local_text_density(img_arr: np.ndarray) -> Tuple[TextDensityLevel, 
 
 
 class LocalRegionPreFilter:
-    """Perceptual ROI pre-filtering engine for quota saving in Phase 8.4."""
+    """Perceptual ROI pre-filtering engine for quota saving in Evidence-Based Verification.4."""
 
     def __init__(self, change_threshold: float = 0.05) -> None:
         self.change_threshold = change_threshold

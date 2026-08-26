@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Comprehensive unit test suite for Phase 8.4: Local Text & Perceptual Region Pre-Filtering (Quota Saver).
+"""Comprehensive unit test suite for Evidence-Based Verification.4: Local Text & Perceptual Region Pre-Filtering (Quota Saver).
 
 Tests:
 1. Local PNG region cropping (ROI slicing) from bounding boxes.

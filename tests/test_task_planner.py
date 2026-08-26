@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Deterministic unit test suite for Phase 7.2 Structured Task Planning & Goal Decomposition.
+"""Deterministic unit test suite for Computer Action Execution.2 Structured Task Planning & Goal Decomposition.
 
 Validates:
 1. Single-step plan creation and data serialization.
@@ -14,7 +14,7 @@ Validates:
 4. Dangerous / Sensitive action authorization requirements (safety elevation).
 5. Integration with FridayAgent (create_plan, current_plan, get_status).
 6. Complete provider independence (works with MockLLMProvider and offline tests).
-7. Preservation of Phase 6 security boundaries (Proposal != Execution, hard blocks).
+7. Preservation of Multimodal Screen Perception security boundaries (Proposal != Execution, hard blocks).
 """
 
 from unittest import mock

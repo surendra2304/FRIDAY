@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Comprehensive unit test suite for Phase 8.2: Advanced Screen & UI Understanding.
+"""Comprehensive unit test suite for Evidence-Based Verification.2: Advanced Screen & UI Understanding.
 
 Tests:
 1. Structured UI element observation parsing (buttons, inputs, dialogs, bounding boxes).

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Comprehensive unit test suite for Phase 9.4: Formal Verification, Self-Correction & Bounded Recovery.
+"""Comprehensive unit test suite for Cognitive Task Planning.4: Formal Verification, Self-Correction & Bounded Recovery.
 
 Tests:
 1. Successful formal verification across different assertion types (regex, contains, not_contains, json_key, min_length, exact).

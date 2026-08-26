@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Comprehensive unit test suite for Phase 9.7: Task Interruption, Checkpointing & Resumption.
+"""Comprehensive unit test suite for Cognitive Task Planning.7: Task Interruption, Checkpointing & Resumption.
 
 Tests:
 1. User pause, pause/resume lifecycle, and execution status preservation.

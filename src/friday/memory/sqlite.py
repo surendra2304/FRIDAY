@@ -60,7 +60,7 @@ class SQLiteConversationMemory(BaseMemory):
         self.settings = get_settings()
         self._active_conversation_id = conversation_id or self.create_conversation(title="Default Conversation")
 
-        # Lazy initialize ChromaDB Vector Store for Phase 22 Semantic Vector Memory
+        # Lazy initialize ChromaDB Vector Store for Full-Duplex Voice Engine2 Semantic Vector Memory
         self._vector_store = None
 
     @property
