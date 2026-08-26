@@ -92,6 +92,10 @@ class AgentRouter:
         self_mod_patterns = [
             r"\badd\s+(?:a\s+)?tool\b",
             r"\bupdate\s+(?:your\s+)?code\b",
+            r"\bupgrade\s+(?:your\s+)?code\b",
+            r"\bupgrade\s+yourself\b",
+            r"\bupdate\s+yourself\b",
+            r"\bimprove\s+yourself\b",
             r"\bmodify\s+yourself\b",
             r"\badd\s+(?:a\s+)?feature\s+(?:to|for)\s+yourself\b",
             r"\bwrite\s+(?:a\s+)?(?:new\s+)?tool\s+(?:to|for)\s+yourself\b",
