@@ -24,13 +24,41 @@ class ContextEntity:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass
+class ContextQueryRecord:
+    """Record of a recent query for follow-up resolution."""
+    query: str
+    target_subsystem: Optional[str]
+    time_window: str = "today"
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class ContextualConversationMemory:
-    """Tracks conversational context with 24-hour TTL and pronoun resolution."""
+    """Tracks conversational context with 24-hour TTL, pronoun resolution, and temporal follow-ups."""
 
     def __init__(self, ttl_hours: float = 24.0) -> None:
         self.ttl = timedelta(hours=ttl_hours)
         self._history: List[ContextEntity] = []
+        self._query_history: List[ContextQueryRecord] = []
         self._lock = threading.RLock()
+
+    def record_query(
+        self,
+        query: str,
+        target_subsystem: Optional[str] = None,
+        time_window: str = "today",
+    ) -> None:
+        """Records a user query for conversational follow-ups."""
+        with self._lock:
+            self._purge_expired()
+            self._query_history.append(
+                ContextQueryRecord(
+                    query=query,
+                    target_subsystem=target_subsystem,
+                    time_window=time_window,
+                    timestamp=datetime.now(timezone.utc),
+                )
+            )
 
     def record_mention(
         self,
@@ -64,14 +92,14 @@ class ContextualConversationMemory:
             return None
 
     def resolve_pronoun_reference(self, query: str) -> Optional[Dict[str, Any]]:
-        """Resolves ambiguous references ('it', 'that', 'the build', 'the strategy')."""
+        """Resolves ambiguous references ('it', 'that', 'the build', 'the strategy', 'the website')."""
         clean = query.strip().lower()
         with self._lock:
             self._purge_expired()
             if not self._history:
                 return None
 
-            if any(k in clean for k in ["how is it doing", "what is its status", "how is that doing"]):
+            if any(k in clean for k in ["how is it doing", "what is its status", "how is that doing", "how is it"]):
                 latest = self._history[-1]
                 return {
                     "resolved": True,
@@ -90,8 +118,8 @@ class ContextualConversationMemory:
                         "metadata": task_item.metadata,
                     }
 
-            if "strategy" in clean or "trade" in clean:
-                strat_item = self.get_latest_mention("strategy")
+            if "strategy" in clean or "trade" in clean or "positions" in clean:
+                strat_item = self.get_latest_mention("strategy") or self.get_latest_mention("trading_bot")
                 if strat_item:
                     return {
                         "resolved": True,
@@ -100,6 +128,48 @@ class ContextualConversationMemory:
                         "metadata": strat_item.metadata,
                     }
 
+            if "website" in clean or "site" in clean or "nexus" in clean:
+                web_item = self.get_latest_mention("nexus") or self.get_latest_mention("website")
+                if web_item:
+                    return {
+                        "resolved": True,
+                        "entity_type": web_item.entity_type,
+                        "value": web_item.value,
+                        "metadata": web_item.metadata,
+                    }
+
+            return None
+
+    def resolve_temporal_follow_up(self, query: str) -> Optional[Dict[str, Any]]:
+        """Resolves temporal follow-up queries (e.g. 'What about yesterday?', 'How about this week?')."""
+        clean = query.strip().lower()
+        with self._lock:
+            self._purge_expired()
+            if not self._query_history:
+                return None
+
+            last_query = self._query_history[-1]
+            time_match = None
+            if "yesterday" in clean:
+                time_match = "yesterday"
+            elif "this week" in clean:
+                time_match = "this week"
+            elif "last month" in clean:
+                time_match = "last month"
+            elif "overnight" in clean:
+                time_match = "overnight"
+            elif "today" in clean:
+                time_match = "today"
+
+            if time_match and (clean.startswith("what about") or clean.startswith("how about") or clean.startswith("and")):
+                return {
+                    "resolved": True,
+                    "original_query": last_query.query,
+                    "target_subsystem": last_query.target_subsystem,
+                    "new_time_window": time_match,
+                    "message": f"Resolved follow-up for {last_query.target_subsystem or 'subsystem'} focusing on {time_match}.",
+                }
+
             return None
 
     def _purge_expired(self) -> None:
@@ -107,11 +177,13 @@ class ContextualConversationMemory:
         now = datetime.now(timezone.utc)
         cutoff = now - self.ttl
         self._history = [item for item in self._history if item.timestamp > cutoff]
+        self._query_history = [q for q in self._query_history if q.timestamp > cutoff]
 
     def clear(self) -> None:
         """Clears conversational memory."""
         with self._lock:
             self._history.clear()
+            self._query_history.clear()
 
 
 # Default singleton context memory
