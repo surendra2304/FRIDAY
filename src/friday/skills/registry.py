@@ -61,6 +61,7 @@ class SkillRegistry:
         from friday.skills.advisory_supervisor import AdvisorySupervisorSkill
         from friday.skills.ab_test_monitor import ABTestMonitorSkill
         from friday.skills.testnet_advisory_monitor import TestnetAdvisoryMonitorSkill
+        from friday.skills.production_supervisor import ProductionSupervisorSkill
 
         builtins = [
             NetworkDiagnosticSkill(),
@@ -70,6 +71,7 @@ class SkillRegistry:
             AdvisorySupervisorSkill(),
             ABTestMonitorSkill(),
             TestnetAdvisoryMonitorSkill(),
+            ProductionSupervisorSkill(),
         ]
         for s in builtins:
             if s.name not in self._skills:

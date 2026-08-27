@@ -252,7 +252,11 @@ class TradingBotOperator(BaseSkill):
             logger.warning(f"[TRADING_BOT] Failed to compose advisory summary: {e}")
             return f"AI-Universe Advisory telemetry currently unavailable: {e}"
 
-    def trigger_panic(self) -> Dict[str, Any]:
+    def get_status(self) -> Dict[str, Any]:
+        """Calls /api/status to retrieve live trading bot metrics dict."""
+        return self._http_get("/api/status")
+
+    def trigger_panic(self, authorizer: Optional[Any] = None) -> Dict[str, Any]:
         """Calls POST /api/panic to activate the safety kill-switch (blocks new orders)."""
         logger.warning("[TRADING_BOT] Triggering EMERGENCY PANIC KILL-SWITCH via Bot REST API")
         tag = tag_trading_command("trigger_panic", CommandPrecedence.FRIDAY_COMMANDS)
