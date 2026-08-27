@@ -166,14 +166,15 @@ ead_file, list_files).
 
 ---
 
-### 🧠 [Day 11 — 2026-08-28: Advanced Memory Consolidation & Lifelong Learning](diary/2026-08-28.md)
-- **🎯 Focus**: Implementing a biologically-inspired Advanced Memory Consolidation & Learning System: MemoryConsolidationEngine (nightly 03:00 episodic-to-semantic compression, multi-factor importance scoring, 30-day half-life decay, cold storage archiving), CrossSessionLearning (command shortcut discovery, adaptive preference learning, contradiction detection), ProactiveMemory (future commitment recall, interrupted task resumption, deadline extraction), and MemoryHealthMonitor operator (unbounded growth watch, auto-compaction, daily backup verification).
+### 🧠 [Day 11 — 2026-08-28: Advanced Memory, Proactive Automation & Scheduled Intelligence](diary/2026-08-28.md)
+- **🎯 Focus**: Delivering Proactive Automation & Scheduled Intelligence: ScheduledIntelligenceOperator (dynamic routine learning, calendar/weather/market guards), ProactiveAnomalyInvestigator (pre-inquiry root cause tracing across Trading, Nexus, and Cross-System cascades), AutomatedFollowUpWorkflow (recommendation outcome tracking, 24h unacted reminders, confidence calibration), and SmartNotificationRouter (4 urgency tiers, 22:00–07:00 quiet hours, weekend ignore learning).
 - **💡 What I Accomplished**:
-  - Built `MemoryConsolidationEngine` (`src/friday/memory/consolidation.py`) running nightly episodic-to-semantic distillation and cold storage preservation in `memory/cold_storage/`.
-  - Built `CrossSessionLearning` (`src/friday/memory/cross_session.py`) extracting recurring command patterns, adapting response/alert preferences, and detecting behavioral contradictions.
-  - Built `ProactiveMemory` (`src/friday/memory/proactive.py`) tracking user commitments ("review strategy tomorrow") and interrupted task resumption across sessions.
-  - Built `MemoryHealthMonitor` (`src/friday/operators/memory_health_operator.py`) with 60s health audits, automatic memory compaction (>30% fragmentation), and daily backup verification.
-  - Authored `docs/MEMORY_CONSOLIDATION_LEARNING.md` documenting cognitive memory architecture and lifecycle.
-  - Authored `tests/test_memory_consolidation_and_learning.py` with 100% green pass rate across 175 tests.
-- **🛡️ Fixes & Hardening**: Fixed subsystem tuple grouping in episodic compression, preserved 100% of historical events in monthly cold storage archives, enforced 30-day half-life decay, and verified zero unbounded memory growth.
+  - Built `ScheduledIntelligenceOperator` (`src/friday/operators/scheduled_intelligence.py`) learning morning routine wake-up times and enforcing calendar meeting skip conditions.
+  - Built `ProactiveAnomalyInvestigator` (`src/friday/operators/anomaly_investigator.py`) autonomously investigating anomalies and preparing pre-inquiry root-cause voice briefings.
+  - Built `AutomatedFollowUpWorkflow` (`src/friday/workflows/followup_workflow.py`) tracking recommendation performance deltas and sending gentle 24h unacted reminders.
+  - Built `SmartNotificationRouter` (`src/friday/core/notification_router.py`) classifying notifications across 4 urgency tiers with quiet hours voice muting.
+  - Built `MemoryConsolidationEngine`, `CrossSessionLearning`, `ProactiveMemory`, and `MemoryHealthMonitor`.
+  - Authored `docs/PROACTIVE_AUTOMATION_SCHEDULED_INTELLIGENCE.md` and `docs/MEMORY_CONSOLIDATION_LEARNING.md`.
+  - Authored `tests/test_proactive_automation_and_intelligence.py` with 100% green pass rate across 179 tests.
+- **🛡️ Fixes & Hardening**: Enforced strict quiet hours (22:00-07:00) with critical emergency bypass, calibrated recommendation confidence from empirical deltas, and correlated cross-system telemetry.
 - **📊 Test Results**: **1,225 passed** (100% green pass rate across all feature domains).
