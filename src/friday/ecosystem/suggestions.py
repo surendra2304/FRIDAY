@@ -35,6 +35,7 @@ class EcosystemSuggestionsEngine:
     def generate_suggestions(
         self,
         trading_data: Optional[Dict[str, Any]] = None,
+        nexus_data: Optional[Dict[str, Any]] = None,
         forge_history: Optional[List[Dict[str, Any]]] = None,
         current_time: Optional[datetime] = None,
     ) -> List[SuggestionItem]:
@@ -53,9 +54,9 @@ class EcosystemSuggestionsEngine:
                         SuggestionItem(
                             suggestion_id=f"sug_trade_{self._counter:03d}",
                             category="TRADING",
-                            prompt=f"Your {name} strategy is underperforming — want me to ask Forge to build a strategy analyzer?",
+                            prompt=f"Supertrend underperforming, want a strategy analysis from AI-Universe?",
                             rationale=f"Strategy '{name}' has a profit factor of {strat.get('profit_factor', 0.8):.2f}.",
-                            action_type="cross_build_strategy_analyzer",
+                            action_type="consult_ai_universe_strategy",
                             action_payload={"strategy_name": name},
                         )
                     )
@@ -76,14 +77,46 @@ class EcosystemSuggestionsEngine:
                     )
                 )
 
-        # 2. FORGE History-Based Suggestions
+        # 2. Nexus Signal Suggestions
+        if nexus_data:
+            leads = nexus_data.get("leads", [])
+            for l in leads:
+                if l.get("score", 0) >= 90:
+                    self._counter += 1
+                    domain = l.get("company_domain", "acme-corp.com")
+                    suggestions.append(
+                        SuggestionItem(
+                            suggestion_id=f"sug_nexus_{self._counter:03d}",
+                            category="NEXUS",
+                            prompt=f"High-intent lead detected from {domain}, want me to trigger follow-up workflow?",
+                            rationale=f"Lead scored {l.get('score')}/100 with evidence: {l.get('evidence', 'enterprise visit')}.",
+                            action_type="trigger_lead_followup_workflow",
+                            action_payload={"lead_id": l.get("lead_id"), "domain": domain},
+                        )
+                    )
+
+        # 3. FORGE History-Based Suggestions
         if forge_history:
+            dashboard_builds = [t for t in forge_history if "dashboard" in t.get("goal", "").lower() or t.get("type") == "DASHBOARD"]
+            if len(dashboard_builds) >= 3:
+                self._counter += 1
+                suggestions.append(
+                    SuggestionItem(
+                        suggestion_id=f"sug_forge_{self._counter:03d}",
+                        category="FORGE",
+                        prompt="You've built 3 dashboards, want a reusable template for future builds?",
+                        rationale="Multiple dashboard builds detected in FORGE task history.",
+                        action_type="create_dashboard_template",
+                        action_payload={"template_type": "DASHBOARD_REUSABLE"},
+                    )
+                )
+
             website_builds = [t for t in forge_history if "website" in t.get("goal", "").lower() or t.get("type") == "WEBSITE"]
             if len(website_builds) >= 3:
                 self._counter += 1
                 suggestions.append(
                     SuggestionItem(
-                        suggestion_id=f"sug_forge_{self._counter:03d}",
+                        suggestion_id=f"sug_forge_web_{self._counter:03d}",
                         category="FORGE",
                         prompt="You've built 3 websites this week — want a website template for future builds?",
                         rationale="Multiple similar website requests detected across FORGE build history.",
@@ -92,16 +125,15 @@ class EcosystemSuggestionsEngine:
                     )
                 )
 
-        # 3. Time Pattern Suggestions
-        # Monday is weekday 0
+        # 4. Time Pattern Suggestions (Monday morning)
         if now.weekday() == 0 and now.hour < 12:
             self._counter += 1
             suggestions.append(
                 SuggestionItem(
                     suggestion_id=f"sug_time_{self._counter:03d}",
                     category="TEMPORAL",
-                    prompt="It's Monday morning — want your weekly trading report?",
-                    rationale="Weekly market opening routine.",
+                    prompt="Monday morning, want the weekly ecosystem report?",
+                    rationale="Weekly executive briefing routine on Monday morning.",
                     action_type="generate_weekly_report",
                     action_payload={"period": "WEEKLY"},
                 )
