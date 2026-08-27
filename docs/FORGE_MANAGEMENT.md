@@ -37,10 +37,13 @@ This document details the architecture, managerial role, REST endpoints, task te
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Invariants:
-1. **FRIDAY NEVER Writes Code Itself**: All software building is delegated to FORGE. FRIDAY acts as the manager (templating, scheduling, supervising, and verifying).
-2. **Untrusted Memory Isolation**: All FORGE responses, inspection reports, and task artifacts are tagged `TrustLevel.UNTRUSTED_EXTERNAL`.
-3. **Capability Gating**: Submitting build requests and cancelling tasks require `forge_control` and `network_access` capabilities.
+### Option A: Strict Hub-and-Spoke Invariants:
+1. **FORGE Knows ONLY AI-Universe**: FORGE is fueled by AI-Universe's reasoning and API keys; FORGE does **NOT** know FRIDAY exists and FORGE's code never mentions FRIDAY.
+2. **FRIDAY is the Sole Hub**: FRIDAY pulls telemetry and task results from FORGE's REST API; FORGE never pushes to FRIDAY.
+3. **Context Injection at Submission**: All multi-system context injection (e.g. trading bot API specifications) happens at task submission time inside the goal payload.
+4. **FRIDAY NEVER Writes Code Itself**: All software building is delegated to FORGE. FRIDAY acts strictly as the manager (templating, scheduling, supervising, and verifying).
+5. **Untrusted Memory Isolation**: All FORGE responses, inspection reports, and task artifacts are tagged `TrustLevel.UNTRUSTED_EXTERNAL`.
+6. **Capability Gating**: Submitting build requests and cancelling tasks require `forge_control` and `network_access` capabilities.
 
 ---
 
@@ -78,8 +81,8 @@ This document details the architecture, managerial role, REST endpoints, task te
 
 ```bash
 # ============================ FORGE (AUTONOMOUS SWE ENGINE) ==============================
-FORGE_BASE_URL=http://localhost:8001
-FRIDAY_FORGE_API_URL=http://localhost:8001
+FORGE_BASE_URL=http://localhost:8000
+FRIDAY_FORGE_API_URL=http://localhost:8000
 FRIDAY_FORGE_API_KEY=your_forge_api_key_here
 FORGE_ENABLED=True
 FRIDAY_FORGE_ENABLED=true

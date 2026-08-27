@@ -389,7 +389,7 @@ class FridayDoctor:
         """Audit FORGE Autonomous Software Engineering Engine connectivity and health."""
         try:
             forge_enabled = getattr(self.settings, "forge_enabled", True)
-            forge_url = getattr(self.settings, "forge_api_url", "http://localhost:8001") or "http://localhost:8001"
+            forge_url = getattr(self.settings, "forge_api_url", "http://localhost:8000") or "http://localhost:8000"
             if not forge_enabled:
                 return ComponentHealth(
                     name="forge_engine",

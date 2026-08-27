@@ -74,7 +74,7 @@ class EcosystemRegistry:
                 icon="🛠️",
                 health_check_callable=lambda: {
                     "status": "HEALTHY",
-                    "api_url": "http://localhost:8001",
+                    "api_url": "http://localhost:8000",
                     "ai_universe_bridge": "CONNECTED",
                 },
                 status_callable=lambda: {

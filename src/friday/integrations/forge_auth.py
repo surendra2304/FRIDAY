@@ -27,7 +27,7 @@ class ForgeAuthClient:
 
     def __init__(
         self,
-        api_url: str = "http://localhost:8001",
+        api_url: str = "http://localhost:8000",
         api_key: Optional[str] = None,
         rate_limit_per_min: int = 10,
         default_timeout_sec: float = 30.0,

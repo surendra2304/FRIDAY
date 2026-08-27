@@ -450,12 +450,12 @@ class Settings(BaseSettings):
 
     # FORGE (Autonomous Software Engineering Engine) Integration
     forge_api_url: str = Field(
-        default="http://localhost:8001",
+        default="http://localhost:8000",
         validation_alias=AliasChoices("FRIDAY_FORGE_BASE_URL", "FORGE_BASE_URL", "FRIDAY_FORGE_API_URL", "FORGE_API_URL", "forge_api_url", "forge_base_url"),
         description="Base URL for FORGE Software Engineering API",
     )
     forge_base_url: str = Field(
-        default="http://localhost:8001",
+        default="http://localhost:8000",
         validation_alias=AliasChoices("FRIDAY_FORGE_BASE_URL", "FORGE_BASE_URL", "forge_base_url", "forge_api_url"),
         description="Base URL for FORGE Software Engineering API",
     )
