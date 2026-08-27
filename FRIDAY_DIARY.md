@@ -149,16 +149,17 @@ ead_file, list_files).
 
 ---
 
-### 📈 [Day 10 — 2026-08-27: Strategy Evolution Oversight, Multi-Exchange Portfolio & Live Operations](diary/2026-08-27.md)
-- **🎯 Focus**: Upgrading FRIDAY into an autonomous strategy evolution supervisor and multi-exchange operations center, featuring 15-minute evolution lab polling, voice-driven strategy candidate reviews, biometric incubation approvals, 6 validation gates, strategy portfolio tracking, and institutional failure learning.
+### 📈 [Day 10 — 2026-08-27: Intelligence Briefing, Prediction Oversight & Strategy Evolution](diary/2026-08-27.md)
+- **🎯 Focus**: Upgrading FRIDAY into an autonomous market intelligence supervisor and strategy evolution oversight center, featuring AI-Universe deep directional predictions, on-chain whale tracking, news NLP sentiment scoring, 30d Brier accuracy calibration, 15m intelligence vigilance, and morning intelligence briefings.
 - **💡 What I Accomplished**:
-  - Built `EvolutionOversightOperator` (`src/friday/operators/evolution_oversight.py`) polling the evolution lab every 15m and alerting on candidate readiness and validation failures.
-  - Built `EvolutionApprovalSkill` (`src/friday/skills/evolution_approval.py`) supporting voice review (logic, risks, AI debates, backtests) and biometric incubation approvals.
-  - Built `StrategyPortfolioManager` (`src/friday/trading/strategy_portfolio.py`) tracking strategies across 6 lifecycle states with performance rankings and track records.
-  - Built `EvolutionHistoryTracker` (`src/friday/trading/evolution_history.py`) analyzing failure patterns across retired strategies to prevent repeating flawed paradigms.
+  - Built `IntelligenceEngine` (`src/friday/trading/intelligence_engine.py`) centralizing AI-Universe predictions (BTC/ETH/SOL), news NLP, on-chain whale flows, and 30d calibration.
+  - Built `IntelligenceBriefingSkill` (`src/friday/skills/intelligence_briefing.py`) providing voice briefings on predictions, Brier accuracy audits, and whale alerts.
+  - Built `IntelligenceVigilanceOperator` (`src/friday/operators/intelligence_vigilance.py`) monitoring prediction streams every 15m and alerting on adverse forecasts and whale moves.
+  - Built `MorningIntelligenceBriefingWorkflow` (`src/friday/workflows/intel_briefing.py`) delivering spoken audio debriefs on overnight sentiment, whale inflows, and daily forecasts.
+  - Built `EvolutionOversightOperator`, `EvolutionApprovalSkill`, `StrategyPortfolioManager`, and `EvolutionHistoryTracker`.
   - Built `VoiceMultiExchangeSkill`, `PortfolioSupervisorOperator`, `ExchangeIncidentManager`, and `WeeklyPortfolioReviewWorkflow`.
   - Built `LiveOperationsCenter`, `CapitalLevelGuardian`, `LivePerformanceAnalytics`, `LiveIncidentManager`, and `LiveVigilanceOperator`.
-  - Authored `docs/STRATEGY_EVOLUTION.md`, `docs/MULTI_EXCHANGE_PORTFOLIO.md`, `docs/LIVE_OPERATIONS.md`, and `docs/PRODUCTION_OPERATIONS.md`.
-  - Authored `tests/test_evolution_oversight.py`, `tests/test_multi_exchange_portfolio.py`, and `tests/test_live_operations.py` with 100% green pass rate across 112 tests.
+  - Authored `docs/INTELLIGENCE_OVERSIGHT.md`, `docs/STRATEGY_EVOLUTION.md`, `docs/MULTI_EXCHANGE_PORTFOLIO.md`, and `docs/LIVE_OPERATIONS.md`.
+  - Authored `tests/test_intelligence_briefing.py`, `tests/test_evolution_oversight.py`, and `tests/test_multi_exchange_portfolio.py` with 100% green pass rate across 117 tests.
 - **🛡️ Fixes & Hardening**: Aligned liquidity voice matching token, inherited `LiveVigilanceOperator` from `BaseOperator`, made authorization signature validation flexible in `CapitalLevelGuardian`, fixed HMAC tamper test assertion, and resolved circular dependencies via lazy instantiation.
 - **📊 Test Results**: **1,225 passed** (100% green pass rate across all feature domains).
