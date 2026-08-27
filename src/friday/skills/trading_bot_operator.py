@@ -179,6 +179,10 @@ class TradingBotOperator(BaseSkill):
         """Calls /api/advisory/state to inspect the active AI parameter overlay."""
         return self._http_get("/api/advisory/state")
 
+    def get_ab_status(self) -> Dict[str, Any]:
+        """Calls /api/ab/status to retrieve live A/B experiment progress, arms, and statistical metrics."""
+        return self._http_get("/api/ab/status")
+
     def get_advisory_summary(self) -> str:
         """Compose a concise human/voice-friendly summary of recent AI advisory activity."""
         try:

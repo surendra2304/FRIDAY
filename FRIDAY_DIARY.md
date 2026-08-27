@@ -149,14 +149,15 @@ ead_file, list_files).
 
 ---
 
-### 📈 [Day 10 — 2026-08-27: Trading Supervision & Advisory Watchdog](diary/2026-08-27.md)
-- **🎯 Focus**: Upgrading FRIDAY into an autonomous supervisor over the cloud-hosted Algorithmic Trading Bot on Binance Futures Testnet and its direct AI-Universe advisory link.
+### 📈 [Day 10 — 2026-08-27: Trading Supervision, Advisory Monitoring & A/B Testing](diary/2026-08-27.md)
+- **🎯 Focus**: Upgrading FRIDAY into an autonomous supervisor over the cloud-hosted Algorithmic Trading Bot on Binance Futures Testnet, its direct AI-Universe advisory link, and live A/B experiment monitoring.
 - **💡 What I Accomplished**:
   - Defined immutable command precedence in `src/friday/skills/trading_precedence.py`: `Safety Gates (Trading Bot) > FRIDAY Commands (Supervisor) > AI-Universe Recommendations (Advisor)`.
-  - Extended `TradingBotOperator` (`src/friday/skills/trading_bot_operator.py`) with `get_advisory_recent()`, `get_advisory_state()`, and spoken `get_advisory_summary()`.
+  - Extended `TradingBotOperator` (`src/friday/skills/trading_bot_operator.py`) with `get_advisory_recent()`, `get_advisory_state()`, `get_ab_status()`, and spoken `get_advisory_summary()`.
   - Built `AdvisorySupervisorSkill` (`src/friday/skills/advisory_supervisor.py`) for contested advisory detection (`verdict=REJECT` + `confidence > 0.70`), plain-language explanations, and morning trading briefings.
-  - Implemented `AdvisoryWatchdogOperator` (`src/friday/operators/advisory_watchdog.py`) polling every 15 minutes, alerting on contested decisions or outages, and logging to memory with `TrustLevel.UNTRUSTED_EXTERNAL`.
-  - Marked direct trading telemetry querying in `AIUniverseTradingConsultant` as deprecated while retaining backward compatibility.
+  - Built `ABTestMonitorSkill` (`src/friday/skills/ab_test_monitor.py`) for live A/B experiment evaluation, statistical significance testing, outperformance analysis, and visual Markdown reporting.
+  - Implemented `AdvisoryWatchdogOperator` and `ABTestOperator` polling every 15 minutes, alerting on statistical significance, drawdown limits, or outages, and logging to memory with `TrustLevel.UNTRUSTED_EXTERNAL`.
+  - Created `MockTradingBotServer` and 5 test suites validating commands, watchdog alerting, precedence invariants, full cognitive loop integration, and A/B test evaluations.
   - Documented that panic commands route directly to the trading bot's own kill-switch API (`POST /api/panic`) without bypassing hardcoded bot safety gates.
-- **🛡️ Fixes & Hardening**: Fixed "release panic" substring collision in command matching, separated contested from generic rejected advisory filters, and resolved pandas C-extension import timing.
-- **📊 Test Results**: **1,195 passed** (100% green pass rate across all 36 feature domains).
+- **🛡️ Fixes & Hardening**: Fixed "release panic" substring collision, separated contested from generic rejected advisory filters, excluded trading queries from calendar briefings, and resolved pandas C-extension import timing.
+- **📊 Test Results**: **1,225 passed** (100% green pass rate across all feature domains).

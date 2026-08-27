@@ -11,6 +11,7 @@ from friday.operators.triggers import (
 )
 from friday.operators.manager import OperatorManager, operator_manager
 from friday.operators.advisory_watchdog import AdvisoryWatchdogOperator
+from friday.operators.ab_test_operator import ABTestOperator
 
 __all__ = [
     "BaseOperator",
@@ -24,4 +25,5 @@ __all__ = [
     "OperatorManager",
     "operator_manager",
     "AdvisoryWatchdogOperator",
+    "ABTestOperator",
 ]

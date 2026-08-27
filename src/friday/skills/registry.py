@@ -59,6 +59,7 @@ class SkillRegistry:
         from friday.skills.builtins.file_search_and_read import FileSearchAndReadSkill
         from friday.skills.trading_bot_operator import TradingBotOperator
         from friday.skills.advisory_supervisor import AdvisorySupervisorSkill
+        from friday.skills.ab_test_monitor import ABTestMonitorSkill
 
         builtins = [
             NetworkDiagnosticSkill(),
@@ -66,6 +67,7 @@ class SkillRegistry:
             FileSearchAndReadSkill(),
             TradingBotOperator(),
             AdvisorySupervisorSkill(),
+            ABTestMonitorSkill(),
         ]
         for s in builtins:
             if s.name not in self._skills:

@@ -167,6 +167,142 @@ class MockTradingBotState:
             "last_consult_time": "2026-08-27T10:30:00Z",
         }
 
+    def get_ab_status_payload(self) -> Dict[str, Any]:
+        if self.scenario == "ab_no_test":
+            return {"status": "NO_ACTIVE_TEST", "message": "No active A/B experiment running"}
+
+        if self.scenario == "ab_drawdown_terminated":
+            return {
+                "test_name": "AI_Universe_Volatility_Overlay",
+                "status": "DRAWDOWN_TERMINATED",
+                "elapsed_hours": 36.5,
+                "planned_hours": 168.0,
+                "progress_pct": 21.7,
+                "control_arm": {
+                    "equity": 9850.00,
+                    "total_return_pct": -1.50,
+                    "sharpe_ratio": -0.45,
+                    "win_rate_pct": 45.0,
+                    "profit_factor": 0.88,
+                    "max_drawdown_pct": 3.20,
+                    "trade_count": 18,
+                },
+                "treatment_arm": {
+                    "equity": 8950.00,
+                    "total_return_pct": -10.50,
+                    "sharpe_ratio": -1.82,
+                    "win_rate_pct": 30.0,
+                    "profit_factor": 0.42,
+                    "max_drawdown_pct": 11.20,  # Breached max drawdown threshold
+                    "trade_count": 20,
+                },
+                "statistics": {
+                    "p_value": 0.042,
+                    "stat_sig_achieved": True,
+                    "confidence": 95.8,
+                },
+                "termination_reason": "Treatment arm max drawdown breached 10.0% safety boundary",
+            }
+
+        if self.scenario == "ab_completed":
+            return {
+                "test_name": "AI_Universe_Volatility_Overlay",
+                "status": "COMPLETED",
+                "elapsed_hours": 168.0,
+                "planned_hours": 168.0,
+                "progress_pct": 100.0,
+                "control_arm": {
+                    "equity": 10320.00,
+                    "total_return_pct": 3.20,
+                    "sharpe_ratio": 1.15,
+                    "win_rate_pct": 58.0,
+                    "profit_factor": 1.45,
+                    "max_drawdown_pct": 2.80,
+                    "trade_count": 84,
+                },
+                "treatment_arm": {
+                    "equity": 11150.00,
+                    "total_return_pct": 11.50,
+                    "sharpe_ratio": 2.35,
+                    "win_rate_pct": 71.0,
+                    "profit_factor": 2.40,
+                    "max_drawdown_pct": 1.90,
+                    "trade_count": 88,
+                    "active_overlays": {"btc_sl_pct": 0.4, "btc_tp_pct": 1.8},
+                },
+                "statistics": {
+                    "p_value": 0.008,
+                    "stat_sig_achieved": True,
+                    "confidence": 99.2,
+                },
+            }
+
+        if self.scenario == "ab_stat_sig_reached":
+            return {
+                "test_name": "AI_Universe_Volatility_Overlay",
+                "status": "RUNNING",
+                "elapsed_hours": 120.0,
+                "planned_hours": 168.0,
+                "progress_pct": 71.4,
+                "control_arm": {
+                    "equity": 10210.00,
+                    "total_return_pct": 2.10,
+                    "sharpe_ratio": 0.95,
+                    "win_rate_pct": 54.0,
+                    "profit_factor": 1.30,
+                    "max_drawdown_pct": 2.90,
+                    "trade_count": 62,
+                },
+                "treatment_arm": {
+                    "equity": 10840.00,
+                    "total_return_pct": 8.40,
+                    "sharpe_ratio": 2.10,
+                    "win_rate_pct": 68.0,
+                    "profit_factor": 2.15,
+                    "max_drawdown_pct": 1.80,
+                    "trade_count": 65,
+                    "active_overlays": {"btc_sl_pct": 0.4},
+                },
+                "statistics": {
+                    "p_value": 0.015,
+                    "stat_sig_achieved": True,
+                    "confidence": 98.5,
+                },
+            }
+
+        # Default 'mixed' or 'ab_running'
+        return {
+            "test_name": "AI_Universe_Volatility_Overlay",
+            "status": "RUNNING",
+            "elapsed_hours": 72.0,
+            "planned_hours": 168.0,
+            "progress_pct": 42.9,
+            "control_arm": {
+                "equity": 10180.00,
+                "total_return_pct": 1.80,
+                "sharpe_ratio": 0.85,
+                "win_rate_pct": 52.0,
+                "profit_factor": 1.25,
+                "max_drawdown_pct": 3.10,
+                "trade_count": 38,
+            },
+            "treatment_arm": {
+                "equity": 10720.00,
+                "total_return_pct": 7.20,
+                "sharpe_ratio": 1.95,
+                "win_rate_pct": 65.0,
+                "profit_factor": 2.05,
+                "max_drawdown_pct": 1.95,
+                "trade_count": 40,
+                "active_overlays": {"btc_sl_pct": 0.4},
+            },
+            "statistics": {
+                "p_value": 0.082,
+                "stat_sig_achieved": False,
+                "confidence": 91.8,
+            },
+        }
+
     def handle_panic(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         release = payload.get("release", False)
         self.panic_activated = not release
@@ -202,6 +338,9 @@ class MockTradingBotHandler(BaseHTTPRequestHandler):
             self._respond_json(200, payload)
         elif path == "/api/advisory/state":
             payload = self.state.get_advisory_state_payload()
+            self._respond_json(200, payload)
+        elif path == "/api/ab/status":
+            payload = self.state.get_ab_status_payload()
             self._respond_json(200, payload)
         elif path == "/api/recent-actions":
             self._respond_json(200, {"actions": ["FILTER: Passed BTC", "EXECUTE: LONG BTCUSDT @ 64500"]})
