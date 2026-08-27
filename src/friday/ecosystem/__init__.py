@@ -26,6 +26,20 @@ from friday.ecosystem.orchestrator import (
     EcosystemOrchestrator,
     TargetSubsystem,
 )
+from friday.ecosystem.registry import (
+    EcosystemRegistry,
+    SubsystemEntry,
+    ecosystem_registry,
+)
+from friday.ecosystem.cross_orchestrator import (
+    CrossSystemOrchestrator,
+    CrossBuildTemplate,
+    CrossBuildPlan,
+)
+from friday.ecosystem.command_router import (
+    EcosystemCommandRouter,
+    SubsystemRoute,
+)
 
 __all__ = [
     "HumanPolicyInterface",
@@ -41,4 +55,12 @@ __all__ = [
     "EcosystemMasterDashboard",
     "EcosystemOrchestrator",
     "TargetSubsystem",
+    "EcosystemRegistry",
+    "SubsystemEntry",
+    "ecosystem_registry",
+    "CrossSystemOrchestrator",
+    "CrossBuildTemplate",
+    "CrossBuildPlan",
+    "EcosystemCommandRouter",
+    "SubsystemRoute",
 ]

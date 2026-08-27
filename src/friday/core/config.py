@@ -490,6 +490,23 @@ class Settings(BaseSettings):
         description="Polling interval in seconds for FORGE health monitoring",
     )
 
+    # Unified Ecosystem Command Center
+    ecosystem_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("FRIDAY_ECOSYSTEM_ENABLED", "ECOSYSTEM_ENABLED", "ecosystem_enabled"),
+        description="Enable unified ecosystem command center across Bot, FORGE, and AI-Universe",
+    )
+    trading_bot_base_url: str = Field(
+        default="http://localhost:5000",
+        validation_alias=AliasChoices("FRIDAY_TRADING_BOT_BASE_URL", "TRADING_BOT_BASE_URL", "trading_bot_base_url"),
+        description="Base URL for Algorithmic Trading Bot API",
+    )
+    ai_universe_base_url: str = Field(
+        default="http://localhost:8000",
+        validation_alias=AliasChoices("FRIDAY_AI_UNIVERSE_BASE_URL", "AI_UNIVERSE_BASE_URL", "ai_universe_base_url"),
+        description="Base URL for AI-Universe Intelligence Core API",
+    )
+
     def get_diagnostics(self) -> Dict[str, Any]:
         """Return non-sensitive configuration diagnostics without exposing secrets."""
         has_gemini_key = bool(self.gemini_api_key and self.gemini_api_key.strip())
