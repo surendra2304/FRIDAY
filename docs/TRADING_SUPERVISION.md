@@ -217,4 +217,60 @@ FRIDAY continuously monitors live A/B experiments running on the Trading Bot via
 2. **Step 2: Significance Check**: Once $p < 0.05$ and planned duration is reached, evaluate excess return ($\Delta \text{Return} \ge +3.0\%$) and profit factor improvement ($\Delta \text{PF} \ge +0.3$).
 3. **Step 3: Promotion**: If all criteria pass, FRIDAY recommends promoting the AI parameter overlay to the primary active strategy.
 
+---
+
+## ⚡ Testnet Advisory Supervision Architecture
+
+### Overview
+FRIDAY supervises live Binance Futures Testnet operations where AI-Universe advisories run in either **`SHADOW`** or **`APPLY`** modes.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│        Binance Futures Testnet Trading Bot Engine            │
+│                                                              │
+│  ┌───────────────────────┐        ┌───────────────────────┐  │
+│  │   SHADOW Evaluation   │        │    LIVE Testnet Arm   │  │
+│  │  (Logged Diagnostics) │        │  (APPLY Mode Overlays)│  │
+│  └───────────┬───────────┘        └───────────┬───────────┘  │
+│              │                                │              │
+│              ▼                                ▼              │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │   Testnet Safety Gates (Max Leverage 5x, DD Limit 5%)  │  │
+│  └───────────────────────────┬────────────────────────────┘  │
+│                              │                               │
+│                              ▼                               │
+│            GET /api/testnet/advisory/status Telemetry        │
+│            POST /api/testnet/advisory/toggle, /rollback      │
+└──────────────────────────────┬───────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────┐
+│                         FRIDAY AI OS                         │
+│  • TestnetAdvisoryMonitorSkill (Status, Log, Compare, Safety)│
+│  • TestnetAdvisoryOperator (Mode Tracking & DD Watchdog)     │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Testnet Modes & Operational Invariants:
+1. **`SHADOW` Mode**: AI-Universe evaluates live order book and price feeds, logging recommended parameter adjustments without executing them on live Binance Futures orders.
+2. **`APPLY` Mode**: AI-Universe parameter overlays that pass testnet safety gates are applied directly to live testnet execution orders (e.g. adaptive stop loss, trailing brackets).
+3. **Precedence Enforcement**: Mode toggles and emergency parameter rollbacks are tagged with `CommandPrecedence.FRIDAY_COMMANDS` (Level 50) and require explicit user authorization (`SENSITIVE`).
+
+### Voice & Text Commands for Testnet Supervision:
+| User Voice / Text Query | Action Executed | Safety Level |
+| :--- | :--- | :---: |
+| `"How is the testnet advisory doing?"` | Returns current testnet mode (`SHADOW`/`APPLY`), health, equity, drawdown, and active overlay parameters. | `SAFE` |
+| `"What are the testnet advisory recommendations?"` | Retrieves recent testnet decisions from `/api/testnet/advisory/log` with confidence and safety gate evaluations. | `SAFE` |
+| `"Compare testnet and paper performance"` | Compares live testnet execution against paper baseline across returns, slippage (bps), and fill rates. | `SAFE` |
+| `"Explain testnet advisory <decision_id>"` | Breaks down a specific testnet advisory proposal, market evidence, and safety gate assessment. | `SAFE` |
+| `"Disable testnet advisory" / "Toggle testnet advisory"` | Sends `POST /api/testnet/advisory/toggle` to enable/disable or change mode. | `SENSITIVE` |
+| `"Rollback testnet parameters"` | Sends `POST /api/testnet/advisory/rollback` to revert all testnet parameters to default baseline. | `SENSITIVE` |
+
+### Safety Procedures & Watchdog Alerting:
+- **Mode Change Alert**: `TestnetAdvisoryOperator` emits a high-visibility alert whenever mode switches to `APPLY`.
+- **Critical Drawdown Alert**: If testnet drawdown breaches the safety limit ($>5.0\%$), a critical alert is broadcast with a recommendation to invoke `rollback_parameters()`.
+- **AI Downtime Alert**: If AI-Universe becomes unreachable or degraded while testnet advisory is enabled, FRIDAY alerts and defaults to baseline rules.
+- **Audit Logging**: All testnet advisory alerts persisted to SQLite memory are tagged with `TrustLevel.UNTRUSTED_EXTERNAL`.
+
+
 

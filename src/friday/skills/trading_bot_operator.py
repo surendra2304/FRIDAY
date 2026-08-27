@@ -183,6 +183,35 @@ class TradingBotOperator(BaseSkill):
         """Calls /api/ab/status to retrieve live A/B experiment progress, arms, and statistical metrics."""
         return self._http_get("/api/ab/status")
 
+    def get_testnet_advisory_status(self) -> Dict[str, Any]:
+        """Calls /api/testnet/advisory/status to retrieve testnet advisory mode, health, and active overlays."""
+        return self._http_get("/api/testnet/advisory/status")
+
+    def get_testnet_advisory_log(self, limit: int = 10) -> Dict[str, Any]:
+        """Calls /api/testnet/advisory/log to retrieve recent testnet advisory decisions."""
+        return self._http_get(f"/api/testnet/advisory/log?limit={limit}")
+
+    def get_testnet_paper_comparison(self) -> Dict[str, Any]:
+        """Calls /api/testnet/paper/compare to retrieve side-by-side testnet vs paper trading execution metrics."""
+        return self._http_get("/api/testnet/paper/compare")
+
+    def toggle_testnet_advisory(self, enabled: bool = True, mode: str = "SHADOW") -> Dict[str, Any]:
+        """Calls POST /api/testnet/advisory/toggle to enable/disable testnet advisory or switch mode."""
+        payload = {
+            "enabled": bool(enabled),
+            "mode": str(mode).upper(),
+            "_precedence": tag_trading_command("toggle_testnet_advisory", CommandPrecedence.FRIDAY_COMMANDS),
+        }
+        return self._http_post("/api/testnet/advisory/toggle", payload)
+
+    def rollback_testnet_parameters(self) -> Dict[str, Any]:
+        """Calls POST /api/testnet/advisory/rollback to revert all testnet parameters to default baseline."""
+        payload = {
+            "action": "ROLLBACK",
+            "_precedence": tag_trading_command("rollback_testnet_parameters", CommandPrecedence.FRIDAY_COMMANDS),
+        }
+        return self._http_post("/api/testnet/advisory/rollback", payload)
+
     def get_advisory_summary(self) -> str:
         """Compose a concise human/voice-friendly summary of recent AI advisory activity."""
         try:
