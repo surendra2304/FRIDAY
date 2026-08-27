@@ -18,6 +18,7 @@ from friday.operators.portfolio_supervisor import PortfolioSupervisorOperator
 from friday.operators.evolution_oversight import EvolutionOversightOperator
 from friday.operators.intelligence_vigilance import IntelligenceVigilanceOperator
 from friday.operators.guardian_angel import GuardianAngelOperator
+from friday.operators.forge_monitor import ForgeMonitorOperator
 
 __all__ = [
     "BaseOperator",
@@ -38,4 +39,5 @@ __all__ = [
     "EvolutionOversightOperator",
     "IntelligenceVigilanceOperator",
     "GuardianAngelOperator",
+    "ForgeMonitorOperator",
 ]
