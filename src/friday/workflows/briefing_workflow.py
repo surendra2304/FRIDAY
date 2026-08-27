@@ -31,8 +31,11 @@ class MorningBriefingWorkflow:
         self.search_tool = search_tool or WebSearchTool()
 
     def can_handle(self, user_prompt: str) -> bool:
-        """Check if user prompt requests a daily or morning briefing."""
+        """Check if user prompt requests a daily or morning briefing (excluding trading-specific briefings)."""
         if not user_prompt:
+            return False
+        clean = user_prompt.strip().lower()
+        if "trading" in clean:
             return False
         pattern = r"\b(?:morning\s+briefing|daily\s+briefing|give\s+me\s+(?:my\s+)?briefing|brief\s+me|my\s+schedule\s+today|today'?s?\s+agenda)\b"
         return bool(re.search(pattern, user_prompt, re.IGNORECASE))

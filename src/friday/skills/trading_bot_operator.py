@@ -78,10 +78,6 @@ class TradingBotOperator(BaseSkill):
         r"\b(?:trading\s+bot|bot)\s+(?:panic|kill\s*switch|stop\s+trading|resume\s+trading|release\s+panic)\b",
         r"\b(?:trigger\s+panic|activate\s+kill\s*switch|release\s+kill\s*switch)\b",
         r"\b(?:trading\s+bot\s+signals?|bot\s+signals?|recent\s+signals?|recent\s+trades?)\b",
-        r"\b(?:what\s+did\s+ai[\s\-_]universe\s+recommend|what\s+did\s+ai\s+recommend)\b",
-        r"\b(?:show\s+me\s+rejected\s+advisories|rejected\s+advisories)\b",
-        r"\b(?:what\s+parameters\s+has\s+the\s+ai\s+changed|advisory\s+state|ai\s+overlay)\b",
-        r"\b(?:trading\s+morning\s+briefing|trading\s+briefing)\b",
     ]
 
     def __init__(self, base_url: Optional[str] = None, api_key: Optional[str] = None, timeout: float = 15.0) -> None:
