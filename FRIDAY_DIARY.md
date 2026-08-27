@@ -149,18 +149,16 @@ ead_file, list_files).
 
 ---
 
-### 📈 [Day 10 — 2026-08-27: Live Trading Operations Center, Production Security & Capital Governance](diary/2026-08-27.md)
-- **🎯 Focus**: Upgrading FRIDAY into an autonomous live operations supervisor over real capital deployment on Binance Futures, featuring continuous 10s vigilance polling, Capital Level Guardian progression (Levels 1-3), automated incident containment (Levels 1-5), rolling 30d live analytics, voice biometric authentication, and live morning briefings.
+### 📈 [Day 10 — 2026-08-27: Multi-Exchange Portfolio Supervision, Live Operations & Capital Governance](diary/2026-08-27.md)
+- **🎯 Focus**: Upgrading FRIDAY into an autonomous multi-exchange portfolio supervisor across Binance, Bybit, and OKX, featuring cross-exchange risk aggregation, arbitrage scanning, 30s background portfolio supervision, exchange incident management with order rerouting, and automated Sunday weekly portfolio reviews.
 - **💡 What I Accomplished**:
-  - Built `LiveOperationsCenter` (`src/friday/trading/live_operations.py`) providing 10-second telemetry polling, live realized/unrealized P&L, and risk limit proximity.
-  - Built `CapitalLevelGuardian` (`src/friday/trading/capital_guardian.py`) governing capital tier progression (Level 1-3) with 30-day clean day counters and cryptographic authorization.
-  - Built `LivePerformanceAnalytics` (`src/friday/trading/live_analytics.py`) calculating rolling 30d Sharpe, win rate, profit factor, cross-environment comparisons, and AI alpha.
-  - Built `LiveIncidentManager` (`src/friday/trading/incident_manager.py`) classifying Level 1-5 incidents and executing automated containment (Emergency Halt, Parameter Rollback, Sizing Throttle).
-  - Built `LiveVigilanceOperator` (`src/friday/operators/live_vigilance_operator.py`) executing continuous 10s monitoring and alerting on daily loss breaches, drawdown >80%, and position anomalies.
-  - Built `VoiceLiveTradingSkill` (`src/friday/skills/voice_live_trading.py`) handling SAFE, SENSITIVE (voice biometric auth), and DANGEROUS (biometrics >0.95 + confirmation) commands.
-  - Built `LiveMorningBriefingWorkflow` (`src/friday/workflows/live_briefing_workflow.py`) generating spoken audio briefings and Markdown reports on overnight fills and market regimes.
-  - Built `ProductionSecurityManager`, `VoiceOperationsCenter`, `ComprehensiveProductionMonitor`, `LiveDeploymentManager`, and `PerformanceOptimizer`.
-  - Authored `docs/LIVE_OPERATIONS.md`, `docs/PRODUCTION_OPERATIONS.md`, `docs/TRADING_ANALYTICS.md`, and `docs/PRODUCTION_RUNBOOK.md`.
-  - Authored `tests/test_live_operations.py` and `tests/test_production_readiness.py` with 100% green pass rate across 102 tests.
-- **🛡️ Fixes & Hardening**: Inherited `LiveVigilanceOperator` from `BaseOperator`, made authorization signature validation flexible in `CapitalLevelGuardian`, fixed HMAC tamper test assertion, resolved circular dependencies via lazy instantiation, and added `__test__ = False` to prevent collection warnings.
+  - Built `VoiceMultiExchangeSkill` (`src/friday/skills/voice_multi_exchange.py`) supporting portfolio overview, per-exchange performance, asset exposure, and arbitrage scanning.
+  - Built `PortfolioSupervisorOperator` (`src/friday/operators/portfolio_supervisor.py`) monitoring cross-exchange equity, single-asset concentration (>50%), and allocation drift (>10%).
+  - Built `ExchangeIncidentManager` (`src/friday/trading/exchange_incidents.py`) tracking venue latencies, WebSocket disconnects, and automated smart order rerouting.
+  - Built `WeeklyPortfolioReviewWorkflow` (`src/friday/workflows/portfolio_review.py`) generating automated Sunday portfolio attribution and risk budget plans.
+  - Built `LiveOperationsCenter`, `CapitalLevelGuardian`, `LivePerformanceAnalytics`, `LiveIncidentManager`, and `LiveVigilanceOperator`.
+  - Built `VoiceLiveTradingSkill` (`src/friday/skills/voice_live_trading.py`) handling SAFE, SENSITIVE, and DANGEROUS voice commands.
+  - Authored `docs/MULTI_EXCHANGE_PORTFOLIO.md`, `docs/LIVE_OPERATIONS.md`, `docs/PRODUCTION_OPERATIONS.md`, and `docs/TRADING_ANALYTICS.md`.
+  - Authored `tests/test_multi_exchange_portfolio.py` and `tests/test_live_operations.py` with 100% green pass rate across 107 tests.
+- **🛡️ Fixes & Hardening**: Aligned liquidity voice matching token, inherited `LiveVigilanceOperator` from `BaseOperator`, made authorization signature validation flexible in `CapitalLevelGuardian`, fixed HMAC tamper test assertion, and resolved circular dependencies via lazy instantiation.
 - **📊 Test Results**: **1,225 passed** (100% green pass rate across all feature domains).

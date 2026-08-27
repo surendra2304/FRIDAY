@@ -48,6 +48,13 @@ from friday.trading.incident_manager import (
     LiveIncidentManager,
     LiveIncident,
 )
+from friday.trading.exchange_incidents import (
+    ExchangeIncidentManager,
+    ExchangeIncident,
+    ExchangeHealthMetric,
+    LiquidityComparison,
+    ArbitrageOpportunity,
+)
 
 __all__ = [
     "PortfolioAnalyticsEngine",
@@ -79,4 +86,9 @@ __all__ = [
     "EnvironmentComparison",
     "LiveIncidentManager",
     "LiveIncident",
+    "ExchangeIncidentManager",
+    "ExchangeIncident",
+    "ExchangeHealthMetric",
+    "LiquidityComparison",
+    "ArbitrageOpportunity",
 ]
