@@ -41,14 +41,18 @@ FRIDAY is a modular, extensible, **Autonomous Multi-Agent AI Operating System** 
 - **Voice Email Workflow (`EmailDraftingWorkflow`)**: Composes professional emails from voice commands and securely delivers via SMTP with STARTTLS.
 - **Smart Home Integration**: Controls IoT lights, plugs, and switches via local REST APIs.
 
-### 📈 7. Algorithmic Trading Bot Integration (Binance Futures Testnet)
-- **Trading Bot Operator Skill (`TradingBotOperator`)**: Direct REST client communicating with the cloud-hosted trading engine (`https://algorithmic-trading-bot-fra.onrender.com`).
-- **REST Endpoints Monitored & Controlled**:
+### 📈 7. Algorithmic Trading Bot & Advisory Supervision (Binance Futures Testnet)
+- **Direct Trading Bot <-> AI-Universe Link**: The cloud-hosted trading engine (`https://algorithmic-trading-bot-fra.onrender.com`) queries AI-Universe directly on a schedule via `/v1/trading/consult`, logging all advice to `advisory_log.jsonl`.
+- **FRIDAY as Supervisor (`AdvisorySupervisorSkill`)**: FRIDAY monitors the bot, inspects AI advisories, detects contested proposals (`verdict=REJECT` + `confidence > 0.7`), explains decisions in plain language, and generates trading morning briefings.
+- **Immutable Command Precedence**:
+  $$\text{Safety Gates (Trading Bot)} > \text{FRIDAY Commands (Supervisor)} > \text{AI-Universe Recommendations (Advisor)}$$
+  FRIDAY commands can override AI advisories, but can **never** bypass or weaken the bot's hardcoded safety gates. All panic commands invoke the trading bot's authoritative kill-switch (`POST /api/panic`).
+- **Persistent Advisory Watchdog (`AdvisoryWatchdogOperator`)**: Background operator polling `/api/advisory/recent` every 15 minutes, alerting on contested advisories, AI-Universe outages, or bot disconnects, tagged with `TrustLevel.UNTRUSTED_EXTERNAL` in memory.
+- **Supervision Endpoints**:
   - `GET /api/status`: Queries live equity, unrealized/realized PnL, profit factor, win rate, and open positions.
-  - `GET /api/recent-actions`: Retrieves real-time candidate filter decisions and execution status logs.
-  - `POST /api/panic`: Emergency kill-switch blocking all new order submissions (gated by FRIDAY's `AUTHORIZE` cognitive phase).
-  - `POST /api/panic {"release": true}`: Releases safety kill-switch to resume testnet trading operations.
-- **AI Universe Deliberative Strategy Advisory (`AIUniverseTradingConsultant`)**: FRIDAY queries AI Universe's `Trading Analyst` specialist agent via `/v1/friday/ask` or `/v1/friday/debate` to receive empirical parameter recommendations (e.g. SL/TP tightening, position scaling) without auto-executing changes.
+  - `GET /api/advisory/recent?limit=N`: Retrieves append-only advisory decisions and verdict logs.
+  - `GET /api/advisory/state`: Inspects current AI parameter overlay and AI-Universe health.
+  - `POST /api/panic`: Emergency kill-switch blocking new orders (SENSITIVE/DANGEROUS authorization gated).
 
 
 ---

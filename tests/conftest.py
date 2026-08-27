@@ -1,8 +1,11 @@
-"""Pytest fixtures for FRIDAY test suite."""
-
 import sys
 from pathlib import Path
 import pytest
+
+try:
+    import pandas  # Initialize pandas C-extensions before test monkeypatching
+except Exception:
+    pass
 
 # Ensure src/ is on Python search path
 SRC_PATH = Path(__file__).resolve().parent.parent / "src"
