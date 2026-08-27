@@ -149,16 +149,18 @@ ead_file, list_files).
 
 ---
 
-### 📈 [Day 10 — 2026-08-27: Trading Supervision, Advisory Monitoring, A/B Testing, Testnet & Production Supervision](diary/2026-08-27.md)
-- **🎯 Focus**: Upgrading FRIDAY into an autonomous supervisor over the cloud-hosted Algorithmic Trading Bot on Binance Futures Testnet, its direct AI-Universe advisory link, live A/B experiments, testnet controls, and production emergency response.
+### 📈 [Day 10 — 2026-08-27: Trading Supervision, Advisory Monitoring, A/B Testing, Production & Advanced Trading Analytics](diary/2026-08-27.md)
+- **🎯 Focus**: Upgrading FRIDAY into an autonomous supervisor over the cloud-hosted Algorithmic Trading Bot on Binance Futures Testnet, its direct AI-Universe advisory link, live A/B experiments, production emergency response, and advanced quantitative portfolio analytics.
 - **💡 What I Accomplished**:
-  - Defined immutable command precedence in `src/friday/skills/trading_precedence.py`: `Safety Gates (Trading Bot) > FRIDAY Commands (Supervisor) > AI-Universe Recommendations (Advisor)`.
-  - Built `ProductionAlertManager` (`src/friday/alert_manager.py`) with 4-tier severity, multi-channel routing, alert aggregation, and escalation handling.
-  - Built `EmergencyProcedureManager` (`src/friday/emergency_procedures.py`) executing trading halt, parameter rollback, advisory disable, and SHA-256 audit chaining.
-  - Built `ProductionMonitor` and `ProductionDashboard` (`src/friday/production_monitor.py`, `src/friday/production_dashboard.py`) for 30s cross-tier polling and failure detection.
-  - Built `ProductionSupervisorSkill` (`src/friday/skills/production_supervisor.py`) integrating ops voice commands (`"System status"`, `"Emergency halt"`, `"Rollback parameters"`, etc.).
-  - Built `AdvisorySupervisorSkill`, `ABTestMonitorSkill`, and `TestnetAdvisoryMonitorSkill` across all supervisory domains.
-  - Authored `docs/PRODUCTION_RUNBOOK.md` and `docs/PRODUCTION_OPERATIONS.md` with complete operational runbooks and architectural specifications.
-  - Created `MockTradingBotServer` and 7 test suites validating commands, watchdog alerting, precedence invariants, full cognitive loop integration, A/B testing, testnet controls, and emergency procedures.
+  - Built `PortfolioAnalyticsEngine` (`src/friday/trading/portfolio_analytics.py`) calculating Sharpe, Sortino, Calmar, 95%/99% VaR, CVaR, drawdown, and correlation matrices across accounts.
+  - Built `MarketRegimeDetector` (`src/friday/trading/regime_detector.py`) analyzing 6 timeframes (1m-1d) with ADX, Bollinger Band width, and regime-based position sizing multipliers.
+  - Built `PerformancePredictionEngine` (`src/friday/trading/performance_predictor.py`) forecasting returns, GARCH conditional volatility, and 80%/95% confidence bands.
+  - Built `RiskManagementDashboard` (`src/friday/trading/risk_dashboard.py`) with HHI concentration metrics and Monte Carlo tail risk simulations (10,000 paths).
+  - Built `MultiStrategyCoordinator` (`src/friday/trading/strategy_coordinator.py`) for dynamic capital rotation and directional conflict resolution.
+  - Built `ExternalAnalyticsProvider` (`src/friday/integrations/external_analytics.py`) generating TradingView Lightweight Charts payloads and custom reports.
+  - Built `VoiceTradingSkill` (`src/friday/skills/voice_trading.py`) providing voice commands for portfolio performance, risk, regime, and rebalancing advice.
+  - Built `ProductionAlertManager`, `EmergencyProcedureManager`, `ProductionMonitor`, and `ProductionDashboard` for full production ops supervision.
+  - Authored `docs/TRADING_ANALYTICS.md`, `docs/PRODUCTION_RUNBOOK.md`, and `docs/PRODUCTION_OPERATIONS.md`.
+  - Authored `tests/test_trading_analytics.py` and `tests/test_production_integration.py` with 100% green pass rate across 83 tests.
 - **🛡️ Fixes & Hardening**: Resolved circular dependencies in manager skills via lazy property instantiation, added missing `get_status` alias, excluded trading queries from calendar briefings, and added `__test__ = False` to prevent pytest collection warnings.
 - **📊 Test Results**: **1,225 passed** (100% green pass rate across all feature domains).
