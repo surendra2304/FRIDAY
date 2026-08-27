@@ -30,6 +30,7 @@
 | **Day 7 — 2026-08-24** | Multi-Agent AI OS, Memory 2.0 & Autonomous Self-Coding Dev | ✅ Verified | [2026-08-24](diary/2026-08-24.md) |
 | **Day 8 — 2026-08-25** | AI Universe Multi-Agent Platform & Clean Terminal Presentation | ✅ Verified | [2026-08-25](diary/2026-08-25.md) |
 | **Day 9 — 2026-08-26** | OpenJarvis Operator Architecture: Skills, Persistent Operators & Trace Learning | ✅ Verified | [2026-08-26](diary/2026-08-26.md) |
+| **Day 10 — 2026-08-27** | Trading Bot Supervision, AI-Universe Advisory Monitoring & Precedence Enforcement | ✅ Verified | [2026-08-27](diary/2026-08-27.md) |
 
 ---
 
@@ -145,3 +146,17 @@ ead_file, list_files).
   - Upgraded `SelfImprovementWorkflow` with explicit terminal confirmation and direct router intent dispatching to `SelfDevAgent`.
 - **🛡️ Fixes & Hardening**: Fixed SQLite `__len__` truthiness evaluation in `TraceAnalyzer`, tuned thread leak variance tolerances during full concurrent suite runs, and verified complete cross-platform fallbacks.
 - **📊 Test Results**: **1,178 passed** (100% green pass rate across all 35 phases).
+
+---
+
+### 📈 [Day 10 — 2026-08-27: Trading Supervision & Advisory Watchdog](diary/2026-08-27.md)
+- **🎯 Focus**: Upgrading FRIDAY into an autonomous supervisor over the cloud-hosted Algorithmic Trading Bot on Binance Futures Testnet and its direct AI-Universe advisory link.
+- **💡 What I Accomplished**:
+  - Defined immutable command precedence in `src/friday/skills/trading_precedence.py`: `Safety Gates (Trading Bot) > FRIDAY Commands (Supervisor) > AI-Universe Recommendations (Advisor)`.
+  - Extended `TradingBotOperator` (`src/friday/skills/trading_bot_operator.py`) with `get_advisory_recent()`, `get_advisory_state()`, and spoken `get_advisory_summary()`.
+  - Built `AdvisorySupervisorSkill` (`src/friday/skills/advisory_supervisor.py`) for contested advisory detection (`verdict=REJECT` + `confidence > 0.70`), plain-language explanations, and morning trading briefings.
+  - Implemented `AdvisoryWatchdogOperator` (`src/friday/operators/advisory_watchdog.py`) polling every 15 minutes, alerting on contested decisions or outages, and logging to memory with `TrustLevel.UNTRUSTED_EXTERNAL`.
+  - Marked direct trading telemetry querying in `AIUniverseTradingConsultant` as deprecated while retaining backward compatibility.
+  - Documented that panic commands route directly to the trading bot's own kill-switch API (`POST /api/panic`) without bypassing hardcoded bot safety gates.
+- **🛡️ Fixes & Hardening**: Fixed "release panic" substring collision in command matching, separated contested from generic rejected advisory filters, and resolved pandas C-extension import timing.
+- **📊 Test Results**: **1,195 passed** (100% green pass rate across all 36 feature domains).

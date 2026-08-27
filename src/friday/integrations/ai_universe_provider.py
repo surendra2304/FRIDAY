@@ -49,7 +49,15 @@ class TradingConsultationResult:
 
 
 class AIUniverseTradingConsultant:
-    """Coordinates advisory consultations with AI Universe for trading strategy adjustments."""
+    """Coordinates advisory consultations with AI Universe for trading strategy adjustments.
+    
+    DEPRECATION NOTICE:
+    Direct trading telemetry querying and forwarding via FRIDAY's `/v1/friday/ask` is DEPRECATED.
+    The Trading Bot now establishes a direct scheduled link with AI-Universe via `/v1/trading/consult`
+    and logs all advisory decisions to `advisory_log.jsonl`. FRIDAY now operates as a SUPERVISOR
+    via `AdvisorySupervisorSkill` and `TradingBotOperator` to inspect, monitor, and override advisories.
+    This class is retained for backward compatibility.
+    """
 
     def __init__(
         self,
@@ -69,8 +77,9 @@ class AIUniverseTradingConsultant:
         max_agents: int = 3
     ) -> TradingConsultationResult:
         """
-        Gathers live trading bot metrics, constructs consultation payload, queries AI Universe,
-        and returns structured recommendation without auto-applying changes.
+        DEPRECATED: Gathers live trading bot metrics and queries AI Universe.
+        Note: The Trading Bot now communicates directly with AI-Universe via `/v1/trading/consult`.
+        Use `AdvisorySupervisorSkill` or `TradingBotOperator.get_advisory_recent()` for supervisor monitoring.
         """
         # Step 1: Query Trading Bot state from Render
         bot_status = self.bot_operator.get_bot_status()

@@ -10,6 +10,7 @@ from friday.operators.triggers import (
     IntervalTrigger,
 )
 from friday.operators.manager import OperatorManager, operator_manager
+from friday.operators.advisory_watchdog import AdvisoryWatchdogOperator
 
 __all__ = [
     "BaseOperator",
@@ -22,4 +23,5 @@ __all__ = [
     "IntervalTrigger",
     "OperatorManager",
     "operator_manager",
+    "AdvisoryWatchdogOperator",
 ]
