@@ -149,16 +149,16 @@ ead_file, list_files).
 
 ---
 
-### 📈 [Day 10 — 2026-08-27: Multi-Exchange Portfolio Supervision, Live Operations & Capital Governance](diary/2026-08-27.md)
-- **🎯 Focus**: Upgrading FRIDAY into an autonomous multi-exchange portfolio supervisor across Binance, Bybit, and OKX, featuring cross-exchange risk aggregation, arbitrage scanning, 30s background portfolio supervision, exchange incident management with order rerouting, and automated Sunday weekly portfolio reviews.
+### 📈 [Day 10 — 2026-08-27: Strategy Evolution Oversight, Multi-Exchange Portfolio & Live Operations](diary/2026-08-27.md)
+- **🎯 Focus**: Upgrading FRIDAY into an autonomous strategy evolution supervisor and multi-exchange operations center, featuring 15-minute evolution lab polling, voice-driven strategy candidate reviews, biometric incubation approvals, 6 validation gates, strategy portfolio tracking, and institutional failure learning.
 - **💡 What I Accomplished**:
-  - Built `VoiceMultiExchangeSkill` (`src/friday/skills/voice_multi_exchange.py`) supporting portfolio overview, per-exchange performance, asset exposure, and arbitrage scanning.
-  - Built `PortfolioSupervisorOperator` (`src/friday/operators/portfolio_supervisor.py`) monitoring cross-exchange equity, single-asset concentration (>50%), and allocation drift (>10%).
-  - Built `ExchangeIncidentManager` (`src/friday/trading/exchange_incidents.py`) tracking venue latencies, WebSocket disconnects, and automated smart order rerouting.
-  - Built `WeeklyPortfolioReviewWorkflow` (`src/friday/workflows/portfolio_review.py`) generating automated Sunday portfolio attribution and risk budget plans.
+  - Built `EvolutionOversightOperator` (`src/friday/operators/evolution_oversight.py`) polling the evolution lab every 15m and alerting on candidate readiness and validation failures.
+  - Built `EvolutionApprovalSkill` (`src/friday/skills/evolution_approval.py`) supporting voice review (logic, risks, AI debates, backtests) and biometric incubation approvals.
+  - Built `StrategyPortfolioManager` (`src/friday/trading/strategy_portfolio.py`) tracking strategies across 6 lifecycle states with performance rankings and track records.
+  - Built `EvolutionHistoryTracker` (`src/friday/trading/evolution_history.py`) analyzing failure patterns across retired strategies to prevent repeating flawed paradigms.
+  - Built `VoiceMultiExchangeSkill`, `PortfolioSupervisorOperator`, `ExchangeIncidentManager`, and `WeeklyPortfolioReviewWorkflow`.
   - Built `LiveOperationsCenter`, `CapitalLevelGuardian`, `LivePerformanceAnalytics`, `LiveIncidentManager`, and `LiveVigilanceOperator`.
-  - Built `VoiceLiveTradingSkill` (`src/friday/skills/voice_live_trading.py`) handling SAFE, SENSITIVE, and DANGEROUS voice commands.
-  - Authored `docs/MULTI_EXCHANGE_PORTFOLIO.md`, `docs/LIVE_OPERATIONS.md`, `docs/PRODUCTION_OPERATIONS.md`, and `docs/TRADING_ANALYTICS.md`.
-  - Authored `tests/test_multi_exchange_portfolio.py` and `tests/test_live_operations.py` with 100% green pass rate across 107 tests.
+  - Authored `docs/STRATEGY_EVOLUTION.md`, `docs/MULTI_EXCHANGE_PORTFOLIO.md`, `docs/LIVE_OPERATIONS.md`, and `docs/PRODUCTION_OPERATIONS.md`.
+  - Authored `tests/test_evolution_oversight.py`, `tests/test_multi_exchange_portfolio.py`, and `tests/test_live_operations.py` with 100% green pass rate across 112 tests.
 - **🛡️ Fixes & Hardening**: Aligned liquidity voice matching token, inherited `LiveVigilanceOperator` from `BaseOperator`, made authorization signature validation flexible in `CapitalLevelGuardian`, fixed HMAC tamper test assertion, and resolved circular dependencies via lazy instantiation.
 - **📊 Test Results**: **1,225 passed** (100% green pass rate across all feature domains).
