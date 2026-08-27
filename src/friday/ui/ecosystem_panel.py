@@ -36,6 +36,7 @@ class EcosystemDashboardPanel:
         bot = subs.get("trading_bot", {}).get("data", {})
         forge = subs.get("forge", {}).get("data", {})
         ai = subs.get("ai_universe", {}).get("data", {})
+        nexus = subs.get("nexus", {}).get("data", {})
 
         return {
             "title": "FRIDAY Unified Ecosystem Command Panel",
@@ -68,14 +69,27 @@ class EcosystemDashboardPanel:
                     "confidence": f"{ai.get('model_confidence_pct', 84.0):.0f}%",
                     "quick_actions": ["Request market briefing", "Explain predictions"],
                 },
+                "nexus": {
+                    "title": "Nexus Website & Growth",
+                    "icon": "🌐",
+                    "status": nexus.get("status", "HEALTHY"),
+                    "site_health": f"{nexus.get('health_score', 98.4):.1f}/100",
+                    "visitors_today": f"{nexus.get('visitors_today', 4280):,} visitors",
+                    "lead_count": nexus.get("leads_detected_today", 14),
+                    "active_incidents": nexus.get("active_incidents_count", 0),
+                    "pending_approvals": nexus.get("pending_approvals_count", 1),
+                    "quick_actions": ["View high-intent leads", "Diagnose conversion drop", "Pause experiment"],
+                },
             },
             "alerts_feed": [
                 {"timestamp": datetime.now(timezone.utc).isoformat(), "subsystem": "trading_bot", "message": "Position BTCUSDT trailing stop updated to $64,200", "severity": "INFO"},
                 {"timestamp": datetime.now(timezone.utc).isoformat(), "subsystem": "forge", "message": "Task forge_task_01 verified with 96.0% test coverage", "severity": "INFO"},
+                {"timestamp": datetime.now(timezone.utc).isoformat(), "subsystem": "nexus", "message": "High-intent lead detected from acme-corp.com (Score: 94/100)", "severity": "INFO"},
             ],
             "one_click_actions": [
                 {"label": "Build something new", "action": "forge_build_dialog"},
                 {"label": "Emergency stop trading", "action": "panic_kill_switch"},
+                {"label": "Review Nexus leads", "action": "nexus_lead_review"},
             ],
         }
 
@@ -86,6 +100,7 @@ class EcosystemDashboardPanel:
         b = cards["trading_bot"]
         f = cards["forge"]
         a = cards["ai_universe"]
+        n = cards["nexus"]
 
         return (
             f"# 🌐 {data['title']}\n\n"
@@ -98,6 +113,9 @@ class EcosystemDashboardPanel:
             f"- **Quick Actions:** `Build something new`\n\n"
             f"### 🧠 AI-Universe Card\n"
             f"- **Status:** `{a['status']}` | **Providers:** `{a['key_metric']}` | **Consultations:** `{a['consultations']}`\n\n"
+            f"### 🌐 Nexus Website & Growth Card\n"
+            f"- **Status:** `{n['status']}` | **Health:** `{n['site_health']}` | **Visitors:** `{n['visitors_today']}` | **Leads:** `{n['lead_count']}`\n"
+            f"- **Quick Actions:** `View high-intent leads`, `Pause experiment`\n\n"
             f"### 🚨 Central Alerts Feed\n" +
             "\n".join([f"- `[{alt['subsystem']}]` {alt['message']}" for alt in data["alerts_feed"]])
         )

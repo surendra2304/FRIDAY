@@ -507,6 +507,23 @@ class Settings(BaseSettings):
         description="Base URL for AI-Universe Intelligence Core API",
     )
 
+    # NEXUS (Autonomous Website & Growth Engine) Integration
+    nexus_base_url: str = Field(
+        default="http://localhost:8002",
+        validation_alias=AliasChoices("FRIDAY_NEXUS_BASE_URL", "NEXUS_BASE_URL", "nexus_base_url"),
+        description="Base URL for Nexus Autonomous Website & Growth API",
+    )
+    nexus_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("FRIDAY_NEXUS_ENABLED", "NEXUS_ENABLED", "nexus_enabled"),
+        description="Enable Nexus autonomous growth & website integration",
+    )
+    nexus_vigilance_interval_seconds: int = Field(
+        default=60,
+        validation_alias=AliasChoices("FRIDAY_NEXUS_VIGILANCE_INTERVAL_SECONDS", "NEXUS_VIGILANCE_INTERVAL_SECONDS", "nexus_vigilance_interval_seconds"),
+        description="Polling interval in seconds for Nexus vigilance operator",
+    )
+
     def get_diagnostics(self) -> Dict[str, Any]:
         """Return non-sensitive configuration diagnostics without exposing secrets."""
         has_gemini_key = bool(self.gemini_api_key and self.gemini_api_key.strip())

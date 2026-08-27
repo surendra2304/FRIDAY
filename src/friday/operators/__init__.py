@@ -21,6 +21,7 @@ from friday.operators.guardian_angel import GuardianAngelOperator
 from friday.operators.forge_monitor import ForgeMonitorOperator
 from friday.operators.forge_supervisor_operator import ForgeSupervisorOperator
 from friday.operators.forge_health_operator import ForgeHealthOperator
+from friday.operators.nexus_vigilance_operator import NexusVigilanceOperator
 
 __all__ = [
     "BaseOperator",
@@ -44,4 +45,5 @@ __all__ = [
     "ForgeMonitorOperator",
     "ForgeSupervisorOperator",
     "ForgeHealthOperator",
+    "NexusVigilanceOperator",
 ]

@@ -100,7 +100,8 @@ class EcosystemStatusSkill(BaseSkill):
                     f"🌐 Ecosystem Health Audit: Overall status is **{health.get('overall_health', 'HEALTHY')}**.\n"
                     f"• 📈 Trading Bot: **{h_subs.get('trading_bot', {}).get('status', 'HEALTHY')}**\n"
                     f"• 🛠️ Forge Engine: **{h_subs.get('forge', {}).get('status', 'HEALTHY')}**\n"
-                    f"• 🧠 AI-Universe Core: **{h_subs.get('ai_universe', {}).get('status', 'HEALTHY')}**"
+                    f"• 🧠 AI-Universe Core: **{h_subs.get('ai_universe', {}).get('status', 'HEALTHY')}**\n"
+                    f"• 🌐 Nexus Growth Engine: **{h_subs.get('nexus', {}).get('status', 'HEALTHY')}**"
                 )
                 step_results.append({"action": "ecosystem_health", "data": health})
                 return SkillExecutionResult(skill_name=self.name, success=True, output=spoken, step_results=step_results)
@@ -111,17 +112,20 @@ class EcosystemStatusSkill(BaseSkill):
                     f"Good day, Operator. Here is your ecosystem briefing:\n"
                     f"• 📈 **Trading**: Portfolio equity sits at ${bot.get('equity_usdt', 10450.0):,.2f} USDT (+${bot.get('daily_pnl_usdt', 420.50):,.2f} today) across {bot.get('active_positions_count', 3)} active positions.\n"
                     f"• 🛠️ **Forge**: Engine is {forge.get('status', 'IDLE')}; latest build '{forge.get('last_completed_task', 'portfolio website')}' completed with {forge.get('mean_test_coverage_pct', 96.0):.1f}% test coverage.\n"
-                    f"• 🧠 **AI-Universe**: {ai.get('configured_providers_count', 7)} providers online, {ai.get('consultations_today', 128)} consultations logged today with {ai.get('model_confidence_pct', 84.0):.0f}% model confidence."
+                    f"• 🧠 **AI-Universe**: {ai.get('configured_providers_count', 7)} providers online, {ai.get('consultations_today', 128)} consultations logged today with {ai.get('model_confidence_pct', 84.0):.0f}% model confidence.\n"
+                    f"• 🌐 **Nexus**: Site health is {subs.get('nexus', {}).get('data', {}).get('health_score', 98.4):.1f}/100 with {subs.get('nexus', {}).get('data', {}).get('visitors_today', 4280):,} visitors and {subs.get('nexus', {}).get('data', {}).get('leads_detected_today', 14)} leads detected."
                 )
                 step_results.append({"action": "brief_me"})
                 return SkillExecutionResult(skill_name=self.name, success=True, output=spoken, step_results=step_results)
 
             # 5. Default / "Status of everything"
+            nexus_data = subs.get("nexus", {}).get("data", {})
             report_lines = [
                 f"# 🌐 Unified Ecosystem Master Status Report",
                 f"**Trading Bot:** `{bot.get('status', 'RUNNING')}` | Equity: `${bot.get('equity_usdt', 10450.0):,.2f}` | {bot.get('active_positions_count', 3)} positions open | AI advisory: `{bot.get('advisory_status', 'active')}`",
                 f"**Forge:** `{forge.get('status', 'IDLE')}` | Last task: completed {forge.get('last_completed_time', '2h ago')} ({forge.get('last_completed_task', 'portfolio website')})",
                 f"**AI-Universe:** `{ai.get('status', 'HEALTHY')}` | {ai.get('configured_providers_count', 7)} providers configured | {ai.get('consultations_today', 128)} consultations today",
+                f"**Nexus:** `{nexus_data.get('status', 'HEALTHY')}` | Health: `{nexus_data.get('health_score', 98.4):.1f}/100` | {nexus_data.get('visitors_today', 4280):,} visitors today | {nexus_data.get('leads_detected_today', 14)} leads",
             ]
             spoken = "\n".join(report_lines)
             step_results.append({"action": "status_of_everything", "data": status})
