@@ -502,7 +502,7 @@ class Settings(BaseSettings):
         description="Base URL for Algorithmic Trading Bot API",
     )
     ai_universe_base_url: str = Field(
-        default="http://localhost:8000",
+        default="http://localhost:8001",
         validation_alias=AliasChoices("FRIDAY_AI_UNIVERSE_BASE_URL", "AI_UNIVERSE_BASE_URL", "ai_universe_base_url"),
         description="Base URL for AI-Universe Intelligence Core API",
     )

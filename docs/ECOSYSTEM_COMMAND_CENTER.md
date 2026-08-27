@@ -43,6 +43,7 @@ This document provides the operational guide, architecture, cross-system workflo
 1. **Safety Precedence**: `Safety Gates (100) > FRIDAY Master Supervisor (50) > AI-Universe Recommendations / FORGE Tasks (10)`.
 2. **Explicit Cross-System Confirmation**: Workflows that bridge multiple subsystems (e.g. asking FORGE to build against the Trading Bot API) require explicit operator approval before dispatching.
 3. **Independent Operation**: Each subsystem remains fully operational independently; the Command Center is an overarching coordination layer.
+4. **Strict Hub-and-Spoke Topology**: FRIDAY is the ONLY hub — subsystems never talk to each other directly.
 
 ---
 
@@ -80,6 +81,6 @@ This document provides the operational guide, architecture, cross-system workflo
 # ============================ UNIFIED ECOSYSTEM COMMAND CENTER ==============================
 ECOSYSTEM_ENABLED=True
 TRADING_BOT_BASE_URL=http://localhost:5000
-FORGE_BASE_URL=http://localhost:8001
-AI_UNIVERSE_BASE_URL=http://localhost:8000
+FORGE_BASE_URL=http://localhost:8000
+AI_UNIVERSE_BASE_URL=http://localhost:8001
 ```
