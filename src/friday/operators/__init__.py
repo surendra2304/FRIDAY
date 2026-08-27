@@ -26,6 +26,7 @@ from friday.operators.ecosystem_anomaly_operator import EcosystemAnomalyDetectio
 from friday.operators.memory_health_operator import MemoryHealthMonitor
 from friday.operators.scheduled_intelligence import ScheduledIntelligenceOperator
 from friday.operators.anomaly_investigator import ProactiveAnomalyInvestigator
+from friday.operators.cascade_detector import CascadeFailureDetector
 
 __all__ = [
     "BaseOperator",
@@ -54,4 +55,5 @@ __all__ = [
     "MemoryHealthMonitor",
     "ScheduledIntelligenceOperator",
     "ProactiveAnomalyInvestigator",
+    "CascadeFailureDetector",
 ]
