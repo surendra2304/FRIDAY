@@ -71,6 +71,7 @@ class SkillRegistry:
         from friday.skills.forge_manager import ForgeManagerSkill
         from friday.skills.voice_ecosystem import VoiceEcosystemSkill
         from friday.skills.ecosystem_status import EcosystemStatusSkill
+        from friday.skills.nexus_operator import NexusOperatorSkill
 
         builtins = [
             NetworkDiagnosticSkill(),
@@ -90,6 +91,7 @@ class SkillRegistry:
             ForgeManagerSkill(),
             VoiceEcosystemSkill(),
             EcosystemStatusSkill(),
+            NexusOperatorSkill(),
         ]
         for s in builtins:
             if s.name not in self._skills:

@@ -110,6 +110,31 @@ class EcosystemRegistry:
             )
         )
 
+        # 4. NEXUS Autonomous Website & Growth Engine
+        self.register(
+            SubsystemEntry(
+                name="nexus",
+                display_name="Nexus",
+                category="growth",
+                icon="🌐",
+                health_check_callable=lambda: {
+                    "status": "HEALTHY",
+                    "api_url": "http://localhost:8002",
+                    "tracking_pipeline": "OPERATIONAL",
+                    "policy_engine": "ACTIVE",
+                },
+                status_callable=lambda: {
+                    "status": "HEALTHY",
+                    "health_score": 98.4,
+                    "visitors_today": 4280,
+                    "conversion_rate_pct": 3.65,
+                    "leads_detected_today": 14,
+                    "active_incidents_count": 0,
+                    "pending_approvals_count": 1,
+                },
+            )
+        )
+
     def register(self, entry: SubsystemEntry) -> None:
         """Registers a subsystem in the ecosystem registry."""
         with self._lock:

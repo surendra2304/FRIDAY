@@ -27,6 +27,7 @@ class SubsystemRoute(str, Enum):
     TRADING_BOT = "TRADING_BOT"
     FORGE = "FORGE"
     AI_UNIVERSE = "AI_UNIVERSE"
+    NEXUS = "NEXUS"
     ECOSYSTEM_STATUS = "ECOSYSTEM_STATUS"
     CROSS_SYSTEM_ORCHESTRATOR = "CROSS_SYSTEM_ORCHESTRATOR"
     AMBIGUOUS = "AMBIGUOUS"
@@ -62,20 +63,24 @@ class EcosystemCommandRouter:
         if any(k in clean for k in ["status of everything", "brief me", "ecosystem report", "health of my systems", "all systems status"]):
             return SubsystemRoute.ECOSYSTEM_STATUS, {"command": user_command}
 
-        # 3. FORGE Software Engineering
+        # 3. NEXUS Website & Growth Operations
+        if any(k in clean for k in ["website status", "high-intent", "high intent", "leads", "conversions drop", "website incidents", "nexus", "pause the website experiment"]):
+            return SubsystemRoute.NEXUS, {"command": user_command}
+
+        # 4. FORGE Software Engineering
         if clean.startswith("build ") or clean.startswith("forge") or "cancel forge" in clean or "show what forge built" in clean:
             return SubsystemRoute.FORGE, {"command": user_command}
 
-        # 4. Trading Bot
+        # 5. Trading Bot
         if any(k in clean for k in ["how are my trades", "trading status", "portfolio risk", "emergency stop trading", "positions", "p&l"]):
             return SubsystemRoute.TRADING_BOT, {"command": user_command}
 
-        # 5. AI-Universe
+        # 6. AI-Universe
         if any(k in clean for k in ["what does the market think", "ai universe", "prediction", "whale flow", "market sentiment"]):
             return SubsystemRoute.AI_UNIVERSE, {"command": user_command}
 
-        # 6. Ambiguous -> Require Clarification
+        # 7. Ambiguous -> Require Clarification
         return SubsystemRoute.AMBIGUOUS, {
-            "message": "I couldn't determine which subsystem your command targets (Trading Bot, Forge, or AI-Universe). Please clarify.",
+            "message": "I couldn't determine which subsystem your command targets (Trading Bot, Forge, AI-Universe, or Nexus). Please clarify.",
             "command": user_command,
         }
