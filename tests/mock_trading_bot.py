@@ -303,6 +303,119 @@ class MockTradingBotState:
             },
         }
 
+    def get_testnet_advisory_status_payload(self) -> Dict[str, Any]:
+        if self.scenario == "testnet_ai_down":
+            return {
+                "enabled": True,
+                "mode": "SHADOW",
+                "ai_universe_health": "DOWN",
+                "equity": 10540.25,
+                "drawdown_pct": 1.85,
+                "max_drawdown_limit": 5.0,
+                "last_consult_time": "2026-08-27T11:00:00Z",
+                "active_overlay": {},
+                "open_positions": [{"symbol": "BTCUSDT", "side": "LONG", "size": 0.05}],
+            }
+
+        if self.scenario == "testnet_drawdown_breach":
+            return {
+                "enabled": True,
+                "mode": "APPLY",
+                "ai_universe_health": "HEALTHY",
+                "equity": 9360.00,
+                "drawdown_pct": 6.40,
+                "max_drawdown_limit": 5.0,
+                "last_consult_time": "2026-08-27T11:30:00Z",
+                "active_overlay": {"btc_sl_pct": 0.4, "eth_max_leverage": 5},
+                "open_positions": [{"symbol": "BTCUSDT", "side": "LONG", "size": 0.05}],
+            }
+
+        if self.scenario == "testnet_apply":
+            return {
+                "enabled": True,
+                "mode": "APPLY",
+                "ai_universe_health": "HEALTHY",
+                "equity": 10850.50,
+                "drawdown_pct": 1.45,
+                "max_drawdown_limit": 5.0,
+                "last_consult_time": "2026-08-27T11:30:00Z",
+                "active_overlay": {"btc_sl_pct": 0.4, "btc_tp_pct": 1.8},
+                "open_positions": [
+                    {"symbol": "BTCUSDT", "side": "LONG", "size": 0.05, "unrealized_pnl": 120.00},
+                    {"symbol": "ETHUSDT", "side": "SHORT", "size": 0.50, "unrealized_pnl": 45.00},
+                ],
+            }
+
+        # Default 'testnet_shadow' or 'mixed'
+        return {
+            "enabled": True,
+            "mode": "SHADOW",
+            "ai_universe_health": "HEALTHY",
+            "equity": 10540.25,
+            "drawdown_pct": 1.85,
+            "max_drawdown_limit": 5.0,
+            "last_consult_time": "2026-08-27T11:15:00Z",
+            "active_overlay": {},
+            "open_positions": [
+                {"symbol": "BTCUSDT", "side": "LONG", "size": 0.05, "unrealized_pnl": 95.50},
+                {"symbol": "ETHUSDT", "side": "SHORT", "size": 0.50, "unrealized_pnl": 44.75},
+            ],
+        }
+
+    def get_testnet_advisory_log_payload(self, limit: int = 10) -> Dict[str, Any]:
+        return {
+            "advisories": [
+                {
+                    "decision_id": "testnet_adv_01",
+                    "timestamp": "2026-08-27T11:00:00Z",
+                    "mode": "SHADOW",
+                    "verdict": "APPLY",
+                    "confidence": 0.88,
+                    "recommendation": "Tighten testnet BTC scalper stop-loss to 0.4%",
+                    "parameter_adjustments": {"btc_sl_pct": 0.4},
+                    "key_evidence": ["ATR expansion pattern on 5m chart"],
+                },
+                {
+                    "decision_id": "testnet_adv_02",
+                    "timestamp": "2026-08-27T11:15:00Z",
+                    "mode": "SHADOW",
+                    "verdict": "REJECT",
+                    "confidence": 0.93,
+                    "recommendation": "Expand ETH leverage to 12x",
+                    "rejection_reason": "Exceeds testnet safety limit of 5x max leverage",
+                    "parameter_adjustments": {"eth_max_leverage": 12},
+                    "key_evidence": ["Order book bid depth imbalance"],
+                },
+                {
+                    "decision_id": "testnet_adv_03",
+                    "timestamp": "2026-08-27T11:30:00Z",
+                    "mode": "SHADOW",
+                    "verdict": "HOLD",
+                    "confidence": 0.50,
+                    "recommendation": "Maintain testnet volatility bracket",
+                    "key_evidence": ["Balanced volume delta"],
+                },
+            ][:limit]
+        }
+
+    def get_testnet_paper_compare_payload(self) -> Dict[str, Any]:
+        return {
+            "paper_trading": {
+                "total_return_pct": 4.20,
+                "sharpe_ratio": 1.45,
+                "avg_slippage_bps": 0.5,
+                "fill_rate_pct": 100.0,
+                "max_drawdown_pct": 2.10,
+            },
+            "testnet_live": {
+                "total_return_pct": 3.85,
+                "sharpe_ratio": 1.38,
+                "avg_slippage_bps": 2.8,
+                "fill_rate_pct": 98.5,
+                "max_drawdown_pct": 2.45,
+            },
+        }
+
     def handle_panic(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         release = payload.get("release", False)
         self.panic_activated = not release
@@ -342,6 +455,16 @@ class MockTradingBotHandler(BaseHTTPRequestHandler):
         elif path == "/api/ab/status":
             payload = self.state.get_ab_status_payload()
             self._respond_json(200, payload)
+        elif path == "/api/testnet/advisory/status":
+            payload = self.state.get_testnet_advisory_status_payload()
+            self._respond_json(200, payload)
+        elif path in ("/api/testnet/advisory/log", "/api/testnet/advisory/recent"):
+            limit = int(query.get("limit", ["10"])[0])
+            payload = self.state.get_testnet_advisory_log_payload(limit=limit)
+            self._respond_json(200, payload)
+        elif path == "/api/testnet/paper/compare":
+            payload = self.state.get_testnet_paper_compare_payload()
+            self._respond_json(200, payload)
         elif path == "/api/recent-actions":
             self._respond_json(200, {"actions": ["FILTER: Passed BTC", "EXECUTE: LONG BTCUSDT @ 64500"]})
         else:
@@ -368,6 +491,12 @@ class MockTradingBotHandler(BaseHTTPRequestHandler):
         if path == "/api/panic":
             res = self.state.handle_panic(payload)
             self._respond_json(200, res)
+        elif path == "/api/testnet/advisory/toggle":
+            mode = payload.get("mode", "SHADOW")
+            enabled = payload.get("enabled", True)
+            self._respond_json(200, {"status": "SUCCESS", "enabled": enabled, "mode": mode, "message": f"Testnet advisory mode set to {mode}"})
+        elif path == "/api/testnet/advisory/rollback":
+            self._respond_json(200, {"status": "SUCCESS", "action": "ROLLBACK", "message": "All testnet parameter overlays rolled back to default baseline"})
         else:
             self._respond_json(404, {"error": "Endpoint not found"})
 

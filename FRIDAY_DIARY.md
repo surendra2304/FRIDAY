@@ -149,15 +149,16 @@ ead_file, list_files).
 
 ---
 
-### 📈 [Day 10 — 2026-08-27: Trading Supervision, Advisory Monitoring & A/B Testing](diary/2026-08-27.md)
-- **🎯 Focus**: Upgrading FRIDAY into an autonomous supervisor over the cloud-hosted Algorithmic Trading Bot on Binance Futures Testnet, its direct AI-Universe advisory link, and live A/B experiment monitoring.
+### 📈 [Day 10 — 2026-08-27: Trading Supervision, Advisory Monitoring, A/B Testing & Testnet Supervision](diary/2026-08-27.md)
+- **🎯 Focus**: Upgrading FRIDAY into an autonomous supervisor over the cloud-hosted Algorithmic Trading Bot on Binance Futures Testnet, its direct AI-Universe advisory link, live A/B experiments, and testnet advisory controls.
 - **💡 What I Accomplished**:
   - Defined immutable command precedence in `src/friday/skills/trading_precedence.py`: `Safety Gates (Trading Bot) > FRIDAY Commands (Supervisor) > AI-Universe Recommendations (Advisor)`.
-  - Extended `TradingBotOperator` (`src/friday/skills/trading_bot_operator.py`) with `get_advisory_recent()`, `get_advisory_state()`, `get_ab_status()`, and spoken `get_advisory_summary()`.
-  - Built `AdvisorySupervisorSkill` (`src/friday/skills/advisory_supervisor.py`) for contested advisory detection (`verdict=REJECT` + `confidence > 0.70`), plain-language explanations, and morning trading briefings.
+  - Extended `TradingBotOperator` (`src/friday/skills/trading_bot_operator.py`) with `get_advisory_recent()`, `get_advisory_state()`, `get_ab_status()`, `get_testnet_advisory_status()`, `get_testnet_paper_comparison()`, toggle, and rollback endpoints.
+  - Built `AdvisorySupervisorSkill` (`src/friday/skills/advisory_supervisor.py`) for contested advisory detection and spoken morning trading briefings.
   - Built `ABTestMonitorSkill` (`src/friday/skills/ab_test_monitor.py`) for live A/B experiment evaluation, statistical significance testing, outperformance analysis, and visual Markdown reporting.
-  - Implemented `AdvisoryWatchdogOperator` and `ABTestOperator` polling every 15 minutes, alerting on statistical significance, drawdown limits, or outages, and logging to memory with `TrustLevel.UNTRUSTED_EXTERNAL`.
-  - Created `MockTradingBotServer` and 5 test suites validating commands, watchdog alerting, precedence invariants, full cognitive loop integration, and A/B test evaluations.
+  - Built `TestnetAdvisoryMonitorSkill` (`src/friday/skills/testnet_advisory_monitor.py`) for live Binance Futures Testnet SHADOW vs APPLY supervision, slippage comparison, and emergency rollback controls.
+  - Implemented `AdvisoryWatchdogOperator`, `ABTestOperator`, and `TestnetAdvisoryOperator` polling every 15 minutes, alerting on mode transitions to APPLY, critical drawdown limits, or outages, and logging to memory with `TrustLevel.UNTRUSTED_EXTERNAL`.
+  - Created `MockTradingBotServer` and 6 test suites validating commands, watchdog alerting, precedence invariants, full cognitive loop integration, A/B test evaluations, and testnet controls.
   - Documented that panic commands route directly to the trading bot's own kill-switch API (`POST /api/panic`) without bypassing hardcoded bot safety gates.
-- **🛡️ Fixes & Hardening**: Fixed "release panic" substring collision, separated contested from generic rejected advisory filters, excluded trading queries from calendar briefings, and resolved pandas C-extension import timing.
+- **🛡️ Fixes & Hardening**: Fixed "release panic" substring collision, excluded trading queries from calendar briefings, added `__test__ = False` to prevent pytest collection warnings, and resolved pandas C-extension import timing.
 - **📊 Test Results**: **1,225 passed** (100% green pass rate across all feature domains).
