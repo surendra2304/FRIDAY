@@ -14,6 +14,7 @@ from friday.operators.advisory_watchdog import AdvisoryWatchdogOperator
 from friday.operators.ab_test_operator import ABTestOperator
 from friday.operators.testnet_advisory_operator import TestnetAdvisoryOperator
 from friday.operators.live_vigilance_operator import LiveVigilanceOperator
+from friday.operators.portfolio_supervisor import PortfolioSupervisorOperator
 
 __all__ = [
     "BaseOperator",
@@ -30,4 +31,5 @@ __all__ = [
     "ABTestOperator",
     "TestnetAdvisoryOperator",
     "LiveVigilanceOperator",
+    "PortfolioSupervisorOperator",
 ]
