@@ -448,6 +448,33 @@ class Settings(BaseSettings):
     task_daily_cap: Optional[int] = Field(default=None, description="Optional cap on total daily task executions")
     task_circuit_breaker_threshold: int = Field(default=5, description="Consecutive failure count before disabling a task")
 
+    # FORGE (Autonomous Software Engineering Engine) Integration
+    forge_api_url: str = Field(
+        default="http://localhost:8001",
+        validation_alias=AliasChoices("FRIDAY_FORGE_API_URL", "FORGE_API_URL", "forge_api_url"),
+        description="Base URL for FORGE Software Engineering API",
+    )
+    forge_api_key: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("FRIDAY_FORGE_API_KEY", "FORGE_API_KEY", "forge_api_key"),
+        description="API Key for FORGE authentication and HMAC signing",
+    )
+    forge_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("FRIDAY_FORGE_ENABLED", "FORGE_ENABLED", "forge_enabled"),
+        description="Enable FORGE ecosystem integration",
+    )
+    forge_max_concurrent_tasks: int = Field(
+        default=3,
+        validation_alias=AliasChoices("FRIDAY_FORGE_MAX_CONCURRENT_TASKS", "FORGE_MAX_CONCURRENT_TASKS", "forge_max_concurrent_tasks"),
+        description="Maximum concurrent tasks dispatched to FORGE",
+    )
+    forge_task_timeout: int = Field(
+        default=1800,
+        validation_alias=AliasChoices("FRIDAY_FORGE_TASK_TIMEOUT", "FORGE_TASK_TIMEOUT", "forge_task_timeout"),
+        description="Default timeout in seconds for FORGE tasks (default: 30 minutes)",
+    )
+
     def get_diagnostics(self) -> Dict[str, Any]:
         """Return non-sensitive configuration diagnostics without exposing secrets."""
         has_gemini_key = bool(self.gemini_api_key and self.gemini_api_key.strip())

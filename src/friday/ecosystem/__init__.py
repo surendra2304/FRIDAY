@@ -19,6 +19,13 @@ from friday.ecosystem.master_voice import (
 from friday.ecosystem.executive_dashboard import (
     ExecutiveDashboardRenderer,
 )
+from friday.ecosystem.master_dashboard import (
+    EcosystemMasterDashboard,
+)
+from friday.ecosystem.orchestrator import (
+    EcosystemOrchestrator,
+    TargetSubsystem,
+)
 
 __all__ = [
     "HumanPolicyInterface",
@@ -31,4 +38,7 @@ __all__ = [
     "MasterVoiceInterface",
     "VoiceToneContext",
     "ExecutiveDashboardRenderer",
+    "EcosystemMasterDashboard",
+    "EcosystemOrchestrator",
+    "TargetSubsystem",
 ]
