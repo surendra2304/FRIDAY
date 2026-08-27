@@ -55,6 +55,15 @@ from friday.trading.exchange_incidents import (
     LiquidityComparison,
     ArbitrageOpportunity,
 )
+from friday.trading.strategy_portfolio import (
+    StrategyPortfolioManager,
+    StrategyLifecycleState,
+    StrategyCandidate,
+)
+from friday.trading.evolution_history import (
+    EvolutionHistoryTracker,
+    StrategyRetirementRecord,
+)
 
 __all__ = [
     "PortfolioAnalyticsEngine",
@@ -91,4 +100,9 @@ __all__ = [
     "ExchangeHealthMetric",
     "LiquidityComparison",
     "ArbitrageOpportunity",
+    "StrategyPortfolioManager",
+    "StrategyLifecycleState",
+    "StrategyCandidate",
+    "EvolutionHistoryTracker",
+    "StrategyRetirementRecord",
 ]
