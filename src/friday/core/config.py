@@ -451,7 +451,12 @@ class Settings(BaseSettings):
     # FORGE (Autonomous Software Engineering Engine) Integration
     forge_api_url: str = Field(
         default="http://localhost:8001",
-        validation_alias=AliasChoices("FRIDAY_FORGE_API_URL", "FORGE_API_URL", "forge_api_url"),
+        validation_alias=AliasChoices("FRIDAY_FORGE_BASE_URL", "FORGE_BASE_URL", "FRIDAY_FORGE_API_URL", "FORGE_API_URL", "forge_api_url", "forge_base_url"),
+        description="Base URL for FORGE Software Engineering API",
+    )
+    forge_base_url: str = Field(
+        default="http://localhost:8001",
+        validation_alias=AliasChoices("FRIDAY_FORGE_BASE_URL", "FORGE_BASE_URL", "forge_base_url", "forge_api_url"),
         description="Base URL for FORGE Software Engineering API",
     )
     forge_api_key: Optional[str] = Field(
@@ -473,6 +478,16 @@ class Settings(BaseSettings):
         default=1800,
         validation_alias=AliasChoices("FRIDAY_FORGE_TASK_TIMEOUT", "FORGE_TASK_TIMEOUT", "forge_task_timeout"),
         description="Default timeout in seconds for FORGE tasks (default: 30 minutes)",
+    )
+    forge_supervision_interval_seconds: int = Field(
+        default=60,
+        validation_alias=AliasChoices("FRIDAY_FORGE_SUPERVISION_INTERVAL_SECONDS", "FORGE_SUPERVISION_INTERVAL_SECONDS", "forge_supervision_interval_seconds"),
+        description="Polling interval in seconds for FORGE task supervision",
+    )
+    forge_health_check_interval_seconds: int = Field(
+        default=300,
+        validation_alias=AliasChoices("FRIDAY_FORGE_HEALTH_CHECK_INTERVAL_SECONDS", "FORGE_HEALTH_CHECK_INTERVAL_SECONDS", "forge_health_check_interval_seconds"),
+        description="Polling interval in seconds for FORGE health monitoring",
     )
 
     def get_diagnostics(self) -> Dict[str, Any]:
