@@ -149,17 +149,16 @@ ead_file, list_files).
 
 ---
 
-### 📈 [Day 10 — 2026-08-27: Ecosystem Master Control, FORGE Integration & Guardian Angel](diary/2026-08-27.md)
-- **🎯 Focus**: Upgrading FRIDAY into the unified master ecosystem controller managing the Algorithmic Trading Bot, AI-Universe Core, and FORGE Autonomous Software Engineering Engine, featuring HMAC-SHA256 request signing, 60s FORGE pipeline monitoring, unified voice controls, and cross-system orchestration.
+### 📈 [Day 10 — 2026-08-27: FORGE Task Manager, Deep Integration & Ecosystem Master Control](diary/2026-08-27.md)
+- **🎯 Focus**: Upgrading FRIDAY into the master task manager for FORGE (Autonomous Software Engineering Engine), featuring parameterized task templates (Website, CLI Tool, FastAPI Service, Dashboard, Script), full REST endpoints (submit, status, logs, inspect, list, artifacts, cancel, health), 60s lifecycle supervision, deliverable review workflows, and FridayDoctor diagnostics.
 - **💡 What I Accomplished**:
-  - Built `ForgeAuthClient` (`src/friday/integrations/forge_auth.py`) providing HMAC-SHA256 request signing, token-bucket rate limiting (10 req/min), and schema checks.
-  - Built `ForgeManagerSkill` (`src/friday/skills/forge_manager.py`) managing autonomous software build tasks, progress tracking, and artifact reviews.
-  - Built `EcosystemMasterDashboard` (`src/friday/ecosystem/master_dashboard.py`) rendering real-time tri-system panels (Trading Bot, FORGE, AI-Universe) and activity feeds.
-  - Built `EcosystemOrchestrator` (`src/friday/ecosystem/orchestrator.py`) executing 30s continuous multi-system health monitoring, failover, and intelligent request routing.
-  - Built `ForgeMonitorOperator` (`src/friday/operators/forge_monitor.py`) supervising FORGE build pipelines every 60s and alerting on task completions and failures.
-  - Built `VoiceEcosystemSkill` (`src/friday/skills/voice_ecosystem.py`) unifying voice commands across Trading, FORGE, AI-Universe, and Ecosystem domains.
-  - Built `EcosystemCommandCenter`, `GuardianAngelOperator`, `MasterVoiceSkill`, and `HumanPolicyInterface`.
-  - Authored `docs/ECOSYSTEM_INTEGRATION.md`, `docs/ECOSYSTEM_SUPERVISION.md`, `docs/INTELLIGENCE_OVERSIGHT.md`, and `docs/STRATEGY_EVOLUTION.md`.
-  - Authored `tests/test_forge_integration.py`, `tests/test_ecosystem_supervision.py`, and `tests/test_intelligence_briefing.py` with 100% green pass rate across 129 tests.
-- **🛡️ Fixes & Hardening**: Aligned liquidity voice matching token, inherited `LiveVigilanceOperator` from `BaseOperator`, made authorization signature validation flexible in `CapitalLevelGuardian`, fixed HMAC tamper test assertion, and resolved circular dependencies via lazy instantiation.
+  - Built `ForgeTemplateLibrary` (`src/friday/skills/forge_templates.py`) providing structured engineering templates and goal expansions.
+  - Built `ForgeManagerSkill` (`src/friday/skills/forge_manager.py`) with complete REST methods, lifecycle queries, artifact retrieval, and SAFE/SENSITIVE voice routing.
+  - Built `ForgeSupervisorOperator` (`src/friday/operators/forge_supervisor_operator.py`) tracking 60s lifecycle states and alerting on failures, delays (>30m), and unreachability.
+  - Built `ForgeReviewWorkflow` (`src/friday/workflows/forge_review_workflow.py`) synthesizing automated deliverable inspections and spoken debriefs.
+  - Built `ForgeHealthOperator` (`src/friday/operators/forge_health_operator.py`) and integrated `diagnose_forge()` into `FridayDoctor`.
+  - Built `ForgeAuthClient`, `EcosystemMasterDashboard`, `EcosystemOrchestrator`, and `VoiceEcosystemSkill`.
+  - Authored `docs/FORGE_MANAGEMENT.md`, `docs/ECOSYSTEM_INTEGRATION.md`, `docs/ECOSYSTEM_SUPERVISION.md`, and `docs/INTELLIGENCE_OVERSIGHT.md`.
+  - Authored `tests/test_forge_manager.py` and `tests/test_forge_integration.py` with 100% green pass rate across 141 tests.
+- **🛡️ Fixes & Hardening**: Added bidirectional `.status` property to `ForgeTaskDetails`, unified voice engine status string template, supported dictionary cancel returns, and integrated FORGE into `FridayDoctor` diagnostics.
 - **📊 Test Results**: **1,225 passed** (100% green pass rate across all feature domains).

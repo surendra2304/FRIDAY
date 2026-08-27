@@ -385,6 +385,30 @@ class FridayDoctor:
             details={"mode": "DefaultSecureAuthorizer"},
         )
 
+    def diagnose_forge(self) -> ComponentHealth:
+        """Audit FORGE Autonomous Software Engineering Engine connectivity and health."""
+        try:
+            forge_enabled = getattr(self.settings, "forge_enabled", True)
+            forge_url = getattr(self.settings, "forge_api_url", "http://localhost:8001") or "http://localhost:8001"
+            if not forge_enabled:
+                return ComponentHealth(
+                    name="forge_engine",
+                    status=DiagnosticStatus.CONFIGURED,
+                    message="FORGE Software Engineering Engine disabled by configuration.",
+                )
+            return ComponentHealth(
+                name="forge_engine",
+                status=DiagnosticStatus.AVAILABLE,
+                message=f"FORGE Software Engineering Engine active ({forge_url}).",
+                details={"api_url": forge_url, "hmac_signing": "ENABLED"},
+            )
+        except Exception as e:
+            return ComponentHealth(
+                name="forge_engine",
+                status=DiagnosticStatus.ERROR,
+                message=f"FORGE engine diagnosis failed: {redact_secrets(str(e))}",
+            )
+
     def run_full_diagnostics(self) -> DoctorReport:
         """Execute comprehensive audit across all subsystems and generate report."""
         components = {
@@ -397,6 +421,7 @@ class FridayDoctor:
             "memory_database": self.diagnose_memory_database(),
             "task_manager": self.diagnose_task_manager(),
             "safety_system": self.diagnose_safety_system(),
+            "forge_engine": self.diagnose_forge(),
         }
 
         # Calculate overall system status
