@@ -64,6 +64,14 @@ from friday.trading.evolution_history import (
     EvolutionHistoryTracker,
     StrategyRetirementRecord,
 )
+from friday.trading.intelligence_engine import (
+    IntelligenceEngine,
+    AssetPrediction,
+    SentimentTelemetry,
+    OnChainTelemetry,
+    AccuracyReport,
+    IntelligenceAlert,
+)
 
 __all__ = [
     "PortfolioAnalyticsEngine",
@@ -105,4 +113,10 @@ __all__ = [
     "StrategyCandidate",
     "EvolutionHistoryTracker",
     "StrategyRetirementRecord",
+    "IntelligenceEngine",
+    "AssetPrediction",
+    "SentimentTelemetry",
+    "OnChainTelemetry",
+    "AccuracyReport",
+    "IntelligenceAlert",
 ]

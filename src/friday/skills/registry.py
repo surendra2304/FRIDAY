@@ -66,6 +66,7 @@ class SkillRegistry:
         from friday.skills.voice_live_trading import VoiceLiveTradingSkill
         from friday.skills.voice_multi_exchange import VoiceMultiExchangeSkill
         from friday.skills.evolution_approval import EvolutionApprovalSkill
+        from friday.skills.intelligence_briefing import IntelligenceBriefingSkill
 
         builtins = [
             NetworkDiagnosticSkill(),
@@ -80,6 +81,7 @@ class SkillRegistry:
             VoiceLiveTradingSkill(),
             VoiceMultiExchangeSkill(),
             EvolutionApprovalSkill(),
+            IntelligenceBriefingSkill(),
         ]
         for s in builtins:
             if s.name not in self._skills:
