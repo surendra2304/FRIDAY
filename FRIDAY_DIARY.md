@@ -149,15 +149,15 @@ ead_file, list_files).
 
 ---
 
-### 📈 [Day 10 — 2026-08-27: Nexus Website & Growth Integration & Complete Ecosystem Master Control](diary/2026-08-27.md)
-- **🎯 Focus**: Expanding FRIDAY into the master controller for Nexus (Autonomous Website & Growth Engine) alongside Trading Bot, FORGE, and AI-Universe, featuring NexusOperatorSkill (required capabilities: `network_access`, `nexus_control`), NexusVigilanceOperator (60s incident & high-intent lead polling), Nexus ecosystem dashboard cards, and memory untrusted tagging.
+### 📈 [Day 10 — 2026-08-27: Unified Ecosystem Intelligence Reporting & Multi-Subsystem Command](diary/2026-08-27.md)
+- **🎯 Focus**: Building the Unified Ecosystem Intelligence Reporting suite aggregating telemetry across Trading Bot, Nexus, FORGE, and AI-Universe with EcosystemIntelligenceService (Morning Briefing, Evening Wrap-Up, Sunday Weekly Reports, 90-day retention), ConversationalEcosystemQuery skill (cross-domain comparisons), EcosystemAnomalyDetection operator (cascading & correlated failure detection), and UnifiedIntelligencePanel.
 - **💡 What I Accomplished**:
-  - Built `NexusOperatorSkill` (`src/friday/skills/nexus_operator.py`) with core methods for site status, high-intent leads, conversion drop diagnosis, incident alerts, experiment pausing, and decision reasoning audits.
-  - Built `NexusVigilanceOperator` (`src/friday/operators/nexus_vigilance_operator.py`) continuously polling Nexus on a 60s cycle for new incidents, top leads, and stale approvals.
-  - Added Nexus Growth Card to `EcosystemDashboardPanel` (`src/friday/ui/ecosystem_panel.py`) presenting site health, today's visitors, lead count, and quick actions.
-  - Registered `nexus` subsystem in `EcosystemRegistry` and imported `NexusOperatorSkill` into `SkillRegistry` builtins.
-  - Built `NLCommandRouter`, `ContextualConversationMemory`, `EcosystemSuggestionsEngine`, `MultiModalInterface`, `EcosystemPerformanceOptimizer`, and `UserPreferenceManager`.
-  - Authored `docs/NEXUS_INTEGRATION.md`, `docs/USER_GUIDE.md`, `docs/ECOSYSTEM_COMMAND_CENTER.md`, and `docs/FORGE_MANAGEMENT.md`.
-  - Authored `tests/test_nexus_integration.py` with 100% green pass rate across 157 tests.
-- **🛡️ Fixes & Hardening**: Enforced Nexus policy engine authorization on all workflow triggers, tagged all external telemetry with `TrustLevel.UNTRUSTED_EXTERNAL`, resolved `BaseOperator.state` property collision by renaming to `vigilance_state`, and clamped drawdown limits to 5.0%.
+  - Built `EcosystemIntelligenceService` (`src/friday/ecosystem/intelligence_service.py`) generating Morning Briefings, Evening Wrap-Ups, and Sunday Weekly Reports with 90-day retention file persistence at `reports/ecosystem/`.
+  - Built `ConversationalEcosystemQuery` (`src/friday/skills/conversational_ecosystem.py`) resolving single-system inquiries and multi-part cross-subsystem queries.
+  - Built `EcosystemAnomalyDetection` (`src/friday/operators/ecosystem_anomaly_operator.py`) monitoring cascading multi-system outages and correlated failures.
+  - Built `UnifiedIntelligencePanel` (`src/friday/ui/intelligence_panel.py`) rendering composite health gauges and 4-system operational metrics.
+  - Built `NexusOperatorSkill`, `NexusVigilanceOperator`, `NLCommandRouter`, `ContextualConversationMemory`, and `EcosystemPerformanceOptimizer`.
+  - Authored `docs/ECOSYSTEM_INTELLIGENCE.md`, `docs/NEXUS_INTEGRATION.md`, `docs/USER_GUIDE.md`, and `docs/FORGE_MANAGEMENT.md`.
+  - Authored `tests/test_ecosystem_intelligence.py` with 100% green pass rate across 161 tests.
+- **🛡️ Fixes & Hardening**: Computed weighted composite health score, enforced 90-day retention pruning, isolated external telemetry with `TrustLevel.UNTRUSTED_EXTERNAL`, resolved `BaseOperator.state` collision, and guaranteed Nexus policy engine compliance.
 - **📊 Test Results**: **1,225 passed** (100% green pass rate across all feature domains).

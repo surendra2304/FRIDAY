@@ -72,6 +72,7 @@ class SkillRegistry:
         from friday.skills.voice_ecosystem import VoiceEcosystemSkill
         from friday.skills.ecosystem_status import EcosystemStatusSkill
         from friday.skills.nexus_operator import NexusOperatorSkill
+        from friday.skills.conversational_ecosystem import ConversationalEcosystemQuery
 
         builtins = [
             NetworkDiagnosticSkill(),
@@ -92,6 +93,7 @@ class SkillRegistry:
             VoiceEcosystemSkill(),
             EcosystemStatusSkill(),
             NexusOperatorSkill(),
+            ConversationalEcosystemQuery(),
         ]
         for s in builtins:
             if s.name not in self._skills:
