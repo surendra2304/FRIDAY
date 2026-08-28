@@ -105,7 +105,15 @@ class MasterEmergencyController:
                 halted_at=now_iso,
             )
 
-            # Step 4: AI-Universe Fallback
+            # Step 4: Sentinel Active Tasks Termination
+            self.halt_states["sentinel"] = SubsystemHaltState(
+                subsystem="sentinel",
+                is_halted=True,
+                halt_action_taken="All active security scans terminated, running tasks killed, pending approvals locked",
+                halted_at=now_iso,
+            )
+
+            # Step 5: AI-Universe Fallback
             self.halt_states["ai_universe"] = SubsystemHaltState(
                 subsystem="ai_universe",
                 is_halted=True,
@@ -113,7 +121,7 @@ class MasterEmergencyController:
                 halted_at=now_iso,
             )
 
-            # Step 5: FRIDAY Operators Pause (Health monitors remain active)
+            # Step 6: FRIDAY Operators Pause (Health monitors remain active)
             self.halt_states["friday_operators"] = SubsystemHaltState(
                 subsystem="friday_operators",
                 is_halted=True,
