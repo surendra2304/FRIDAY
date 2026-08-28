@@ -65,14 +65,16 @@ This runbook serves as the authoritative operational manual for deploying, monit
   2. **Nexus**: Pauses all active workflows and freezes agent actions.
   3. **Forge**: Checkpoints active tasks to disk and halts compiler pipelines.
   4. **Sentinel**: Terminates all active security scans, kills running assessment tasks, and holds approvals.
-  5. **AI-Universe**: Switches consumers to last-known-good static parameters.
-  6. **FRIDAY Operators**: Pauses all autonomous background operators; health monitoring remains **ACTIVE**.
+  5. **IntelX**: Cancels all in-flight deep research runs; saves partial findings & evidence spans to disk.
+  6. **AI-Universe**: Switches consumers to last-known-good static parameters.
+  7. **FRIDAY Operators**: Pauses all autonomous background operators; health monitoring remains **ACTIVE**.
 - **Broadcast**: Dispatches red emergency banner across web and mobile interfaces.
 - **Resumption**: Bulk resume is strictly prohibited. Each subsystem requires individual un-halt confirmation:
   ```python
   from friday.ecosystem.emergency_controller import master_emergency_controller
   master_emergency_controller.resume_subsystem("trading_bot", confirmation_token="auth_token_123")
   master_emergency_controller.resume_subsystem("sentinel", confirmation_token="auth_token_456")
+  master_emergency_controller.resume_subsystem("intelx", confirmation_token="auth_token_789")
   ```
 
 ### Emergency Procedure 2: Trading Bot Panic Halt
@@ -84,7 +86,7 @@ This runbook serves as the authoritative operational manual for deploying, monit
 
 ---
 
-## 🔍 4. Subsystem Troubleshooting & Port Reference
+## 🔍 4. Subsystem Troubleshooting & Port Reference (All 7 Systems)
 
 | Subsystem | Port | Default URL | Common Issue | Diagnostic & Automated Healing |
 | :--- | :--- | :--- | :--- | :--- |
@@ -93,7 +95,14 @@ This runbook serves as the authoritative operational manual for deploying, monit
 | **AI-Universe** | `8001` | `http://localhost:8001` | LLM rate limit / 500s | Multi-model failover auto-switches across 7 providers; fallback to rule advisory. |
 | **Nexus Growth** | `8002` | `http://localhost:8002` | Conversion drop / 503 error | Run `PLAYBOOK:website_down`; check deploy correlation and execute rollback. |
 | **Sentinel Security** | `8003` | `http://localhost:8003` | Scan queue timeout / Stale token | Run `PLAYBOOK:data_breach`; verify scope enforcement in `SentinelManagerSkill`. |
+| **IntelX Research** | `8004` | `http://localhost:8004` | Research timeout / Stale contradiction | `ResearchSupervisorOperator` auto-alerts; prune or refresh via `ResearchLibrary.apply_retention_decay()`. |
 | **FRIDAY Core** | `9000` | `http://localhost:9000` | Voice session audio stutter | Rotate Gemini API keys in `GeminiCredentialPool`; restart `MicrophoneStream`. |
+
+### 4.5 IntelX Autonomous Deep Research Operations Manual
+1. **Research Delegation**: Submit research via `IntelXManagerSkill.submit_research(question, domain_hint, depth)` or voice (*"Research [topic]"*, *"Deep dive into [topic]"*).
+2. **Findings Interpretation**: Factual claims carry numerical confidence ($0-100\%$) and citation counts. Always verify confidence $> 85\%$ before actionable decisions.
+3. **Contradiction Resolution**: Disputed claims display Side A vs Side B evidence. Operators can review contradictory sources via `ResearchDashboardPanel`.
+4. **Library Retention & Decay**: Research is indexed persistently in `ResearchLibrary`. High-confidence claims ($\ge 90\%$) are retained up to 180 days; stale entries decay at 90 days.
 
 ---
 
@@ -110,7 +119,7 @@ Level 2: Warning (Operator Notification)
 
 Level 3: Critical (Biometric Gated Emergency)
   └── Trigger: Drawdown breach > 3.0%, website 503 outage, critical SQLi/RCE vulnerability, cascading provider failure.
-  └── Action: MasterEmergencyController 6-system halt / EmergencyPlaybooks automated execution.
+  └── Action: MasterEmergencyController 7-system halt / EmergencyPlaybooks automated execution.
 ```
 
 ---
@@ -123,12 +132,14 @@ FRIDAY_CREDENTIAL_ENCRYPTION_KEY=<base64_32_bytes_fernet_key>
 FRIDAY_SECURITY_LOCKOUT_MINUTES=15
 FRIDAY_MAX_FAILED_BIOMETRIC_ATTEMPTS=5
 
-# Managed Subsystem URLs
+# Managed Subsystem URLs (All 7 Subsystems)
 TRADING_BOT_BASE_URL=http://localhost:5000
 FORGE_BASE_URL=http://localhost:8000
 AI_UNIVERSE_BASE_URL=http://localhost:8001
 NEXUS_BASE_URL=http://localhost:8002
 SENTINEL_BASE_URL=http://localhost:8003
+INTELX_BASE_URL=http://localhost:8004
+FRIDAY_CORE_BASE_URL=http://localhost:9000
 
 # Environment & Performance
 FRIDAY_ENV=production

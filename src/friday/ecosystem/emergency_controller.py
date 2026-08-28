@@ -113,7 +113,15 @@ class MasterEmergencyController:
                 halted_at=now_iso,
             )
 
-            # Step 5: AI-Universe Fallback
+            # Step 5: IntelX Active Research Runs Cancellation (partial results preserved)
+            self.halt_states["intelx"] = SubsystemHaltState(
+                subsystem="intelx",
+                is_halted=True,
+                halt_action_taken="All active IntelX research runs cancelled, partial evidence spans preserved to disk",
+                halted_at=now_iso,
+            )
+
+            # Step 6: AI-Universe Fallback
             self.halt_states["ai_universe"] = SubsystemHaltState(
                 subsystem="ai_universe",
                 is_halted=True,
@@ -121,7 +129,7 @@ class MasterEmergencyController:
                 halted_at=now_iso,
             )
 
-            # Step 6: FRIDAY Operators Pause (Health monitors remain active)
+            # Step 7: FRIDAY Operators Pause (Health monitors remain active)
             self.halt_states["friday_operators"] = SubsystemHaltState(
                 subsystem="friday_operators",
                 is_halted=True,
@@ -130,7 +138,7 @@ class MasterEmergencyController:
             )
 
             self.is_emergency_active = True
-            banner = "🚨 [EMERGENCY HALT ACTIVE] All autonomous operations suspended. Health monitors active."
+            banner = "🚨 [EMERGENCY HALT ACTIVE] All 7 subsystem autonomous operations suspended. Health monitors active."
 
             report = EmergencyHaltReport(
                 is_active=True,
