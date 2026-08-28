@@ -135,6 +135,30 @@ class EcosystemRegistry:
             )
         )
 
+        # 5. Sentinel Autonomous Security & Vulnerability Engine
+        self.register(
+            SubsystemEntry(
+                name="sentinel",
+                display_name="Sentinel",
+                category="security",
+                icon="🛡️",
+                health_check_callable=lambda: {
+                    "status": "HEALTHY",
+                    "api_url": "http://localhost:8003",
+                    "policy_engine": "ACTIVE",
+                    "scope_enforcement": "ENFORCED",
+                },
+                status_callable=lambda: {
+                    "status": "HEALTHY",
+                    "overall_posture": "SECURE",
+                    "active_scans_count": 0,
+                    "critical_vulnerabilities": 0,
+                    "high_vulnerabilities": 0,
+                    "pending_approvals_count": 0,
+                },
+            )
+        )
+
     def register(self, entry: SubsystemEntry) -> None:
         """Registers a subsystem in the ecosystem registry."""
         with self._lock:
