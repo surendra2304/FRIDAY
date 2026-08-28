@@ -74,6 +74,7 @@ class SkillRegistry:
         from friday.skills.nexus_operator import NexusOperatorSkill
         from friday.skills.nexus_manager import NexusManagerSkill
         from friday.skills.conversational_ecosystem import ConversationalEcosystemQuery
+        from friday.skills.help_system import HelpSystemSkill
 
         builtins = [
             NetworkDiagnosticSkill(),
@@ -96,6 +97,7 @@ class SkillRegistry:
             NexusOperatorSkill(),
             NexusManagerSkill(),
             ConversationalEcosystemQuery(),
+            HelpSystemSkill(),
         ]
         for s in builtins:
             if s.name not in self._skills:
