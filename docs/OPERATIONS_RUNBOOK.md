@@ -96,6 +96,7 @@ This runbook serves as the authoritative operational manual for deploying, monit
 | **Nexus Growth** | `8002` | `http://localhost:8002` | Conversion drop / 503 error | Run `PLAYBOOK:website_down`; check deploy correlation and execute rollback. |
 | **Sentinel Security** | `8003` | `http://localhost:8003` | Scan queue timeout / Stale token | Run `PLAYBOOK:data_breach`; verify scope enforcement in `SentinelManagerSkill`. |
 | **IntelX Research** | `8004` | `http://localhost:8004` | Research timeout / Stale contradiction | `ResearchSupervisorOperator` auto-alerts; prune or refresh via `ResearchLibrary.apply_retention_decay()`. |
+| **Futuris Forecaster** | `8005` | `http://localhost:8005` | Calibration degradation / High Brier score | `ForecastSupervisorOperator` triggers model recalibration and flags uncertainty bounds. |
 | **FRIDAY Core** | `9000` | `http://localhost:9000` | Voice session audio stutter | Rotate Gemini API keys in `GeminiCredentialPool`; restart `MicrophoneStream`. |
 
 ### 4.5 IntelX Autonomous Deep Research Operations Manual
@@ -103,6 +104,12 @@ This runbook serves as the authoritative operational manual for deploying, monit
 2. **Findings Interpretation**: Factual claims carry numerical confidence ($0-100\%$) and citation counts. Always verify confidence $> 85\%$ before actionable decisions.
 3. **Contradiction Resolution**: Disputed claims display Side A vs Side B evidence. Operators can review contradictory sources via `ResearchDashboardPanel`.
 4. **Library Retention & Decay**: Research is indexed persistently in `ResearchLibrary`. High-confidence claims ($\ge 90\%$) are retained up to 180 days; stale entries decay at 90 days.
+
+### 4.6 Futuris Autonomous Probabilistic Forecasting Operations Manual
+1. **Probabilistic Invariant**: All predictions carry explicit calibrated confidence intervals (e.g. `[68% - 82% @ 90% CI]`). Bare point estimates without uncertainty margins are prohibited.
+2. **Decision Input Invariant**: Predictions are advisory inputs to decisions, never autonomous decision-makers.
+3. **Counterfactual Scenarios**: Request simulations via `FuturisManagerSkill.request_scenario(question, base_forecast_id, changes)`.
+4. **Calibration & Tracking**: Model health is monitored continuously via Brier scores and empirical coverage. Deviations trigger `MODEL_DEGRADED` alarms.
 
 ---
 
@@ -119,7 +126,7 @@ Level 2: Warning (Operator Notification)
 
 Level 3: Critical (Biometric Gated Emergency)
   └── Trigger: Drawdown breach > 3.0%, website 503 outage, critical SQLi/RCE vulnerability, cascading provider failure.
-  └── Action: MasterEmergencyController 7-system halt / EmergencyPlaybooks automated execution.
+  └── Action: MasterEmergencyController 8-system halt / EmergencyPlaybooks automated execution.
 ```
 
 ---
@@ -132,13 +139,14 @@ FRIDAY_CREDENTIAL_ENCRYPTION_KEY=<base64_32_bytes_fernet_key>
 FRIDAY_SECURITY_LOCKOUT_MINUTES=15
 FRIDAY_MAX_FAILED_BIOMETRIC_ATTEMPTS=5
 
-# Managed Subsystem URLs (All 7 Subsystems)
+# Managed Subsystem URLs (All 8 Subsystems)
 TRADING_BOT_BASE_URL=http://localhost:5000
 FORGE_BASE_URL=http://localhost:8000
 AI_UNIVERSE_BASE_URL=http://localhost:8001
 NEXUS_BASE_URL=http://localhost:8002
 SENTINEL_BASE_URL=http://localhost:8003
 INTELX_BASE_URL=http://localhost:8004
+FUTURIS_BASE_URL=http://localhost:8005
 FRIDAY_CORE_BASE_URL=http://localhost:9000
 
 # Environment & Performance

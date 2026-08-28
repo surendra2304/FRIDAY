@@ -35,16 +35,17 @@ def test_master_emergency_controller_halt_and_resumption(emergency_setup):
     assert res_no_phrase["is_halted"] is False
     assert res_no_phrase["status"] == "REJECTED"
 
-    # 3. High confidence + Valid Phrase executes full halt cascade (Trading Bot, Nexus, Forge, Sentinel, IntelX, AI-Universe, FRIDAY Operators)
+    # 3. High confidence + Valid Phrase executes full halt cascade (Trading Bot, Nexus, Forge, Sentinel, IntelX, Futuris, AI-Universe, FRIDAY Operators)
     res_ok = controller.execute_master_emergency_halt("Confirm emergency halt", biometric_confidence=0.97)
     assert res_ok["is_halted"] is True
     assert controller.is_emergency_active is True
-    assert len(controller.halt_states) == 7
+    assert len(controller.halt_states) == 8
     assert controller.halt_states["trading_bot"].is_halted is True
     assert controller.halt_states["nexus"].is_halted is True
     assert controller.halt_states["forge"].is_halted is True
     assert controller.halt_states["sentinel"].is_halted is True
     assert controller.halt_states["intelx"].is_halted is True
+    assert controller.halt_states["futuris"].is_halted is True
     assert controller.halt_states["ai_universe"].is_halted is True
     assert controller.halt_states["friday_operators"].is_halted is True
 
