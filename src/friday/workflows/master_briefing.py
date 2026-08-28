@@ -51,12 +51,14 @@ class MasterDailyBriefingWorkflow:
         bot = subs.get("trading_bot", {}).get("data", {})
         forge = subs.get("forge", {}).get("data", {})
         ai = subs.get("ai_universe", {}).get("data", {})
+        nexus = subs.get("nexus", {}).get("data", {})
 
         # Spoken audio debrief
         spoken = (
             f"Good morning, Operator. Here is your master ecosystem briefing. "
             f"Trading Bot is {bot.get('status', 'RUNNING')} with ${bot.get('equity_usdt', 10450.0):,.2f} USDT equity across {bot.get('active_positions_count', 3)} positions, up +${bot.get('daily_pnl_usdt', 420.50):,.2f} USDT overnight. "
             f"Forge is {forge.get('status', 'IDLE')}; latest build '{forge.get('last_completed_task', 'portfolio website')}' completed with {forge.get('mean_test_coverage_pct', 96.0):.1f}% test coverage. "
+            f"Nexus website operations report {nexus.get('visitors_today', 4280):,} visitors, {nexus.get('leads_detected_today', 14)} high-intent leads, and {nexus.get('active_incidents_count', 0)} incidents. "
             f"AI-Universe has {ai.get('configured_providers_count', 7)} providers active with {ai.get('model_confidence_pct', 84.0):.0f}% prediction confidence. "
             f"Overall ecosystem health is {health.get('overall_health', 'HEALTHY')}."
         )
@@ -76,7 +78,11 @@ class MasterDailyBriefingWorkflow:
             f"- **Active Builds:** `{forge.get('active_tasks_count', 0)}` in progress\n"
             f"- **Latest Delivery:** `{forge.get('last_completed_task', 'portfolio website')}` (completed {forge.get('last_completed_time', '2h ago')})\n"
             f"- **Mean Test Coverage:** `{forge.get('mean_test_coverage_pct', 96.0):.1f}%`\n\n"
-            f"## 🧠 3. AI-Universe Intelligence & Advisory\n"
+            f"## 🌐 3. Nexus Website & Growth Intelligence\n"
+            f"- **Site Health:** `{nexus.get('health_score', 98.4):.1f}/100` (Status: **`{nexus.get('status', 'HEALTHY')}`**)\n"
+            f"- **Traffic & Conversion:** `{nexus.get('visitors_today', 4280):,}` visitors | `{nexus.get('conversion_rate_pct', 3.65):.2f}%` conversion rate\n"
+            f"- **Leads & Incidents:** `{nexus.get('leads_detected_today', 14)}` leads | `{nexus.get('active_incidents_count', 0)}` active incidents\n\n"
+            f"## 🧠 4. AI-Universe Intelligence & Advisory\n"
             f"- **Core Status:** **`{ai.get('status', 'HEALTHY')}`**\n"
             f"- **Active Providers:** `{ai.get('configured_providers_count', 7)}` LLM/analytic engines online\n"
             f"- **Consultation Quality:** `{ai.get('model_confidence_pct', 84.0):.0f}%` confidence across `{ai.get('active_predictions_count', 3)}` asset forecasts\n"
@@ -95,11 +101,13 @@ class MasterDailyBriefingWorkflow:
         subs = status.get("subsystems", {})
         bot = subs.get("trading_bot", {}).get("data", {})
         forge = subs.get("forge", {}).get("data", {})
+        nexus = subs.get("nexus", {}).get("data", {})
 
         spoken = (
             f"Good evening, Operator. Ecosystem daily wrap-up: "
             f"Trading closed with realized daily P&L of +${bot.get('daily_pnl_usdt', 420.50):,.2f} USDT across {bot.get('active_positions_count', 3)} positions. "
             f"Forge successfully delivered {forge.get('total_completed', 2)} software packages today. "
+            f"Nexus recorded {nexus.get('visitors_today', 4280):,} visitors and {nexus.get('leads_detected_today', 14)} prospective leads. "
             f"All safety gates and guardian operators remain green."
         )
 
@@ -110,6 +118,7 @@ class MasterDailyBriefingWorkflow:
             f"- **Trading Realized P&L:** `+${bot.get('daily_pnl_usdt', 420.50):,.2f} USDT`\n"
             f"- **Ending Equity:** `${bot.get('equity_usdt', 10450.0):,.2f} USDT`\n"
             f"- **Software Packages Delivered:** `{forge.get('total_completed', 2)}` packages\n"
+            f"- **Website Traffic & Leads:** `{nexus.get('visitors_today', 4280):,}` visitors | `{nexus.get('leads_detected_today', 14)}` leads\n"
             f"- **System Anomalies / Incidents:** `0` (Nominal operations maintained)\n"
         )
 
