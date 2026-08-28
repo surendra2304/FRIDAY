@@ -46,7 +46,7 @@ class NotificationItem:
 class SmartNotificationRouter:
     """Classifies urgency, enforces quiet hours, and learns delivery preferences."""
 
-    def __init__(self, quiet_hours_start: int = 22, quiet_hours_end: int = 7) -> None:
+    def __init__(self, quiet_hours_start: int = 0, quiet_hours_end: int = 8) -> None:
         self.quiet_start = quiet_hours_start
         self.quiet_end = quiet_hours_end
         self.briefing_batch_queue: List[NotificationItem] = []
