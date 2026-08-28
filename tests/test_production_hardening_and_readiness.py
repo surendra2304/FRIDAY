@@ -193,13 +193,14 @@ def test_friday_doctor_enhanced_and_self_healing(production_setup):
     assert preflight.is_ready_for_startup is True
     assert preflight.checks_passed == preflight.checks_total
 
-    # 2. 5-Subsystem Diagnostics and Automated Healing
+    # 2. 6-Subsystem Diagnostics and Automated Healing
     report = doctor.diagnose_and_heal()
     assert report.overall_status == "HEALTHY"
-    assert len(report.subsystem_reports) == 5
+    assert len(report.subsystem_reports) == 6
     assert "friday_core" in report.subsystem_reports
     assert "trading_bot" in report.subsystem_reports
     assert "forge" in report.subsystem_reports
     assert "ai_universe" in report.subsystem_reports
     assert "nexus" in report.subsystem_reports
+    assert "sentinel" in report.subsystem_reports
     assert len(report.healing_actions_taken) == 3

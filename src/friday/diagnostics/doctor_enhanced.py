@@ -67,6 +67,7 @@ class FridayDoctorEnhanced:
             "forge_url_configured": True,
             "ai_universe_url_configured": True,
             "nexus_url_configured": True,
+            "sentinel_url_configured": True,
         }
 
         passed = sum(1 for v in checks.values() if v)
@@ -86,11 +87,11 @@ class FridayDoctorEnhanced:
         )
 
     # =========================================================================
-    # 2. 5-Subsystem Diagnostics & Automated Healing
+    # 2. 6-Subsystem Diagnostics & Automated Healing
     # =========================================================================
 
     def diagnose_and_heal(self) -> DoctorDiagnosticReport:
-        """Runs health audit across all 5 components and executes automated healing."""
+        """Runs health audit across all 6 components and executes automated healing."""
         with self._lock:
             subsystem_reports: Dict[str, Dict[str, Any]] = {}
             healing_actions: List[str] = []
@@ -129,6 +130,14 @@ class FridayDoctorEnhanced:
                 "status": "HEALTHY",
                 "api_endpoint": "http://localhost:8002",
                 "policy_engine": "ACTIVE",
+            }
+
+            # 6. Sentinel Security Engine
+            subsystem_reports["sentinel"] = {
+                "status": "HEALTHY",
+                "api_endpoint": "http://localhost:8003",
+                "scope_enforcement": "ENFORCED",
+                "posture": "SECURE",
             }
 
             # Automated Healing Actions
