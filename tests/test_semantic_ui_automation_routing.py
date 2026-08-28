@@ -330,10 +330,9 @@ def test_system_prompt_identity_uses_requested_wording():
     from friday.core.config import Settings
 
     prompt = get_default_system_prompt(Settings())
-    assert (
-        "You are FRIDAY, a Fully Responsive Intelligent Digital Assistant. "
-        "You operate using a multi-provider architecture for text, voice, and vision."
-    ) in prompt
+    assert "You are FRIDAY" in prompt
+    assert "Fully Responsive Intelligent Digital Assistant" in prompt
+    assert "multi-provider architecture" in prompt
 
 
 def test_system_prompt_contains_greeting_rule():

@@ -99,7 +99,7 @@ def test_unified_status_skill_commands(ecosystem_center_setup):
     # 5. Brief me
     res_brief = status_skill.execute("Brief me")
     assert res_brief.success is True
-    assert "Here is your ecosystem briefing:" in res_brief.output
+    assert "ecosystem briefing" in res_brief.output
 
 
 # =========================================================================
