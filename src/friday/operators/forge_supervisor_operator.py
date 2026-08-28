@@ -149,6 +149,24 @@ class ForgeSupervisorOperator(BaseOperator):
                 events.append(ev)
                 self._emit_alert(f"FORGE TASK BLOCKED: {tid}", ev["message"], AlertSeverity.WARNING)
 
+            # 4. Task Stuck in RUNNING > 30 minutes
+            elif t.state == "RUNNING" and f"STUCK_{tid}" not in self._notified_events:
+                try:
+                    created_dt = datetime.fromisoformat(t.created_at)
+                    if (datetime.now(timezone.utc) - created_dt).total_seconds() > 1800:
+                        self._notified_events.add(f"STUCK_{tid}")
+                        ev = {
+                            "type": "TASK_STUCK_RUNNING",
+                            "task_id": tid,
+                            "goal": t.goal,
+                            "message": f"WARNING: FORGE task {tid} ('{t.goal}') has been RUNNING for > 30 minutes.",
+                            "severity": "WARNING",
+                        }
+                        events.append(ev)
+                        self._emit_alert(f"FORGE TASK STUCK: {tid}", ev["message"], AlertSeverity.WARNING)
+                except Exception:
+                    pass
+
         return events
 
     def _emit_alert(self, title: str, message: str, severity: AlertSeverity) -> None:

@@ -223,11 +223,16 @@ class ForgeManagerSkill(BaseSkill):
         return res["task_id"]
 
     def get_task_status(self, task_id: str) -> Dict[str, Any]:
-        """Calls FORGE GET /api/tasks/{task_id} returning state, progress, and timeline."""
+        """Calls FORGE GET /api/tasks/{task_id} returning state, progress, ETA, and timeline."""
         with self._lock:
             task = self._tasks.get(task_id)
             if not task:
                 return {"task_id": task_id, "state": "NOT_FOUND", "status": "NOT_FOUND", "error": f"Task {task_id} not found."}
+
+            remaining_pct = max(0.0, 100.0 - task.progress_pct)
+            # Estimated ETA: ~1.5 seconds per remaining percent
+            eta_seconds = int(remaining_pct * 1.5) if task.state in ("RUNNING", "READY", "PENDING", "VERIFYING") else 0
+            eta_display = f"{eta_seconds}s" if eta_seconds > 0 else ("Completed" if task.state == "COMPLETED" else "N/A")
 
             return {
                 "task_id": task.task_id,
@@ -236,6 +241,8 @@ class ForgeManagerSkill(BaseSkill):
                 "status": task.state,
                 "progress_pct": task.progress_pct,
                 "priority": task.priority,
+                "eta_seconds": eta_seconds,
+                "eta_display": eta_display,
                 "files_count": len(task.files_created),
                 "artifacts_count": len(task.artifacts),
                 "artifacts": list(task.artifacts),
@@ -462,7 +469,18 @@ class ForgeManagerSkill(BaseSkill):
                 step_results.append({"action": "get_artifacts", "count": len(all_artifacts)})
                 return SkillExecutionResult(skill_name=self.name, success=True, output=spoken, step_results=step_results)
 
-            # 7. SENSITIVE: "Ask Forge to build [goal]" / "Forge, build me a [goal]"
+            # 7. SENSITIVE: "Ask Forge to build [goal]" / "Forge, build me a [goal]" / "Forge, build a CLI tool for [description]"
+            match_cli_template = re.search(r"forge,?\s+build\s+a\s+cli\s+tool\s+for\s+(.+)", clean)
+            if match_cli_template:
+                desc = match_cli_template.group(1).strip()
+                res = self.submit_build_request(f"Create a CLI utility for {desc}", options={"context": {"name": "tool", "features": desc}})
+                spoken = (
+                    f"Understood. I have expanded your CLI tool template and submitted task `{res['task_id']}` to FORGE: "
+                    f"'{res['goal']}'. Execution is underway."
+                )
+                step_results.append({"action": "submit_build_request", "task_id": res["task_id"]})
+                return SkillExecutionResult(skill_name=self.name, success=True, output=spoken, step_results=step_results)
+
             match_build = re.search(r"(?:ask\s+forge\s+to\s+build|forge,?\s+build\s+(?:me\s+a\s+)?|build\s+me\s+a\s+)(.+)", clean)
             if match_build:
                 goal_desc = match_build.group(1).strip()

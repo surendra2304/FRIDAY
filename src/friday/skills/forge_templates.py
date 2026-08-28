@@ -34,24 +34,24 @@ class ForgeTemplateLibrary:
     TEMPLATES = {
         TaskTemplateType.WEBSITE: (
             "Build a responsive {type} website with {features}. "
-            "Include: index.html with semantic HTML5, style.css with modern CSS (flexbox/grid), "
-            "app.js with vanilla JavaScript. Requirements: mobile-responsive, accessible (ARIA labels), dark mode toggle."
+            "Include: index.html semantic HTML5, style.css modern CSS flexbox/grid, "
+            "app.js vanilla JavaScript. Mobile-responsive, accessible ARIA, dark mode toggle."
         ),
         TaskTemplateType.CLI_TOOL: (
             "Create a robust CLI {name} utility with {features}. "
-            "Use Python with argparse, JSON persistence, proper error handling, and comprehensive help text."
+            "Python argparse, JSON persistence, error handling, help text."
         ),
         TaskTemplateType.API_SERVICE: (
             "Build a FastAPI service with {endpoints}. "
-            "Include: proper Pydantic models, error handling, health endpoint, OpenAPI docs, and pytest test suite."
+            "Pydantic models, error handling, health endpoint, OpenAPI docs, pytest suite."
         ),
         TaskTemplateType.DASHBOARD: (
             "Build a real-time dashboard with {panels}. "
-            "Use HTML/CSS/JS, WebSocket updates, and responsive design."
+            "HTML/CSS/JS, WebSocket updates, responsive."
         ),
         TaskTemplateType.SCRIPT: (
             "Write a Python script that {functionality}. "
-            "Include argparse CLI, logging, error handling, and documentation."
+            "argparse CLI, logging, error handling, documentation."
         ),
     }
 
