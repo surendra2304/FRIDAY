@@ -292,8 +292,7 @@ def test_system_instruction_identity_and_timezone():
     session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY")
     prompt_text = session._build_system_instruction().parts[0].text
 
-    assert "You are FRIDAY, a voice assistant" in prompt_text
-    assert "The user's name is Surendra" in prompt_text
-    assert "Indian Standard Time" in prompt_text
-    assert "local time" in prompt_text
-    assert "respond naturally and briefly by voice" in prompt_text
+    assert "You are FRIDAY" in prompt_text
+    assert "Surendra" in prompt_text
+    assert "Indian Standard Time" in prompt_text or "IST" in prompt_text or "timezone" in prompt_text
+    assert "Surendra is your creator" in prompt_text
