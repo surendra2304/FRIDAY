@@ -77,6 +77,7 @@ class SkillRegistry:
         from friday.skills.help_system import HelpSystemSkill
         from friday.skills.sentinel_manager import SentinelManagerSkill
         from friday.skills.intelx_manager import IntelXManagerSkill
+        from friday.skills.futuris_manager import FuturisManagerSkill
 
         builtins = [
             NetworkDiagnosticSkill(),
@@ -102,6 +103,7 @@ class SkillRegistry:
             HelpSystemSkill(),
             SentinelManagerSkill(),
             IntelXManagerSkill(),
+            FuturisManagerSkill(),
         ]
         for s in builtins:
             if s.name not in self._skills:
