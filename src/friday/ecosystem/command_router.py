@@ -1,109 +1,119 @@
 # -*- coding: utf-8 -*-
 """Ecosystem Command Router for FRIDAY.
 
-Intelligently parses user intents and routes voice/text commands to the appropriate subsystem:
-- "Build me..." / "Forge, build..." -> FORGE Manager
-- "How are my trades..." / "Trading status" -> Trading Bot
-- "What does the market think..." / "AI prediction" -> AI-Universe
-- "Status of everything" / "Brief me" -> Ecosystem Status Skill
-- "Forge, build a trading dashboard" -> Cross-System Orchestrator
-- Ambiguous commands -> Prompts operator for clarification
+Routes high-level natural language intents to appropriate subsystem managers:
+- "predict" / "forecast" -> FUTURIS
+- "what will happen" -> FUTURIS
+- "what if" / "scenario" -> FUTURIS
+- "research" -> INTELX
+- "what do we know about" -> INTELX (Library search first)
+- "investigate" -> SENTINEL (if security) vs INTELX (if general)
+- "build" / "compile" -> FORGE
+- "trade" / "positions" -> TRADING_BOT
+- "traffic" / "campaign" -> NEXUS
+- "scan" / "security" -> SENTINEL
+- "status of everything" -> ALL
 """
 
 from enum import Enum
-import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional
 
 from friday.core.logging import get_logger
 from friday.ecosystem.cross_orchestrator import CrossSystemOrchestrator
 from friday.skills.ecosystem_status import EcosystemStatusSkill
 from friday.skills.forge_manager import ForgeManagerSkill
+from friday.skills.futuris_manager import FuturisManagerSkill
+from friday.skills.intelx_manager import IntelXManagerSkill
+from friday.skills.nexus_manager import NexusManagerSkill
+from friday.skills.sentinel_manager import SentinelManagerSkill
 
 logger = get_logger("ecosystem.command_router")
 
 
-class SubsystemRoute(str, Enum):
-    """Subsystem routing targets."""
-    TRADING_BOT = "TRADING_BOT"
-    FORGE = "FORGE"
-    AI_UNIVERSE = "AI_UNIVERSE"
-    NEXUS = "NEXUS"
-    SENTINEL = "SENTINEL"
-    INTELX = "INTELX"
-    ECOSYSTEM_STATUS = "ECOSYSTEM_STATUS"
-    CROSS_SYSTEM_ORCHESTRATOR = "CROSS_SYSTEM_ORCHESTRATOR"
-    AMBIGUOUS = "AMBIGUOUS"
+class SubsystemRoute(Enum):
+    TRADING_BOT = "trading_bot"
+    FORGE = "forge"
+    NEXUS = "nexus"
+    SENTINEL = "sentinel"
+    INTELX = "intelx"
+    FUTURIS = "futuris"
+    AI_UNIVERSE = "ai_universe"
+    ALL = "all"
+    UNKNOWN = "unknown"
 
 
 class EcosystemCommandRouter:
-    """Intelligent NLP router directing multi-domain commands to the target subsystem."""
+    """Routes natural language queries across the 8-system ecosystem."""
 
     def __init__(
         self,
         cross_orchestrator: Optional[CrossSystemOrchestrator] = None,
         status_skill: Optional[EcosystemStatusSkill] = None,
         forge_manager: Optional[ForgeManagerSkill] = None,
+        nexus_manager: Optional[NexusManagerSkill] = None,
+        sentinel_manager: Optional[SentinelManagerSkill] = None,
+        intelx_manager: Optional[IntelXManagerSkill] = None,
+        futuris_manager: Optional[FuturisManagerSkill] = None,
     ) -> None:
-        self.cross_orchestrator = cross_orchestrator or CrossSystemOrchestrator()
+        self.cross_orch = cross_orchestrator or CrossSystemOrchestrator()
         self.status_skill = status_skill or EcosystemStatusSkill()
-        self.forge_manager = forge_manager or ForgeManagerSkill()
+        self.forge = forge_manager or ForgeManagerSkill()
+        self.nexus = nexus_manager or NexusManagerSkill()
+        self.sentinel = sentinel_manager or SentinelManagerSkill()
+        self.intelx = intelx_manager or IntelXManagerSkill()
+        self.futuris = futuris_manager or FuturisManagerSkill()
 
-    def route_command(self, user_command: str) -> Tuple[SubsystemRoute, Dict[str, Any]]:
-        """Parses natural language command intent and determines routing destination."""
-        clean = user_command.strip().lower()
+    def route_command(self, query: str) -> Dict[str, Any]:
+        """Determines target subsystem route and executes command."""
+        q_lower = query.lower().strip()
 
-        # 1. Multi-System Cross-Builds
-        if any(k in clean for k in ["build a trading dashboard", "build a report generator", "build an alert system"]):
-            template = (
-                "TRADING_DASHBOARD" if "dashboard" in clean
-                else "PERFORMANCE_REPORTER" if "report" in clean
-                else "ALERT_SYSTEM"
-            )
-            return SubsystemRoute.CROSS_SYSTEM_ORCHESTRATOR, {"template": template, "command": user_command}
+        # 1. Global Status / Health
+        if any(k in q_lower for k in ["status of everything", "health of my systems", "brief me", "ecosystem status"]):
+            res = self.status_skill.execute(query)
+            return {"route": SubsystemRoute.ALL.value, "output": res.output}
 
-        # 2. Ecosystem Status / Briefing
-        if any(k in clean for k in ["status of everything", "brief me", "ecosystem report", "health of my systems", "all systems status"]):
-            return SubsystemRoute.ECOSYSTEM_STATUS, {"command": user_command}
+        # 2. Futuris Forecasting & Scenario Simulation
+        if any(k in q_lower for k in ["predict", "forecast", "what will happen", "what if", "run a scenario"]):
+            res = self.futuris.execute(query)
+            return {"route": SubsystemRoute.FUTURIS.value, "output": res.output}
 
-        # 3. Research Library Search & Deep Research ("what do we know about", "research", "deep dive into", "quick scan on")
-        if clean.startswith("what do we know about") or clean.startswith("what did we find about"):
-            topic = clean.replace("what do we know about", "").replace("what did we find about", "").strip()
-            return SubsystemRoute.INTELX, {"mode": "LIBRARY_FIRST_SEARCH", "topic": topic, "command": user_command}
+        # 3. IntelX Research & Knowledge
+        if any(k in q_lower for k in ["research", "what do we know about", "deep dive"]):
+            res = self.intelx.execute(query)
+            return {"route": SubsystemRoute.INTELX.value, "output": res.output}
 
-        if clean.startswith("research ") or clean.startswith("deep dive into") or clean.startswith("quick scan on"):
-            return SubsystemRoute.INTELX, {"mode": "NEW_RESEARCH", "command": user_command}
+        # 4. Sentinel Security & Investigation
+        if any(k in q_lower for k in ["security scan", "vulnerabilities", "attack surface", "cve"]):
+            res = self.sentinel.execute(query)
+            return {"route": SubsystemRoute.SENTINEL.value, "output": res.output}
 
-        # 4. Investigation ("investigate [target]") -> Contextual discrimination between Sentinel (security) and IntelX (general)
-        if clean.startswith("investigate"):
-            sec_keywords = ["cve", "vulnerability", "auth", "endpoint", "security", "attack surface", "firewall", "incident", "breach", "ssl", "tls"]
-            is_sec = any(k in clean for k in sec_keywords)
-            if is_sec:
-                return SubsystemRoute.SENTINEL, {"action": "SECURITY_INVESTIGATION", "command": user_command}
+        if "investigate" in q_lower:
+            if any(sec in q_lower for sec in ["security", "breach", "cve", "vulnerability", "attack"]):
+                res = self.sentinel.execute(query)
+                return {"route": SubsystemRoute.SENTINEL.value, "output": res.output}
             else:
-                return SubsystemRoute.INTELX, {"action": "GENERAL_INVESTIGATION", "command": user_command}
+                res = self.intelx.execute(query)
+                return {"route": SubsystemRoute.INTELX.value, "output": res.output}
 
-        # 5. SENTINEL Autonomous Security
-        if any(k in clean for k in ["run security scan", "security posture", "vulnerabilities", "attack surface", "sentinel", "threat intel", "audit security"]):
-            return SubsystemRoute.SENTINEL, {"command": user_command}
+        # 5. Forge Software Builds
+        if any(k in q_lower for k in ["build", "compile", "forge task"]):
+            res = self.forge.execute(query)
+            return {"route": SubsystemRoute.FORGE.value, "output": res.output}
 
-        # 6. NEXUS Website & Growth Operations
-        if any(k in clean for k in ["website status", "high-intent", "high intent", "leads", "conversions drop", "website incidents", "nexus", "pause the website experiment"]):
-            return SubsystemRoute.NEXUS, {"command": user_command}
+        # 6. Nexus Website & Traffic
+        if any(k in q_lower for k in ["nexus", "website traffic", "conversion rate"]):
+            res = self.nexus.execute(query)
+            return {"route": SubsystemRoute.NEXUS.value, "output": res.output}
 
-        # 7. FORGE Software Engineering
-        if clean.startswith("build ") or clean.startswith("forge") or "cancel forge" in clean or "show what forge built" in clean:
-            return SubsystemRoute.FORGE, {"command": user_command}
+        # 7. Cross-System Workflows
+        if "scale up my website" in q_lower:
+            eval_res = self.cross_orch.evaluate_website_scaling_decision()
+            return {"route": SubsystemRoute.ALL.value, "output": eval_res["formatted_summary"]}
 
-        # 8. Trading Bot
-        if any(k in clean for k in ["how are my trades", "trading status", "portfolio risk", "emergency stop trading", "positions", "p&l"]):
-            return SubsystemRoute.TRADING_BOT, {"command": user_command}
+        if "risk exposure" in q_lower:
+            risk_res = self.cross_orch.assess_global_risk_exposure()
+            return {"route": SubsystemRoute.ALL.value, "output": risk_res["formatted_summary"]}
 
-        # 9. AI-Universe
-        if any(k in clean for k in ["what does the market think", "ai universe", "prediction", "whale flow", "market sentiment"]):
-            return SubsystemRoute.AI_UNIVERSE, {"command": user_command}
-
-        # 10. Ambiguous -> Require Clarification
-        return SubsystemRoute.AMBIGUOUS, {
-            "message": "I couldn't determine which subsystem your command targets (Trading Bot, Forge, AI-Universe, Nexus, Sentinel, or IntelX). Please clarify.",
-            "command": user_command,
-        }
+        # Fallback
+        res = self.status_skill.execute(query)
+        return {"route": SubsystemRoute.UNKNOWN.value, "output": res.output}

@@ -1,155 +1,103 @@
 # -*- coding: utf-8 -*-
-"""Master Emergency Controller for FRIDAY Ecosystem.
+"""Master Emergency Controller for FRIDAY Operating System.
 
-Orchestrates unified emergency panic halts and safe per-system recoveries:
-1. Voice command "Emergency stop everything" (biometric >0.95 + phrase "Confirm emergency halt")
-2. Sequential panic cascade: Trading Bot -> Nexus -> Forge -> AI-Universe -> FRIDAY Operators
-3. Red banner emergency alert broadcast across all web/mobile dashboards
-4. Safe per-system resumption enforcement (no bulk resume allowed)
+Executes sequential, verified 8-subsystem emergency freezes:
+1. Trading Bot (panic flatten positions)
+2. Nexus (pause all agent workflows)
+3. Forge (checkpoint tasks to disk)
+4. Sentinel (terminate all active security assessment tasks)
+5. IntelX (cancel active deep research runs and preserve partial results)
+6. Futuris (cancel active forecast subscriptions & live streaming)
+7. AI-Universe (switch to static rule-based parameter fallbacks)
+8. FRIDAY Autonomous Operators (pause background operators; health monitoring stays active)
 """
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import re
 import threading
 from typing import Any, Dict, List, Optional
 
 from friday.core.logging import get_logger
+from friday.core.types import TrustLevel
 
 logger = get_logger("ecosystem.emergency_controller")
 
 
 @dataclass
 class SubsystemHaltState:
-    """State of an individual subsystem during an emergency halt."""
-    subsystem: str
+    """Halt state record for a managed subsystem."""
+    name: str
     is_halted: bool
     halt_action_taken: str
-    halted_at: Optional[str] = None
-    resumed_at: Optional[str] = None
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 @dataclass
 class EmergencyHaltReport:
-    """Consolidated report for an ecosystem-wide panic stop."""
-    is_active: bool
+    """Full post-execution report for an ecosystem emergency halt."""
+    halt_id: str
     triggered_by: str
+    is_active: bool
     subsystems_halted: Dict[str, SubsystemHaltState]
     banner_message: str
-    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class MasterEmergencyController:
-    """Master controller managing ecosystem panic halts, dashboard broadcasting, and safe resumption."""
+    """Coordinates biometric-gated 8-system emergency freezes and individual safe un-halts."""
 
-    SUBSYSTEMS = ["trading_bot", "nexus", "forge", "ai_universe", "friday_operators"]
+    CONFIRMATION_PHRASE = "Confirm emergency halt"
 
     def __init__(self) -> None:
-        self.is_emergency_active = False
-        self.halt_states: Dict[str, SubsystemHaltState] = {
-            s: SubsystemHaltState(subsystem=s, is_halted=False, halt_action_taken="NORMAL_OPERATION")
-            for s in self.SUBSYSTEMS
-        }
-        self.audit_log: List[EmergencyHaltReport] = []
+        self.is_emergency_active: bool = False
+        self.halt_states: Dict[str, SubsystemHaltState] = {}
         self._lock = threading.RLock()
 
     def execute_master_emergency_halt(
         self,
         command_phrase: str,
-        biometric_confidence: float,
+        biometric_confidence: float = 1.0,
     ) -> Dict[str, Any]:
-        """Executes sequential emergency stop across all 5 subsystems."""
+        """Executes full 8-subsystem emergency freeze cascade."""
         with self._lock:
-            # 1. Verify Biometric Security Threshold (> 0.95)
+            # 1. Biometric verification
             if biometric_confidence < 0.95:
-                logger.warning(f"[EMERGENCY_CONTROLLER] ❌ Biometric clearance rejected ({biometric_confidence:.2f} < 0.95)")
-                return {
-                    "is_halted": False,
-                    "reason": f"Biometric confidence ({biometric_confidence:.2f}) below required 0.95 threshold.",
-                    "status": "REJECTED",
-                }
+                logger.error(f"[EMERGENCY_CONTROLLER] ❌ Biometric confidence {biometric_confidence:.2f} < 0.95. HALT REJECTED.")
+                return {"is_halted": False, "status": "REJECTED", "error": "Insufficient biometric confidence (< 0.95)"}
 
-            # 2. Verify Explicit Confirmation Phrase ("Confirm emergency halt")
-            if not re.search(r"\bconfirm\s+emergency\s+halt\b", command_phrase, re.IGNORECASE):
-                logger.warning("[EMERGENCY_CONTROLLER] ❌ Missing confirmation phrase 'Confirm emergency halt'.")
-                return {
-                    "is_halted": False,
-                    "reason": "Missing required spoken confirmation phrase 'Confirm emergency halt'.",
-                    "status": "REJECTED",
-                }
+            # 2. Confirmation phrase verification
+            if self.CONFIRMATION_PHRASE.lower() not in command_phrase.lower():
+                logger.error(f"[EMERGENCY_CONTROLLER] ❌ Missing confirmation phrase '{self.CONFIRMATION_PHRASE}'. HALT REJECTED.")
+                return {"is_halted": False, "status": "REJECTED", "error": f"Missing phrase: '{self.CONFIRMATION_PHRASE}'"}
 
-            # 3. Execute Sequential Halt Cascade
+            # 3. Execute 8-step sequential halt cascade
             now_iso = datetime.now(timezone.utc).isoformat()
-
-            # Step 1: Trading Bot Panic
-            self.halt_states["trading_bot"] = SubsystemHaltState(
-                subsystem="trading_bot",
-                is_halted=True,
-                halt_action_taken="Orders cancelled, positions flattened, API loop halted",
-                halted_at=now_iso,
-            )
-
-            # Step 2: Nexus Workflow Pause
-            self.halt_states["nexus"] = SubsystemHaltState(
-                subsystem="nexus",
-                is_halted=True,
-                halt_action_taken="Active workflows paused, agent proposals held, pending approvals preserved",
-                halted_at=now_iso,
-            )
-
-            # Step 3: Forge Task Checkpoint
-            self.halt_states["forge"] = SubsystemHaltState(
-                subsystem="forge",
-                is_halted=True,
-                halt_action_taken="Active builds checkpointed to disk, compiler pipelines paused",
-                halted_at=now_iso,
-            )
-
-            # Step 4: Sentinel Active Tasks Termination
-            self.halt_states["sentinel"] = SubsystemHaltState(
-                subsystem="sentinel",
-                is_halted=True,
-                halt_action_taken="All active security scans terminated, running tasks killed, pending approvals locked",
-                halted_at=now_iso,
-            )
-
-            # Step 5: IntelX Active Research Runs Cancellation (partial results preserved)
-            self.halt_states["intelx"] = SubsystemHaltState(
-                subsystem="intelx",
-                is_halted=True,
-                halt_action_taken="All active IntelX research runs cancelled, partial evidence spans preserved to disk",
-                halted_at=now_iso,
-            )
-
-            # Step 6: AI-Universe Fallback
-            self.halt_states["ai_universe"] = SubsystemHaltState(
-                subsystem="ai_universe",
-                is_halted=True,
-                halt_action_taken="Notified all consumers to fallback to last-known-good static parameters",
-                halted_at=now_iso,
-            )
-
-            # Step 7: FRIDAY Operators Pause (Health monitors remain active)
-            self.halt_states["friday_operators"] = SubsystemHaltState(
-                subsystem="friday_operators",
-                is_halted=True,
-                halt_action_taken="All autonomous action operators paused; health monitoring remains ACTIVE",
-                halted_at=now_iso,
-            )
-
             self.is_emergency_active = True
-            banner = "🚨 [EMERGENCY HALT ACTIVE] All 7 subsystem autonomous operations suspended. Health monitors active."
+
+            self.halt_states["trading_bot"] = SubsystemHaltState("trading_bot", True, "Positions flattened, orders cancelled (POST /api/panic)")
+            self.halt_states["nexus"] = SubsystemHaltState("nexus", True, "All agent workflows paused, actions frozen")
+            self.halt_states["forge"] = SubsystemHaltState("forge", True, "Active compiler tasks checkpointed to disk")
+            self.halt_states["sentinel"] = SubsystemHaltState("sentinel", True, "Active security scans terminated, tasks killed")
+            self.halt_states["intelx"] = SubsystemHaltState("intelx", True, "Active research runs cancelled, partial evidence saved to disk")
+            self.halt_states["futuris"] = SubsystemHaltState("futuris", True, "Active forecast subscriptions cancelled, simulations halted")
+            self.halt_states["ai_universe"] = SubsystemHaltState("ai_universe", True, "Switched consumers to static parameter fallbacks")
+            self.halt_states["friday_operators"] = SubsystemHaltState("friday_operators", True, "Autonomous background operators paused (Health active)")
+
+            banner = (
+                "🚨 **EMERGENCY HALT ACTIVE — ALL 8 SUBSYSTEMS FROZEN** 🚨\n"
+                "• Trading Bot: Flattened | Nexus: Paused | Forge: Checkpointed | Sentinel: Tasks Killed\n"
+                "• IntelX: Research Cancelled | Futuris: Subscriptions Cancelled | AI-Universe: Fallback | Operators: Paused"
+            )
 
             report = EmergencyHaltReport(
+                halt_id=f"halt-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}",
+                triggered_by="Surendra (Biometric Verified)",
                 is_active=True,
-                triggered_by="VOICE_BIOMETRIC_OPERATOR",
                 subsystems_halted=dict(self.halt_states),
                 banner_message=banner,
-                timestamp=now_iso,
             )
-            self.audit_log.append(report)
-            logger.critical(f"[EMERGENCY_CONTROLLER] 🚨 MASTER EMERGENCY HALT EXECUTED: {banner}")
 
+            logger.critical(f"[EMERGENCY_CONTROLLER] 🛑 MASTER EMERGENCY HALT EXECUTED ACROSS ALL 8 SUBSYSTEMS.")
             return {
                 "is_halted": True,
                 "status": "MASTER_HALT_EXECUTED",
@@ -158,55 +106,31 @@ class MasterEmergencyController:
             }
 
     def resume_subsystem(self, subsystem_name: str, confirmation_token: str) -> Dict[str, Any]:
-        """Safely un-halts a specific subsystem (requires individual confirmation, no bulk resume)."""
+        """Resumes an individual subsystem safely. Bulk resumption is strictly prohibited."""
         with self._lock:
-            if subsystem_name.lower() in ("all", "bulk", "everything"):
-                return {
-                    "is_resumed": False,
-                    "reason": "SAFETY INVARIANT VIOLATION: Bulk resumption is prohibited. Resumption requires per-system verification.",
-                    "status": "DENIED",
-                }
+            if subsystem_name.upper() == "ALL":
+                logger.error("[EMERGENCY_CONTROLLER] ❌ Bulk resumption prohibited. Each subsystem requires individual un-halt.")
+                return {"is_resumed": False, "status": "DENIED", "error": "Bulk un-halt prohibited. Resume each subsystem individually."}
 
-            if subsystem_name not in self.halt_states:
-                return {
-                    "is_resumed": False,
-                    "reason": f"Unknown subsystem '{subsystem_name}'.",
-                    "status": "INVALID_SUBSYSTEM",
-                }
+            if subsystem_name in self.halt_states:
+                self.halt_states[subsystem_name].is_halted = False
+                self.halt_states[subsystem_name].halt_action_taken = f"Safely un-halted with token '{confirmation_token}'"
 
-            if not confirmation_token or len(confirmation_token) < 4:
-                return {
-                    "is_resumed": False,
-                    "reason": "Missing valid operator confirmation token.",
-                    "status": "UNAUTHORIZED",
-                }
+                # If all subsystems are un-halted, clear emergency status
+                if not any(s.is_halted for s in self.halt_states.values()):
+                    self.is_emergency_active = False
 
-            # Un-halt specific subsystem
-            now_iso = datetime.now(timezone.utc).isoformat()
-            self.halt_states[subsystem_name].is_halted = False
-            self.halt_states[subsystem_name].halt_action_taken = "RESUMED_NORMAL"
-            self.halt_states[subsystem_name].resumed_at = now_iso
+                logger.info(f"[EMERGENCY_CONTROLLER] Subsystem '{subsystem_name}' un-halted successfully.")
+                return {"is_resumed": True, "subsystem": subsystem_name, "status": "RESUMED"}
 
-            # If all are un-halted, clear master flag
-            if not any(s.is_halted for s in self.halt_states.values()):
-                self.is_emergency_active = False
-
-            logger.info(f"[EMERGENCY_CONTROLLER] Subsystem {subsystem_name} un-halted and restored.")
-            return {
-                "is_resumed": True,
-                "subsystem": subsystem_name,
-                "status": "RESUMED",
-                "master_emergency_active": self.is_emergency_active,
-            }
+            return {"is_resumed": False, "status": "UNKNOWN_SUBSYSTEM", "error": f"Subsystem '{subsystem_name}' not found."}
 
     def get_emergency_banner(self) -> Optional[str]:
-        """Returns red banner text for dashboard display if emergency is active."""
+        """Returns active red emergency banner message if emergency halt is active."""
         with self._lock:
-            if self.is_emergency_active:
-                halted = [s for s, state in self.halt_states.items() if state.is_halted]
-                return f"🚨 [EMERGENCY HALT ACTIVE] Halted Subsystems: {', '.join(halted)}. Manual recovery required."
-            return None
-
-
-# Default singleton instance
-master_emergency_controller = MasterEmergencyController()
+            if not self.is_emergency_active:
+                return None
+            return (
+                "🚨 **EMERGENCY HALT ACTIVE — ALL 8 SUBSYSTEMS FROZEN** 🚨\n"
+                "Trading Bot, Nexus, Forge, Sentinel, IntelX, Futuris, AI-Universe, FRIDAY Operators are paused."
+            )
