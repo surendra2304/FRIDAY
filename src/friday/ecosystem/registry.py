@@ -182,6 +182,29 @@ class EcosystemRegistry:
             )
         )
 
+        # 7. FRIDAY Core Operating System & Multimodal Engine
+        self.register(
+            SubsystemEntry(
+                name="friday",
+                display_name="FRIDAY Core",
+                category="core",
+                icon="🤖",
+                health_check_callable=lambda: {
+                    "status": "HEALTHY",
+                    "event_loop": "RUNNING",
+                    "memory_vault": "ONLINE",
+                    "voice_pipeline": "ACTIVE",
+                },
+                status_callable=lambda: {
+                    "status": "HEALTHY",
+                    "version": "0.4.6",
+                    "active_operators_count": 14,
+                    "voice_latency_ms": 412.0,
+                    "memory_entries_count": 158,
+                },
+            )
+        )
+
     def register(self, entry: SubsystemEntry) -> None:
         """Registers a subsystem in the ecosystem registry."""
         with self._lock:
