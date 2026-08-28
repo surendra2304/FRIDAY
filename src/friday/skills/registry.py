@@ -72,6 +72,7 @@ class SkillRegistry:
         from friday.skills.voice_ecosystem import VoiceEcosystemSkill
         from friday.skills.ecosystem_status import EcosystemStatusSkill
         from friday.skills.nexus_operator import NexusOperatorSkill
+        from friday.skills.nexus_manager import NexusManagerSkill
         from friday.skills.conversational_ecosystem import ConversationalEcosystemQuery
 
         builtins = [
@@ -93,6 +94,7 @@ class SkillRegistry:
             VoiceEcosystemSkill(),
             EcosystemStatusSkill(),
             NexusOperatorSkill(),
+            NexusManagerSkill(),
             ConversationalEcosystemQuery(),
         ]
         for s in builtins:

@@ -22,6 +22,7 @@ from friday.operators.forge_monitor import ForgeMonitorOperator
 from friday.operators.forge_supervisor_operator import ForgeSupervisorOperator
 from friday.operators.forge_health_operator import ForgeHealthOperator
 from friday.operators.nexus_vigilance_operator import NexusVigilanceOperator
+from friday.operators.nexus_supervisor import NexusSupervisorOperator
 from friday.operators.ecosystem_anomaly_operator import EcosystemAnomalyDetection
 from friday.operators.memory_health_operator import MemoryHealthMonitor
 from friday.operators.scheduled_intelligence import ScheduledIntelligenceOperator
@@ -51,6 +52,7 @@ __all__ = [
     "ForgeSupervisorOperator",
     "ForgeHealthOperator",
     "NexusVigilanceOperator",
+    "NexusSupervisorOperator",
     "EcosystemAnomalyDetection",
     "MemoryHealthMonitor",
     "ScheduledIntelligenceOperator",
