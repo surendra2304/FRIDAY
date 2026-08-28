@@ -167,9 +167,11 @@ ead_file, list_files).
 
 ---
 
-### 🌐 [Day 11 — 2026-08-28: Nexus-Sentinel Security Coordination, Asset Registry & Ecosystem Mastery](diary/2026-08-28.md)
-- **🎯 Focus**: Delivering Nexus-Sentinel Security Coordination, Asset Registry Inventory & Posture Scoring, Security Posture Dashboard, Master Emergency 6-System Halt, Master Daily Briefing with Security, Nexus & Forge Management, and Comprehensive Ecosystem Integration Test Suites.
+### 🌐 [Day 11 — 2026-08-28: IntelX Deep Research, Nexus-Sentinel Coordination & Ecosystem Mastery](diary/2026-08-28.md)
+- **🎯 Focus**: Delivering IntelX Deep Research Integration, Research Supervisor Operator, Nexus-Sentinel Security Coordination, Asset Registry Inventory & Posture Scoring, Security Posture Dashboard, Master Emergency 6-System Halt, Master Daily Briefing with Security, Nexus & Forge Management, and Comprehensive Ecosystem Integration Test Suites.
 - **💡 What I Accomplished**:
+  - Built `IntelXManagerSkill` (`src/friday/skills/intelx_manager.py`) with full REST API delegation (`POST /api/v1/friday/research`), domain auto-detection across 5 categories, 3 depth modes (`quick_scan`, `standard`, `deep_dive`), confidence-ranked findings, side-by-side contradiction analysis, markdown/JSON reports, and SENSITIVE cancellation.
+  - Built `ResearchSupervisorOperator` (`src/friday/operators/research_supervisor_operator.py`) polling active research every 60s with completion notifications, mid-run contradiction alerts, execution failure warnings, and service outage alarms.
   - Built 6 dedicated end-to-end integration test suites under `tests/ecosystem/`: `test_friday_sentinel_integration.py`, `test_friday_nexus_sentinel_coordination.py`, `test_friday_forge_sentinel_gate.py`, `test_emergency_halt_all.py`, `test_unified_briefing_with_sentinel.py`, and `test_security_approval_flow.py`.
   - Enhanced `MasterEmergencyController` (`src/friday/ecosystem/emergency_controller.py`) with complete 6-step sequential halt cascade including active Sentinel scan termination.
   - Enhanced `MasterDailyBriefingWorkflow` (`src/friday/workflows/master_briefing.py`) incorporating Sentinel security posture score, critical/high findings breakdown, and scheduled scans into morning debriefs.
@@ -177,19 +179,15 @@ ead_file, list_files).
   - Built `SecurityCoordinationWorkflow` (`src/friday/workflows/security_coordination.py`) automating new asset detection scans, anomaly-correlated incident reports, Forge deployment gating, and CVE exposure monitoring.
   - Built `SecurityPostureDashboard` (`src/friday/ui/security_panel.py`) rendering rich visual dashboard cards, asset risk badges, and attack surface graphs.
   - Wired natural voice commands for security posture breakdown, highest-risk asset identification, and website scan history into `SentinelManagerSkill`.
-  - Built `SentinelManagerSkill` (`src/friday/skills/sentinel_manager.py`) with full REST API delegation (`POST /api/v1/friday/delegate`), 7 assessment modes, findings by severity, executive/technical/soc_ir reports, attack surface graphs, HMAC-signed audit trails, and sensitive action approval workflows.
-  - Built `SentinelVigilanceOperator` (`src/friday/operators/sentinel_vigilance_operator.py`) polling every 60 seconds with instant voice alerts for critical vulnerabilities, notifications for completed scans, stale approval reminders, and service connectivity monitoring.
-  - Built `NexusManagerSkill` (`src/friday/skills/nexus_manager.py`) with 10 tools for site overview, live visitor intent scoring, lead pipeline by stage, and sensitive approval workflows.
-  - Built `NexusSupervisorOperator` (`src/friday/operators/nexus_supervisor.py`) supervising website metrics every 30 seconds across 5 distinct alert classes.
-  - Built `CascadeFailureDetector` (`src/friday/operators/cascade_detector.py`) analyzing multi-system dependency chains, isolating degraded providers, and auto-reconnecting upon health.
-  - Built `EmergencyPlaybookSystem` (`src/friday/ecosystem/playbooks.py`) orchestrating 5 automated response playbooks with real-time voice status updates.
-  - Built `OnboardingWizard` (`src/friday/onboarding/wizard.py`) providing voice-guided first-run setup with disk state persistence.
-  - Built `PersonalizationEngine` (`src/friday/core/personalization.py`) dynamically adapting response length from user interruption patterns.
+  - Built `SentinelManagerSkill` (`src/friday/skills/sentinel_manager.py`) and `SentinelVigilanceOperator` (`src/friday/operators/sentinel_vigilance_operator.py`).
+  - Built `NexusManagerSkill` (`src/friday/skills/nexus_manager.py`) and `NexusSupervisorOperator` (`src/friday/operators/nexus_supervisor.py`).
+  - Built `CascadeFailureDetector` (`src/friday/operators/cascade_detector.py`) and `EmergencyPlaybookSystem` (`src/friday/ecosystem/playbooks.py`).
+  - Built `OnboardingWizard` (`src/friday/onboarding/wizard.py`) and `PersonalizationEngine` (`src/friday/core/personalization.py`).
   - Built `HelpSystemSkill` (`src/friday/skills/help_system.py`) and registered in `SkillRegistry` for interactive capability discovery.
   - Built `MobileDashboardInterface`, `NotificationBridge`, `ConversationalVoiceInterface`, and `ScreenSharingSession`.
   - Built `ScheduledIntelligenceOperator`, `ProactiveAnomalyInvestigator`, and `AutomatedFollowUpWorkflow`.
   - Built `MemoryConsolidationEngine`, `CrossSessionLearning`, `ProactiveMemory`, and `MemoryHealthMonitor`.
-  - Authored `tests/test_security_coordination.py`, `tests/ecosystem/`, and `tests/test_sentinel_manager_and_vigilance.py` with 100% green pass rate across 215 tests in 34 suites.
+  - Authored `tests/test_intelx_manager_and_supervision.py`, `tests/test_security_coordination.py`, `tests/ecosystem/`, and `tests/test_sentinel_manager_and_vigilance.py` with 100% green pass rate across 218 tests in 35 suites.
   - Expanded `docs/OPERATIONS_RUNBOOK.md` with complete daily checklists, incident matrix, and troubleshooting guides.
-- **🛡️ Fixes & Hardening**: Enforced automated deployment security gating blocking vulnerable Forge deliverables; all Sentinel findings, reports, and attack surfaces are tagged `TrustLevel.UNTRUSTED_EXTERNAL`; aligned system prompts to explicitly acknowledge Surendra as sole creator and operator.
-- **📊 Test Results**: **1,261 passed** (+36 new tests today: 4 multimodal + 3 emergency + 3 nexus manager + 9 ecosystem + 4 sentinel + 7 security coordination + 6 ecosystem E2E; 215 total run across 34 suites at 100% green).
+- **🛡️ Fixes & Hardening**: Enforced strict `TrustLevel.UNTRUSTED_EXTERNAL` boundary across all IntelX findings, reports, and citations; numerical confidence ratings ($0.0 - 1.0$) and citation counts required for all factual claims; automated deployment security gating blocking vulnerable Forge deliverables; aligned system prompts to explicitly acknowledge Surendra as sole creator and operator.
+- **📊 Test Results**: **1,264 passed** (+39 new tests today: 4 multimodal + 3 emergency + 3 nexus manager + 9 ecosystem + 4 sentinel + 7 security coordination + 6 ecosystem E2E + 3 intelx; 218 total run across 35 suites at 100% green).
