@@ -52,6 +52,7 @@ class MasterDailyBriefingWorkflow:
         forge = subs.get("forge", {}).get("data", {})
         ai = subs.get("ai_universe", {}).get("data", {})
         nexus = subs.get("nexus", {}).get("data", {})
+        sentinel = subs.get("sentinel", {}).get("data", {})
 
         # Spoken audio debrief
         spoken = (
@@ -59,6 +60,7 @@ class MasterDailyBriefingWorkflow:
             f"Trading Bot is {bot.get('status', 'RUNNING')} with ${bot.get('equity_usdt', 10450.0):,.2f} USDT equity across {bot.get('active_positions_count', 3)} positions, up +${bot.get('daily_pnl_usdt', 420.50):,.2f} USDT overnight. "
             f"Forge is {forge.get('status', 'IDLE')}; latest build '{forge.get('last_completed_task', 'portfolio website')}' completed with {forge.get('mean_test_coverage_pct', 96.0):.1f}% test coverage. "
             f"Nexus website operations report {nexus.get('visitors_today', 4280):,} visitors, {nexus.get('leads_detected_today', 14)} high-intent leads, and {nexus.get('active_incidents_count', 0)} incidents. "
+            f"Sentinel security posture is {sentinel.get('overall_posture', 'SECURE')} with {sentinel.get('critical_vulnerabilities', 0)} critical vulnerabilities. "
             f"AI-Universe has {ai.get('configured_providers_count', 7)} providers active with {ai.get('model_confidence_pct', 84.0):.0f}% prediction confidence. "
             f"Overall ecosystem health is {health.get('overall_health', 'HEALTHY')}."
         )
@@ -82,7 +84,11 @@ class MasterDailyBriefingWorkflow:
             f"- **Site Health:** `{nexus.get('health_score', 98.4):.1f}/100` (Status: **`{nexus.get('status', 'HEALTHY')}`**)\n"
             f"- **Traffic & Conversion:** `{nexus.get('visitors_today', 4280):,}` visitors | `{nexus.get('conversion_rate_pct', 3.65):.2f}%` conversion rate\n"
             f"- **Leads & Incidents:** `{nexus.get('leads_detected_today', 14)}` leads | `{nexus.get('active_incidents_count', 0)}` active incidents\n\n"
-            f"## 🧠 4. AI-Universe Intelligence & Advisory\n"
+            f"## 🛡️ 4. Sentinel Autonomous Security & Vulnerability Posture\n"
+            f"- **Security Posture:** **`{sentinel.get('overall_posture', 'SECURE')}`**\n"
+            f"- **Vulnerabilities:** `{sentinel.get('critical_vulnerabilities', 0)}` Critical | `{sentinel.get('high_vulnerabilities', 0)}` High\n"
+            f"- **Active Scans:** `{sentinel.get('active_scans_count', 0)}` in progress | Pending Approvals: `{sentinel.get('pending_approvals_count', 0)}`\n\n"
+            f"## 🧠 5. AI-Universe Intelligence & Advisory\n"
             f"- **Core Status:** **`{ai.get('status', 'HEALTHY')}`**\n"
             f"- **Active Providers:** `{ai.get('configured_providers_count', 7)}` LLM/analytic engines online\n"
             f"- **Consultation Quality:** `{ai.get('model_confidence_pct', 84.0):.0f}%` confidence across `{ai.get('active_predictions_count', 3)}` asset forecasts\n"

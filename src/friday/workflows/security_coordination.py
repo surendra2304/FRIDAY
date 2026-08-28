@@ -72,6 +72,27 @@ class SecurityCoordinationWorkflow:
 
         # Simulate finding evaluation
         findings = self.sentinel.get_findings(task_id=task_id)
+        if not findings and task_id in self.sentinel._tasks:
+            findings = [
+                {
+                    "finding_id": f.finding_id,
+                    "title": f.title,
+                    "severity": f.severity,
+                    "target_asset": f.target_asset,
+                    "description": f.description,
+                    "cve_or_cwe": f.cve_or_cwe,
+                    "evidence_reference": f.evidence_reference,
+                    "remediation_recommendation": f.remediation_recommendation,
+                    "status": f.status,
+                    "created_at": f.created_at,
+                    "trust_level": TrustLevel.UNTRUSTED_EXTERNAL.value,
+                }
+                for f in self.sentinel._tasks[task_id].findings
+            ]
+        if not findings:
+            all_f = self.sentinel.get_findings()
+            findings = [f for f in all_f if f.get("target_asset") == target or target in str(f.get("target_asset", ""))]
+
         self.registry.update_scan_result(asset_id=asset_id, findings=findings, mode="passive_recon")
 
         crit_count = sum(1 for f in findings if f.get("severity") == "CRITICAL")
