@@ -167,9 +167,12 @@ ead_file, list_files).
 
 ---
 
-### 🌐 [Day 11 — 2026-08-28: IntelX Deep Research, Nexus-Sentinel Coordination & Ecosystem Mastery](diary/2026-08-28.md)
-- **🎯 Focus**: Delivering IntelX Deep Research Integration, Research Supervisor Operator, Nexus-Sentinel Security Coordination, Asset Registry Inventory & Posture Scoring, Security Posture Dashboard, Master Emergency 6-System Halt, Master Daily Briefing with Security, Nexus & Forge Management, and Comprehensive Ecosystem Integration Test Suites.
+### 🌐 [Day 11 — 2026-08-28: IntelX Deep Research, Cross-System Coordination & Ecosystem Mastery](diary/2026-08-28.md)
+- **🎯 Focus**: Delivering Cross-System Research Coordination, Persistent Research Library, Research Context Injector, IntelX Deep Research Integration, Research Supervisor Operator, Nexus-Sentinel Security Coordination, Asset Registry Inventory & Posture Scoring, Security Posture Dashboard, Master Emergency 6-System Halt, Master Daily Briefing with Security, Nexus & Forge Management, and Comprehensive Ecosystem Integration Test Suites.
 - **💡 What I Accomplished**:
+  - Built `ResearchCoordinationWorkflow` (`src/friday/workflows/research_coordination.py`) automating cross-system research triggers across Sentinel (CVE threat intelligence), Trading Bot (volatility/macro catalysts - advisory only), Nexus (competitor positioning), and Forge (technical stack comparisons).
+  - Built `ResearchContextInjector` (`src/friday/skills/research_context.py`) dynamically enriching trading briefings, security reports, forge build specs, and nexus insights with synthesized IntelX research.
+  - Built `ResearchLibrary` (`src/friday/memory/research_library.py`) persistent archive with keyword/domain indexing, voice search, cross-reference comparison, and confidence-weighted 90-to-180-day retention decay.
   - Built `IntelXManagerSkill` (`src/friday/skills/intelx_manager.py`) with full REST API delegation (`POST /api/v1/friday/research`), domain auto-detection across 5 categories, 3 depth modes (`quick_scan`, `standard`, `deep_dive`), confidence-ranked findings, side-by-side contradiction analysis, markdown/JSON reports, and SENSITIVE cancellation.
   - Built `ResearchSupervisorOperator` (`src/friday/operators/research_supervisor_operator.py`) polling active research every 60s with completion notifications, mid-run contradiction alerts, execution failure warnings, and service outage alarms.
   - Built 6 dedicated end-to-end integration test suites under `tests/ecosystem/`: `test_friday_sentinel_integration.py`, `test_friday_nexus_sentinel_coordination.py`, `test_friday_forge_sentinel_gate.py`, `test_emergency_halt_all.py`, `test_unified_briefing_with_sentinel.py`, and `test_security_approval_flow.py`.
@@ -187,7 +190,7 @@ ead_file, list_files).
   - Built `MobileDashboardInterface`, `NotificationBridge`, `ConversationalVoiceInterface`, and `ScreenSharingSession`.
   - Built `ScheduledIntelligenceOperator`, `ProactiveAnomalyInvestigator`, and `AutomatedFollowUpWorkflow`.
   - Built `MemoryConsolidationEngine`, `CrossSessionLearning`, `ProactiveMemory`, and `MemoryHealthMonitor`.
-  - Authored `tests/test_intelx_manager_and_supervision.py`, `tests/test_security_coordination.py`, `tests/ecosystem/`, and `tests/test_sentinel_manager_and_vigilance.py` with 100% green pass rate across 218 tests in 35 suites.
+  - Authored `tests/test_cross_system_research_coordination.py`, `tests/test_intelx_manager_and_supervision.py`, `tests/test_security_coordination.py`, `tests/ecosystem/`, and `tests/test_sentinel_manager_and_vigilance.py` with 100% green pass rate across 222 tests in 36 suites.
   - Expanded `docs/OPERATIONS_RUNBOOK.md` with complete daily checklists, incident matrix, and troubleshooting guides.
-- **🛡️ Fixes & Hardening**: Enforced strict `TrustLevel.UNTRUSTED_EXTERNAL` boundary across all IntelX findings, reports, and citations; numerical confidence ratings ($0.0 - 1.0$) and citation counts required for all factual claims; automated deployment security gating blocking vulnerable Forge deliverables; aligned system prompts to explicitly acknowledge Surendra as sole creator and operator.
-- **📊 Test Results**: **1,264 passed** (+39 new tests today: 4 multimodal + 3 emergency + 3 nexus manager + 9 ecosystem + 4 sentinel + 7 security coordination + 6 ecosystem E2E + 3 intelx; 218 total run across 35 suites at 100% green).
+- **🛡️ Fixes & Hardening**: Enforced strict `TrustLevel.UNTRUSTED_EXTERNAL` boundary across all IntelX findings, reports, and citations; market research strictly advisory (never auto-trade); confidence-weighted decay extends high-confidence research to 180 days; automated deployment security gating blocking vulnerable Forge deliverables; aligned system prompts to explicitly acknowledge Surendra as sole creator and operator.
+- **📊 Test Results**: **1,268 passed** (+43 new tests today: 4 multimodal + 3 emergency + 3 nexus manager + 9 ecosystem + 4 sentinel + 7 security coordination + 6 ecosystem E2E + 3 intelx + 4 research coordination; 222 total run across 36 suites at 100% green).
