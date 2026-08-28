@@ -519,6 +519,12 @@ class SentinelManagerSkill(BaseSkill):
             r"check for (?:new )?vulnerabilit(?:y|ies)",
             r"sentinel status",
             r"security findings",
+            r"security posture",
+            r"posture score",
+            r"most at risk",
+            r"highest risk",
+            r"when was (?:my )?website last scanned",
+            r"last scanned",
         ]
         return any(re.search(p, req) for p in patterns)
 
@@ -691,6 +697,73 @@ class SentinelManagerSkill(BaseSkill):
                 output=out,
                 success=True,
                 step_results=[res],
+            )
+
+        # 9. "What's my security posture?"
+        if "security posture" in req or "posture score" in req:
+            from friday.ecosystem.asset_registry import asset_registry
+            score_data = asset_registry.calculate_security_posture_score()
+            out = (
+                f"🛡️ **Ecosystem Security Posture**: **{score_data['score']}/100** ({score_data['rating'].replace('_', ' ')})\n\n"
+                f"- **Monitored Assets**: `{score_data['total_assets']}` across Nexus, Forge, and Trading Bot\n"
+                f"- **Critical Vulnerabilities**: `{score_data['critical']}`\n"
+                f"- **High Severity**: `{score_data['high']}`\n"
+                f"- **Medium Severity**: `{score_data['medium']}`\n"
+                f"- **Low Severity**: `{score_data['low']}`\n\n"
+                f"🗣️ *Voice Summary*: \"Your overall security posture score is {score_data['score']} out of 100, rated {score_data['rating'].replace('_', ' ').lower()}.\""
+            )
+            return SkillExecutionResult(
+                skill_name=self.name,
+                output=out,
+                success=True,
+                step_results=[score_data],
+            )
+
+        # 10. "Which asset is most at risk?"
+        if "most at risk" in req or "highest risk" in req:
+            from friday.ecosystem.asset_registry import asset_registry
+            highest = asset_registry.get_highest_risk_asset()
+            if not highest:
+                out = "🛡️ All monitored assets are currently in a CLEAN risk state with zero open vulnerabilities."
+            else:
+                out = (
+                    f"🛡️ **Highest Risk Asset**: **{highest.name}** (`{highest.target}`)\n\n"
+                    f"- **Risk Level**: `{highest.risk_level}`\n"
+                    f"- **Subsystem**: `{highest.subsystem}`\n"
+                    f"- **Open Findings**: `{highest.open_findings_count}` (Critical: `{highest.critical_findings_count}`, High: `{highest.high_findings_count}`, Medium: `{highest.medium_findings_count}`)\n"
+                    f"- **Last Scan**: `{highest.last_scan_time[:16] if highest.last_scan_time else 'N/A'}`\n\n"
+                    f"🗣️ *Voice Summary*: \"{highest.name} is currently your highest-risk asset at {highest.risk_level} risk level with {highest.open_findings_count} open findings.\""
+                )
+            return SkillExecutionResult(
+                skill_name=self.name,
+                output=out,
+                success=True,
+                step_results=[highest.__dict__ if highest else {}],
+            )
+
+        # 11. "When was my website last scanned?"
+        if "when was my website last scanned" in req or "last scanned" in req:
+            from friday.ecosystem.asset_registry import asset_registry
+            web_asset = asset_registry.get_asset("asset-nexus-web")
+            if web_asset and web_asset.last_scan_time:
+                last_time = web_asset.last_scan_time[:16].replace("T", " ")
+                summary_text = web_asset.last_scan_result.get("summary", "Scan completed.") if web_asset.last_scan_result else "Scan completed."
+                out = (
+                    f"🛡️ **Website Security Scan Status**:\n\n"
+                    f"- **Target Domain**: `{web_asset.target}`\n"
+                    f"- **Last Scanned**: `{last_time} UTC`\n"
+                    f"- **Result Summary**: {summary_text}\n"
+                    f"- **Current Risk Level**: `{web_asset.risk_level}`\n"
+                    f"- **Next Scheduled Scan**: `{web_asset.next_scheduled_scan[:10] if web_asset.next_scheduled_scan else 'Not scheduled'}`\n\n"
+                    f"🗣️ *Voice Summary*: \"Your website {web_asset.target} was last scanned on {last_time} UTC. Result: {summary_text}\""
+                )
+            else:
+                out = f"🛡️ Your website {self.default_target_domain} has not been scanned yet in this session."
+            return SkillExecutionResult(
+                skill_name=self.name,
+                output=out,
+                success=True,
+                step_results=[web_asset.__dict__ if web_asset else {}],
             )
 
         # Fallback
