@@ -414,14 +414,18 @@ class FridayAgent:
     )
 
     def _launch_process(self, executable: str, *args: str) -> None:
-        """Launch a desktop process without blocking the agent turn."""
+        """Launch a desktop process reliably on Windows without blocking the agent turn."""
         try:
-            subprocess.Popen([executable, *args], shell=False)
-        except Exception:
             if args:
-                subprocess.Popen(["cmd.exe", "/c", "start", "", executable, *args], shell=False)
+                cmd = f'start "" "{executable}" ' + " ".join(f'"{a}"' for a in args)
+                subprocess.Popen(cmd, shell=True)
             else:
-                os.startfile(executable)
+                try:
+                    os.startfile(executable)
+                except Exception:
+                    subprocess.Popen(f'start "" "{executable}"', shell=True)
+        except Exception as e:
+            logger.warning(f"Desktop launch error for {executable}: {e}")
 
     def _focus_window_for_direct_action(self, title_substring: str, timeout: float = 3.0) -> bool:
         """Best-effort focus for a newly opened desktop window with Win32 foreground activation."""

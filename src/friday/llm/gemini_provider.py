@@ -386,12 +386,7 @@ class GeminiLLMProvider(BaseLLMProvider):
         call_start = time.perf_counter()
 
         while attempt < max_attempts:
-            active_key = None
-            try:
-                active_key = self._get_active_api_key()
-            except (LLMProviderError, RuntimeError, Exception) as e:
-                last_error = e
-                break
+            active_key = self._get_active_api_key()
 
             label = "PRIMARY"
             if self.credential_pool:

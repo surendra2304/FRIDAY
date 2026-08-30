@@ -53,12 +53,17 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
         return AIUniverseLLMProvider(base_url=url, api_key=key)
 
     if provider_type == "gemini":
-        api_key = settings.gemini_api_key or settings.llm_api_key or os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            logger.info("Direct Gemini API key not found; routing to live Inference Cloud Gateway.")
-            url = getattr(settings, "inference_url", None) or os.getenv("INFERENCE_URL") or "https://inference-3i2b.onrender.com"
-            key = getattr(settings, "inference_api_key", None) or os.getenv("INFERENCE_API_KEY") or "inference_api"
-            return AIUniverseLLMProvider(base_url=url, api_key=key)
+        has_keys = (
+            bool(settings.gemini_api_key)
+            or bool(settings.llm_api_key)
+            or bool(os.getenv("GEMINI_API_KEY"))
+            or (credential_pool and len(getattr(credential_pool, "credentials", [])) > 0)
+        )
+        raw_key = settings.gemini_api_key if settings.gemini_api_key is not None else settings.llm_api_key
+        api_key = raw_key if raw_key is not None else os.getenv("GEMINI_API_KEY")
+
+        if not has_keys and not api_key:
+            logger.info("Direct Gemini API key not found; initializing GeminiLLMProvider with credential_pool.")
 
         model_name = settings.gemini_model or settings.llm_model
         temperature = settings.gemini_temperature if settings.gemini_temperature is not None else settings.llm_temperature

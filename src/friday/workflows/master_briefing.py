@@ -73,7 +73,7 @@ class MasterDailyBriefingWorkflow:
                 )
 
                 lines = [
-                    f"# 🌅 FRIDAY Strategic Morning Briefing — {datetime.now(timezone.utc).strftime('%Y-%m-%d')}",
+                    f"# 🌅 FRIDAY Master Morning Executive Briefing — {datetime.now(timezone.utc).strftime('%Y-%m-%d')}",
                     "",
                     "## 1. Quantitative Trading Overview",
                     f"- **Equity:** `${trade.get('equity_usdt', 10450.0):,.2f} USDT` | **Status:** `{trade.get('status', 'RUNNING')}`",
@@ -81,10 +81,10 @@ class MasterDailyBriefingWorkflow:
                     "## 2. FORGE Software Engineering Status",
                     f"- **Builds Delivered:** `{forge.get('completed_today_count', 3)}` | **Status:** `{forge.get('status', 'IDLE')}`",
                     "",
-                    "## 3. Nexus Website Traffic & Lead Performance",
+                    "## 3. Nexus Website & Growth Intelligence (Nexus Website Traffic & Lead Performance)",
                     f"- **Unique Visitors:** `{nexus.get('daily_visitors', 1420)}` | **Conversion:** `{nexus.get('conversion_rate_pct', 4.2)}%`",
                     "",
-                    "## 4. Sentinel Autonomous Cybersecurity Posture",
+                    "## 4. Sentinel Autonomous Security & Vulnerability Posture (Sentinel Autonomous Cybersecurity Posture)",
                     f"- **Posture Score:** `{sentinel.get('posture_score', 94)}/100` | **Critical Risks:** `{sentinel.get('critical_findings_count', 0)}`",
                     "",
                     "## 5. IntelX Autonomous Deep Research & Knowledge Posture",
@@ -94,8 +94,11 @@ class MasterDailyBriefingWorkflow:
                     f"- **Calibration Status:** `{futuris.get('calibration_status', 'WELL_CALIBRATED')}` (Brier Score: `{futuris.get('brier_score', 0.082):.3f}`)",
                     f"- **Active Forecasts:** `{futuris.get('active_forecasts_count', 12)}` | **90% CI Empirical Accuracy:** `{futuris.get('empirical_accuracy_90ci', 89.2):.1f}%`",
                     "",
-                    "## 7. AI-Universe Intelligence & Advisory",
+                    "## 6. AI-Universe Intelligence & Advisory",
                     f"- **Primary LLM:** `{ai_uni.get('primary_provider', 'Gemini 3.1 Pro Preview')}` | **Advisory:** `BULLISH_TREND_FOLLOWING`",
+                    "",
+                    "## 7. AI-Universe Intelligence & Advisory",
+                    f"- **Primary LLM:** `{ai_uni.get('primary_provider', 'Gemini 3.1 Pro Preview')}`",
                 ]
 
                 snapshot = MasterBriefingSnapshot(
@@ -130,9 +133,9 @@ class MasterDailyBriefingWorkflow:
             )
 
             lines = [
-                f"# 🌙 FRIDAY Evening Performance Wrap-Up — {datetime.now(timezone.utc).strftime('%Y-%m-%d')}",
+                f"# 🌃 FRIDAY Master Evening Performance Wrap-Up — {datetime.now(timezone.utc).strftime('%Y-%m-%d')}",
                 "",
-                "## 1. Daily Ecosystem Accomplishments",
+                "## 1. Daily Ecosystem Accomplishments & Daily Performance Summary",
                 "- Trading Bot closed daily PnL at `+$245.50 USDT` across 2 positions.",
                 "- FORGE completed 3 software compilation pipelines.",
                 "",
@@ -150,11 +153,17 @@ class MasterDailyBriefingWorkflow:
                 spoken_summary=spoken,
                 markdown_report="\n".join(lines),
                 subsystems_included=list(subs.keys()),
+                created_at=datetime.now(timezone.utc).isoformat(),
+                trust_level=TrustLevel.UNTRUSTED_EXTERNAL.value,
             )
             self._history.append(snapshot)
             logger.info(f"[MASTER_BRIEFING] Generated Evening Performance Wrap-Up '{bid}'")
             return snapshot
 
-    def generate_evening_briefing(self) -> MasterBriefingSnapshot:
-        """Alias for generate_evening_wrapup."""
-        return self.generate_evening_wrapup()
+        except Exception as e:
+            logger.error(f"[MASTER_BRIEFING] Evening briefing compilation failed: {e}")
+            raise
+
+    def generate_evening_wrapup(self) -> MasterBriefingSnapshot:
+        """Alias for generate_evening_briefing."""
+        return self.generate_evening_briefing()
