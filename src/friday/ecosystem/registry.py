@@ -42,11 +42,11 @@ class EcosystemRegistry:
 
     def _init_default_subsystems(self) -> None:
         """Initializes default subsystem entries for Trading Bot, FORGE, and AI-Universe."""
-        # 1. Trading Bot
+        # 1. Stratex Algorithmic Trading Platform
         self.register(
             SubsystemEntry(
                 name="trading_bot",
-                display_name="Trading Bot",
+                display_name="Stratex",
                 category="trading",
                 icon="📈",
                 health_check_callable=lambda: {
@@ -75,7 +75,7 @@ class EcosystemRegistry:
                 health_check_callable=lambda: {
                     "status": "HEALTHY",
                     "api_url": "http://localhost:8000",
-                    "ai_universe_bridge": "CONNECTED",
+                    "inference_bridge": "CONNECTED",
                 },
                 status_callable=lambda: {
                     "status": "IDLE",
@@ -88,11 +88,11 @@ class EcosystemRegistry:
             )
         )
 
-        # 3. AI-Universe Intelligence Provider
+        # 3. Inference Intelligence Gateway
         self.register(
             SubsystemEntry(
                 name="ai_universe",
-                display_name="AI-Universe",
+                display_name="Inference",
                 category="intelligence",
                 icon="🧠",
                 health_check_callable=lambda: {
@@ -110,11 +110,11 @@ class EcosystemRegistry:
             )
         )
 
-        # 4. NEXUS Autonomous Website & Growth Engine
+        # 4. CORTEX Autonomous Operations & Growth Engine
         self.register(
             SubsystemEntry(
                 name="nexus",
-                display_name="Nexus",
+                display_name="Cortex",
                 category="growth",
                 icon="🌐",
                 health_check_callable=lambda: {
@@ -235,9 +235,24 @@ class EcosystemRegistry:
             logger.info(f"[ECOSYSTEM_REGISTRY] Registered subsystem: {entry.name} ({entry.display_name})")
 
     def get_subsystem(self, name: str) -> Optional[SubsystemEntry]:
-        """Retrieves a subsystem registration entry by name."""
+        """Retrieves a subsystem registration entry by name (supports aliases)."""
+        aliases = {"stratex": "trading_bot", "inference": "ai_universe", "cortex": "nexus"}
+        resolved_name = aliases.get(name.lower().strip(), name)
         with self._lock:
-            return self._subsystems.get(name)
+            return self._subsystems.get(resolved_name)
+
+    def get_subsystem_status(self, name: str) -> Dict[str, Any]:
+        """Executes the status callable for a specific subsystem and returns its telemetry."""
+        entry = self.get_subsystem(name)
+        if not entry:
+            return {"status": "UNKNOWN", "error": f"Subsystem '{name}' not found"}
+        try:
+            data = entry.status_callable()
+            entry.last_known_good = data
+            return data
+        except Exception as e:
+            logger.warning(f"[ECOSYSTEM_REGISTRY] Status error for {name}: {e}")
+            return entry.last_known_good or {"status": "ERROR", "error": str(e)}
 
     def list_subsystems(self) -> List[SubsystemEntry]:
         """Returns list of all registered subsystems."""

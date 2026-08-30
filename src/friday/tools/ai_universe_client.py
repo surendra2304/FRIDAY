@@ -58,15 +58,17 @@ class AIUniverseClient:
         settings = get_settings()
         self.base_url = (
             base_url
+            or os.getenv("INFERENCE_URL")
             or os.getenv("AI_UNIVERSE_URL")
             or os.getenv("AI_UNIVERSE_API_URL")
             or os.getenv("FRIDAY_UNIVERSE_API_URL")
             or getattr(settings, "universe_api_url", None)
             or getattr(settings, "ai_universe_api_url", None)
-            or "http://localhost:8000"
+            or "https://inference-3i2b.onrender.com"
         ).rstrip("/")
         self.api_key = (
             api_key
+            or os.getenv("INFERENCE_API_KEY")
             or os.getenv("AI_UNIVERSE_API_KEY")
             or os.getenv("FRIDAY_API_KEY")
             or os.getenv("FRIDAY_UNIVERSE_KEY")
@@ -75,14 +77,16 @@ class AIUniverseClient:
             or os.getenv("FRIDAY_FRIDAY_API_KEY")
             or getattr(settings, "api_key", None)
             or getattr(settings, "friday_api_key", None)
-            or ""
+            or "inference_api"
         ).strip()
-        self.timeout = timeout
+        self.timeout = max(timeout, 60.0)
 
     def _get_headers(self) -> Dict[str, str]:
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["X-FRIDAY-API-Key"] = self.api_key
+            headers["X-INFERENCE-API-KEY"] = self.api_key
+            headers["Authorization"] = f"Bearer {self.api_key}"
         return headers
 
     async def get_status(self) -> Dict[str, Any]:
@@ -137,11 +141,27 @@ class AIUniverseClient:
         print(f"[DEBUG] Sending to {url} with key {key_preview}")
         logger.info(f"Sending to {url} with key {key_preview}...")
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            resp = await client.post(url, json=payload, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
-            return AIUniverseResponse(**data)
+        timeout_obj = httpx.Timeout(self.timeout, connect=15.0, read=self.timeout, write=15.0)
+        try:
+            async with httpx.AsyncClient(timeout=timeout_obj) as client:
+                resp = await client.post(url, json=payload, headers=headers)
+                resp.raise_for_status()
+                data = resp.json()
+                return AIUniverseResponse(**data)
+        except Exception as err:
+            logger.warning(f"Async httpx request failed ({err}); attempting direct HTTP fallback...")
+            import json, urllib.request, ssl
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={**headers, "User-Agent": "FRIDAY-Client"},
+            )
+            with urllib.request.urlopen(req, context=ctx, timeout=self.timeout) as response:
+                data = json.loads(response.read().decode("utf-8"))
+                return AIUniverseResponse(**data)
 
     async def debate(self, question: str, max_agents: int = 5) -> AIUniverseResponse:
         """Trigger an in-depth multi-agent debate via POST /v1/friday/debate."""

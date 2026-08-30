@@ -38,8 +38,29 @@ class SubsystemRoute(Enum):
     INTELX = "intelx"
     FUTURIS = "futuris"
     AI_UNIVERSE = "ai_universe"
+    ECOSYSTEM_STATUS = "ecosystem_status"
+    CROSS_SYSTEM_ORCHESTRATOR = "cross_system_orchestrator"
     ALL = "all"
+    AMBIGUOUS = "ambiguous"
     UNKNOWN = "unknown"
+
+
+class RouteResult(dict):
+    """Result object supporting both dict access (res['route']) and tuple unpacking (route, ctx = res)."""
+
+    def __init__(self, route: SubsystemRoute, data: Dict[str, Any]):
+        super().__init__(route=route.value, route_enum=route, **data)
+        self.route = route
+        self.data = data
+
+    def __iter__(self):
+        yield self.route
+        yield self.data
+
+    def __getitem__(self, key: Any) -> Any:
+        if isinstance(key, int):
+            return (self.route, self.data)[key]
+        return super().__getitem__(key)
 
 
 class EcosystemCommandRouter:
@@ -63,57 +84,68 @@ class EcosystemCommandRouter:
         self.intelx = intelx_manager or IntelXManagerSkill()
         self.futuris = futuris_manager or FuturisManagerSkill()
 
-    def route_command(self, query: str) -> Dict[str, Any]:
+    def route_command(self, query: str) -> RouteResult:
         """Determines target subsystem route and executes command."""
         q_lower = query.lower().strip()
+
+        # Cross-system build (Forge build trading dashboard...)
+        if "build a trading dashboard" in q_lower or "trading dashboard for my bot" in q_lower:
+            return RouteResult(SubsystemRoute.CROSS_SYSTEM_ORCHESTRATOR, {"template": "TRADING_DASHBOARD", "query": query})
+
+        if "scale up my website" in q_lower:
+            eval_res = self.cross_orch.evaluate_website_scaling_decision()
+            return RouteResult(SubsystemRoute.ALL, {"output": eval_res["formatted_summary"]})
+
+        if "risk exposure" in q_lower:
+            risk_res = self.cross_orch.assess_global_risk_exposure()
+            return RouteResult(SubsystemRoute.ALL, {"output": risk_res["formatted_summary"]})
 
         # 1. Global Status / Health
         if any(k in q_lower for k in ["status of everything", "health of my systems", "brief me", "ecosystem status"]):
             res = self.status_skill.execute(query)
-            return {"route": SubsystemRoute.ALL.value, "output": res.output}
+            return RouteResult(SubsystemRoute.ECOSYSTEM_STATUS, {"output": res.output})
+
+        # AI Universe Intelligence Core
+        if any(k in q_lower for k in ["ai universe", "ai-universe", "inference", "deliberation"]):
+            return RouteResult(SubsystemRoute.AI_UNIVERSE, {"query": query})
 
         # 2. Futuris Forecasting & Scenario Simulation
         if any(k in q_lower for k in ["predict", "forecast", "what will happen", "what if", "run a scenario"]):
             res = self.futuris.execute(query)
-            return {"route": SubsystemRoute.FUTURIS.value, "output": res.output}
+            return RouteResult(SubsystemRoute.FUTURIS, {"output": res.output})
 
         # 3. IntelX Research & Knowledge
         if any(k in q_lower for k in ["research", "what do we know about", "deep dive"]):
             res = self.intelx.execute(query)
-            return {"route": SubsystemRoute.INTELX.value, "output": res.output}
+            return RouteResult(SubsystemRoute.INTELX, {"output": res.output})
 
         # 4. Sentinel Security & Investigation
         if any(k in q_lower for k in ["security scan", "vulnerabilities", "attack surface", "cve"]):
             res = self.sentinel.execute(query)
-            return {"route": SubsystemRoute.SENTINEL.value, "output": res.output}
+            return RouteResult(SubsystemRoute.SENTINEL, {"output": res.output})
 
         if "investigate" in q_lower:
             if any(sec in q_lower for sec in ["security", "breach", "cve", "vulnerability", "attack"]):
                 res = self.sentinel.execute(query)
-                return {"route": SubsystemRoute.SENTINEL.value, "output": res.output}
+                return RouteResult(SubsystemRoute.SENTINEL, {"output": res.output})
             else:
                 res = self.intelx.execute(query)
-                return {"route": SubsystemRoute.INTELX.value, "output": res.output}
+                return RouteResult(SubsystemRoute.INTELX, {"output": res.output})
 
-        # 5. Forge Software Builds
-        if any(k in q_lower for k in ["build", "compile", "forge task"]):
+        # 5. Trading Bot
+        if any(k in q_lower for k in ["trade", "trades", "trading", "positions", "binance", "equity", "pnl"]):
+            return RouteResult(SubsystemRoute.TRADING_BOT, {"query": query})
+
+        # 6. Forge Software Builds
+        if any(k in q_lower for k in ["build", "compile", "forge"]):
             res = self.forge.execute(query)
-            return {"route": SubsystemRoute.FORGE.value, "output": res.output}
+            return RouteResult(SubsystemRoute.FORGE, {"output": res.output})
 
-        # 6. Nexus Website & Traffic
-        if any(k in q_lower for k in ["nexus", "website traffic", "conversion rate"]):
+        # 7. Nexus Website & Traffic
+        if any(k in q_lower for k in ["nexus", "website", "traffic", "visitor", "visitors", "leads", "lead", "conversion"]):
             res = self.nexus.execute(query)
-            return {"route": SubsystemRoute.NEXUS.value, "output": res.output}
+            return RouteResult(SubsystemRoute.NEXUS, {"output": res.output})
 
-        # 7. Cross-System Workflows
-        if "scale up my website" in q_lower:
-            eval_res = self.cross_orch.evaluate_website_scaling_decision()
-            return {"route": SubsystemRoute.ALL.value, "output": eval_res["formatted_summary"]}
-
-        if "risk exposure" in q_lower:
-            risk_res = self.cross_orch.assess_global_risk_exposure()
-            return {"route": SubsystemRoute.ALL.value, "output": risk_res["formatted_summary"]}
-
-        # Fallback
+        # Fallback for unrecognized/ambiguous queries
         res = self.status_skill.execute(query)
-        return {"route": SubsystemRoute.UNKNOWN.value, "output": res.output}
+        return RouteResult(SubsystemRoute.AMBIGUOUS, {"output": res.output})

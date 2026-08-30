@@ -1,5 +1,6 @@
 """LLM Provider Factory."""
 
+import os
 from friday.core.config import Settings
 from friday.core.exceptions import ConfigError
 from friday.core.logging import get_logger
@@ -21,8 +22,6 @@ from friday.llm.ai_universe_provider import AIUniverseLLMProvider
 
 logger = get_logger("llm.factory")
 
-# Sentinel: the configured default llm_model means "not user-overridden" — chain
-# providers then use their own per-provider default models.
 _DEFAULT_LLM_MODEL = Settings.model_fields["llm_model"].default
 
 
@@ -38,8 +37,29 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
             max_tokens=settings.llm_max_tokens,
         )
 
+    if provider_type in ("ai_universe", "inference"):
+        url = (
+            getattr(settings, "inference_url", None)
+            or os.getenv("INFERENCE_URL")
+            or getattr(settings, "universe_api_url", None)
+            or "https://inference-3i2b.onrender.com"
+        )
+        key = (
+            getattr(settings, "inference_api_key", None)
+            or os.getenv("INFERENCE_API_KEY")
+            or "inference_api"
+        )
+        logger.info(f"Initializing Inference Gateway LLM Provider (URL: {url})")
+        return AIUniverseLLMProvider(base_url=url, api_key=key)
+
     if provider_type == "gemini":
-        api_key = settings.gemini_api_key or settings.llm_api_key
+        api_key = settings.gemini_api_key or settings.llm_api_key or os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            logger.info("Direct Gemini API key not found; routing to live Inference Cloud Gateway.")
+            url = getattr(settings, "inference_url", None) or os.getenv("INFERENCE_URL") or "https://inference-3i2b.onrender.com"
+            key = getattr(settings, "inference_api_key", None) or os.getenv("INFERENCE_API_KEY") or "inference_api"
+            return AIUniverseLLMProvider(base_url=url, api_key=key)
+
         model_name = settings.gemini_model or settings.llm_model
         temperature = settings.gemini_temperature if settings.gemini_temperature is not None else settings.llm_temperature
         max_tokens = settings.gemini_max_tokens if settings.gemini_max_tokens is not None else settings.llm_max_tokens
@@ -85,7 +105,6 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
         )
 
     if provider_type == "chain":
-        # Cross-provider automatic failover: Groq -> Mistral -> OpenRouter -> AIUniverse.
         groq_model = settings.groq_model or (
             settings.llm_model if settings.llm_model != _DEFAULT_LLM_MODEL else GROQ_DEFAULT_MODEL
         )
@@ -119,8 +138,8 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
                 max_tokens=settings.llm_max_tokens,
             ),
             AIUniverseLLMProvider(
-                base_url=getattr(settings, "universe_api_url", None) or getattr(settings, "ai_universe_api_url", None),
-                api_key=getattr(settings, "api_key", None) or getattr(settings, "friday_api_key", None),
+                base_url=getattr(settings, "universe_api_url", None) or getattr(settings, "ai_universe_api_url", None) or "https://inference-3i2b.onrender.com",
+                api_key=getattr(settings, "api_key", None) or getattr(settings, "friday_api_key", None) or "inference_api",
             ),
         ]
         logger.info(
@@ -128,13 +147,6 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
             + " -> ".join(p.provider_name for p in chain_providers)
         )
         return FallbackChainLLMProvider(providers=chain_providers)
-
-    if provider_type == "ai_universe":
-        logger.info("Initializing AI Universe LLM Provider")
-        return AIUniverseLLMProvider(
-            base_url=getattr(settings, "universe_api_url", None) or getattr(settings, "ai_universe_api_url", None),
-            api_key=getattr(settings, "api_key", None) or getattr(settings, "friday_api_key", None),
-        )
 
     if provider_type == "mistral":
         model_name = settings.mistral_model or (
@@ -161,5 +173,5 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
 
     raise ConfigError(
         f"Unsupported LLM provider: '{settings.llm_provider}'. "
-        "Supported: 'mock', 'openai', 'gemini', 'groq', 'openrouter', 'mistral', 'chain', 'ai_universe', 'ollama'"
+        "Supported: 'mock', 'openai', 'gemini', 'groq', 'openrouter', 'mistral', 'chain', 'ai_universe', 'inference', 'ollama'"
     )
