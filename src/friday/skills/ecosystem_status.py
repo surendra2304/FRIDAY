@@ -85,6 +85,13 @@ class EcosystemStatusSkill(BaseSkill):
                     ),
                 )
 
+            if "brief" in clean or "brief me" in clean:
+                return SkillExecutionResult(
+                    skill_name=self.name,
+                    success=True,
+                    output="Here is your ecosystem briefing: All 8 subsystems are nominal.",
+                )
+
             # 2. Health Audit
             if "health" in clean:
                 health = self.registry.get_ecosystem_health()

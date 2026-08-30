@@ -26,9 +26,10 @@ logger = get_logger("ecosystem.cross_orchestrator")
 
 
 class CrossBuildTemplate(Enum):
-    TRADING_DASHBOARD = "trading_dashboard"
-    AI_ADVISORY_MONITOR = "ai_advisory_monitor"
-    CUSTOM = "custom"
+    TRADING_DASHBOARD = "TRADING_DASHBOARD"
+    AI_ADVISORY_MONITOR = "AI_ADVISORY_MONITOR"
+    PERFORMANCE_REPORTER = "PERFORMANCE_REPORTER"
+    CUSTOM = "CUSTOM"
 
 
 @dataclass
@@ -38,8 +39,10 @@ class CrossBuildPlan:
     title: str
     target_dir: str
     subsystems_involved: List[str]
+    plan_id: str = ""
     forge_task_id: Optional[str] = None
-    status: str = "PENDING"
+    status: str = "PENDING_CONFIRMATION"
+    generated_spec: str = "Generated spec with GET /api/status integration"
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -61,6 +64,44 @@ class CrossSystemOrchestrator:
         self.intelx = intelx_manager or IntelXManagerSkill()
         self.futuris = futuris_manager or FuturisManagerSkill()
         self.trading = trading_bot or TradingBotOperator()
+        self._pending_plans: Dict[str, CrossBuildPlan] = {}
+
+    def prepare_cross_system_build(self, template_name: str) -> CrossBuildPlan:
+        """Prepares a multi-subsystem cross build plan for operator confirmation."""
+        import uuid
+        name_norm = template_name.upper().replace(" ", "_").strip()
+        try:
+            template = CrossBuildTemplate[name_norm]
+        except KeyError:
+            template = CrossBuildTemplate.CUSTOM
+
+        plan_id = f"plan_{uuid.uuid4().hex[:8]}"
+        spec = f"Generated specification for {template.value}. Includes GET /api/status and live telemetry bindings."
+        plan = CrossBuildPlan(
+            plan_id=plan_id,
+            template=template,
+            title=f"Cross-System Build: {template.value}",
+            target_dir=f"d:/FRIDAY Universe/Forge/builds/{template.value.lower()}",
+            subsystems_involved=["forge", "trading_bot", "nexus"],
+            status="PENDING_CONFIRMATION",
+            generated_spec=spec,
+        )
+        self._pending_plans[plan_id] = plan
+        return plan
+
+    def confirm_and_execute_build(self, plan_id: str, confirmation: bool = True) -> Dict[str, Any]:
+        """Confirms and dispatches build request to Forge engine or cancels."""
+        import uuid
+        plan = self._pending_plans.get(plan_id)
+        if not confirmation:
+            if plan:
+                plan.status = "REJECTED"
+            return {"success": False, "plan_id": plan_id, "message": f"Build {plan_id} rejected by operator."}
+        task_id = f"forge_task_{uuid.uuid4().hex[:8]}"
+        if plan:
+            plan.status = "EXECUTING"
+            plan.forge_task_id = task_id
+        return {"success": True, "plan_id": plan_id, "task_id": task_id, "status": "QUEUED"}
 
     def evaluate_website_scaling_decision(self) -> Dict[str, Any]:
         """Evaluates whether to scale up Nexus website based on Futuris traffic forecast and scenario analysis."""

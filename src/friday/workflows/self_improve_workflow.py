@@ -1,22 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Recursive Self-Improvement Workflow for Recursive Self-Improvement.
+from __future__ import annotations
 
-Orchestrates FRIDAY's autonomous self-modification and feature creation loop:
-1. Detects self-modification intent (e.g., "FRIDAY, add a tool to click the mouse").
-2. Scans internal architecture with `read_own_codebase`.
-3. Synthesizes new Python code via `FallbackChainLLMProvider` (Groq 70B).
-4. Saves new feature file to `src/friday/tools/builtin/` via `write_code_file`.
-5. Runs test suite via `run_tests` to verify system integrity.
-6. If tests pass, commits and pushes to repository via `git_commit` and `git_push`.
-
-Safety: Requires explicit user authorization (SENSITIVE action) before writing files or pushing code.
-"""
-
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 import os
 import re
 
-from friday.agents.specialists.self_dev_agent import SelfDevAgent
+if TYPE_CHECKING:
+    from friday.agents.specialists.self_dev_agent import SelfDevAgent
 from friday.core.config import get_settings
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role, SafetyLevel

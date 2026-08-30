@@ -1,16 +1,13 @@
 # -*- coding: utf-8 -*-
-"""Autonomous Self-Coding Dev Workflow for Autonomous Self-Coding.
+from __future__ import annotations
 
-Resolves GitHub issues by fetching issue details, routing to DeveloperAgent,
-applying code modifications, running automated test suites, and pushing branches.
-"""
-
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 import os
 import re
 
-from friday.agents.base_agent import AgentTask
-from friday.agents.specialists.developer_agent import DeveloperAgent
+if TYPE_CHECKING:
+    from friday.agents.base_agent import AgentTask
+    from friday.agents.specialists.developer_agent import DeveloperAgent
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel
 from friday.tools.builtin.dev_tools import CreateGitBranchTool, RunTestsTool, WriteCodeFileTool
@@ -87,6 +84,7 @@ class AutonomousDevWorkflow:
         # Step 3: Route to DeveloperAgent to write code and verify
         dev_output = ""
         if self.developer_agent:
+            from friday.agents.base_agent import AgentTask
             task = AgentTask(
                 goal=f"Resolve GitHub issue #{issue_id}: {user_prompt}\nContext: {issue_desc}",
                 context={"repo": target_repo, "issue_id": issue_id, "branch": branch_name},
