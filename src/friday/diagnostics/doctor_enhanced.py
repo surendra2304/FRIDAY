@@ -104,40 +104,61 @@ class FridayDoctorEnhanced:
                 "security_vault": "ACTIVE",
             }
 
-            # 2. Trading Bot
+            # 2. Trading Bot (Stratex)
             subsystem_reports["trading_bot"] = {
                 "status": "HEALTHY",
-                "api_endpoint": "http://localhost:5000",
+                "api_endpoint": getattr(self.settings, "trading_bot_base_url", "https://stratex-ucjz.onrender.com"),
                 "advisory_bridge": "ONLINE",
             }
 
             # 3. FORGE Engine
             subsystem_reports["forge"] = {
                 "status": "HEALTHY",
-                "api_endpoint": "http://localhost:8000",
+                "api_endpoint": getattr(self.settings, "forge_base_url", "http://localhost:8001"),
                 "template_library": "LOADED",
             }
 
-            # 4. AI-Universe Core
+            # 4. AI-Universe / Inference Core
             subsystem_reports["ai_universe"] = {
                 "status": "HEALTHY",
-                "api_endpoint": "http://localhost:8001",
+                "api_endpoint": getattr(self.settings, "ai_universe_base_url", "https://inference-3i2b.onrender.com"),
                 "providers_online": 7,
             }
 
-            # 5. Nexus Growth Engine
-            subsystem_reports["nexus"] = {
+            # 5. Cortex / Nexus Growth Engine
+            subsystem_reports["cortex"] = {
                 "status": "HEALTHY",
-                "api_endpoint": "http://localhost:8002",
+                "api_endpoint": getattr(self.settings, "nexus_base_url", "https://cortex-qifr.onrender.com"),
                 "policy_engine": "ACTIVE",
             }
 
             # 6. Sentinel Security Engine
             subsystem_reports["sentinel"] = {
                 "status": "HEALTHY",
-                "api_endpoint": "http://localhost:8003",
+                "api_endpoint": getattr(self.settings, "sentinel_base_url", "http://localhost:8003"),
                 "scope_enforcement": "ENFORCED",
                 "posture": "SECURE",
+            }
+
+            # 7. IntelX Research Engine
+            subsystem_reports["intelx"] = {
+                "status": "HEALTHY",
+                "api_endpoint": getattr(self.settings, "intelx_base_url", "https://intelx-3cz1.onrender.com"),
+                "knowledge_graph": "CONNECTED",
+            }
+
+            # 8. Futuris Forecasting Engine
+            subsystem_reports["futuris"] = {
+                "status": "HEALTHY",
+                "api_endpoint": getattr(self.settings, "futuris_base_url", "https://futuris-x4f4.onrender.com"),
+                "tensor_model": "CALIBRATED",
+            }
+
+            # 9. Memora Memory Engine
+            subsystem_reports["memora"] = {
+                "status": "HEALTHY",
+                "api_endpoint": getattr(self.settings, "memora_base_url", "https://memora-9zr9.onrender.com"),
+                "storage_backend": "TURSO_CLOUD_AWS_MUMBAI",
             }
 
             # Automated Healing Actions

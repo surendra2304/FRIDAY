@@ -8,7 +8,9 @@ from pathlib import Path
 
 # The google-genai SDK emits a noisy UserWarning on every direct generate_content
 # call; FRIDAY intentionally calls Models.generate_content (no chat wrapper).
-warnings.filterwarnings("ignore", message=".*automatic function calling.*")
+warnings.filterwarnings("ignore", message=".*automatic function calling.*", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*Direct use of automatic function calling.*", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*Revert to STA COM threading mode.*", category=UserWarning)
 
 from friday.agent.agent import FridayAgent
 from friday.cli.auth import CLIAuthorizer

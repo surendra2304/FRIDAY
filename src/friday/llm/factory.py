@@ -53,17 +53,22 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
         return AIUniverseLLMProvider(base_url=url, api_key=key)
 
     if provider_type == "gemini":
+        has_explicit = (settings.gemini_api_key is not None) or (settings.llm_api_key is not None)
         has_keys = (
             bool(settings.gemini_api_key)
             or bool(settings.llm_api_key)
             or bool(os.getenv("GEMINI_API_KEY"))
             or (credential_pool and len(getattr(credential_pool, "credentials", [])) > 0)
         )
-        raw_key = settings.gemini_api_key if settings.gemini_api_key is not None else settings.llm_api_key
-        api_key = raw_key if raw_key is not None else os.getenv("GEMINI_API_KEY")
+        if not has_keys and not has_explicit:
+            logger.info("Direct Gemini API key not configured; using live Inference Cloud Gateway (25 Keys).")
+            url = getattr(settings, "inference_url", None) or os.getenv("INFERENCE_URL") or "https://inference-3i2b.onrender.com"
+            key = getattr(settings, "inference_api_key", None) or os.getenv("INFERENCE_API_KEY") or "inference_api"
+            return AIUniverseLLMProvider(base_url=url, api_key=key)
 
-        if not has_keys and not api_key:
-            logger.info("Direct Gemini API key not found; initializing GeminiLLMProvider with credential_pool.")
+        api_key = settings.gemini_api_key if settings.gemini_api_key is not None else settings.llm_api_key
+        if api_key is None:
+            api_key = os.getenv("GEMINI_API_KEY")
 
         model_name = settings.gemini_model or settings.llm_model
         temperature = settings.gemini_temperature if settings.gemini_temperature is not None else settings.llm_temperature
@@ -119,6 +124,7 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
         mistral_model = settings.mistral_model or (
             settings.llm_model if settings.llm_model != _DEFAULT_LLM_MODEL else MISTRAL_DEFAULT_MODEL
         )
+        gemini_model = settings.gemini_model or settings.llm_model
         chain_providers = [
             GroqLLMProvider(
                 api_key=settings.groq_api_key or settings.llm_api_key,
@@ -128,17 +134,24 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
                 temperature=settings.llm_temperature,
                 max_tokens=settings.llm_max_tokens,
             ),
-            MistralLLMProvider(
-                api_key=settings.mistral_api_key or settings.llm_api_key,
-                credential_pool=mistral_credential_pool,
-                model=mistral_model,
-                temperature=settings.llm_temperature,
-                max_tokens=settings.llm_max_tokens,
-            ),
             OpenRouterLLMProvider(
                 api_key=settings.openrouter_api_key or settings.llm_api_key,
                 credential_pool=openrouter_credential_pool,
                 model=openrouter_model,
+                temperature=settings.llm_temperature,
+                max_tokens=settings.llm_max_tokens,
+            ),
+            MistralLLMProvider(
+                api_key=settings.mistral_api_key or settings.llm_api_key,
+                credential_pool=mistral_credential_pool,
+                model="mistral-small-latest",
+                temperature=settings.llm_temperature,
+                max_tokens=settings.llm_max_tokens,
+            ),
+            OpenAILLMProvider(
+                api_key=settings.llm_api_key,
+                base_url=settings.llm_base_url,
+                model=settings.llm_model,
                 temperature=settings.llm_temperature,
                 max_tokens=settings.llm_max_tokens,
             ),

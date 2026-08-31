@@ -1,12 +1,16 @@
-"""Core Agent orchestration loop with multi-step sequential tool calling for FRIDAY."""
-
 import random
 import re
 import os
 import subprocess
 import time
+import warnings
 from urllib.parse import quote_plus
 from typing import Any, Callable, Dict, List, Optional
+
+# Suppress noisy upstream COM threading and GenAI AFC warnings
+warnings.filterwarnings("ignore", message=".*Revert to STA COM threading mode.*", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*automatic function calling.*", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*Direct use of automatic function calling.*", category=UserWarning)
 from friday.agent.prompts import build_system_message
 from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer
 from friday.core.config import Settings, get_settings
@@ -410,6 +414,14 @@ class FridayAgent:
     _TOGGLE_WIFI_PATTERN = re.compile(
         r"^\s*(?:please\s+)?(?:turn|switch)\s+(?P<action>on|off)\s+(?:the\s+)?(?:wi-?fi|wifi|wireless)[\.\!]?\s*$|"
         r"^\s*(?:please\s+)?(?:turn|switch)\s+(?:the\s+)?(?:wi-?fi|wifi|wireless)\s+(?P<action2>on|off)[\.\!]?\s*$",
+        re.IGNORECASE,
+    )
+    _STATUS_PATTERN = re.compile(
+        r"^\s*(?:please\s+)?(?:give\s+me\s+(?:a\s+)?)?(?:status\s+of\s+everything|status\s+of\s+all\s+agents|ecosystem\s+status|health\s+of\s+agents|health\s+of\s+all\s+systems|subsystems?\s+status)[\.\!]?\s*$",
+        re.IGNORECASE,
+    )
+    _BRIEFING_PATTERN = re.compile(
+        r"^\s*(?:please\s+)?(?:brief\s+me|morning\s+briefing|evening\s+briefing|daily\s+briefing)[\.\!]?\s*$",
         re.IGNORECASE,
     )
 
@@ -1057,6 +1069,36 @@ class FridayAgent:
                 "Direct Wi-Fi command", f"Turning Wi-Fi {action_raw.lower()}",
                 _toggle_wifi_func,
                 verifying_reason="Validating Wi-Fi network interface state",
+            )
+
+        if self._STATUS_PATTERN.match(clean_input):
+            def _get_status_report() -> str:
+                from friday.skills.ecosystem_status import EcosystemStatusSkill
+                res = EcosystemStatusSkill().execute(clean_input)
+                return res.output or "Ecosystem status retrieved."
+
+            return self._complete_fast_path(
+                clean_input, start_time, "ecosystem_status",
+                "Direct ecosystem status query", "Polling status across all 8 subsystems",
+                _get_status_report,
+                verifying_reason="Formatting unified ecosystem status report",
+            )
+
+        if self._BRIEFING_PATTERN.match(clean_input):
+            def _get_briefing() -> str:
+                from friday.workflows.master_briefing import MasterDailyBriefingWorkflow
+                wf = MasterDailyBriefingWorkflow()
+                if "evening" in clean_input.lower():
+                    snapshot = wf.generate_evening_wrapup()
+                else:
+                    snapshot = wf.generate_morning_briefing()
+                return snapshot.markdown_report
+
+            return self._complete_fast_path(
+                clean_input, start_time, "master_briefing",
+                "Direct master briefing request", "Compiling cross-agent intelligence briefing",
+                _get_briefing,
+                verifying_reason="Formatting master intelligence briefing",
             )
 
         return None

@@ -5,6 +5,7 @@ Communicates asynchronously with the external AI Universe multi-agent debate API
 hosted locally at http://localhost:8000 (or configured via FRIDAY_UNIVERSE_API_URL).
 """
 
+import json
 from typing import Any, Dict, List, Optional
 import httpx
 from pydantic import BaseModel, Field
@@ -55,28 +56,14 @@ class AIUniverseClient:
         timeout: float = 45.0,
     ) -> None:
         import os
-        settings = get_settings()
-        self.base_url = (
-            base_url
-            or os.getenv("INFERENCE_URL")
-            or os.getenv("AI_UNIVERSE_URL")
-            or os.getenv("AI_UNIVERSE_API_URL")
-            or os.getenv("FRIDAY_UNIVERSE_API_URL")
-            or getattr(settings, "universe_api_url", None)
-            or getattr(settings, "ai_universe_api_url", None)
-            or "https://inference-3i2b.onrender.com"
-        ).rstrip("/")
+        if not base_url or "localhost" in base_url or "127.0.0.1" in base_url:
+            self.base_url = (os.getenv("INFERENCE_URL") or "https://inference-3i2b.onrender.com").rstrip("/")
+        else:
+            self.base_url = base_url.rstrip("/")
+
         self.api_key = (
             api_key
             or os.getenv("INFERENCE_API_KEY")
-            or os.getenv("AI_UNIVERSE_API_KEY")
-            or os.getenv("FRIDAY_API_KEY")
-            or os.getenv("FRIDAY_UNIVERSE_KEY")
-            or os.getenv("UNIVERSE_KEY")
-            or os.getenv("FRIDAY_UNIVERSE_API_KEY")
-            or os.getenv("FRIDAY_FRIDAY_API_KEY")
-            or getattr(settings, "api_key", None)
-            or getattr(settings, "friday_api_key", None)
             or "inference_api"
         ).strip()
         self.timeout = max(timeout, 60.0)

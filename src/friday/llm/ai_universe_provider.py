@@ -38,8 +38,11 @@ class AIUniverseLLMProvider(BaseLLMProvider):
             temperature=temperature,
             max_tokens=max_tokens,
         )
-        self.api_key = api_key or ""
-        self.client = AIUniverseClient(base_url=base_url, api_key=api_key)
+        import os
+        final_url = base_url or os.getenv("INFERENCE_URL") or "https://inference-3i2b.onrender.com"
+        final_key = api_key or os.getenv("INFERENCE_API_KEY") or "inference_api"
+        self.api_key = final_key
+        self.client = AIUniverseClient(base_url=final_url, api_key=final_key)
         self.min_confidence = min_confidence
         self.mode = mode
 

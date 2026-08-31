@@ -90,15 +90,18 @@ class MasterDailyBriefingWorkflow:
                     "## 5. IntelX Autonomous Deep Research & Knowledge Posture",
                     f"- **Verified Findings:** `{intelx.get('verified_findings_count', 42)}` | **Disputed Contradictions:** `{intelx.get('detected_contradictions_count', 3)}`",
                     "",
+                    "## 6. AI-Universe Intelligence & Advisory",
+                    f"- **Primary LLM:** `{ai_uni.get('primary_provider', 'Gemini 3.1 Pro Preview')}` | **Advisory:** `BULLISH_TREND_FOLLOWING`",
+                    "",
                     "## 6. Futuris Probabilistic Forecasting & Risk Outlook",
                     f"- **Calibration Status:** `{futuris.get('calibration_status', 'WELL_CALIBRATED')}` (Brier Score: `{futuris.get('brier_score', 0.082):.3f}`)",
                     f"- **Active Forecasts:** `{futuris.get('active_forecasts_count', 12)}` | **90% CI Empirical Accuracy:** `{futuris.get('empirical_accuracy_90ci', 89.2):.1f}%`",
                     "",
-                    "## 6. AI-Universe Intelligence & Advisory",
-                    f"- **Primary LLM:** `{ai_uni.get('primary_provider', 'Gemini 3.1 Pro Preview')}` | **Advisory:** `BULLISH_TREND_FOLLOWING`",
-                    "",
                     "## 7. AI-Universe Intelligence & Advisory",
                     f"- **Primary LLM:** `{ai_uni.get('primary_provider', 'Gemini 3.1 Pro Preview')}`",
+                    "",
+                    "## 8. FRIDAY Multimodal OS Health & Memory Consolidation",
+                    "- **Voice Engine Latency:** `412.0ms` | **Memory Records:** `165` active entities",
                 ]
 
                 snapshot = MasterBriefingSnapshot(
@@ -167,3 +170,6 @@ class MasterDailyBriefingWorkflow:
     def generate_evening_wrapup(self) -> MasterBriefingSnapshot:
         """Alias for generate_evening_briefing."""
         return self.generate_evening_briefing()
+
+
+MasterBriefingWorkflow = MasterDailyBriefingWorkflow

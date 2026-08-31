@@ -18,6 +18,11 @@ import threading
 import time
 from typing import Any, Dict, List, Optional
 import uuid
+import warnings
+
+# Suppress noisy upstream Google GenAI SDK AFC warnings during generate_content
+warnings.filterwarnings("ignore", message=".*automatic function calling.*", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*Direct use of automatic function calling.*", category=UserWarning)
 
 from google import genai
 from google.genai import errors as genai_errors
