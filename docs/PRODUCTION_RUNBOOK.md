@@ -118,8 +118,8 @@ This runbook defines standard operating procedures (SOPs), scheduled maintenance
 
 | Environment Variable | Description | Default Value |
 | :--- | :--- | :--- |
-| `TRADING_BOT_URL` | Base URL for Trading Bot REST API | `https://algorithmic-trading-bot-fra.onrender.com` |
-| `TRADING_BOT_API_KEY` | Secret authentication token | `X-FRIDAY-API-Key` |
-| `AI_UNIVERSE_URL` | Base URL for AI-Universe REST API | `http://localhost:8000` |
+| `STRATEX_URL` | Base URL for Stratex Algorithmic Trading Platform REST API | `https://stratex-ucjz.onrender.com` |
+| `STRATEX_API_KEY` | Secret authentication token | `stratex_api` |
+| `INFERENCE_URL` | Base URL for Inference AI Gateway | `https://inference-3i2b.onrender.com` |
 | `MAX_DRAWDOWN_LIMIT_PCT` | Hardcoded maximum account drawdown | `5.0%` |
 | `MAX_LEVERAGE_LIMIT` | Hardcoded maximum testnet leverage | `5x` |

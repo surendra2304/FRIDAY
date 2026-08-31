@@ -2,7 +2,7 @@
 
 ## Overview
 
-FRIDAY operates as an autonomous **Supervisor** over the cloud-hosted Algorithmic Trading Bot on Binance Futures Testnet (`https://algorithmic-trading-bot-fra.onrender.com`). 
+FRIDAY operates as an autonomous **Supervisor** over the cloud-hosted Stratex 24/7 Algorithmic Trading Platform on Binance Futures Testnet (`https://stratex-ucjz.onrender.com`). 
 
 In this architecture, the **Trading Bot maintains a direct scheduled telemetry connection with AI-Universe** (`/v1/trading/consult`), receiving deliberative advisory recommendations and recording every evaluation to an append-only advisory log (`advisory_log.jsonl`). FRIDAY monitors bot metrics, supervises AI advisory decisions, detects contested recommendations, provides plain-language explanations, and holds the emergency panic kill-switch.
 
