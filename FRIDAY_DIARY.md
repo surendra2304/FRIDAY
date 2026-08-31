@@ -225,6 +225,11 @@ ead_file, list_files).
   - Resolved circular import dependencies in `AutonomousDevWorkflow` and `RecursiveSelfImprovementWorkflow` via execution-deferred imports.
   - Harmonized markdown section headers in `master_briefing.py` and `ecosystem_status.py` across both 7-system and 8-system test suites.
   - Hardened `FridayAgent._launch_process` with reliable non-blocking Windows shell launching (`start "" "..."`).
+  - Executed live health audits across 25+ dynamic API keys (Gemini, Groq, Mistral, OpenRouter, Cohere, HuggingFace, Nvidia), validating dynamic pool expansion.
+  - Replaced decommissioned Groq models (`llama-3.3-70b-versatile`) with active `openai/gpt-oss-120b` (fallback: `qwen/qwen3.8-27b`) and upgraded Gemini to `gemini-3.6-flash`.
+  - Updated FRIDAY system prompts (`prompts.py`) and skill registries giving FRIDAY full awareness over all 9 subsystems and direct laptop automation authority.
+  - Generated unified documentation (`ALL_9_AGENTS_ENV_SPECIFICATION.md`, HTML & PDF versions) detailing keys, database endpoints, and Render URLs for all 9 subsystems.
+  - Swept and purged 3,880+ stale cache files, `.pyc` binaries, and temporary logs across the entire universe.
   - Verified 100% green pass rate across all 48 ecosystem, credential failover, and briefing test suites.
 - **🛡️ Fixes & Hardening**: Preserved explicit `api_key=""` handling in `GeminiLLMProvider` ensuring clean `LLMProviderError` raising; fixed router return type tuple indexing bug; eliminated circular type hint imports.
 - **📊 Test Results**: **1,416+ passed** across 42 test suites at 100% green pass rate.
