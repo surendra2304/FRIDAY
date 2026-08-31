@@ -40,7 +40,7 @@ FRIDAY_LOGO_LINES = [
 ]
 
 
-def render_friday_banner(version: str = "0.4.6") -> str:
+def render_friday_banner(version: str = "2.0.0") -> str:
     """Render a cleanly centered, cohesive block-letter FRIDAY startup banner."""
     terminal_width = shutil.get_terminal_size((80, 20)).columns
     width = max(terminal_width, 60)

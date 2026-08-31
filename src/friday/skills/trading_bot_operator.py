@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Trading Bot Operator Skill for FRIDAY.
+"""Stratex Trading Bot Operator Skill for FRIDAY.
 
-Interfaces autonomously with the external Algorithmic Trading Bot on Binance Futures Testnet
-hosted at https://algorithmic-trading-bot-fra.onrender.com (or TRADING_BOT_URL).
+Interfaces autonomously with the external Stratex 24/7 Algorithmic Trading Platform on Binance Futures Testnet
+hosted at https://stratex-ucjz.onrender.com (or STRATEX_URL).
 
 Command Precedence & Safety Invariants:
 1. Safety Gates (in Trading Bot) [Highest Authority]: Hard risk boundaries, max drawdown, testnet invariant.
@@ -37,7 +37,7 @@ from friday.skills.trading_precedence import (
 
 logger = get_logger("skills.trading_bot_operator")
 
-DEFAULT_BOT_URL = "https://algorithmic-trading-bot-fra.onrender.com"
+DEFAULT_BOT_URL = "https://stratex-ucjz.onrender.com"
 
 
 @dataclass
@@ -57,32 +57,32 @@ class BotStatus:
 
 
 class TradingBotOperator(BaseSkill):
-    """Supervises and controls the Algorithmic Trading Bot on Binance Futures Testnet."""
+    """Supervises and controls Stratex (Algorithmic Trading Platform)."""
 
     name = "trading_bot_operator"
     description = (
-        "Supervises and controls the Algorithmic Trading Bot (Binance Futures Testnet), "
+        "Supervises and controls Stratex (Algorithmic Trading Platform on Binance Futures Testnet), "
         "monitoring equity, positions, advisory logs, AI overlay state, and managing safety panic controls."
     )
     required_capabilities = ["network_access", "trading_bot_control"]
     tools = ["trading_bot_query", "ai_universe_query"]
     system_prompt = (
-        "You are FRIDAY's Trading Bot Operator. You supervise the Algorithmic Trading Bot on "
+        "You are FRIDAY's Trading Bot Operator for Stratex. You supervise the 24/7 Stratex Algorithmic Trading Platform on "
         "Binance Futures Testnet. You report equity, PnL, open positions, supervise AI-Universe advisories, "
         "and enforce strict authorization before activating the bot's emergency panic kill-switch."
     )
     match_patterns = [
-        r"\b(?:how\s+is\s+(?:the\s+)?trading\s+bot\s+doing|trading\s+bot\s+status|bot\s+status)\b",
-        r"\b(?:check|get|show)\s+(?:the\s+)?(?:trading\s+bot|bot)\s+(?:pnl|status|positions?|performance|equity)\b",
-        r"\b(?:trading\s+bot\s+pnl|bot\s+pnl)\b",
-        r"\b(?:trading\s+bot|bot)\s+(?:panic|kill\s*switch|stop\s+trading|resume\s+trading|release\s+panic)\b",
+        r"\b(?:how\s+is\s+(?:the\s+)?(?:stratex|trading\s+bot)\s+doing|(?:stratex|trading\s+bot)\s+status|bot\s+status)\b",
+        r"\b(?:check|get|show)\s+(?:the\s+)?(?:stratex|trading\s+bot|bot)\s+(?:pnl|status|positions?|performance|equity)\b",
+        r"\b(?:stratex|trading\s+bot|bot)\s+pnl\b",
+        r"\b(?:stratex|trading\s+bot|bot)\s+(?:panic|kill\s*switch|stop\s+trading|resume\s+trading|release\s+panic)\b",
         r"\b(?:trigger\s+panic|activate\s+kill\s*switch|release\s+kill\s*switch)\b",
-        r"\b(?:trading\s+bot\s+signals?|bot\s+signals?|recent\s+signals?|recent\s+trades?)\b",
+        r"\b(?:stratex|trading\s+bot|bot)\s+(?:signals?|recent\s+signals?|recent\s+trades?)\b",
     ]
 
     def __init__(self, base_url: Optional[str] = None, api_key: Optional[str] = None, timeout: float = 15.0) -> None:
-        self.base_url = (base_url or os.getenv("TRADING_BOT_URL") or DEFAULT_BOT_URL).rstrip("/")
-        self.api_key = (api_key or os.getenv("TRADING_BOT_API_KEY") or os.getenv("BOT_API_KEY") or "").strip()
+        self.base_url = (base_url or os.getenv("STRATEX_URL") or os.getenv("TRADING_BOT_URL") or DEFAULT_BOT_URL).rstrip("/")
+        self.api_key = (api_key or os.getenv("STRATEX_API_KEY") or os.getenv("BOT_API_KEY") or os.getenv("TRADING_BOT_API_KEY") or "").strip()
         self.timeout = timeout
 
     def _http_get(self, endpoint: str) -> Dict[str, Any]:

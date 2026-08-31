@@ -313,7 +313,7 @@ class FridayAgent:
         re.IGNORECASE,
     )
     _OPEN_APP_PATTERN = re.compile(
-        r"^\s*(?:please\s+)?(?:open|launch|start|run)\s+(?:the\s+)?(?P<app>[a-zA-Z0-9\s_\-\.]+?)(?:\s+(?:app|application|program|window))?[\.\!]?\s*$",
+        r"^\s*(?:please\s+)?(?:open|launch|start|run|oh\s*,?\s*been|oh\s*,?\s*open|oh\s*!?\s*pen|o\s*pen|pen)\s+(?:the\s+)?(?P<app>[a-zA-Z0-9\s_\-\.]+?)(?:\s+(?:app|application|program|window))?[\.\!]*\s*$",
         re.IGNORECASE,
     )
     _CHROME_SEARCH_PATTERN = re.compile(
@@ -719,8 +719,25 @@ class FridayAgent:
         open_app_match = self._OPEN_APP_PATTERN.match(clean_input)
         if open_app_match:
             app_raw = open_app_match.group("app").strip().lower()
+            # Normalize app name
+            normalized_app = app_raw.replace(" ", "").replace("-", "")
+            exe = None
             if app_raw in IntentDetector.APP_LAUNCH_MAP:
                 exe = IntentDetector.APP_LAUNCH_MAP[app_raw]
+            elif normalized_app in ("notepad", "notepad.exe"):
+                exe = "notepad.exe"
+            elif normalized_app in ("chrome", "googlechrome"):
+                exe = "chrome.exe"
+            elif normalized_app in ("calculator", "calc"):
+                exe = "calc.exe"
+            elif normalized_app in ("cmd", "terminal", "commandprompt"):
+                exe = "wt.exe"
+            elif normalized_app in ("settings", "windowsettings"):
+                exe = "ms-settings:"
+            elif app_raw in IntentDetector.APP_LAUNCH_MAP.values():
+                exe = app_raw
+
+            if exe:
                 self.memory.add_message(Message(role=Role.USER, content=clean_input))
                 self.state_machine.transition_to(TaskState.PLANNING, reason=f"Direct launch command for {app_raw}")
                 self.state_machine.transition_to(TaskState.EXECUTING, reason=f"Opening {app_raw}")
@@ -1122,7 +1139,12 @@ class FridayAgent:
         open_app_match = self._OPEN_APP_PATTERN.match(clean)
         if open_app_match:
             app_raw = open_app_match.group("app").strip().lower()
-            if app_raw in IntentDetector.APP_LAUNCH_MAP:
+            normalized_app = app_raw.replace(" ", "").replace("-", "")
+            if (
+                app_raw in IntentDetector.APP_LAUNCH_MAP
+                or normalized_app in ("notepad", "notepad.exe", "chrome", "googlechrome", "calculator", "calc", "cmd", "terminal", "commandprompt", "settings")
+                or app_raw in IntentDetector.APP_LAUNCH_MAP.values()
+            ):
                 return f"open_{app_raw}"
         if self._SETTINGS_PATTERN.match(clean):
             return "open_settings"

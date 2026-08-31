@@ -131,7 +131,7 @@ class EcosystemStatusSkill(BaseSkill):
                 "",
                 f"**Overall Ecosystem Health:** `{status.get('overall_health', 'HEALTHY')}` | **Active Subsystems:** `{len(subs)}/8`",
                 "",
-                "### 1. 📈 Trading Bot: Algorithmic Trading Bot",
+                "### 1. 📈 Stratex: 24/7 Algorithmic Trading Platform",
                 f"- **Status:** `{trade.get('status', 'RUNNING')}` | **Mode:** `{trade.get('mode', 'TESTNET')}`",
                 f"- **Account Equity:** `${trade.get('equity_usdt', 10450.0):,.2f} USDT` (Daily PnL: `+{trade.get('daily_pnl_usdt', 245.50):,.2f}`)",
                 f"- **Active Positions:** `{trade.get('active_positions_count', 2)}` open positions",
