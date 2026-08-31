@@ -23,10 +23,8 @@ logger = get_logger("llm.groq")
 
 GROQ_DEFAULT_BASE_URL = "https://api.groq.com/openai/v1"
 GROQ_DEFAULT_MODEL = "openai/gpt-oss-120b"
-GROQ_FALLBACK_MODEL = "openai/gpt-oss-20b"
-# Universally available Groq model used as the terminal retry when the
-# configured model is decommissioned / not found (404 model_not_found).
-GROQ_UNIVERSAL_FALLBACK_MODEL = "openai/gpt-oss-120b"
+GROQ_FALLBACK_MODEL = "qwen/qwen3.8-27b"
+GROQ_UNIVERSAL_FALLBACK_MODEL = "openai/gpt-oss-20b"
 
 
 class _RateLimitedError(Exception):

@@ -48,32 +48,52 @@ class HelpSystemSkill(BaseSkill):
         self._lock = threading.RLock()
 
     def get_capabilities_roster(self) -> Dict[str, Any]:
-        """Returns structured capability roster spanning all 5 subsystems."""
+        """Returns structured capability roster spanning the full FRIDAY Universe and Laptop Control."""
         return {
-            "trading_bot": {
-                "name": "📈 Algorithmic Trading Bot",
-                "description": "Portfolio equity tracking, active positions across 3 exchanges, and emergency panic halting.",
+            "laptop_control": {
+                "name": "💻 Autonomous Laptop & Desktop Control",
+                "description": "Full Windows control: opening apps, typing, mouse navigation, file management, volume, settings, and command execution.",
+                "sample_commands": ["Open Notepad and type hello", "Open Chrome and search for AI", "What are my laptop specs?", "Adjust volume to 50%"],
+            },
+            "inference": {
+                "name": "⚡ Inference Multi-Agent AI Gateway",
+                "description": "10 specialist agents (Researcher, Architect, Coder, Critic, Synthesizer, etc.) with multi-model consensus debates.",
+                "sample_commands": ["Ask Inference what is 2+2", "Debate with Inference on microservices vs monolith", "How many agents in Inference?"],
+            },
+            "stratex": {
+                "name": "📈 Stratex 24/7 Algorithmic Trading Platform",
+                "description": "Binance Futures automated trading, real-time risk mitigation, and panic liquidation halts.",
                 "sample_commands": ["Trading status", "How are my positions?", "Emergency stop trading"],
+            },
+            "intelx": {
+                "name": "🧠 IntelX Evidence & Research Engine",
+                "description": "Macro research, volatility evidence gathering, and real-time sentiment analysis.",
+                "sample_commands": ["IntelX research on BTC volatility", "Summarize latest macro market news"],
+            },
+            "futuris": {
+                "name": "🔮 Futuris Predictive Forecasting Engine",
+                "description": "Calibrated probabilistic forecasting, volatility models, and regime transition predictions.",
+                "sample_commands": ["Futuris forecast for BTCUSDT", "Show prediction accuracy metrics"],
+            },
+            "memora": {
+                "name": "🧠 Memora Persistent Cloud Memory",
+                "description": "9 GB Turso AWS Mumbai long-term memory fabric, vector semantic recall, and episodic storage.",
+                "sample_commands": ["Search memory for project notes", "What did we discuss yesterday?"],
+            },
+            "cortex": {
+                "name": "🌐 Cortex Web Operations Engine",
+                "description": "Autonomous web operations, visitor analytics, lead tracking, and integrations (Stripe, Twilio, SendGrid).",
+                "sample_commands": ["Website status", "Who is on my website?", "Any new leads?"],
             },
             "forge": {
                 "name": "🛠️ FORGE Software Engineering Engine",
-                "description": "Autonomous full-stack software builds, test generation, and deliverable packaging.",
-                "sample_commands": ["Forge status", "Ask Forge to build a portfolio website", "Show me what Forge built"],
+                "description": "Autonomous full-stack code generator, automated testing, and software package delivery.",
+                "sample_commands": ["Forge status", "Ask Forge to build a CLI tool", "Show me what Forge built"],
             },
-            "nexus": {
-                "name": "🌐 Nexus Website & Growth Engine",
-                "description": "Live visitor intent scoring, pipeline lead tracking, conversion diagnosis, and A/B approvals.",
-                "sample_commands": ["Website status", "Who's on my website?", "Any new leads?", "Approve that Nexus action"],
-            },
-            "ai_universe": {
-                "name": "🧠 AI-Universe Intelligence Core",
-                "description": "Multi-model reasoning failovers, strategy consultation audits, and decision debate chains.",
-                "sample_commands": ["Why did Nexus recommend that?", "Explain the advisory decision", "What did AI Universe predict?"],
-            },
-            "emergency": {
-                "name": "🚨 Master Emergency Orchestration",
-                "description": "Biometric-gated ecosystem-wide killswitch and cascade failure isolation.",
-                "sample_commands": ["Emergency stop everything", "Status of everything", "Brief me"],
+            "sentinel": {
+                "name": "🛡️ Sentinel Cybersecurity & Threat Defense",
+                "description": "Autonomous threat detection, capability gating, audit logging, and security verification.",
+                "sample_commands": ["Security status", "Run system security audit"],
             },
         }
 
@@ -92,16 +112,19 @@ class HelpSystemSkill(BaseSkill):
 
         try:
             # 1. "What can you do?" / Global capabilities
-            if any(k in clean for k in ["what can you do", "list capabilities", "help me", "system capabilities"]):
+            if any(k in clean for k in ["what can you do", "list capabilities", "help me", "system capabilities", "what do you do"]):
                 roster = self.get_capabilities_roster()
                 spoken = (
-                    "I am FRIDAY, your Autonomous AI Operating System. Here is what I can do across our 5 subsystems:\n"
-                    "• 📈 **Trading Bot**: Monitor equity, positions, and execute instant panic halts.\n"
-                    "• 🛠️ **Forge SWE Engine**: Build responsive websites, CLI tools, and FastAPI services autonomously.\n"
-                    "• 🌐 **Nexus Growth Engine**: Track live website visitors, lead pipelines, and diagnose conversion drops.\n"
-                    "• 🧠 **AI-Universe**: Multi-provider reasoning debates, advisory consultations, and market predictions.\n"
-                    "• 🚨 **Emergency Center**: Unified biometric killswitch and automated playbooks.\n"
-                    "Speak 'Status of everything' or 'Brief me' to get started."
+                    "I am FRIDAY, your Autonomous AI Operating System. Here is what I can do across your laptop and the FRIDAY Universe:\n\n"
+                    "💻 **Laptop & Desktop Control**: Open applications, type text, navigate windows, execute commands, and manage files on your PC.\n"
+                    "⚡ **Inference AI Gateway (AI-Universe)**: Consult specialist agents for multi-model reasoning and debate.\n"
+                    "📈 **Trading Bot (Stratex)**: 24/7 Binance Futures algorithmic trading, portfolio tracking, and instant panic halts.\n"
+                    "🛠️ **Forge SWE Engine (FORGE)**: Autonomous full-stack software development, code generation, and test validation.\n"
+                    "🌐 **Nexus Growth Engine (Cortex)**: Autonomous website operations, visitor analytics, and conversion intelligence.\n"
+                    "🧠 **IntelX & Futuris**: Deep macro research, sentiment scanning, and calibrated market predictions.\n"
+                    "🧠 **Memora Memory Fabric**: Persistent cloud memory and semantic recall across all conversations.\n"
+                    "🛡️ **Sentinel Cybersecurity**: Autonomous threat defense, security verification, and audit logging.\n\n"
+                    "Try saying: *'Open Notepad and type hello'*, *'Ask Inference [question]'*, or *'Status of everything'*."
                 )
                 step_results.append({"action": "get_capabilities_roster", "roster": roster})
                 return SkillExecutionResult(skill_name=self.name, success=True, output=spoken, step_results=step_results)

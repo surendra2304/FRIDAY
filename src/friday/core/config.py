@@ -497,31 +497,51 @@ class Settings(BaseSettings):
         description="Enable unified ecosystem command center across Bot, FORGE, and AI-Universe",
     )
     trading_bot_base_url: str = Field(
-        default="http://localhost:5000",
-        validation_alias=AliasChoices("FRIDAY_TRADING_BOT_BASE_URL", "TRADING_BOT_BASE_URL", "trading_bot_base_url"),
-        description="Base URL for Algorithmic Trading Bot API",
+        default="https://stratex-ucjz.onrender.com",
+        validation_alias=AliasChoices("STRATEX_URL", "FRIDAY_STRATEX_URL", "FRIDAY_TRADING_BOT_BASE_URL", "TRADING_BOT_BASE_URL", "trading_bot_base_url"),
+        description="Base URL for Algorithmic Trading Bot API (Stratex)",
     )
     ai_universe_base_url: str = Field(
-        default="http://localhost:8001",
-        validation_alias=AliasChoices("FRIDAY_AI_UNIVERSE_BASE_URL", "AI_UNIVERSE_BASE_URL", "ai_universe_base_url"),
-        description="Base URL for AI-Universe Intelligence Core API",
+        default="https://inference-3i2b.onrender.com",
+        validation_alias=AliasChoices("INFERENCE_URL", "FRIDAY_INFERENCE_URL", "FRIDAY_AI_UNIVERSE_BASE_URL", "AI_UNIVERSE_BASE_URL", "ai_universe_base_url"),
+        description="Base URL for AI-Universe / Inference Core API",
+    )
+    intelx_base_url: str = Field(
+        default="https://intelx-3cz1.onrender.com",
+        validation_alias=AliasChoices("INTELX_URL", "FRIDAY_INTELX_URL", "intelx_base_url"),
+        description="Base URL for IntelX Evidence & Research API",
+    )
+    futuris_base_url: str = Field(
+        default="https://futuris-x4f4.onrender.com",
+        validation_alias=AliasChoices("FUTURIS_URL", "FRIDAY_FUTURIS_URL", "futuris_base_url"),
+        description="Base URL for Futuris Predictive Forecasting API",
+    )
+    memora_base_url: str = Field(
+        default="https://memora-9zr9.onrender.com",
+        validation_alias=AliasChoices("MEMORA_URL", "FRIDAY_MEMORA_URL", "memora_base_url"),
+        description="Base URL for Memora Universal Memory API",
+    )
+    sentinel_base_url: str = Field(
+        default="http://localhost:8003",
+        validation_alias=AliasChoices("SENTINEL_URL", "FRIDAY_SENTINEL_URL", "sentinel_base_url"),
+        description="Base URL for Sentinel Security API",
     )
 
-    # NEXUS (Autonomous Website & Growth Engine) Integration
+    # CORTEX / NEXUS (Autonomous Website & Growth Engine) Integration
     nexus_base_url: str = Field(
-        default="http://localhost:8002",
-        validation_alias=AliasChoices("FRIDAY_NEXUS_BASE_URL", "NEXUS_BASE_URL", "nexus_base_url"),
-        description="Base URL for Nexus Autonomous Website & Growth API",
+        default="https://cortex-qifr.onrender.com",
+        validation_alias=AliasChoices("CORTEX_URL", "NEXUS_URL", "FRIDAY_CORTEX_URL", "FRIDAY_NEXUS_BASE_URL", "NEXUS_BASE_URL", "nexus_base_url"),
+        description="Base URL for Cortex / Nexus Autonomous Website & Growth API",
     )
     nexus_enabled: bool = Field(
         default=True,
-        validation_alias=AliasChoices("FRIDAY_NEXUS_ENABLED", "NEXUS_ENABLED", "nexus_enabled"),
-        description="Enable Nexus autonomous growth & website integration",
+        validation_alias=AliasChoices("FRIDAY_NEXUS_ENABLED", "NEXUS_ENABLED", "CORTEX_ENABLED", "nexus_enabled"),
+        description="Enable Cortex autonomous growth & website integration",
     )
     nexus_vigilance_interval_seconds: int = Field(
         default=60,
         validation_alias=AliasChoices("FRIDAY_NEXUS_VIGILANCE_INTERVAL_SECONDS", "NEXUS_VIGILANCE_INTERVAL_SECONDS", "nexus_vigilance_interval_seconds"),
-        description="Polling interval in seconds for Nexus vigilance operator",
+        description="Polling interval in seconds for Cortex vigilance operator",
     )
 
     def get_diagnostics(self) -> Dict[str, Any]:
