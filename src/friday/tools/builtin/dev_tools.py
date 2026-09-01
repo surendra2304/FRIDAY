@@ -71,6 +71,72 @@ class WriteCodeFileTool(BaseTool):
             )
 
 
+class ReplaceFileContentTool(BaseTool):
+    """Safely replace a specific block of text within an existing file."""
+
+    name = "replace_file_content"
+    description = (
+        "Replaces a specific block of text within a file. "
+        "Useful for editing existing code without rewriting the entire file."
+    )
+    safety_level = SafetyLevel.SAFE
+    parameters = {
+        "type": "object",
+        "properties": {
+            "filepath": {
+                "type": "string",
+                "description": "Relative or absolute path of the file to modify.",
+            },
+            "old_text": {
+                "type": "string",
+                "description": "The exact block of text to be replaced (must match exactly, including whitespace).",
+            },
+            "new_text": {
+                "type": "string",
+                "description": "The new text that will replace old_text.",
+            },
+        },
+        "required": ["filepath", "old_text", "new_text"],
+    }
+
+    def execute(self, filepath: str = "", old_text: str = "", new_text: str = "", **kwargs: Any) -> ToolResult:
+        clean_path = (filepath or "").strip()
+        if not clean_path:
+            return ToolResult(name=self.name, content="Error: No filepath provided.", is_error=True, safety_level=self.safety_level)
+        if not old_text:
+            return ToolResult(name=self.name, content="Error: old_text cannot be empty.", is_error=True, safety_level=self.safety_level)
+
+        try:
+            target = Path(clean_path).resolve()
+            if not target.exists() or not target.is_file():
+                return ToolResult(name=self.name, content=f"Error: File '{clean_path}' does not exist.", is_error=True, safety_level=self.safety_level)
+                
+            content = target.read_text(encoding="utf-8")
+            if old_text not in content:
+                return ToolResult(name=self.name, content="Error: old_text not found in the file. Ensure exact match including whitespace.", is_error=True, safety_level=self.safety_level)
+                
+            new_content = content.replace(old_text, new_text, 1)
+            target.write_text(new_content, encoding="utf-8")
+            logger.info(f"Successfully replaced text in '{target}'")
+            return ToolResult(
+                name=self.name,
+                content=f"Successfully replaced text in '{clean_path}'.",
+                is_error=False,
+                safety_level=self.safety_level,
+                metadata={"filepath": str(target)},
+            )
+        except Exception as e:
+            logger.error(f"Failed to modify file '{clean_path}': {e}")
+            return ToolResult(
+                name=self.name,
+                content=f"Failed to modify file: {e}",
+                is_error=True,
+                safety_level=self.safety_level,
+            )
+
+
+
+
 class RunTestsTool(BaseTool):
     """Execute pytest test suites via subprocess and return pass/fail diagnostics."""
 

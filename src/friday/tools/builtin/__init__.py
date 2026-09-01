@@ -8,6 +8,7 @@ from friday.tools.builtin.close_application import CloseApplicationTool
 from friday.tools.builtin.dev_tools import (
     CreateGitBranchTool,
     ReadOwnCodebaseTool,
+    ReplaceFileContentTool,
     RunTestsTool,
     WriteCodeFileTool,
 )
@@ -90,6 +91,7 @@ __all__ = [
     "ReadActiveWindowTextTool",
     "ReadOwnCodebaseTool",
     "ReadScreenTextTool",
+    "ReplaceFileContentTool",
     "RunTestsTool",
     "ScreenPredictionTool",
     "ScreenSnapshotTool",

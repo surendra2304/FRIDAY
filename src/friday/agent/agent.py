@@ -86,6 +86,7 @@ from friday.tools.builtin import (
     ReadActiveWindowTextTool,
     ReadOwnCodebaseTool,
     ReadScreenTextTool,
+    ReplaceFileContentTool,
     RunTestsTool,
     ScreenPredictionTool,
     ScreenSnapshotTool,
@@ -1349,6 +1350,7 @@ class FridayAgent:
         registry.register(SystemControlTool())
         registry.register(HealthCheckTool())
         registry.register(WriteCodeFileTool())
+        registry.register(ReplaceFileContentTool())
         registry.register(RunTestsTool())
         registry.register(CreateGitBranchTool())
         registry.register(ControlLightTool())
@@ -1855,12 +1857,32 @@ class FridayAgent:
             logger.info(f"Autonomous Dev Workflow triggered for: '{clean_input}'")
             self.state_machine.transition_to(TaskState.PLANNING, reason="Planning autonomous issue fix")
             self.state_machine.transition_to(TaskState.EXECUTING, reason="Writing code and running automated test verification")
+            
             import asyncio
-            try:
-                loop = asyncio.get_running_loop()
-                dev_res = loop.run_until_complete(self._dev_workflow.execute_issue_fix(clean_input))
-            except RuntimeError:
-                dev_res = asyncio.run(self._dev_workflow.execute_issue_fix(clean_input))
+            import threading
+            
+            def run_coro_sync(coro):
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
+                if loop and loop.is_running():
+                    res = []
+                    exc = []
+                    def run_in_thread():
+                        try:
+                            res.append(asyncio.run(coro))
+                        except Exception as e:
+                            exc.append(e)
+                    t = threading.Thread(target=run_in_thread)
+                    t.start()
+                    t.join()
+                    if exc:
+                        raise exc[0]
+                    return res[0]
+                return asyncio.run(coro)
+
+            dev_res = run_coro_sync(self._dev_workflow.execute_issue_fix(clean_input))
 
             self.state_machine.transition_to(TaskState.VERIFYING, reason="Verifying test suite outcome")
             self.state_machine.transition_to(
@@ -1882,6 +1904,67 @@ class FridayAgent:
                     "branch": dev_res.get("branch"),
                     "tests_passed": dev_res.get("tests_passed"),
                     "steps_taken": dev_res.get("steps_taken", []),
+                    "task_state": self.state_machine.current_state.value,
+                },
+            )
+
+        # Self-Healing / Auto-Fix Workflow fast-path
+        if not hasattr(self, "_self_healing_workflow"):
+            from friday.workflows.self_healing_workflow import SelfHealingWorkflow
+            self_dev_ag = self.agent_registry.get_agent("self_developer")
+            self._self_healing_workflow = SelfHealingWorkflow(
+                self_dev_agent=self_dev_ag,
+                tool_registry=self.tools,
+                memory=self.memory,
+            )
+        if self._self_healing_workflow.can_handle(clean_input):
+            logger.info(f"Self-Healing Workflow triggered for: '{clean_input}'")
+            self.state_machine.transition_to(TaskState.PLANNING, reason="Planning autonomous self-fix")
+            self.state_machine.transition_to(TaskState.EXECUTING, reason="Diagnosing and editing codebase")
+            
+            import asyncio
+            import threading
+            
+            def run_coro_sync(coro):
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
+                if loop and loop.is_running():
+                    res = []
+                    exc = []
+                    def run_in_thread():
+                        try:
+                            res.append(asyncio.run(coro))
+                        except Exception as e:
+                            exc.append(e)
+                    t = threading.Thread(target=run_in_thread)
+                    t.start()
+                    t.join()
+                    if exc:
+                        raise exc[0]
+                    return res[0]
+                return asyncio.run(coro)
+
+            fix_res = run_coro_sync(self._self_healing_workflow.execute_self_fix(clean_input))
+
+            self.state_machine.transition_to(TaskState.VERIFYING, reason="Verifying self-fix outcome")
+            self.state_machine.transition_to(
+                TaskState.COMPLETED if fix_res.get("success") else TaskState.FAILED,
+                reason=fix_res.get("summary", "Self-healing complete"),
+            )
+
+            user_msg = Message(role=Role.USER, content=clean_input)
+            self.memory.add_message(user_msg)
+            asst_msg = Message(role=Role.ASSISTANT, content=fix_res.get("summary", "Done."))
+            self.memory.add_message(asst_msg)
+
+            return AgentResponse(
+                content=fix_res.get("summary", "Done."),
+                is_done=True,
+                metadata={
+                    "self_healing": True,
+                    "steps_taken": fix_res.get("steps_taken", []),
                     "task_state": self.state_machine.current_state.value,
                 },
             )
