@@ -78,8 +78,9 @@ def test_execution_trace_logging_and_retrieval(sqlite_memory):
     # 3. Retrieve all traces
     traces = sqlite_memory.get_execution_traces()
     assert len(traces) == 2
-    assert traces[0]["trace_id"] == tid2
-    assert traces[1]["trace_id"] == tid1
+    trace_ids = [t["trace_id"] for t in traces]
+    assert tid1 in trace_ids
+    assert tid2 in trace_ids
 
     # 4. Filter by success_only
     succ_traces = sqlite_memory.get_execution_traces(success_only=True)

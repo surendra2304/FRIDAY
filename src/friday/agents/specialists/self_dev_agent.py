@@ -38,6 +38,7 @@ class SelfDevAgent(DeveloperAgent):
         tools = allowed_tools or [
             "read_own_codebase",
             "write_code_file",
+            "replace_file_content",
             "run_tests",
             "create_git_branch",
             "read_file",
