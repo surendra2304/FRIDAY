@@ -1,26 +1,25 @@
 """Unit and integration tests for FRIDAY agent reliability and observability."""
 
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 from unittest.mock import MagicMock, patch
+
 import httpx
 import pytest
+
 from friday.agent.agent import FridayAgent
 from friday.core.auth import AutoApproveAuthorizer
 from friday.core.config import Settings
 from friday.core.exceptions import LLMProviderError
 from friday.core.types import (
-    AuthorizationDecision,
-    AuthorizationRequest,
-    AuthorizationResponse,
-    SafetyLevel,
-    ToolResult,
-    Role,
     Message,
+    Role,
+    SafetyLevel,
     ToolCall,
+    ToolResult,
 )
-from friday.llm.openai_provider import OpenAILLMProvider
 from friday.llm.mock_provider import MockLLMProvider
+from friday.llm.openai_provider import OpenAILLMProvider
 from friday.tools.base import BaseTool
 from friday.tools.registry import ToolRegistry
 
@@ -170,7 +169,7 @@ def test_agent_user_friendly_exceptions():
 # --- 6. Test observability diagnostic metadata in AgentResponse ---
 def test_observability_metadata():
     call_count = 0
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:

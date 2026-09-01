@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Incident Management & Automated Containment for FRIDAY Live Operations.
 
 Classifies live incidents into 5 severity levels (Level 1 Catastrophic -> Level 5 Informational),
@@ -6,12 +5,12 @@ triggers automated containment actions (Emergency Halt, Parameter Rollback, Sizi
 detects recurring failure patterns, and generates Post-Incident Review (PIR) reports.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import hashlib
 import json
 import threading
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -28,13 +27,13 @@ class LiveIncident:
     description: str
     status: str  # OPEN, CONTAINED, RESOLVED
     containment_action: str
-    containment_result: Dict[str, Any]
+    containment_result: dict[str, Any]
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    resolved_at: Optional[str] = None
-    post_incident_notes: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    resolved_at: str | None = None
+    post_incident_notes: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "incident_id": self.incident_id,
             "severity_level": self.severity_level,
@@ -56,12 +55,12 @@ class LiveIncidentManager:
 
     def __init__(
         self,
-        emergency_manager: Optional[Any] = None,
-        alert_manager: Optional[Any] = None,
+        emergency_manager: Any | None = None,
+        alert_manager: Any | None = None,
     ) -> None:
         self._emergency_manager = emergency_manager
         self._alert_manager = alert_manager
-        self._incidents: Dict[str, LiveIncident] = {}
+        self._incidents: dict[str, LiveIncident] = {}
         self._lock = threading.RLock()
 
     @property
@@ -84,15 +83,15 @@ class LiveIncidentManager:
         severity_level: int,
         title: str,
         description: str,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> LiveIncident:
         """Records an incident and executes immediate automated containment policy."""
         now_iso = datetime.now(timezone.utc).isoformat()
-        inc_id = f"inc_{severity_level}_{hashlib.md5(f'{incident_type}:{now_iso}'.encode('utf-8')).hexdigest()[:6]}"
+        inc_id = f"inc_{severity_level}_{hashlib.md5(f'{incident_type}:{now_iso}'.encode()).hexdigest()[:6]}"
         metadata = metadata or {}
 
         containment_action = "NONE"
-        containment_res: Dict[str, Any] = {}
+        containment_res: dict[str, Any] = {}
 
         # Automated Containment Policies by Severity
         if severity_level == 1:
@@ -166,7 +165,7 @@ class LiveIncidentManager:
             logger.info(f"[INCIDENT_MGR] Incident {incident_id} resolved: {notes}")
             return True
 
-    def get_active_incidents(self) -> List[LiveIncident]:
+    def get_active_incidents(self) -> list[LiveIncident]:
         """Returns all open or contained un-resolved incidents."""
         with self._lock:
             return [i for i in self._incidents.values() if i.status in ("OPEN", "CONTAINED")]

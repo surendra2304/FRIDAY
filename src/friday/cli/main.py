@@ -281,7 +281,7 @@ Modes:
     try:
         settings = get_settings()
     except ValidationError as e:
-        print(f"\n[Configuration Error]: Failed to validate application configuration.")
+        print("\n[Configuration Error]: Failed to validate application configuration.")
         print(f"Details: {e}\n")
         sys.exit(1)
 

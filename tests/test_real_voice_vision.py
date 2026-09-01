@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Real hardware manual verification test for Voice + Vision.
 
 Test Type: HARDWARE / LIVE
@@ -10,6 +9,7 @@ Demonstrates full multimodal flow:
 """
 
 import sys
+
 import pytest
 
 # Mark as hardware test (opt-in only via pytest -m hardware)
@@ -20,7 +20,6 @@ from friday.core.config import get_settings
 from friday.tools.builtin.screen_snapshot import ScreenSnapshotTool
 from friday.vision.gemini_vision import GeminiVisionProvider
 from friday.vision.windows_screen import WindowsScreenCaptureProvider
-from friday.voice.audio_io import SpeakerStream
 
 
 def test_hardware_voice_vision():

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for IntelX Deep Research Integration.
 
 Validates:
@@ -23,17 +22,16 @@ Validates:
    - All research artifacts carry TrustLevel.UNTRUSTED_EXTERNAL
 """
 
-from datetime import datetime, timezone, timedelta
-import pytest
+from datetime import datetime, timedelta, timezone
 
 from friday.core.types import TrustLevel
+from friday.operators.research_supervisor_operator import ResearchSupervisorOperator
 from friday.skills.intelx_manager import (
     IntelXManagerSkill,
-    ResearchFinding,
     ResearchContradiction,
+    ResearchFinding,
     ResearchRun,
 )
-from friday.operators.research_supervisor_operator import ResearchSupervisorOperator
 
 
 def test_intelx_manager_api_operations():

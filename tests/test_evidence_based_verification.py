@@ -1,15 +1,11 @@
-# -*- coding: utf-8 -*-
 """Verification tests for FRIDAY's Evidence-Based Bounded Recovery & False-Success Detection."""
 
-import os
 import json
-import pytest
-from unittest.mock import MagicMock
 
-from friday.agent.planner import PlanStep, StepStatus, TaskPlan
-from friday.agent.verification import StepVerifier, VerificationResult, VerificationStatus
-from friday.agent.recovery import AutonomousRecoveryManager, FailureAnalyzer, FailureType, RecoveryStrategy
 from friday.agent.executor import TaskExecutionEngine
+from friday.agent.planner import PlanStep, StepStatus, TaskPlan
+from friday.agent.recovery import AutonomousRecoveryManager, FailureAnalyzer
+from friday.agent.verification import StepVerifier, VerificationStatus
 from friday.core.auth import AutoApproveAuthorizer
 from friday.core.types import SafetyLevel, ToolResult
 from friday.tools.base import BaseTool

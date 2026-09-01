@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Testnet Advisory Monitor Skill for Trading Supervision.
 
 Supervises live Binance Futures Testnet AI advisories, tracking SHADOW vs APPLY
@@ -6,17 +5,13 @@ modes, comparing live testnet execution against paper trading baselines,
 explaining testnet advisory decisions, and executing safety controls (mode toggle, parameter rollback).
 """
 
-from dataclasses import dataclass, field
-import json
-import os
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
-from friday.core.types import AuthorizationDecision, SafetyLevel, TrustLevel
+from friday.core.types import AuthorizationDecision, SafetyLevel
 from friday.skills.base_skill import BaseSkill, SkillExecutionResult
 from friday.skills.trading_bot_operator import TradingBotOperator
-from friday.skills.trading_precedence import CommandPrecedence, tag_trading_command
 
 logger = get_logger("skills.testnet_advisory_monitor")
 
@@ -47,10 +42,10 @@ class TestnetAdvisoryMonitorSkill(BaseSkill):
         r"\b(?:rollback\s+testnet\s+parameters|testnet\s+parameter\s+rollback)\b",
     ]
 
-    def __init__(self, bot_operator: Optional[TradingBotOperator] = None) -> None:
+    def __init__(self, bot_operator: TradingBotOperator | None = None) -> None:
         self.bot_operator = bot_operator or TradingBotOperator()
 
-    def get_testnet_advisory_status(self) -> Dict[str, Any]:
+    def get_testnet_advisory_status(self) -> dict[str, Any]:
         """Fetch live testnet advisory status, active mode, health, and current overlays."""
         raw = self.bot_operator.get_testnet_advisory_status()
         if not raw:
@@ -93,7 +88,7 @@ class TestnetAdvisoryMonitorSkill(BaseSkill):
             "raw": raw,
         }
 
-    def get_testnet_advisory_log(self, limit: int = 10) -> Dict[str, Any]:
+    def get_testnet_advisory_log(self, limit: int = 10) -> dict[str, Any]:
         """Fetch recent testnet advisory evaluations and execution verdicts."""
         raw = self.bot_operator.get_testnet_advisory_log(limit=limit)
         advisories = raw.get("advisories", raw.get("log", []))
@@ -128,7 +123,7 @@ class TestnetAdvisoryMonitorSkill(BaseSkill):
             "formatted_text": "\n".join(lines),
         }
 
-    def explain_testnet_advisory(self, decision_id: str) -> Dict[str, Any]:
+    def explain_testnet_advisory(self, decision_id: str) -> dict[str, Any]:
         """Provide detailed plain-language explanation of a specific testnet advisory decision."""
         log_data = self.get_testnet_advisory_log(limit=50)
         advisories = log_data.get("advisories", [])
@@ -175,7 +170,7 @@ class TestnetAdvisoryMonitorSkill(BaseSkill):
             "raw": target,
         }
 
-    def compare_testnet_paper(self) -> Dict[str, Any]:
+    def compare_testnet_paper(self) -> dict[str, Any]:
         """Compare live Binance Futures Testnet execution metrics against paper trading / shadow baselines."""
         raw = self.bot_operator.get_testnet_paper_comparison()
         if not raw:
@@ -225,8 +220,8 @@ class TestnetAdvisoryMonitorSkill(BaseSkill):
         }
 
     def toggle_advisory_mode(
-        self, enabled: bool = True, mode: str = "SHADOW", authorizer: Optional[Any] = None
-    ) -> Dict[str, Any]:
+        self, enabled: bool = True, mode: str = "SHADOW", authorizer: Any | None = None
+    ) -> dict[str, Any]:
         """Toggles testnet advisory enabled state or switches mode between SHADOW and APPLY."""
         if authorizer:
             auth_res = authorizer.authorize(
@@ -249,7 +244,7 @@ class TestnetAdvisoryMonitorSkill(BaseSkill):
             "result": res,
         }
 
-    def rollback_parameters(self, authorizer: Optional[Any] = None) -> Dict[str, Any]:
+    def rollback_parameters(self, authorizer: Any | None = None) -> dict[str, Any]:
         """Executes emergency rollback of all testnet parameter overlays to baseline."""
         if authorizer:
             auth_res = authorizer.authorize(
@@ -275,15 +270,15 @@ class TestnetAdvisoryMonitorSkill(BaseSkill):
     def execute(
         self,
         user_request: str,
-        agent: Optional[Any] = None,
-        tool_registry: Optional[Any] = None,
-        llm_provider: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        agent: Any | None = None,
+        tool_registry: Any | None = None,
+        llm_provider: Any | None = None,
+        authorizer: Any | None = None,
         **kwargs: Any,
     ) -> SkillExecutionResult:
         """Dispatches natural language user queries for testnet advisory supervision."""
         clean_req = user_request.strip().lower()
-        step_results: List[Dict[str, Any]] = []
+        step_results: list[dict[str, Any]] = []
 
         try:
             # 1. Rollback testnet parameters

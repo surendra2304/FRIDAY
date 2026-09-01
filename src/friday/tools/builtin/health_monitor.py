@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Proactive System Health Monitor for FRIDAY.
 
 Monitors CPU, RAM, disk space, battery level, and logs status to ~/friday/system_health.log.
@@ -6,10 +5,10 @@ Detects potential issues (low disk, critical battery, high load) and provides al
 """
 
 import os
-import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 import psutil
 
 from friday.core.logging import get_logger
@@ -22,7 +21,7 @@ logger = get_logger("agent.health_monitor")
 class SystemHealthMonitor:
     """Proactive system telemetry and health metrics tracker."""
 
-    def __init__(self, log_dir: Optional[Path] = None):
+    def __init__(self, log_dir: Path | None = None):
         self.log_dir = log_dir or (Path.home() / ".friday")
         self.log_file = self.log_dir / "system_health.log"
         self._ensure_log_dir()
@@ -43,7 +42,7 @@ class SystemHealthMonitor:
         except Exception as e:
             logger.debug(f"Could not log health metric: {e}")
 
-    def collect_health_report(self) -> Dict[str, Any]:
+    def collect_health_report(self) -> dict[str, Any]:
         """Collect current system telemetry and return structured health status."""
         cpu = psutil.cpu_percent(interval=0.1)
         ram = psutil.virtual_memory()
@@ -93,7 +92,7 @@ class HealthCheckTool(BaseTool):
         "properties": {},
     }
 
-    def __init__(self, monitor: Optional[SystemHealthMonitor] = None):
+    def __init__(self, monitor: SystemHealthMonitor | None = None):
         super().__init__()
         self.monitor = monitor or SystemHealthMonitor()
 

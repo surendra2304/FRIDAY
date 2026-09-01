@@ -1,13 +1,15 @@
-# -*- coding: utf-8 -*-
 """Unit tests for IoT & Smart Home Control."""
 
 from unittest import mock
-import pytest
+
 import httpx
 
 from friday.core.config import Settings
-from friday.core.types import SafetyLevel, ToolResult
-from friday.tools.builtin.smart_home import ControlLightTool, ControlPlugTool, _send_iot_request
+from friday.core.types import SafetyLevel
+from friday.tools.builtin.smart_home import (
+    ControlLightTool,
+    ControlPlugTool,
+)
 
 
 def test_control_light_tool_is_safe():

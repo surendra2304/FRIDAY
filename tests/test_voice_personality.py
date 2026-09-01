@@ -2,14 +2,15 @@
 
 import asyncio
 from unittest import mock
+
 import pytest
 
 from friday.agent.agent import FridayAgent
 from friday.core.auth import AutoApproveAuthorizer
 from friday.core.config import Settings
 from friday.core.types import Message, Role, SafetyLevel, ToolResult
-from friday.memory.sqlite import SQLiteConversationMemory
 from friday.llm.mock_provider import MockLLMProvider
+from friday.memory.sqlite import SQLiteConversationMemory
 from friday.tools.base import BaseTool
 from friday.tools.registry import ToolRegistry
 from friday.voice.audio_io import MockSpeakerStream

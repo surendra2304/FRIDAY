@@ -1,14 +1,14 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for FRIDAY Advanced Memory Consolidation & Learning System."""
 
-from datetime import datetime, timezone, timedelta
 import os
 import shutil
 import tempfile
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from friday.core.backup_recovery import BackupRecoveryManager
-from friday.memory.consolidation import MemoryConsolidationEngine, SemanticMemory
+from friday.memory.consolidation import MemoryConsolidationEngine
 from friday.memory.cross_session import CrossSessionLearning
 from friday.memory.proactive import ProactiveMemory
 from friday.operators.memory_health_operator import MemoryHealthMonitor

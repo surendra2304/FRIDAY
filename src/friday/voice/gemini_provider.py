@@ -8,15 +8,18 @@ low-latency conversational speech.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Optional
+from typing import Any
+
 import numpy as np
 
-from .base import VoiceInput, VoiceOutput, VoiceProvider
-from .audio_io import MicrophoneStream, SpeakerStream
-from .gemini_live_session import GeminiLiveVoiceSession
-from friday.auth.credential_pool import credential_pool as global_credential_pool, GeminiCredentialPool
+from friday.auth.credential_pool import GeminiCredentialPool
+from friday.auth.credential_pool import credential_pool as global_credential_pool
+
 from ..core.config import get_settings
 from ..core.logging import get_logger
+from .audio_io import MicrophoneStream, SpeakerStream
+from .base import VoiceInput, VoiceOutput, VoiceProvider
+from .gemini_live_session import GeminiLiveVoiceSession
 
 logger = get_logger("voice.gemini_provider")
 
@@ -68,9 +71,9 @@ class GeminiVoiceProvider(VoiceProvider):
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        model: Optional[str] = None,
-        credential_pool: Optional[GeminiCredentialPool] = None,
+        api_key: str | None = None,
+        model: str | None = None,
+        credential_pool: GeminiCredentialPool | None = None,
     ):
         settings = get_settings()
         self.credential_pool = credential_pool or global_credential_pool
@@ -91,9 +94,9 @@ class GeminiVoiceProvider(VoiceProvider):
         input_dev = GeminiVoiceInput(sample_rate=getattr(settings, "voice_input_sample_rate", 16000))
         output_dev = GeminiVoiceOutput(sample_rate=getattr(settings, "voice_live_sample_rate", 24000))
         super().__init__(input_dev, output_dev)
-        self._live_session: Optional[GeminiLiveVoiceSession] = None
+        self._live_session: GeminiLiveVoiceSession | None = None
 
-    async def run_live_async(self, agent: Any, stop_event: Optional[asyncio.Event] = None) -> None:
+    async def run_live_async(self, agent: Any, stop_event: asyncio.Event | None = None) -> None:
         """Run the full-duplex Gemini Live session asynchronously."""
         self._live_session = GeminiLiveVoiceSession(
             api_key=self.api_key,

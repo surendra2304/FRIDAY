@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Temporal and environmental state tracking for multimodal perception in Evidence-Based Verification.3.
 
 Provides structured tracking of CURRENT_STATE, PREVIOUS_STATE, meaningful CHANGE events,
@@ -8,7 +7,7 @@ change timestamps, relevant task context associations, and confidence metrics ov
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.vision.screen_context import ScreenContext
@@ -37,15 +36,15 @@ class EnvironmentalChange:
     change_id: str
     change_type: EnvironmentalChangeType
     description: str
-    previous_value: Optional[str]
-    current_value: Optional[str]
+    previous_value: str | None
+    current_value: str | None
     confidence: float
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     is_meaningful: bool = True
-    relevant_task_context: Optional[str] = None
-    affected_elements: List[str] = field(default_factory=list)
+    relevant_task_context: str | None = None
+    affected_elements: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "change_id": self.change_id,
             "change_type": self.change_type.value,
@@ -66,11 +65,11 @@ class TemporalObservation:
     observation_id: str
     screen_context: ScreenContext
     timestamp: datetime
-    task_id: Optional[str] = None
-    task_state: Optional[str] = None
-    active_step_id: Optional[str] = None
+    task_id: str | None = None
+    task_state: str | None = None
+    active_step_id: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "observation_id": self.observation_id,
             "screen_context": self.screen_context.to_dict(),
@@ -91,27 +90,27 @@ class TemporalEnvironmentTracker:
     ) -> None:
         self.max_history_entries = max_history_entries
         self.significance_threshold = significance_threshold
-        self.history: List[TemporalObservation] = []
-        self.change_log: List[EnvironmentalChange] = []
+        self.history: list[TemporalObservation] = []
+        self.change_log: list[EnvironmentalChange] = []
         self._change_counter: int = 0
 
     @property
-    def current_observation(self) -> Optional[TemporalObservation]:
+    def current_observation(self) -> TemporalObservation | None:
         """Return the most recent temporal observation (CURRENT_STATE)."""
         return self.history[-1] if self.history else None
 
     @property
-    def previous_observation(self) -> Optional[TemporalObservation]:
+    def previous_observation(self) -> TemporalObservation | None:
         """Return the preceding temporal observation (PREVIOUS_STATE)."""
         return self.history[-2] if len(self.history) >= 2 else None
 
     def record_observation(
         self,
         screen_context: ScreenContext,
-        task_id: Optional[str] = None,
-        task_state: Optional[str] = None,
-        active_step_id: Optional[str] = None,
-    ) -> Tuple[Optional[TemporalObservation], List[EnvironmentalChange]]:
+        task_id: str | None = None,
+        task_state: str | None = None,
+        active_step_id: str | None = None,
+    ) -> tuple[TemporalObservation | None, list[EnvironmentalChange]]:
         """Record a new observation and compute meaningful changes against previous state."""
         now = datetime.now(timezone.utc)
         obs_id = f"obs_{len(self.history) + 1}_{int(now.timestamp())}"
@@ -125,7 +124,7 @@ class TemporalEnvironmentTracker:
             active_step_id=active_step_id,
         )
 
-        detected_changes: List[EnvironmentalChange] = []
+        detected_changes: list[EnvironmentalChange] = []
         prev_obs = self.current_observation
 
         if prev_obs is not None:
@@ -150,10 +149,10 @@ class TemporalEnvironmentTracker:
         self,
         prev_obs: TemporalObservation,
         curr_obs: TemporalObservation,
-        task_id: Optional[str] = None,
-    ) -> List[EnvironmentalChange]:
+        task_id: str | None = None,
+    ) -> list[EnvironmentalChange]:
         """Analyze differences between PREVIOUS_STATE and CURRENT_STATE."""
-        changes: List[EnvironmentalChange] = []
+        changes: list[EnvironmentalChange] = []
         prev_ctx = prev_obs.screen_context
         curr_ctx = curr_obs.screen_context
 
@@ -291,7 +290,7 @@ class TemporalEnvironmentTracker:
 
         return changes
 
-    def get_recent_meaningful_changes(self, limit: int = 5) -> List[EnvironmentalChange]:
+    def get_recent_meaningful_changes(self, limit: int = 5) -> list[EnvironmentalChange]:
         """Return the most recent meaningful changes."""
         return self.change_log[-limit:]
 

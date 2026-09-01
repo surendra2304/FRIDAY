@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """End-to-End Test: Sentinel HIGH_IMPACT Action Approval Workflow.
 
 Validates:
@@ -9,7 +8,6 @@ Validates:
 """
 
 from friday.skills.sentinel_manager import SentinelManagerSkill, SentinelPendingAction
-from friday.core.types import TrustLevel
 
 
 def test_sentinel_high_impact_approval_lifecycle():

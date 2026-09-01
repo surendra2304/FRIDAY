@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Autonomous Failure Recovery & Strategy Adaptation for FRIDAY.
 
 Provides:
@@ -32,7 +31,7 @@ Provides:
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.agent.planner import PlanStep, StepStatus
 from friday.agent.verification import VerificationResult
@@ -82,12 +81,12 @@ class FailureDiagnosis:
     reason: str
     diagnostics: str
     confidence: float = 1.0
-    suggested_tool: Optional[str] = None
-    suggested_params: Optional[Dict[str, Any]] = None
+    suggested_tool: str | None = None
+    suggested_params: dict[str, Any] | None = None
     requires_user_escalation: bool = False
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "failure_type": self.failure_type.value,
             "is_recoverable": self.is_recoverable,
@@ -168,8 +167,8 @@ class FailureAnalyzer:
         cls,
         step: PlanStep,
         error_msg: str,
-        verification: Optional[VerificationResult] = None,
-        tool_fallbacks: Optional[Dict[str, str]] = None,
+        verification: VerificationResult | None = None,
+        tool_fallbacks: dict[str, str] | None = None,
     ) -> FailureDiagnosis:
         """Classify a step failure and determine whether it is safely recoverable."""
         err_lower = (error_msg or "").lower()
@@ -304,15 +303,15 @@ class AutonomousRecoveryManager:
         self,
         max_retries_per_step: int = 2,
         max_global_task_retries: int = 5,
-        tool_fallbacks: Optional[Dict[str, str]] = None,
+        tool_fallbacks: dict[str, str] | None = None,
     ) -> None:
         self.max_retries_per_step = max_retries_per_step
         self.max_global_task_retries = max_global_task_retries
-        self.tool_fallbacks: Dict[str, str] = tool_fallbacks or {}
+        self.tool_fallbacks: dict[str, str] = tool_fallbacks or {}
 
-        self.step_retry_counts: Dict[str, int] = {}
+        self.step_retry_counts: dict[str, int] = {}
         self.global_retry_count: int = 0
-        self.diagnoses_history: List[FailureDiagnosis] = []
+        self.diagnoses_history: list[FailureDiagnosis] = []
 
     def can_recover(self, step_id: str, diagnosis: FailureDiagnosis) -> bool:
         """Evaluate whether recovery may be attempted according to budgets and safety rules."""
@@ -335,7 +334,7 @@ class AutonomousRecoveryManager:
         self,
         step: PlanStep,
         diagnosis: FailureDiagnosis,
-    ) -> Optional[PlanStep]:
+    ) -> PlanStep | None:
         """Record attempt in budgets and produce the adapted PlanStep."""
         if not self.can_recover(step.step_id, diagnosis):
             return None

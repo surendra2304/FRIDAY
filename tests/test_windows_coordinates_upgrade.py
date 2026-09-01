@@ -1,8 +1,7 @@
-# -*- coding: utf-8 -*-
 """Verification tests for FRIDAY's Windows Display & Coordinate Transformation Layer."""
 
 import sys
-import time
+
 import pytest
 
 from friday.core.types import SafetyLevel
@@ -12,9 +11,8 @@ from friday.vision.coordinates import (
     StaleCoordinateGuard,
 )
 from friday.vision.ui_elements import BoundingBox
-from friday.vision.windows_screen import WindowsScreenCaptureProvider
 from friday.vision.windows_input_driver import WindowsNativeInputDriver
-
+from friday.vision.windows_screen import WindowsScreenCaptureProvider
 
 # ============================================================================
 # 1. Multi-Monitor & Negative Virtual Coordinates Tests

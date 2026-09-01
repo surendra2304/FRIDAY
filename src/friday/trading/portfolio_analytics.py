@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Portfolio Analytics Engine for FRIDAY.
 
 Calculates multi-account portfolio metrics, risk-adjusted returns (Sharpe, Sortino, Calmar),
@@ -6,10 +5,10 @@ Value at Risk (VaR/CVaR), strategy correlation matrices, capital allocation opti
 and factor-based performance attribution.
 """
 
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import math
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -25,7 +24,7 @@ class AccountSummary:
     cash: float
     unrealized_pnl: float
     realized_pnl: float
-    active_positions: List[Dict[str, Any]] = field(default_factory=list)
+    active_positions: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -57,12 +56,12 @@ class PortfolioMetrics:
     var_99_daily: float
     max_drawdown_pct: float
     recovery_factor: float
-    correlation_matrix: Dict[str, Dict[str, float]]
-    strategy_attributions: List[StrategyContribution]
-    rebalance_recommendations: List[Dict[str, Any]]
+    correlation_matrix: dict[str, dict[str, float]]
+    strategy_attributions: list[StrategyContribution]
+    rebalance_recommendations: list[dict[str, Any]]
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "total_equity": round(self.total_equity, 2),
             "total_cash": round(self.total_cash, 2),
@@ -90,14 +89,14 @@ class PortfolioAnalyticsEngine:
 
     def __init__(self, risk_free_rate: float = 0.04) -> None:
         self.risk_free_rate = risk_free_rate  # 4% annual risk-free rate
-        self._accounts: Dict[str, AccountSummary] = {}
-        self._strategy_history: Dict[str, List[float]] = {}  # Strategy returns stream
+        self._accounts: dict[str, AccountSummary] = {}
+        self._strategy_history: dict[str, list[float]] = {}  # Strategy returns stream
 
     def register_account(self, summary: AccountSummary) -> None:
         """Registers or updates account state."""
         self._accounts[summary.account_id] = summary
 
-    def record_strategy_returns(self, strategy_name: str, returns: List[float]) -> None:
+    def record_strategy_returns(self, strategy_name: str, returns: list[float]) -> None:
         """Records historical returns stream for a strategy."""
         self._strategy_history[strategy_name] = returns
 
@@ -136,7 +135,7 @@ class PortfolioAnalyticsEngine:
         sample_len = min(len(v) for v in self._strategy_history.values())
         weights = {s: 1.0 / len(all_strategies) for s in all_strategies}
 
-        portfolio_returns: List[float] = []
+        portfolio_returns: list[float] = []
         for i in range(sample_len):
             r = sum(self._strategy_history[s][i] * weights[s] for s in all_strategies)
             portfolio_returns.append(r)
@@ -162,11 +161,9 @@ class PortfolioAnalyticsEngine:
         max_dd = 0.0
         for r in portfolio_returns:
             cum_ret *= (1.0 + r)
-            if cum_ret > peak:
-                peak = cum_ret
+            peak = max(peak, cum_ret)
             dd = (peak - cum_ret) / peak
-            if dd > max_dd:
-                max_dd = dd
+            max_dd = max(max_dd, dd)
 
         max_dd_pct = max(max_dd * 100.0, 3.25)
         annualized_return_pct = mean_ret * 365.0 * 100.0
@@ -191,7 +188,7 @@ class PortfolioAnalyticsEngine:
         corr_matrix = self._calculate_correlation_matrix()
 
         # 6. Performance Attribution & Optimization Recommendations
-        attributions: List[StrategyContribution] = []
+        attributions: list[StrategyContribution] = []
         tot_strat_pnl = sum(sum(self._strategy_history[s]) for s in all_strategies) or 1.0
         for s in all_strategies:
             strat_pnl = sum(self._strategy_history[s])
@@ -213,7 +210,7 @@ class PortfolioAnalyticsEngine:
             )
 
         # Portfolio Optimization & Rebalancing Actions
-        rebalance_recs: List[Dict[str, Any]] = []
+        rebalance_recs: list[dict[str, Any]] = []
         for s in attributions:
             if s.sharpe_ratio > 2.0 and s.weight < 0.45:
                 rebalance_recs.append({
@@ -252,9 +249,9 @@ class PortfolioAnalyticsEngine:
             rebalance_recommendations=rebalance_recs,
         )
 
-    def _calculate_correlation_matrix(self) -> Dict[str, Dict[str, float]]:
+    def _calculate_correlation_matrix(self) -> dict[str, dict[str, float]]:
         """Calculates pairwise Pearson correlation coefficients between strategy returns."""
-        matrix: Dict[str, Dict[str, float]] = {}
+        matrix: dict[str, dict[str, float]] = {}
         strats = list(self._strategy_history.keys())
 
         for s1 in strats:

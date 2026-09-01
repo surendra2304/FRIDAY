@@ -1,7 +1,7 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for FRIDAY Advanced Voice Operations & NLP Command Center."""
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
+
 import pytest
 
 from friday.ecosystem.context_memory import ContextualConversationMemory

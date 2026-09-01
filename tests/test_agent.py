@@ -1,13 +1,12 @@
 """Tests for core FridayAgent loop, reasoning, and multi-step tool execution."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from friday.agent.agent import FridayAgent
 from friday.core.config import Settings
 from friday.core.types import Message, Role, SafetyLevel, ToolCall, ToolResult
 from friday.llm.mock_provider import MockLLMProvider
-from friday.memory.in_memory import InMemoryConversationMemory
 from friday.tools.base import BaseTool
-from friday.tools.builtin.system_info import SystemInfoTool
 from friday.tools.registry import ToolRegistry
 
 
@@ -190,7 +189,7 @@ def test_agent_valid_tool_execution():
     """Agent identifies intent, invokes tool, and synthesizes final answer."""
     call_count = 0
 
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -223,7 +222,7 @@ def test_agent_sequential_multi_step_tool_loop():
     """Agent performs sequential tool calling (Tool A -> Tool B -> Final response)."""
     call_count = 0
 
-    def multi_step_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def multi_step_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -277,7 +276,7 @@ def test_agent_unknown_tool_handling():
     """Agent handles request for an unregistered tool gracefully without crashing."""
     call_count = 0
 
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -309,7 +308,7 @@ def test_agent_invalid_arguments_handling():
     """Agent handles tool call with invalid schema arguments gracefully."""
     call_count = 0
 
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -348,7 +347,7 @@ def test_agent_tool_exception_handling():
     """Agent catches tool runtime exceptions and reports safely."""
     call_count = 0
 
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -384,7 +383,7 @@ def test_agent_safety_blocking():
     """Agent prevents unauthorized execution of dangerous/sensitive tools."""
     call_count = 0
 
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -423,7 +422,7 @@ def test_agent_safety_blocking():
 def test_agent_max_iterations_guardrail():
     """Agent terminates gracefully if the model loops tool calls endlessly."""
     # Model that always requests a tool call on every single invocation
-    def infinite_tool_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def infinite_tool_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         return Message(
             role=Role.ASSISTANT,
             content="Looping...",
@@ -456,7 +455,7 @@ def test_agent_tool_callback():
 
     call_count = 0
 
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -500,7 +499,7 @@ def test_agent_memory_persists_tool_calls():
     call_count = 0
     settings = Settings(env="testing")
 
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -548,7 +547,7 @@ def test_agent_time_query():
 
 def test_agent_math_query():
     call_count = 0
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -571,7 +570,7 @@ def test_agent_math_query():
 
 def test_agent_list_dir_query():
     call_count = 0
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -594,7 +593,7 @@ def test_agent_list_dir_query():
 
 def test_agent_read_file_query():
     call_count = 0
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:

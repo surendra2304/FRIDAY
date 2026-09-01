@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Advisory Watchdog Operator for Trading Supervision (Inspired by OpenJarvis).
 
 Persistent background operator that monitors the Algorithmic Trading Bot's AI-Universe
@@ -14,13 +13,13 @@ Safety & Memory Contract:
 """
 
 from datetime import datetime, timezone
-import os
-import threading
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role, SafetyLevel, TrustLevel
-from friday.operators.base_operator import BaseOperator, OperatorExecutionResult, OperatorState
+from friday.operators.base_operator import (
+    BaseOperator,
+)
 from friday.operators.triggers import IntervalTrigger
 from friday.skills.trading_bot_operator import TradingBotOperator
 from friday.skills.trading_precedence import CommandPrecedence, tag_trading_command
@@ -33,11 +32,11 @@ class AdvisoryWatchdogOperator(BaseOperator):
 
     def __init__(
         self,
-        bot_operator: Optional[TradingBotOperator] = None,
+        bot_operator: TradingBotOperator | None = None,
         poll_interval: float = 900.0,  # 15 minutes default
-        memory: Optional[Any] = None,
-        notification_manager: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        memory: Any | None = None,
+        notification_manager: Any | None = None,
+        authorizer: Any | None = None,
     ) -> None:
         trigger = IntervalTrigger(interval_seconds=poll_interval, name="advisory_poll_interval")
         super().__init__(
@@ -51,13 +50,13 @@ class AdvisoryWatchdogOperator(BaseOperator):
         )
         self.bot_operator = bot_operator or TradingBotOperator()
         self.memory = memory
-        self.seen_decision_ids: Set[str] = set()
+        self.seen_decision_ids: set[str] = set()
         self.poll_interval = poll_interval
 
-    def check_state(self) -> Dict[str, Any]:
+    def check_state(self) -> dict[str, Any]:
         """Perform a synchronous inspection of trading bot advisory and connectivity state."""
-        alerts: List[Dict[str, Any]] = []
-        status_info: Dict[str, Any] = {"reachable": True}
+        alerts: list[dict[str, Any]] = []
+        status_info: dict[str, Any] = {"reachable": True}
 
         # 1. Connectivity Check to Trading Bot
         try:
@@ -145,7 +144,7 @@ class AdvisoryWatchdogOperator(BaseOperator):
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
-    def _record_alert(self, alert: Dict[str, Any]) -> None:
+    def _record_alert(self, alert: dict[str, Any]) -> None:
         """Surface alert through notification channel and persist to memory tagged UNTRUSTED_EXTERNAL."""
         # 1. Post to Notification Manager
         if self.notification_manager:
@@ -181,10 +180,10 @@ class AdvisoryWatchdogOperator(BaseOperator):
                     },
                 )
                 self.memory.add_message(msg)
-                logger.info(f"[WATCHDOG] Persisted alert into memory with TrustLevel.UNTRUSTED_EXTERNAL")
+                logger.info("[WATCHDOG] Persisted alert into memory with TrustLevel.UNTRUSTED_EXTERNAL")
             except Exception as e:
                 logger.debug(f"[WATCHDOG] Failed to record alert to memory: {e}")
 
-    def execute_action(self, event_data: Dict[str, Any]) -> Any:
+    def execute_action(self, event_data: dict[str, Any]) -> Any:
         """Executes watchdog check cycle when triggered."""
         return self.check_state()

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Research Context Injector for FRIDAY Operating System.
 
 Injects relevant IntelX research insights into active subsystem execution contexts:
@@ -9,8 +8,7 @@ Injects relevant IntelX research insights into active subsystem execution contex
 - Invariant: Injected context is strictly tagged TrustLevel.UNTRUSTED_EXTERNAL
 """
 
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import TrustLevel
@@ -22,14 +20,14 @@ logger = get_logger("skills.research_context")
 class ResearchContextInjector:
     """Injects synthesized research findings into subsystem operation payloads."""
 
-    def __init__(self, library: Optional[ResearchLibrary] = None) -> None:
+    def __init__(self, library: ResearchLibrary | None = None) -> None:
         self.library = library or ResearchLibrary()
 
     def inject_trading_market_context(
         self,
-        trading_briefing: Dict[str, Any],
+        trading_briefing: dict[str, Any],
         asset: str = "BTC",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Enriches trading briefing with relevant market research intelligence (advisory only)."""
         search_res = self.library.search(query=f"{asset} market volatility macro events", domain="market", limit=2)
         research_notes = []
@@ -51,9 +49,9 @@ class ResearchContextInjector:
 
     def inject_security_threat_context(
         self,
-        security_report: Dict[str, Any],
+        security_report: dict[str, Any],
         cve_or_vulnerability: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Enriches security posture with CVE threat intelligence and mitigation research."""
         search_res = self.library.search(query=cve_or_vulnerability, domain="security", limit=2)
         threat_intelligence = []
@@ -75,9 +73,9 @@ class ResearchContextInjector:
 
     def inject_forge_technical_context(
         self,
-        build_spec: Dict[str, Any],
+        build_spec: dict[str, Any],
         architecture_topic: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Enriches Forge software build specification with technical comparison research."""
         search_res = self.library.search(query=architecture_topic, domain="technical", limit=2)
         tech_recommendations = []
@@ -98,9 +96,9 @@ class ResearchContextInjector:
 
     def inject_nexus_competitive_context(
         self,
-        nexus_insights: Dict[str, Any],
+        nexus_insights: dict[str, Any],
         competitor_name: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Enriches Nexus visitor insights with competitor intelligence and positioning data."""
         search_res = self.library.search(query=competitor_name, domain="competitive", limit=2)
         competitive_intel = []

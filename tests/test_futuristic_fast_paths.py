@@ -1,7 +1,5 @@
 """Futuristic fast-path tests: volume, battery, and screen description commands."""
 
-from types import SimpleNamespace
-from typing import Any
 
 from friday.agent.agent import FridayAgent
 from friday.core.config import Settings
@@ -88,7 +86,7 @@ def test_mute_delegates_to_manage_volume_tool(monkeypatch):
                               is_error=False, safety_level=__import__(
                                   "friday.core.types", fromlist=["SafetyLevel"]).SafetyLevel.SAFE)
 
-    import friday.tools.builtin.os_control as os_control
+    from friday.tools.builtin import os_control
     monkeypatch.setattr(os_control, "ManageVolumeTool", FakeTool)
 
     agent = _make_agent()
@@ -107,7 +105,7 @@ def test_mute_tool_error_marks_failure(monkeypatch):
                               safety_level=__import__("friday.core.types",
                                                       fromlist=["SafetyLevel"]).SafetyLevel.SAFE)
 
-    import friday.tools.builtin.os_control as os_control
+    from friday.tools.builtin import os_control
     monkeypatch.setattr(os_control, "ManageVolumeTool", FailingTool)
 
     agent = _make_agent()

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Perception Cache & Cost Optimization Manager for Evidence-Based Verification.9.
 
 Orchestrates multi-level caching for visual observations, element groundings, and screen analysis:
@@ -9,10 +8,10 @@ Orchestrates multi-level caching for visual observations, element groundings, an
 5. Strict quota & credential failover preservation.
 """
 
-from dataclasses import dataclass
 import hashlib
 import time
-from typing import Any, Dict, Optional
+from dataclasses import dataclass
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.vision.base import BaseVisionProvider
@@ -31,8 +30,8 @@ class CachedObservation:
     image_sha256: str
     cached_at: float
     ttl_seconds: float
-    active_application: Optional[str] = None
-    task_id: Optional[str] = None
+    active_application: str | None = None
+    task_id: str | None = None
 
     @property
     def is_expired(self) -> bool:
@@ -42,8 +41,8 @@ class CachedObservation:
     def is_valid_for(
         self,
         current_image_bytes: bytes,
-        current_app: Optional[str] = None,
-        current_task_id: Optional[str] = None,
+        current_app: str | None = None,
+        current_task_id: str | None = None,
         change_threshold: float = 0.05,
     ) -> bool:
         """Check if cached observation is still valid under current environmental state."""
@@ -86,7 +85,7 @@ class PerceptionCacheTelemetry:
     def hit_ratio(self) -> float:
         return (self.cache_hits / self.total_requests) if self.total_requests > 0 else 0.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "total_requests": self.total_requests,
             "cache_hits": self.cache_hits,
@@ -106,9 +105,9 @@ class PerceptionCacheManager:
 
     def __init__(
         self,
-        analyzer: Optional[ScreenAnalyzer] = None,
-        capture_provider: Optional[BaseScreenCaptureProvider] = None,
-        vision_provider: Optional[BaseVisionProvider] = None,
+        analyzer: ScreenAnalyzer | None = None,
+        capture_provider: BaseScreenCaptureProvider | None = None,
+        vision_provider: BaseVisionProvider | None = None,
         default_ttl_seconds: float = 15.0,
         change_threshold: float = 0.05,
     ) -> None:
@@ -118,16 +117,16 @@ class PerceptionCacheManager:
         )
         self.default_ttl_seconds = default_ttl_seconds
         self.change_threshold = change_threshold
-        self._cache: Optional[CachedObservation] = None
-        self._last_image_bytes: Optional[bytes] = None
+        self._cache: CachedObservation | None = None
+        self._last_image_bytes: bytes | None = None
         self.telemetry = PerceptionCacheTelemetry()
 
     def get_screen_context_cached(
         self,
         display: str = "primary",
-        user_query: Optional[str] = None,
-        active_application: Optional[str] = None,
-        task_id: Optional[str] = None,
+        user_query: str | None = None,
+        active_application: str | None = None,
+        task_id: str | None = None,
         force_refresh: bool = False,
     ) -> ScreenContext:
         """Retrieve screen context using cached observation if valid, else perform targeted analysis."""

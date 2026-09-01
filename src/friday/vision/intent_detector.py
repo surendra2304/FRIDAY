@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Intent detection for FRIDAY.
 
 Detects whether a user request is a geometric deterministic action, a semantic UI action, or falls back to generic processing.
@@ -7,7 +6,7 @@ Detects whether a user request is a geometric deterministic action, a semantic U
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any
 
 from friday.vision.detector import DeterministicActionDetector
 
@@ -22,7 +21,7 @@ class ActionIntent(Enum):
 class IntentResult:
     intent: ActionIntent
     confidence: float
-    parsed_data: Optional[Dict[str, Any]] = None
+    parsed_data: dict[str, Any] | None = None
 
 
 class IntentDetector:

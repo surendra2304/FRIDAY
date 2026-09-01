@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Ecosystem Orchestrator for FRIDAY.
 
 The master coordination tier orchestrating workflows across all three managed systems:
@@ -8,11 +7,11 @@ The master coordination tier orchestrating workflows across all three managed sy
 - Intelligent Request Routing (Determines optimal subsystem for any user request)
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-import threading
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.ecosystem.command_center import EcosystemCommandCenter
@@ -45,14 +44,14 @@ class EcosystemOrchestrator:
 
     def __init__(
         self,
-        command_center: Optional[EcosystemCommandCenter] = None,
-        forge_manager: Optional[ForgeManagerSkill] = None,
-        intelligence_engine: Optional[IntelligenceEngine] = None,
+        command_center: EcosystemCommandCenter | None = None,
+        forge_manager: ForgeManagerSkill | None = None,
+        intelligence_engine: IntelligenceEngine | None = None,
     ) -> None:
         self._command_center = command_center
         self._forge_manager = forge_manager
         self._intel_engine = intelligence_engine
-        self._routed_history: List[RoutedRequest] = []
+        self._routed_history: list[RoutedRequest] = []
         self._lock = threading.RLock()
 
     @property
@@ -96,7 +95,7 @@ class EcosystemOrchestrator:
         self,
         user_request: str,
         priority: str = "NORMAL",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Routes and executes a cross-system workflow."""
         with self._lock:
             target = self.route_request(user_request)
@@ -119,7 +118,7 @@ class EcosystemOrchestrator:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
-    def check_system_health(self) -> Dict[str, Any]:
+    def check_system_health(self) -> dict[str, Any]:
         """Polls health across all 3 systems and flags degraded subsystems."""
         status = self.command_center.get_ecosystem_status()
         systems = status.get("systems", {})

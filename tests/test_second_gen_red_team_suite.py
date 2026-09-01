@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Second-Generation FRIDAY Red-Team Adversarial Test Suite.
 
 Attacks FRIDAY across every architectural layer:
@@ -14,45 +13,31 @@ Attacks FRIDAY across every architectural layer:
 """
 
 import base64
-from datetime import datetime, timezone
 import json
-import pytest
-import time
-from typing import Any, Dict, List, Optional
-import uuid
+from typing import Any
 
 from friday.agent.agent import FridayAgent
-from friday.agent.checkpoint import TaskCheckpoint, TaskCheckpointStore
-from friday.agent.executor import StepExecutionResult, TaskExecutionEngine
-from friday.agent.planner import GoalDecomposer, PlanStep, StepStatus, TaskPlan
-from friday.agent.recovery import AutonomousRecoveryManager
+from friday.agent.executor import TaskExecutionEngine
+from friday.agent.planner import PlanStep, StepStatus, TaskPlan
 from friday.agent.state import ReasoningStateMachine, TaskState
-from friday.agent.verification import StepVerifier
-from friday.auth.credential_pool import GeminiCredentialPool, FailureCategory
-from friday.auth.request_accounting import BudgetLimits, RequestAccountant
 from friday.core.auth import (
     AuthorizationDecision,
     AuthorizationRequest,
-    AuthorizationResponse,
-    BaseAuthorizer,
     DefaultSecureAuthorizer,
     SafetyLevel,
 )
 from friday.core.types import Message, Role, ToolCall, ToolResult
-from friday.llm.base import BaseLLMProvider
 from friday.llm.mock_provider import MockLLMProvider
 from friday.memory.in_memory import InMemoryConversationMemory
-from friday.memory.sqlite import SQLiteConversationMemory
 from friday.memory.task_context import ActiveTaskContext
 from friday.tools.base import BaseTool
 from friday.tools.registry import ToolRegistry
-from friday.vision.coordinates import CoordinateTransform, DisplayMonitor, StaleCoordinateGuard
-from friday.vision.mock_screen import MockScreenCaptureProvider, create_synthetic_png
+from friday.vision.coordinates import (
+    StaleCoordinateGuard,
+)
+from friday.vision.mock_screen import MockScreenCaptureProvider
 from friday.vision.mock_vision import MockVisionProvider
 from friday.vision.pipeline import PerceptionPipeline
-from friday.vision.screen_context import ScreenContext
-from friday.vision.ui_elements import BoundingBox, ElementType, UIElement
-
 
 # ============================================================================
 # Dummy Tools for Testing Safety Boundaries
@@ -71,7 +56,7 @@ class DeleteSystemTool(BaseTool):
         "required": ["path"],
     }
 
-    def execute(self, arguments: Dict[str, Any], **kwargs: Any) -> ToolResult:
+    def execute(self, arguments: dict[str, Any], **kwargs: Any) -> ToolResult:
         return ToolResult(tool_call_id=kwargs.get("tool_call_id", "call_del"), success=True, content="DELETED")
 
 
@@ -88,7 +73,7 @@ class ReadSecretFileTool(BaseTool):
         "required": ["vault_id"],
     }
 
-    def execute(self, arguments: Dict[str, Any], **kwargs: Any) -> ToolResult:
+    def execute(self, arguments: dict[str, Any], **kwargs: Any) -> ToolResult:
         return ToolResult(tool_call_id=kwargs.get("tool_call_id", "call_vault"), success=True, content="AIzaSySecretTokenExposed123")
 
 

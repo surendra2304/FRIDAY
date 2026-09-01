@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive audit tests for Gemini model configurations and parameter sanitization.
 
 Verifies:
@@ -11,9 +10,8 @@ Verifies:
 """
 
 from unittest import mock
-import pytest
 
-from friday.core.config import Settings, get_settings
+from friday.core.config import get_settings
 from friday.core.types import Message, Role
 from friday.llm.gemini_provider import GeminiLLMProvider, is_gemini_37_model
 from friday.memory.embeddings.gemini import GeminiEmbeddingProvider

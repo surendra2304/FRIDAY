@@ -1,18 +1,16 @@
 """Tests for FRIDAY's provider-independent semantic memory architecture."""
 
-from datetime import datetime, timezone
 import uuid
 from unittest import mock
+
 import pytest
+
 from friday.core.config import Settings
 from friday.core.exceptions import LLMProviderError
 from friday.core.types import EmbeddingRecord, Message, Role
-from friday.memory.embeddings.base import BaseEmbeddingProvider
 from friday.memory.embeddings.factory import create_embedding_provider
 from friday.memory.embeddings.gemini import GeminiEmbeddingProvider
 from friday.memory.embeddings.mock import MockEmbeddingProvider
-from friday.memory.factory import create_memory
-from friday.memory.in_memory import InMemoryConversationMemory
 from friday.memory.sqlite import SQLiteConversationMemory
 
 

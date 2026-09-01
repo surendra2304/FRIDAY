@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Web Browsing & Autonomous Research Tools.
 
 Provides tools for fetching full webpage content with HTML clean-up via BeautifulSoup4,
@@ -6,7 +5,8 @@ and synthesizing large blocks of text into concise, structured answers using LLM
 with prompt injection sanitization.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
+
 import httpx
 
 from friday.core.config import get_settings
@@ -63,7 +63,7 @@ class FetchWebpageContentTool(BaseTool):
             logger.warning(f"Failed to fetch webpage '{target}': {e}")
             return ToolResult(
                 name=self.name,
-                content=f"Failed to fetch webpage '{target}': {str(e)}",
+                content=f"Failed to fetch webpage '{target}': {e!s}",
                 is_error=True,
                 safety_level=self.safety_level,
             )
@@ -84,7 +84,7 @@ class FetchWebpageContentTool(BaseTool):
             logger.error(f"Failed to parse HTML from '{target}': {e}")
             return ToolResult(
                 name=self.name,
-                content=f"Failed to parse HTML from '{target}': {str(e)}",
+                content=f"Failed to parse HTML from '{target}': {e!s}",
                 is_error=True,
                 safety_level=self.safety_level,
             )
@@ -202,7 +202,7 @@ class SynthesizeInformationTool(BaseTool):
             logger.error(f"Synthesis failed: {e}")
             return ToolResult(
                 name=self.name,
-                content=f"Synthesis failed: {str(e)}",
+                content=f"Synthesis failed: {e!s}",
                 is_error=True,
                 safety_level=self.safety_level,
             )

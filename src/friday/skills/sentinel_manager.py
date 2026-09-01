@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Sentinel Security Manager Skill for FRIDAY.
 
 Provides comprehensive management and supervision of Sentinel Autonomous Security Engine:
@@ -12,16 +11,17 @@ Provides comprehensive management and supervision of Sentinel Autonomous Securit
 - FRIDAY never executes security tools itself; all security actions go through Sentinel's policy engine and scope resolver.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import hashlib
 import hmac
 import re
 import threading
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Any
 
 from friday.core.logging import get_logger
-from friday.core.types import Message, Role, SafetyLevel, TrustLevel
+from friday.core.types import TrustLevel
 from friday.skills.base_skill import BaseSkill, SkillExecutionResult
 
 logger = get_logger("skills.sentinel_manager")
@@ -35,7 +35,7 @@ class SecurityFinding:
     severity: str  # CRITICAL, HIGH, MEDIUM, LOW, INFORMATIONAL
     target_asset: str
     description: str
-    cve_or_cwe: Optional[str]
+    cve_or_cwe: str | None
     evidence_reference: str
     remediation_recommendation: str
     status: str = "OPEN"  # OPEN, MITIGATED, FALSE_POSITIVE
@@ -52,10 +52,10 @@ class SentinelSecurityTask:
     risk_level: str  # CRITICAL, HIGH, MEDIUM, LOW, CLEAN
     findings_count: int
     evidence_count: int
-    findings: List[SecurityFinding] = field(default_factory=list)
+    findings: list[SecurityFinding] = field(default_factory=list)
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    completed_at: Optional[str] = None
-    audit_hash: Optional[str] = None
+    completed_at: str | None = None
+    audit_hash: str | None = None
 
 
 @dataclass
@@ -69,7 +69,7 @@ class SentinelPendingAction:
     evidence: str
     rationale: str
     status: str = "PENDING"  # PENDING, APPROVED, REJECTED
-    decision_reason: Optional[str] = None
+    decision_reason: str | None = None
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -125,7 +125,7 @@ class SentinelManagerSkill(BaseSkill):
     def __init__(
         self,
         base_url: str = "http://localhost:8003",
-        api_client: Optional[Callable[..., Dict[str, Any]]] = None,
+        api_client: Callable[..., dict[str, Any]] | None = None,
         default_target_domain: str = "example.com",
     ) -> None:
         super().__init__()
@@ -133,10 +133,10 @@ class SentinelManagerSkill(BaseSkill):
         self.api_client = api_client
         self.default_target_domain = default_target_domain
         self._lock = threading.RLock()
-        self._tasks: Dict[str, SentinelSecurityTask] = {}
-        self._pending_actions: Dict[str, SentinelPendingAction] = {}
-        self._scheduled_assessments: Dict[str, ScheduledAssessment] = {}
-        self._audit_log: List[Dict[str, Any]] = []
+        self._tasks: dict[str, SentinelSecurityTask] = {}
+        self._pending_actions: dict[str, SentinelPendingAction] = {}
+        self._scheduled_assessments: dict[str, ScheduledAssessment] = {}
+        self._audit_log: list[dict[str, Any]] = []
         self._secret_key = b"FRIDAY_SENTINEL_HMAC_SECRET_2026"
         self._init_default_data()
 
@@ -188,14 +188,14 @@ class SentinelManagerSkill(BaseSkill):
 
     def _compute_hmac(self, task_id: str, phase: str) -> str:
         """Compute HMAC-SHA256 signature for immutable audit trail verification."""
-        msg = f"{task_id}:{phase}:{datetime.now(timezone.utc).strftime('%Y-%m-%d')}".encode("utf-8")
+        msg = f"{task_id}:{phase}:{datetime.now(timezone.utc).strftime('%Y-%m-%d')}".encode()
         return hmac.new(self._secret_key, msg, hashlib.sha256).hexdigest()
 
     def submit_security_task(
         self,
         target: str,
         mode: str = "passive_recon",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Submit security assessment request to Sentinel via POST /api/v1/friday/delegate."""
         clean_target = (target or "").strip()
         if not clean_target:
@@ -247,7 +247,7 @@ class SentinelManagerSkill(BaseSkill):
                 "trust_level": TrustLevel.UNTRUSTED_EXTERNAL.value,
             }
 
-    def get_task_status(self, task_id: str) -> Dict[str, Any]:
+    def get_task_status(self, task_id: str) -> dict[str, Any]:
         """Query task execution status, current phase, findings count, and risk level."""
         with self._lock:
             task = self._tasks.get(task_id)
@@ -272,10 +272,10 @@ class SentinelManagerSkill(BaseSkill):
                 "trust_level": TrustLevel.UNTRUSTED_EXTERNAL.value,
             }
 
-    def get_findings(self, task_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_findings(self, task_id: str | None = None) -> list[dict[str, Any]]:
         """Retrieve security findings for a task or across all recent tasks with severity ratings."""
         with self._lock:
-            findings_list: List[SecurityFinding] = []
+            findings_list: list[SecurityFinding] = []
             if task_id:
                 task = self._tasks.get(task_id)
                 if task:
@@ -306,9 +306,9 @@ class SentinelManagerSkill(BaseSkill):
 
     def get_report(
         self,
-        task_id: Optional[str] = None,
+        task_id: str | None = None,
         report_type: str = "executive",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate structured security reports: executive, technical, soc_ir, or machine_json."""
         clean_type = report_type.lower().strip()
         if clean_type not in self._VALID_REPORT_TYPES:
@@ -350,7 +350,7 @@ class SentinelManagerSkill(BaseSkill):
             "trust_level": TrustLevel.UNTRUSTED_EXTERNAL.value,
         }
 
-    def get_attack_surface(self, task_id: Optional[str] = None) -> Dict[str, Any]:
+    def get_attack_surface(self, task_id: str | None = None) -> dict[str, Any]:
         """Retrieve graph representation of the discovered attack surface and exposed perimeter paths."""
         with self._lock:
             return {
@@ -375,7 +375,7 @@ class SentinelManagerSkill(BaseSkill):
                 "trust_level": TrustLevel.UNTRUSTED_EXTERNAL.value,
             }
 
-    def approve_action(self, action_id: str) -> Dict[str, Any]:
+    def approve_action(self, action_id: str) -> dict[str, Any]:
         """Approve a pending high-impact security verification action (SENSITIVE clearance)."""
         with self._lock:
             action = self._pending_actions.get(action_id)
@@ -398,7 +398,7 @@ class SentinelManagerSkill(BaseSkill):
                 "trust_level": TrustLevel.UNTRUSTED_EXTERNAL.value,
             }
 
-    def reject_action(self, action_id: str, reason: str = "Rejected by operator") -> Dict[str, Any]:
+    def reject_action(self, action_id: str, reason: str = "Rejected by operator") -> dict[str, Any]:
         """Reject a pending high-impact security verification action."""
         with self._lock:
             action = self._pending_actions.get(action_id)
@@ -421,7 +421,7 @@ class SentinelManagerSkill(BaseSkill):
                 "trust_level": TrustLevel.UNTRUSTED_EXTERNAL.value,
             }
 
-    def get_audit_trail(self, task_id: Optional[str] = None) -> Dict[str, Any]:
+    def get_audit_trail(self, task_id: str | None = None) -> dict[str, Any]:
         """Retrieve HMAC-signed cryptographic audit log."""
         with self._lock:
             events = self._audit_log
@@ -441,7 +441,7 @@ class SentinelManagerSkill(BaseSkill):
                 "trust_level": TrustLevel.UNTRUSTED_EXTERNAL.value,
             }
 
-    def list_scheduled_assessments(self) -> List[Dict[str, Any]]:
+    def list_scheduled_assessments(self) -> list[dict[str, Any]]:
         """List all active recurring security assessment schedules."""
         with self._lock:
             return [
@@ -462,7 +462,7 @@ class SentinelManagerSkill(BaseSkill):
         target: str,
         frequency: str = "weekly",
         mode: str = "full_web",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create a new recurring scheduled security assessment."""
         clean_target = (target or "").strip() or self.default_target_domain
         clean_freq = (frequency or "weekly").lower().strip()
@@ -490,7 +490,7 @@ class SentinelManagerSkill(BaseSkill):
                 "trust_level": TrustLevel.UNTRUSTED_EXTERNAL.value,
             }
 
-    def get_sentinel_health(self) -> Dict[str, Any]:
+    def get_sentinel_health(self) -> dict[str, Any]:
         """Perform health and connectivity check on Sentinel Security service."""
         return {
             "status": "HEALTHY",
@@ -531,10 +531,10 @@ class SentinelManagerSkill(BaseSkill):
     def execute(
         self,
         user_request: str,
-        agent: Optional[Any] = None,
-        tool_registry: Optional[Any] = None,
-        llm_provider: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        agent: Any | None = None,
+        tool_registry: Any | None = None,
+        llm_provider: Any | None = None,
+        authorizer: Any | None = None,
     ) -> SkillExecutionResult:
         """Route natural language security requests to Sentinel API methods."""
         req = user_request.lower().strip()

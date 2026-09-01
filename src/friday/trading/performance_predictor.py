@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Performance Prediction Engine for FRIDAY Trading.
 
 Provides forward-looking time-series and ensemble predictive modeling for
@@ -6,10 +5,10 @@ strategy returns, GARCH-style conditional volatility forecasting, confidence int
 and proactive parameter adjustments.
 """
 
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import math
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -21,8 +20,8 @@ class ForecastHorizon:
     """Predicted metrics for a specific forward horizon."""
     horizon_name: str  # 1d, 7d, 30d
     expected_return_pct: float
-    confidence_interval_80: Tuple[float, float]
-    confidence_interval_95: Tuple[float, float]
+    confidence_interval_80: tuple[float, float]
+    confidence_interval_95: tuple[float, float]
     expected_volatility_pct: float
     expected_sharpe: float
     probability_positive: float
@@ -33,14 +32,14 @@ class StrategyForecast:
     """Comprehensive forward prediction for a strategy or portfolio."""
     strategy_name: str
     current_regime: str
-    horizons: Dict[str, ForecastHorizon]
+    horizons: dict[str, ForecastHorizon]
     regime_transition_risk: float  # 0.0 - 1.0 probability of regime change
     predicted_drawdown_risk_pct: float
-    proactive_parameter_adjustments: Dict[str, Any]
+    proactive_parameter_adjustments: dict[str, Any]
     forecast_rationale: str
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "strategy_name": self.strategy_name,
             "current_regime": self.current_regime,
@@ -62,7 +61,7 @@ class PerformancePredictionEngine:
     def forecast_strategy(
         self,
         strategy_name: str = "BTC_Supertrend_Momentum",
-        historical_returns: Optional[List[float]] = None,
+        historical_returns: list[float] | None = None,
         current_regime: str = "TRENDING_BULL_STRONG",
     ) -> StrategyForecast:
         """Generates multi-horizon returns and volatility forecasts."""
@@ -76,7 +75,7 @@ class PerformancePredictionEngine:
         # Higher persistence when in trending or volatile regime
         garch_persistence = 0.85 if "VOLATILE" in current_regime else 0.70
 
-        horizon_data: Dict[str, ForecastHorizon] = {}
+        horizon_data: dict[str, ForecastHorizon] = {}
         day_multipliers = {"1d": 1, "7d": 7, "30d": 30}
 
         for h_name, days in day_multipliers.items():

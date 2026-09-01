@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Automated Follow-Up Workflow for FRIDAY Operating System.
 
 Tracks FRIDAY's proactive recommendations and systematically follows up:
@@ -7,10 +6,9 @@ Tracks FRIDAY's proactive recommendations and systematically follows up:
 3. Feedback calibration: outcome measurements automatically adjust recommendation confidence scores
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
 import threading
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 
 from friday.core.logging import get_logger
 
@@ -28,7 +26,7 @@ class TrackedRecommendation:
     status: str = "PROPOSED"  # PROPOSED, ACKNOWLEDGED, ACCEPTED, REJECTED, EXPIRED
     confidence: float = 0.85
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    last_followup: Optional[datetime] = None
+    last_followup: datetime | None = None
 
 
 @dataclass
@@ -46,8 +44,8 @@ class AutomatedFollowUpWorkflow:
     """Manages recommendation tracking, 24h unacted reminders, and outcome retrospectives."""
 
     def __init__(self) -> None:
-        self.recommendations: Dict[str, TrackedRecommendation] = {}
-        self.followup_history: List[FollowUpRecord] = []
+        self.recommendations: dict[str, TrackedRecommendation] = {}
+        self.followup_history: list[FollowUpRecord] = []
         self._lock = threading.RLock()
 
     def record_recommendation(
@@ -83,8 +81,8 @@ class AutomatedFollowUpWorkflow:
         self,
         rec_id: str,
         current_metric: float,
-        current_time: Optional[datetime] = None,
-    ) -> Optional[FollowUpRecord]:
+        current_time: datetime | None = None,
+    ) -> FollowUpRecord | None:
         """Generates retrospective outcome prompt (e.g. 'I suggested pausing Supertrend 2 days ago...')."""
         with self._lock:
             rec = self.recommendations.get(rec_id)
@@ -124,11 +122,11 @@ class AutomatedFollowUpWorkflow:
             self.followup_history.append(record)
             return record
 
-    def check_unacted_reminders(self, current_time: Optional[datetime] = None) -> List[FollowUpRecord]:
+    def check_unacted_reminders(self, current_time: datetime | None = None) -> list[FollowUpRecord]:
         """Generates gentle reminders for recommendations acknowledged but unacted for >24h."""
         with self._lock:
             now = current_time or datetime.now(timezone.utc)
-            reminders: List[FollowUpRecord] = []
+            reminders: list[FollowUpRecord] = []
 
             for rec in self.recommendations.values():
                 if rec.status == "ACKNOWLEDGED":

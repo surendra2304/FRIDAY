@@ -1,9 +1,8 @@
-# -*- coding: utf-8 -*-
 """Operator Manager for managing, ticking, and dispatching Persistent Operators."""
 
 import asyncio
 import threading
-from typing import Any, Dict, List, Optional
+
 from friday.core.logging import get_logger
 from friday.operators.base_operator import BaseOperator, OperatorExecutionResult
 
@@ -14,7 +13,7 @@ class OperatorManager:
     """Central registry and execution coordinator for persistent operators."""
 
     def __init__(self) -> None:
-        self._operators: Dict[str, BaseOperator] = {}
+        self._operators: dict[str, BaseOperator] = {}
         self._lock = threading.RLock()
 
     def register_operator(self, operator: BaseOperator) -> None:
@@ -42,7 +41,7 @@ class OperatorManager:
                 return True
         return False
 
-    def get_operator(self, operator_id: str) -> Optional[BaseOperator]:
+    def get_operator(self, operator_id: str) -> BaseOperator | None:
         with self._lock:
             op = self._operators.get(operator_id)
             if not op:
@@ -51,7 +50,7 @@ class OperatorManager:
                         return v
             return op
 
-    def list_operators(self) -> List[BaseOperator]:
+    def list_operators(self) -> list[BaseOperator]:
         with self._lock:
             return list(self._operators.values())
 
@@ -65,9 +64,9 @@ class OperatorManager:
             for op in self._operators.values():
                 op.stop()
 
-    def tick_all(self) -> List[OperatorExecutionResult]:
+    def tick_all(self) -> list[OperatorExecutionResult]:
         """Evaluate triggers for all registered operators and dispatch events."""
-        results: List[OperatorExecutionResult] = []
+        results: list[OperatorExecutionResult] = []
         with self._lock:
             ops_to_tick = list(self._operators.values())
 
@@ -82,7 +81,7 @@ class OperatorManager:
 
         return results
 
-    async def run_loop(self, tick_interval: float = 1.0, stop_event: Optional[asyncio.Event] = None) -> None:
+    async def run_loop(self, tick_interval: float = 1.0, stop_event: asyncio.Event | None = None) -> None:
         """Run operator trigger polling loop as an asyncio background task."""
         logger.info(f"Started OperatorManager async background loop (interval: {tick_interval}s)")
         while stop_event is None or not stop_event.is_set():

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """AI Universe Provider and Trading Bot Strategy Consultation Client for FRIDAY.
 
 Orchestrates deliberative consultations between FRIDAY and AI Universe:
@@ -10,10 +9,9 @@ Flow:
 5. FRIDAY records/logs the recommendation, but DOES NOT auto-apply it unless explicitly authorized by the user.
 """
 
-from dataclasses import dataclass, field
-import json
 import os
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.skills.trading_bot_operator import BotStatus, TradingBotOperator
@@ -29,10 +27,10 @@ class TradingConsultationResult:
     ai_universe_response: AIUniverseResponse
     recommendation: str
     confidence: float
-    evidence: List[str]
+    evidence: list[str]
     applied_to_bot: bool = False
     requires_user_authorization: bool = True
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def format_summary(self) -> str:
         """Format human-readable summary for FRIDAY to present or speak."""
@@ -61,8 +59,8 @@ class AIUniverseTradingConsultant:
 
     def __init__(
         self,
-        bot_operator: Optional[TradingBotOperator] = None,
-        universe_client: Optional[AIUniverseClient] = None
+        bot_operator: TradingBotOperator | None = None,
+        universe_client: AIUniverseClient | None = None
     ) -> None:
         self.bot_operator = bot_operator or TradingBotOperator()
         self.universe_client = universe_client or AIUniverseClient(
@@ -72,7 +70,7 @@ class AIUniverseTradingConsultant:
 
     async def consult_on_bot_performance(
         self,
-        question_override: Optional[str] = None,
+        question_override: str | None = None,
         mode: str = "ask",
         max_agents: int = 3
     ) -> TradingConsultationResult:

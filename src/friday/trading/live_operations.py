@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Live Operations Center for FRIDAY.
 
 Provides continuous live trading supervision, real-time realized/unrealized P&L tracking,
@@ -6,11 +5,10 @@ risk limit proximity monitoring (daily loss limit, max drawdown), position monit
 and live AI advisory telemetry inspection.
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import math
-import threading
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -57,7 +55,7 @@ class LiveTradingState:
     total_pnl_today: float
     total_exposure_usdt: float
     effective_leverage: float
-    positions: List[LivePosition]
+    positions: list[LivePosition]
     risk_proximity: RiskLimitProximity
     advisory_applied_count: int
     advisory_rejected_count: int
@@ -65,7 +63,7 @@ class LiveTradingState:
     capital_level: int
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "trading_mode": self.trading_mode,
             "total_equity": round(self.total_equity, 2),
@@ -90,7 +88,7 @@ class LiveOperationsCenter:
 
     def __init__(
         self,
-        bot_operator: Optional[Any] = None,
+        bot_operator: Any | None = None,
         daily_loss_limit_usdt: float = 500.0,
         max_drawdown_limit_pct: float = 5.0,
         max_positions: int = 5,
@@ -100,7 +98,7 @@ class LiveOperationsCenter:
         self.max_drawdown_limit_pct = max_drawdown_limit_pct
         self.max_positions = max_positions
         self._lock = threading.RLock()
-        self._last_state: Optional[LiveTradingState] = None
+        self._last_state: LiveTradingState | None = None
 
     @property
     def bot_operator(self) -> Any:
@@ -131,7 +129,7 @@ class LiveOperationsCenter:
         if isinstance(raw_positions, dict):
             raw_positions = list(raw_positions.values())
 
-        positions: List[LivePosition] = []
+        positions: list[LivePosition] = []
         total_exposure = 0.0
 
         if raw_positions:

@@ -1,13 +1,15 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for FRIDAY Unified Ecosystem Intelligence Reporting."""
 
 import os
 import shutil
 import tempfile
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
-from friday.ecosystem.intelligence_service import EcosystemIntelligenceService, EcosystemReport
+from friday.ecosystem.intelligence_service import (
+    EcosystemIntelligenceService,
+)
 from friday.ecosystem.registry import EcosystemRegistry, SubsystemEntry
 from friday.operators.ecosystem_anomaly_operator import EcosystemAnomalyDetection
 from friday.skills.conversational_ecosystem import ConversationalEcosystemQuery
@@ -123,10 +125,10 @@ def test_ecosystem_anomaly_detection_rules(intelligence_setup):
 
     # 2. Cascading Failure Simulation
     custom_reg = EcosystemRegistry()
-    custom_reg.register(SubsystemEntry("trading_bot", "Trading Bot", "trading", "📈", lambda: {}, lambda: {"status": "CRITICAL"}))
-    custom_reg.register(SubsystemEntry("nexus", "Nexus", "growth", "🌐", lambda: {}, lambda: {"status": "DEGRADED"}))
-    custom_reg.register(SubsystemEntry("forge", "Forge", "engineering", "🛠️", lambda: {}, lambda: {"status": "HEALTHY"}))
-    custom_reg.register(SubsystemEntry("ai_universe", "AI-Universe", "intelligence", "🧠", lambda: {}, lambda: {"status": "HEALTHY"}))
+    custom_reg.register(SubsystemEntry("trading_bot", "Trading Bot", "trading", "📈", dict, lambda: {"status": "CRITICAL"}))
+    custom_reg.register(SubsystemEntry("nexus", "Nexus", "growth", "🌐", dict, lambda: {"status": "DEGRADED"}))
+    custom_reg.register(SubsystemEntry("forge", "Forge", "engineering", "🛠️", dict, lambda: {"status": "HEALTHY"}))
+    custom_reg.register(SubsystemEntry("ai_universe", "AI-Universe", "intelligence", "🧠", dict, lambda: {"status": "HEALTHY"}))
 
     cascade_op = EcosystemAnomalyDetection(registry=custom_reg)
     events = cascade_op.tick()
@@ -134,10 +136,10 @@ def test_ecosystem_anomaly_detection_rules(intelligence_setup):
 
     # 3. Correlated Build / AI Failure Simulation
     custom_reg2 = EcosystemRegistry()
-    custom_reg2.register(SubsystemEntry("trading_bot", "Trading Bot", "trading", "📈", lambda: {}, lambda: {"status": "RUNNING"}))
-    custom_reg2.register(SubsystemEntry("nexus", "Nexus", "growth", "🌐", lambda: {}, lambda: {"status": "HEALTHY"}))
-    custom_reg2.register(SubsystemEntry("forge", "Forge", "engineering", "🛠️", lambda: {}, lambda: {"status": "FAILED"}))
-    custom_reg2.register(SubsystemEntry("ai_universe", "AI-Universe", "intelligence", "🧠", lambda: {}, lambda: {"status": "DEGRADED"}))
+    custom_reg2.register(SubsystemEntry("trading_bot", "Trading Bot", "trading", "📈", dict, lambda: {"status": "RUNNING"}))
+    custom_reg2.register(SubsystemEntry("nexus", "Nexus", "growth", "🌐", dict, lambda: {"status": "HEALTHY"}))
+    custom_reg2.register(SubsystemEntry("forge", "Forge", "engineering", "🛠️", dict, lambda: {"status": "FAILED"}))
+    custom_reg2.register(SubsystemEntry("ai_universe", "AI-Universe", "intelligence", "🧠", dict, lambda: {"status": "DEGRADED"}))
 
     correlated_op = EcosystemAnomalyDetection(registry=custom_reg2)
     events2 = correlated_op.tick()

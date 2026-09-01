@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Deterministic multithreaded concurrency tests for GeminiCredentialPool.
 
 Proves:
@@ -13,14 +12,13 @@ Proves:
 3. Zero race conditions during credential rotation, session stickiness, and atomic state saving.
 """
 
+import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-import random
-import threading
-import time
+
 import pytest
 
-from friday.auth.credential_pool import GeminiCredentialPool, FailureCategory
+from friday.auth.credential_pool import GeminiCredentialPool
 
 
 @pytest.fixture

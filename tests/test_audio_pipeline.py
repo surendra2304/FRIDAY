@@ -1,16 +1,16 @@
 """Unit tests for real-time audio pipeline, buffers, diagnostics, queues, and device error recovery."""
 
 import asyncio
-import queue
 import struct
 from unittest import mock
+
 import pytest
 
 from friday.voice.audio_io import (
     MicrophoneStream,
-    SpeakerStream,
     MockMicrophoneStream,
     MockSpeakerStream,
+    SpeakerStream,
     check_device_availability,
     compute_pcm_rms,
     get_audio_diagnostics,

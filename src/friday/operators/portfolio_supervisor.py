@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Portfolio Supervisor Operator for FRIDAY Multi-Exchange Operations.
 
 Supervises aggregate portfolio telemetry every 30 seconds across Binance, Bybit, and OKX:
@@ -9,14 +8,12 @@ Supervises aggregate portfolio telemetry every 30 seconds across Binance, Bybit,
 - Scans for actionable cross-exchange arbitrage opportunities (>1% net spread)
 """
 
-from datetime import datetime, timezone
-import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.alert_manager import AlertSeverity, ProductionAlertManager
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role, SafetyLevel, TrustLevel
-from friday.operators.base_operator import BaseOperator, OperatorExecutionResult, OperatorState
+from friday.operators.base_operator import BaseOperator
 from friday.operators.triggers import IntervalTrigger
 from friday.trading.exchange_incidents import ExchangeIncidentManager
 
@@ -35,11 +32,11 @@ class PortfolioSupervisorOperator(BaseOperator):
 
     def __init__(
         self,
-        exchange_incident_manager: Optional[ExchangeIncidentManager] = None,
-        alert_manager: Optional[ProductionAlertManager] = None,
+        exchange_incident_manager: ExchangeIncidentManager | None = None,
+        alert_manager: ProductionAlertManager | None = None,
         poll_interval_sec: float = 30.0,
-        memory: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        memory: Any | None = None,
+        authorizer: Any | None = None,
     ) -> None:
         trigger = IntervalTrigger(interval_seconds=poll_interval_sec, name="portfolio_supervisor_poll_interval")
         super().__init__(
@@ -69,9 +66,9 @@ class PortfolioSupervisorOperator(BaseOperator):
             self._alert_manager = ProductionAlertManager()
         return self._alert_manager
 
-    def tick(self) -> List[Dict[str, Any]]:
+    def tick(self) -> list[dict[str, Any]]:
         """Executes a 30-second cross-exchange portfolio audit cycle."""
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
 
         # 1. Check Exchange Health & Degradation
         health = self.exchange_manager.get_exchange_health()

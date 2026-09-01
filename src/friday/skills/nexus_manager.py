@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Nexus Manager Skill for FRIDAY.
 
 Provides comprehensive management and supervision of Nexus Autonomous Website & Growth Engine:
@@ -9,11 +8,10 @@ Provides comprehensive management and supervision of Nexus Autonomous Website & 
 - Invariant: All Nexus-generated data is stored and tagged with TrustLevel.UNTRUSTED_EXTERNAL.
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import re
-import threading
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.skills.base_skill import BaseSkill, SkillExecutionResult
@@ -30,8 +28,8 @@ class NexusVisitorSession:
     dwell_time_seconds: int
     intent_score: float  # 0.0 to 1.0
     intent_level: str  # LOW, MEDIUM, HIGH, VERY_HIGH
-    inferred_company: Optional[str] = None
-    key_actions: List[str] = field(default_factory=list)
+    inferred_company: str | None = None
+    key_actions: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -59,7 +57,7 @@ class NexusApprovalAction:
     expected_lift_pct: float
     confidence_score: float
     status: str = "PENDING"  # PENDING, APPROVED, REJECTED
-    decision_reason: Optional[str] = None
+    decision_reason: str | None = None
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -125,7 +123,7 @@ class NexusManagerSkill(BaseSkill):
         self._agent_activity_status: str = "3 agents active (CRO Analyst, Lead Scorer, UX Guard)"
 
         # Mock Live Visitors
-        self._live_visitors: List[NexusVisitorSession] = [
+        self._live_visitors: list[NexusVisitorSession] = [
             NexusVisitorSession(
                 session_id="sess_8901",
                 visitor_ip_hash="ip_hash_a1b2",
@@ -159,7 +157,7 @@ class NexusManagerSkill(BaseSkill):
         ]
 
         # Mock Pipeline Leads by Stage
-        self._pipeline_leads: List[NexusPipelineLead] = [
+        self._pipeline_leads: list[NexusPipelineLead] = [
             NexusPipelineLead(
                 lead_id="lead_1001",
                 company_domain="acme-corp.com",
@@ -199,10 +197,10 @@ class NexusManagerSkill(BaseSkill):
         ]
 
         # Mock Active Incidents
-        self._active_incidents: List[Dict[str, Any]] = []
+        self._active_incidents: list[dict[str, Any]] = []
 
         # Mock Pending Approvals
-        self._pending_approvals: List[NexusApprovalAction] = [
+        self._pending_approvals: list[NexusApprovalAction] = [
             NexusApprovalAction(
                 action_id="act_hero_contrast_v3",
                 title="Deploy Hero CTA Contrast Enhancement",
@@ -217,7 +215,7 @@ class NexusManagerSkill(BaseSkill):
         ]
 
         # Mock Strategy Performance & Learnings
-        self._strategy_learnings: List[Dict[str, Any]] = [
+        self._strategy_learnings: list[dict[str, Any]] = [
             {
                 "strategy_name": "Dynamic Social Proof Badging",
                 "status": "PROMOTED_TO_PRODUCTION",
@@ -242,7 +240,7 @@ class NexusManagerSkill(BaseSkill):
         ]
 
         # Mock AI-Universe Consultations Log
-        self._intelligence_log: List[Dict[str, Any]] = [
+        self._intelligence_log: list[dict[str, Any]] = [
             {
                 "consultation_id": "ai_cons_901",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -263,7 +261,7 @@ class NexusManagerSkill(BaseSkill):
     # Core API Methods
     # =========================================================================
 
-    def get_site_overview(self) -> Dict[str, Any]:
+    def get_site_overview(self) -> dict[str, Any]:
         """Queries complete site overview including traffic, conversions, incidents, and agent status."""
         with self._lock:
             return {
@@ -283,7 +281,7 @@ class NexusManagerSkill(BaseSkill):
                 "trust_level": "UNTRUSTED_EXTERNAL",
             }
 
-    def get_live_visitors(self) -> List[Dict[str, Any]]:
+    def get_live_visitors(self) -> list[dict[str, Any]]:
         """Returns list of currently active visitor sessions with behavioral intent scores."""
         with self._lock:
             return [
@@ -300,10 +298,10 @@ class NexusManagerSkill(BaseSkill):
                 for v in self._live_visitors
             ]
 
-    def get_lead_pipeline(self) -> Dict[str, List[Dict[str, Any]]]:
+    def get_lead_pipeline(self) -> dict[str, list[dict[str, Any]]]:
         """Returns all pipeline leads grouped by sales funnel stage."""
         with self._lock:
-            stages: Dict[str, List[Dict[str, Any]]] = {
+            stages: dict[str, list[dict[str, Any]]] = {
                 "DISCOVERY": [],
                 "EVALUATION": [],
                 "DECISION": [],
@@ -326,12 +324,12 @@ class NexusManagerSkill(BaseSkill):
                     stages["DISCOVERY"].append(lead_dict)
             return stages
 
-    def get_incidents(self) -> List[Dict[str, Any]]:
+    def get_incidents(self) -> list[dict[str, Any]]:
         """Returns list of active website incidents with severity ratings."""
         with self._lock:
             return [dict(inc, trust_level="UNTRUSTED_EXTERNAL") for inc in self._active_incidents]
 
-    def get_pending_approvals(self) -> List[Dict[str, Any]]:
+    def get_pending_approvals(self) -> list[dict[str, Any]]:
         """Returns list of pending optimization actions with rationale and behavioral evidence."""
         with self._lock:
             return [
@@ -352,7 +350,7 @@ class NexusManagerSkill(BaseSkill):
                 if a.status == "PENDING"
             ]
 
-    def approve_nexus_action(self, action_id: str) -> Dict[str, Any]:
+    def approve_nexus_action(self, action_id: str) -> dict[str, Any]:
         """Approves a pending Nexus action and marks it for automated production deployment."""
         with self._lock:
             action = next((a for a in self._pending_approvals if a.action_id == action_id), None)
@@ -377,7 +375,7 @@ class NexusManagerSkill(BaseSkill):
                 "trust_level": "UNTRUSTED_EXTERNAL",
             }
 
-    def reject_nexus_action(self, action_id: str, reason: str = "Operator declined") -> Dict[str, Any]:
+    def reject_nexus_action(self, action_id: str, reason: str = "Operator declined") -> dict[str, Any]:
         """Rejects a pending Nexus action with recorded reasoning."""
         with self._lock:
             action = next((a for a in self._pending_approvals if a.action_id == action_id), None)
@@ -402,7 +400,7 @@ class NexusManagerSkill(BaseSkill):
                 "trust_level": "UNTRUSTED_EXTERNAL",
             }
 
-    def start_nexus_workflow(self, name: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def start_nexus_workflow(self, name: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """Submits a growth/optimization workflow through Nexus policy engine."""
         with self._lock:
             wf_id = f"wf_nx_{int(datetime.now(timezone.utc).timestamp())}"
@@ -417,17 +415,17 @@ class NexusManagerSkill(BaseSkill):
                 "trust_level": "UNTRUSTED_EXTERNAL",
             }
 
-    def get_intelligence_log(self, limit: int = 5) -> List[Dict[str, Any]]:
+    def get_intelligence_log(self, limit: int = 5) -> list[dict[str, Any]]:
         """Retrieves recent AI Universe intelligence consultations with full reasoning chains."""
         with self._lock:
             return list(self._intelligence_log[:limit])
 
-    def get_strategy_performance(self) -> List[Dict[str, Any]]:
+    def get_strategy_performance(self) -> list[dict[str, Any]]:
         """Retrieves measured performance and key learnings across website growth strategies."""
         with self._lock:
             return [dict(s, trust_level="UNTRUSTED_EXTERNAL") for s in self._strategy_learnings]
 
-    def query_nexus_analytics(self, question: str) -> Dict[str, Any]:
+    def query_nexus_analytics(self, question: str) -> dict[str, Any]:
         """Answers natural language analytics questions about site performance."""
         with self._lock:
             clean = question.lower()
@@ -448,7 +446,7 @@ class NexusManagerSkill(BaseSkill):
                 "trust_level": "UNTRUSTED_EXTERNAL",
             }
 
-    def run_website_health_check(self) -> Dict[str, Any]:
+    def run_website_health_check(self) -> dict[str, Any]:
         """Runs comprehensive operational audit of Nexus website infrastructure."""
         with self._lock:
             return {
@@ -470,15 +468,15 @@ class NexusManagerSkill(BaseSkill):
     def execute(
         self,
         user_request: str,
-        agent: Optional[Any] = None,
-        tool_registry: Optional[Any] = None,
-        llm_provider: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        agent: Any | None = None,
+        tool_registry: Any | None = None,
+        llm_provider: Any | None = None,
+        authorizer: Any | None = None,
         **kwargs: Any,
     ) -> SkillExecutionResult:
         """Executes voice-driven Nexus website and growth manager commands."""
         clean = user_request.strip().lower()
-        step_results: List[Dict[str, Any]] = []
+        step_results: list[dict[str, Any]] = []
 
         try:
             # 1. "Website status" / "Site overview"

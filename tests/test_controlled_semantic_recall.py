@@ -1,11 +1,10 @@
 """Tests for controlled semantic memory recall, bounded context injection, and user observability."""
 
 from unittest import mock
-import uuid
-import pytest
+
 from friday.agent.agent import FridayAgent
 from friday.core.config import Settings
-from friday.core.types import EmbeddingRecord, Message, Role
+from friday.core.types import Message, Role
 from friday.llm.mock_provider import MockLLMProvider
 from friday.memory.embeddings.mock import MockEmbeddingProvider
 from friday.memory.sqlite import SQLiteConversationMemory

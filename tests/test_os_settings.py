@@ -1,14 +1,12 @@
-# -*- coding: utf-8 -*-
 """Unit tests for Windows OS Settings Control tools."""
 
-from unittest import mock
 import subprocess
-import pytest
+from unittest import mock
 
 from friday.core.types import SafetyLevel
 from friday.tools.builtin.os_settings import (
-    ToggleDarkModeTool,
     ToggleBluetoothTool,
+    ToggleDarkModeTool,
     ToggleWifiTool,
     _run_powershell_command,
 )

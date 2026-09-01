@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Proactive Forecasting Workflow for FRIDAY.
 
 Proactively requests and compiles Futuris probabilistic forecasts based on ecosystem state:
@@ -10,10 +9,10 @@ Proactively requests and compiles Futuris probabilistic forecasts based on ecosy
 - Invariant: All predictions carry TrustLevel.UNTRUSTED_EXTERNAL and explicit confidence intervals.
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import TrustLevel
@@ -26,8 +25,8 @@ logger = get_logger("workflows.proactive_forecasting")
 class ProactiveForecastSummary:
     """Summary of proactive forecasts compiled across subsystems."""
     summary_type: str  # DAILY_CAPACITY, WEEKLY_RISK, EVENT_TRIGGERED
-    forecasts: List[Dict[str, Any]]
-    key_findings: List[str]
+    forecasts: list[dict[str, Any]]
+    key_findings: list[str]
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     trust_level: str = TrustLevel.UNTRUSTED_EXTERNAL.value
 
@@ -35,9 +34,9 @@ class ProactiveForecastSummary:
 class ProactiveForecastingWorkflow:
     """Orchestrates proactive forecast requests across the ecosystem."""
 
-    def __init__(self, futuris_skill: Optional[FuturisManagerSkill] = None) -> None:
+    def __init__(self, futuris_skill: FuturisManagerSkill | None = None) -> None:
         self.futuris = futuris_skill or FuturisManagerSkill()
-        self._history: List[ProactiveForecastSummary] = []
+        self._history: list[ProactiveForecastSummary] = []
         self._lock = threading.RLock()
 
     def generate_daily_capacity_forecast(self) -> ProactiveForecastSummary:
@@ -95,14 +94,14 @@ class ProactiveForecastingWorkflow:
             logger.info(f"[PROACTIVE_FORECAST] Compiled Weekly Risk Forecast ({len(fcs)} pillars)")
             return summary
 
-    def trigger_nexus_anomaly_forecast(self, anomaly_data: Dict[str, Any]) -> Dict[str, Any]:
+    def trigger_nexus_anomaly_forecast(self, anomaly_data: dict[str, Any]) -> dict[str, Any]:
         """Triggered when Nexus detects an unusual visitor pattern -> requests targeted forecast."""
         metric = f"Traffic Ingress Spike ({anomaly_data.get('source', 'Organic')})"
         fc = self.futuris.request_forecast(target=metric, horizon="12 hours", confidence_level=0.90)
         logger.info(f"[PROACTIVE_FORECAST] Triggered Nexus Anomaly Forecast: {metric}")
         return fc
 
-    def trigger_sentinel_vulnerability_forecast(self, cve_data: Dict[str, Any]) -> Dict[str, Any]:
+    def trigger_sentinel_vulnerability_forecast(self, cve_data: dict[str, Any]) -> dict[str, Any]:
         """Triggered when Sentinel discovers a critical vulnerability -> requests exploitation probability forecast."""
         cve_id = cve_data.get("cve_id", "CVE-2026-UNKNOWN")
         metric = f"Exploitation Risk & In-The-Wild Threat for {cve_id}"

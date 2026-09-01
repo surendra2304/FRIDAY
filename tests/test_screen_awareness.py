@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 """Deterministic unit tests for Multimodal Screen Perception.4 Controlled Screen Awareness & Deduplication."""
 
 import time
-from unittest import mock
-import pytest
 
-from friday.vision.change_detector import ScreenChangeDetector, compute_image_difference_ratio
+from friday.vision.change_detector import (
+    ScreenChangeDetector,
+)
 from friday.vision.mock_screen import MockScreenCaptureProvider, create_synthetic_png
 from friday.vision.mock_vision import MockVisionProvider
 from friday.vision.screen_awareness import ScreenAwarenessController

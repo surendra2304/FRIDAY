@@ -1,12 +1,11 @@
-# -*- coding: utf-8 -*-
 """Smart Home & IoT Control tools for IoT & Smart Home Control.
 
 Controls physical devices (lights, smart plugs, switches) via local network HTTP APIs
 (e.g., Home Assistant or standard local IoT REST bridges) using httpx.
 """
 
-from typing import Any, Dict, Optional
 import os
+from typing import Any
 
 from friday.core.config import get_settings
 from friday.core.logging import get_logger
@@ -16,7 +15,7 @@ from friday.tools.base import BaseTool
 logger = get_logger("tools.smart_home")
 
 
-def _get_iot_config() -> tuple[str, Optional[str]]:
+def _get_iot_config() -> tuple[str, str | None]:
     """Retrieve configured IoT hub URL and auth token."""
     settings = get_settings()
     url = getattr(settings, "iot_hub_url", "http://localhost:8123") or os.getenv("FRIDAY_IOT_HUB_URL", "http://localhost:8123")
@@ -24,7 +23,7 @@ def _get_iot_config() -> tuple[str, Optional[str]]:
     return url.rstrip("/"), token
 
 
-def _send_iot_request(endpoint: str, payload: Dict[str, Any]) -> tuple[bool, str, Optional[Dict[str, Any]]]:
+def _send_iot_request(endpoint: str, payload: dict[str, Any]) -> tuple[bool, str, dict[str, Any] | None]:
     """Synchronous wrapper to POST commands to the local IoT hub with timeout & offline handling."""
     settings = get_settings()
     if not getattr(settings, "iot_hub_enabled", False):
@@ -57,7 +56,7 @@ def _send_iot_request(endpoint: str, payload: Dict[str, Any]) -> tuple[bool, str
         return False, f"Request to local IoT Hub at {base_url} timed out.", None
     except Exception as e:
         logger.error(f"IoT Hub request failed: {e}")
-        return False, f"Failed to communicate with IoT Hub: {str(e)}", None
+        return False, f"Failed to communicate with IoT Hub: {e!s}", None
 
 
 class ControlLightTool(BaseTool):
@@ -93,11 +92,11 @@ class ControlLightTool(BaseTool):
     def execute(
         self,
         state: bool,
-        brightness: Optional[int] = None,
-        device_id: Optional[str] = None,
+        brightness: int | None = None,
+        device_id: str | None = None,
         **kwargs: Any,
     ) -> ToolResult:
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "state": "on" if state else "off",
         }
         if brightness is not None:

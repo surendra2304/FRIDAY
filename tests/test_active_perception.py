@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive unit test suite for Evidence-Based Verification.6: Active Perception & Information Seeking.
 
 Tests:
@@ -12,18 +11,14 @@ Tests:
 8. Defense against malicious visual instructions attempting infinite observation loops.
 """
 
-import pytest
 
 from friday.vision.active_perception import (
     ActivePerceptionEngine,
-    ObservationDecision,
     ObservationNecessity,
 )
-from friday.vision.base import VisionAnalysisResult
+from friday.vision.mock_screen import MockScreenCaptureProvider
 from friday.vision.mock_vision import MockVisionProvider
-from friday.vision.screen_base import ScreenSnapshot
 from friday.vision.screen_context import ScreenContext
-from friday.vision.mock_screen import MockScreenCaptureProvider, create_synthetic_png
 
 
 # 1. Sufficient Context No-Call Behavior

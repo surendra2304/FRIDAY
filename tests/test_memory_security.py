@@ -1,6 +1,7 @@
 """Security and privacy tests for persistent memory and data retention."""
 
 from datetime import datetime, timedelta, timezone
+
 from friday.agent.agent import FridayAgent
 from friday.core.config import Settings
 from friday.core.types import Message, Role

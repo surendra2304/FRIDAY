@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive unit test suite for Cognitive Task Planning.9: Long-Running Task Management & Background Goals.
 
 Tests:
@@ -10,8 +9,9 @@ Tests:
 6. Safety boundaries: Computer control proposal / authorization requirements.
 """
 
-from datetime import datetime, timedelta, timezone
 import time
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from friday.agent.agent import FridayAgent

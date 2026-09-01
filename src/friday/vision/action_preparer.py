@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Perception-Driven Safe Action Preparation & Grounded Element Resolver for Evidence-Based Verification.8.
 
 Bridges structured visual UI observations and the safe ComputerActionProposal system.
@@ -13,7 +12,7 @@ Enforces:
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.vision.actions import ComputerActionProposal, ProposalBuilder
@@ -37,12 +36,12 @@ class GroundingStatus(str, Enum):
 class GroundedElementTarget:
     """A candidate UI element matched from natural language intent."""
     element: UIElement
-    pixel_center: Tuple[int, int]
+    pixel_center: tuple[int, int]
     match_score: float
     is_ambiguous: bool = False
-    competing_candidates: List[str] = field(default_factory=list)
+    competing_candidates: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "element": self.element.to_dict(),
             "pixel_center": self.pixel_center,
@@ -56,10 +55,10 @@ class GroundedElementTarget:
 class ActionPreparationResult:
     """Result of perception-driven action preparation."""
     status: GroundingStatus
-    proposal: Optional[ComputerActionProposal] = None
-    target: Optional[GroundedElementTarget] = None
-    clarification_prompt: Optional[str] = None
-    error_message: Optional[str] = None
+    proposal: ComputerActionProposal | None = None
+    target: GroundedElementTarget | None = None
+    clarification_prompt: str | None = None
+    error_message: str | None = None
 
     @property
     def is_success(self) -> bool:
@@ -81,8 +80,8 @@ class PerceptionActionPreparer:
         self,
         target_description: str,
         screen_context: ScreenContext,
-        element_type: Optional[ElementType] = None,
-    ) -> Tuple[GroundingStatus, Optional[GroundedElementTarget], Optional[str]]:
+        element_type: ElementType | None = None,
+    ) -> tuple[GroundingStatus, GroundedElementTarget | None, str | None]:
         """Find candidate UI elements matching target_description in screen_context."""
         if not target_description or not target_description.strip():
             return GroundingStatus.NOT_FOUND, None, "Target description is empty"
@@ -100,7 +99,7 @@ class PerceptionActionPreparer:
             logger.warning(f"Rejected malicious visual target instruction: {query}")
             return GroundingStatus.MALICIOUS_REJECTED, None, "Target contains prohibited instruction pattern"
 
-        candidates: List[Tuple[UIElement, float]] = []
+        candidates: list[tuple[UIElement, float]] = []
 
         for elem in screen_context.ui_elements:
             if element_type is not None and elem.element_type != element_type:
@@ -166,7 +165,7 @@ class PerceptionActionPreparer:
         target_description: str,
         screen_context: ScreenContext,
         intent: str,
-        element_type: Optional[ElementType] = None,
+        element_type: ElementType | None = None,
         double: bool = False,
         right: bool = False,
     ) -> ActionPreparationResult:

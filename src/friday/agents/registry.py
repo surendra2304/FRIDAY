@@ -1,10 +1,8 @@
-# -*- coding: utf-8 -*-
 """Agent Registry for FRIDAY Multi-Agent Specialist System.
 
 Maintains available specialist agent definitions and instances.
 """
 
-from typing import Dict, List, Optional
 
 from friday.agents.base_agent import BaseAgent
 from friday.core.logging import get_logger
@@ -16,14 +14,14 @@ class AgentRegistry:
     """Registry managing available specialist agents."""
 
     def __init__(self) -> None:
-        self._agents: Dict[str, BaseAgent] = {}
+        self._agents: dict[str, BaseAgent] = {}
 
     def register_agent(self, agent: BaseAgent) -> None:
         """Register a specialist agent instance keyed by agent_id and role."""
         self._agents[agent.agent_id] = agent
         logger.info(f"Registered agent '{agent.role}' (ID: {agent.agent_id})")
 
-    def get_agent(self, role_or_id: str) -> Optional[BaseAgent]:
+    def get_agent(self, role_or_id: str) -> BaseAgent | None:
         """Look up an agent by exact agent_id or matching role."""
         if role_or_id in self._agents:
             return self._agents[role_or_id]
@@ -35,7 +33,7 @@ class AgentRegistry:
                 return agent
         return None
 
-    def list_agents(self) -> List[BaseAgent]:
+    def list_agents(self) -> list[BaseAgent]:
         """Return all registered specialist agents."""
         return list(self._agents.values())
 

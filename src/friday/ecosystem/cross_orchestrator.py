@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Cross-System Orchestrator for FRIDAY.
 
 Coordinates complex multi-subsystem workflows spanning Trading, Forge, Nexus, Sentinel, IntelX, and Futuris:
@@ -11,7 +10,7 @@ Coordinates complex multi-subsystem workflows spanning Trading, Forge, Nexus, Se
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import TrustLevel
@@ -38,9 +37,9 @@ class CrossBuildPlan:
     template: CrossBuildTemplate
     title: str
     target_dir: str
-    subsystems_involved: List[str]
+    subsystems_involved: list[str]
     plan_id: str = ""
-    forge_task_id: Optional[str] = None
+    forge_task_id: str | None = None
     status: str = "PENDING_CONFIRMATION"
     generated_spec: str = "Generated spec with GET /api/status integration"
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -51,12 +50,12 @@ class CrossSystemOrchestrator:
 
     def __init__(
         self,
-        forge_manager: Optional[ForgeManagerSkill] = None,
-        nexus_manager: Optional[NexusManagerSkill] = None,
-        sentinel_manager: Optional[SentinelManagerSkill] = None,
-        intelx_manager: Optional[IntelXManagerSkill] = None,
-        futuris_manager: Optional[FuturisManagerSkill] = None,
-        trading_bot: Optional[TradingBotOperator] = None,
+        forge_manager: ForgeManagerSkill | None = None,
+        nexus_manager: NexusManagerSkill | None = None,
+        sentinel_manager: SentinelManagerSkill | None = None,
+        intelx_manager: IntelXManagerSkill | None = None,
+        futuris_manager: FuturisManagerSkill | None = None,
+        trading_bot: TradingBotOperator | None = None,
     ) -> None:
         self.forge = forge_manager or ForgeManagerSkill()
         self.nexus = nexus_manager or NexusManagerSkill()
@@ -64,7 +63,7 @@ class CrossSystemOrchestrator:
         self.intelx = intelx_manager or IntelXManagerSkill()
         self.futuris = futuris_manager or FuturisManagerSkill()
         self.trading = trading_bot or TradingBotOperator()
-        self._pending_plans: Dict[str, CrossBuildPlan] = {}
+        self._pending_plans: dict[str, CrossBuildPlan] = {}
 
     def prepare_cross_system_build(self, template_name: str) -> CrossBuildPlan:
         """Prepares a multi-subsystem cross build plan for operator confirmation."""
@@ -89,7 +88,7 @@ class CrossSystemOrchestrator:
         self._pending_plans[plan_id] = plan
         return plan
 
-    def confirm_and_execute_build(self, plan_id: str, confirmation: bool = True) -> Dict[str, Any]:
+    def confirm_and_execute_build(self, plan_id: str, confirmation: bool = True) -> dict[str, Any]:
         """Confirms and dispatches build request to Forge engine or cancels."""
         import uuid
         plan = self._pending_plans.get(plan_id)
@@ -103,7 +102,7 @@ class CrossSystemOrchestrator:
             plan.forge_task_id = task_id
         return {"success": True, "plan_id": plan_id, "task_id": task_id, "status": "QUEUED"}
 
-    def evaluate_website_scaling_decision(self) -> Dict[str, Any]:
+    def evaluate_website_scaling_decision(self) -> dict[str, Any]:
         """Evaluates whether to scale up Nexus website based on Futuris traffic forecast and scenario analysis."""
         fc_traffic = self.futuris.request_forecast("Nexus Website Traffic", "24 hours", 0.90)
         scenario = self.futuris.request_scenario(
@@ -133,7 +132,7 @@ class CrossSystemOrchestrator:
             "trust_level": TrustLevel.UNTRUSTED_EXTERNAL.value,
         }
 
-    def assess_global_risk_exposure(self) -> Dict[str, Any]:
+    def assess_global_risk_exposure(self) -> dict[str, Any]:
         """Synthesizes risk exposure across Trading, Security, Infrastructure, and Growth."""
         fc_drawdown = self.futuris.request_forecast("7-Day Portfolio Maximum Drawdown", "7 days", 0.90)
         fc_exploit = self.futuris.request_forecast("CVE Active Exploitation Trajectory", "48 hours", 0.90)
@@ -157,7 +156,7 @@ class CrossSystemOrchestrator:
             "trust_level": TrustLevel.UNTRUSTED_EXTERNAL.value,
         }
 
-    def execute_research_and_trading_brief(self, topic: str) -> Dict[str, Any]:
+    def execute_research_and_trading_brief(self, topic: str) -> dict[str, Any]:
         """Coordinates deep research via IntelX and contextualizes for the trading risk team."""
         research = self.intelx.submit_research(question=topic, domain_hint="market", depth="standard")
         summary = (
@@ -175,7 +174,7 @@ class CrossSystemOrchestrator:
             "trust_level": TrustLevel.UNTRUSTED_EXTERNAL.value,
         }
 
-    def investigate_market_volatility_and_positions(self, asset: str = "BTC") -> Dict[str, Any]:
+    def investigate_market_volatility_and_positions(self, asset: str = "BTC") -> dict[str, Any]:
         """Runs parallel IntelX market research and Trading Bot positions audit."""
         research = self.intelx.submit_research(
             question=f"What is driving crypto market volatility on {asset} today?",

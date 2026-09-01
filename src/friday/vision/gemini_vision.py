@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Gemini Multimodal Vision Provider using official google-genai SDK.
 
 Integrates with FRIDAY's GeminiCredentialPool for primary and fallback API key failover,
@@ -7,7 +6,7 @@ performs safe image format validation, and enforces zero secret exposure.
 
 import time
 import warnings
-from typing import Any, Dict, Optional
+from typing import Any
 
 # Suppress noisy upstream Google GenAI SDK AFC warnings during vision generate_content
 warnings.filterwarnings("ignore", message=".*automatic function calling.*", category=UserWarning)
@@ -16,7 +15,11 @@ warnings.filterwarnings("ignore", message=".*Direct use of automatic function ca
 from google import genai
 from google.genai import types as genai_types
 
-from friday.auth.credential_pool import credential_pool, GeminiCredentialPool, FailureCategory
+from friday.auth.credential_pool import (
+    FailureCategory,
+    GeminiCredentialPool,
+    credential_pool,
+)
 from friday.auth.request_accounting import request_accountant
 from friday.core.config import get_settings
 from friday.core.exceptions import LLMProviderError
@@ -59,13 +62,13 @@ class GeminiVisionProvider(BaseVisionProvider):
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        model: Optional[str] = None,
-        credential_pool: Optional[GeminiCredentialPool] = credential_pool,
+        api_key: str | None = None,
+        model: str | None = None,
+        credential_pool: GeminiCredentialPool | None = credential_pool,
         timeout: float = 60.0,
         max_retries: int = 3,
         backoff_factor: float = 2.0,
-        max_image_bytes: Optional[int] = None,
+        max_image_bytes: int | None = None,
     ) -> None:
         settings = get_settings()
         self.credential_pool = credential_pool
@@ -75,8 +78,8 @@ class GeminiVisionProvider(BaseVisionProvider):
         self.max_retries = max_retries
         self.backoff_factor = backoff_factor
         self.max_image_bytes = max_image_bytes or getattr(settings, "vision_max_image_bytes", 20971520)
-        self._client: Optional[genai.Client] = None
-        self._current_key: Optional[str] = None
+        self._client: genai.Client | None = None
+        self._current_key: str | None = None
 
     def _get_active_api_key(self) -> str:
         """Resolve active API key respecting credential pool state."""
@@ -151,7 +154,7 @@ class GeminiVisionProvider(BaseVisionProvider):
 
         # 3. Configure generation options
         max_output_tokens = kwargs.get("max_tokens", 2048)
-        config_kwargs: Dict[str, Any] = {
+        config_kwargs: dict[str, Any] = {
             "max_output_tokens": max_output_tokens,
         }
         # Only pass temperature for legacy non-3.7 models

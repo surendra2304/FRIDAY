@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Multimodal Screen Perception.10 Multimodal Acceptance Gate Test Suite.
 
 Verifies the complete integrated multimodal pipeline:
@@ -20,17 +19,15 @@ Verifies the complete integrated multimodal pipeline:
 """
 
 from unittest import mock
-import pytest
 
 from friday.agent.agent import FridayAgent
-from friday.auth.credential_pool import GeminiCredentialPool, FailureCategory
+from friday.auth.credential_pool import GeminiCredentialPool
 from friday.core.config import Settings
-from friday.core.types import SafetyLevel, Role, Message
+from friday.core.types import Message, Role, SafetyLevel
 from friday.llm.mock_provider import MockLLMProvider
 from friday.memory.sqlite import SQLiteConversationMemory
 from friday.tools.builtin.screen_snapshot import ScreenSnapshotTool
-from friday.tools.builtin.action_proposal import ProposeComputerActionTool
-from friday.vision.actions import ActionType, ComputerActionProposal, ProposalBuilder
+from friday.vision.actions import ProposalBuilder
 from friday.vision.computer_control import ComputerActionExecutor, ExecutionStatus
 from friday.vision.gemini_vision import GeminiVisionProvider
 from friday.vision.mock_screen import MockScreenCaptureProvider

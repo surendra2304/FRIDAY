@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Capability Routing Layer for FRIDAY.
 
 Selects the cheapest, safest, and most deterministic valid capability for each request:
@@ -18,10 +17,10 @@ Invariants:
 - Never calls an external API simply because it exists.
 """
 
+import re
 from dataclasses import dataclass
 from enum import Enum
-import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel
@@ -51,7 +50,7 @@ class CapabilityMetadata:
     confidence: float = 1.0
     risk_level: SafetyLevel = SafetyLevel.SAFE
     is_local_deterministic: bool = True
-    freshness_seconds: Optional[float] = None
+    freshness_seconds: float | None = None
     rationale: str = ""
 
     def compute_selection_score(self) -> float:
@@ -69,7 +68,7 @@ class CapabilityMetadata:
 
         return cost_penalty + latency_penalty + risk_penalty + confidence_bonus + local_bonus
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "capability_type": self.capability_type.value,
             "estimated_cost_usd": self.estimated_cost_usd,
@@ -88,11 +87,11 @@ class RoutingDecision:
     """The optimal capability selected by the router."""
     selected_capability: ExecutionCapabilityType
     reason: str
-    candidate_evaluations: List[CapabilityMetadata]
+    candidate_evaluations: list[CapabilityMetadata]
     avoided_external_call: bool = False
     estimated_savings_usd: float = 0.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "selected_capability": self.selected_capability.value,
             "reason": self.reason,
@@ -125,12 +124,12 @@ class CapabilityRouter:
     def route_request(
         self,
         user_input: str,
-        context: Optional[Dict[str, Any]] = None,
+        context: dict[str, Any] | None = None,
     ) -> RoutingDecision:
         """Select the optimal execution capability based on cost, latency, safety, and cache state."""
         ctx = context or {}
         clean_input = user_input.strip().lower()
-        candidates: List[CapabilityMetadata] = []
+        candidates: list[CapabilityMetadata] = []
 
         has_cached_screen = bool(ctx.get("cached_screen_observation"))
         screen_unchanged = bool(ctx.get("screen_unchanged", False))

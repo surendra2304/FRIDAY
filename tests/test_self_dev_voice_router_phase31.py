@@ -1,15 +1,12 @@
-# -*- coding: utf-8 -*-
 """Unit tests for Self-Improvement Voice & Router Integration (Recursive Self-Improvement: Step 3)."""
 
-from unittest import mock
-import pytest
 
+from friday.agent.prompts import get_default_system_prompt
 from friday.agents.decomposer import DecomposedSubtask
 from friday.agents.registry import AgentRegistry
 from friday.agents.router import AgentRouter
 from friday.agents.specialists.developer_agent import DeveloperAgent
 from friday.agents.specialists.self_dev_agent import SelfDevAgent
-from friday.agent.prompts import get_default_system_prompt
 from friday.core.config import get_settings
 
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Deterministic unit test suite for Computer Action Execution.8 Advanced Tool Orchestration & Multi-Tool Planning.
 
 Validates:
@@ -13,17 +12,11 @@ Validates:
 """
 
 import json
-from typing import Dict, List, Optional
-import pytest
 
-from friday.agent.agent import FridayAgent
-from friday.agent.executor import TaskExecutionEngine, TaskExecutionResult
+from friday.agent.executor import TaskExecutionEngine
 from friday.agent.planner import GoalDecomposer, PlanStep, StepStatus, TaskPlan
 from friday.agent.state import TaskState
-from friday.core.config import Settings
 from friday.core.types import SafetyLevel, ToolResult
-from friday.llm.mock_provider import MockLLMProvider
-from friday.memory.in_memory import InMemoryConversationMemory
 from friday.tools.base import BaseTool
 from friday.tools.builtin.calculator import CalculatorTool
 from friday.tools.orchestrator import DataFlowResolver, ToolOrchestrator

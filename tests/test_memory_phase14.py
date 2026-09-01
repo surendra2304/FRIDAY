@@ -1,15 +1,14 @@
-# -*- coding: utf-8 -*-
 """Unit tests for Memory Knowledge Base Memory 2.0: 4-layer schema, bounded retrieval, compactor, and user controls."""
 
-import os
 import json
-import pytest
-from pathlib import Path
+import os
 
-from friday.memory.sqlite import SQLiteConversationMemory
-from friday.memory.compactor import MemoryCompactor
+import pytest
+
 from friday.core.types import Message, Role
 from friday.llm.base import BaseLLMProvider
+from friday.memory.compactor import MemoryCompactor
+from friday.memory.sqlite import SQLiteConversationMemory
 
 
 class MockCompactionLLM(BaseLLMProvider):

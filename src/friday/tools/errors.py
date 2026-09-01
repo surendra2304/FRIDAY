@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional
+
 
 @dataclass
 class ToolErrorDetail:
@@ -8,7 +8,7 @@ class ToolErrorDetail:
     tool_name: str
     execution_id: str
     # optional additional data
-    data: Optional[dict] = None
+    data: dict | None = None
 
 class ToolTimeoutError(ToolErrorDetail):
     def __init__(self, tool_name: str, execution_id: str, timeout: int):

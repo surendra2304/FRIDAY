@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """FORGE Task Templates Library for FRIDAY.
 
 Provides parameterized templates for common software engineering project types:
@@ -10,8 +9,7 @@ Provides parameterized templates for common software engineering project types:
 """
 
 from enum import Enum
-import re
-from typing import Any, Dict, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -75,7 +73,7 @@ class ForgeTemplateLibrary:
     def expand_goal(
         cls,
         user_goal: str,
-        context: Optional[Dict[str, Any]] = None,
+        context: dict[str, Any] | None = None,
     ) -> str:
         """Expands a short goal into a full engineering specification using templates."""
         ctx = context or {}

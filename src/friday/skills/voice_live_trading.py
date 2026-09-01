@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Voice Live Trading Skill for FRIDAY.
 
 Provides interactive voice commands for real-capital live operations across three authorization tiers:
@@ -7,9 +6,7 @@ Provides interactive voice commands for real-capital live operations across thre
 - DANGEROUS: Activate live trading kill switch, confirm capital level upgrade (requires voice biometrics >0.95 + confirmation phrase).
 """
 
-from dataclasses import dataclass
-import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.skills.base_skill import BaseSkill, SkillExecutionResult
@@ -49,12 +46,12 @@ class VoiceLiveTradingSkill(BaseSkill):
 
     def __init__(
         self,
-        live_ops: Optional[Any] = None,
-        capital_guardian: Optional[Any] = None,
-        live_analytics: Optional[Any] = None,
-        incident_manager: Optional[Any] = None,
-        security_manager: Optional[Any] = None,
-        emergency_manager: Optional[Any] = None,
+        live_ops: Any | None = None,
+        capital_guardian: Any | None = None,
+        live_analytics: Any | None = None,
+        incident_manager: Any | None = None,
+        security_manager: Any | None = None,
+        emergency_manager: Any | None = None,
     ) -> None:
         self._live_ops = live_ops
         self._capital_guardian = capital_guardian
@@ -108,10 +105,10 @@ class VoiceLiveTradingSkill(BaseSkill):
     def execute(
         self,
         user_request: str,
-        agent: Optional[Any] = None,
-        tool_registry: Optional[Any] = None,
-        llm_provider: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        agent: Any | None = None,
+        tool_registry: Any | None = None,
+        llm_provider: Any | None = None,
+        authorizer: Any | None = None,
         **kwargs: Any,
     ) -> SkillExecutionResult:
         """Dispatches voice commands with multi-tier authorization."""
@@ -120,7 +117,7 @@ class VoiceLiveTradingSkill(BaseSkill):
         voice_embedding = kwargs.get("voice_embedding")
         confirmation_phrase = kwargs.get("confirmation_phrase", "")
 
-        step_results: List[Dict[str, Any]] = []
+        step_results: list[dict[str, Any]] = []
 
         try:
             # =================================================================

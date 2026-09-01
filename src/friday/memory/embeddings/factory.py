@@ -1,6 +1,6 @@
 """Factory for instantiating embedding providers based on application configuration."""
 
-from typing import Optional
+
 from friday.core.config import Settings
 from friday.core.logging import get_logger
 from friday.memory.embeddings.base import BaseEmbeddingProvider
@@ -10,7 +10,7 @@ from friday.memory.embeddings.mock import MockEmbeddingProvider
 logger = get_logger("memory.embeddings.factory")
 
 
-def create_embedding_provider(settings: Settings) -> Optional[BaseEmbeddingProvider]:
+def create_embedding_provider(settings: Settings) -> BaseEmbeddingProvider | None:
     """Create configured embedding provider instance or None if disabled."""
     provider_type = (settings.embedding_provider or "none").lower().strip()
 

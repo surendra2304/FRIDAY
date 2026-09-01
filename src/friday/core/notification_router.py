@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Smart Notification Router for FRIDAY Operating System.
 
 Delivers intelligent notification routing and quiet hours management:
@@ -11,11 +10,10 @@ Delivers intelligent notification routing and quiet hours management:
 3. User response learning: Automatically batches weekend MEDIUM alerts until Monday
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-import threading
-from typing import Any, Dict, List, Optional
 
 from friday.core.logging import get_logger
 
@@ -38,7 +36,7 @@ class NotificationItem:
     title: str
     message: str
     subsystem: str
-    target_channels: List[str]  # voice, push, dashboard, briefing_queue
+    target_channels: list[str]  # voice, push, dashboard, briefing_queue
     is_quiet_hours_muted: bool = False
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
@@ -49,12 +47,12 @@ class SmartNotificationRouter:
     def __init__(self, quiet_hours_start: int = 22, quiet_hours_end: int = 7) -> None:
         self.quiet_start = quiet_hours_start
         self.quiet_end = quiet_hours_end
-        self.briefing_batch_queue: List[NotificationItem] = []
-        self.dispatched_history: List[NotificationItem] = []
+        self.briefing_batch_queue: list[NotificationItem] = []
+        self.dispatched_history: list[NotificationItem] = []
         self.weekend_ignore_count = 0
         self._lock = threading.RLock()
 
-    def is_quiet_hours(self, current_time: Optional[datetime] = None) -> bool:
+    def is_quiet_hours(self, current_time: datetime | None = None) -> bool:
         """Determines if current timestamp falls within quiet hours (22:00 - 07:00)."""
         now = current_time or datetime.now(timezone.utc)
         hour = now.hour
@@ -70,7 +68,7 @@ class SmartNotificationRouter:
         message: str,
         subsystem: str = "ecosystem",
         is_user_active: bool = True,
-        current_time: Optional[datetime] = None,
+        current_time: datetime | None = None,
     ) -> NotificationItem:
         """Routes notification through appropriate channels based on urgency and context."""
         with self._lock:
@@ -78,7 +76,7 @@ class SmartNotificationRouter:
             in_quiet_hours = self.is_quiet_hours(now)
             is_weekend = now.weekday() in (5, 6)
 
-            channels: List[str] = []
+            channels: list[str] = []
             muted = False
             nid = f"notif_{int(now.timestamp())}_{len(self.dispatched_history)}"
 
@@ -123,7 +121,7 @@ class SmartNotificationRouter:
             if was_ignored_on_weekend:
                 self.weekend_ignore_count += 1
 
-    def drain_briefing_queue(self) -> List[NotificationItem]:
+    def drain_briefing_queue(self) -> list[NotificationItem]:
         """Returns and empties the accumulated briefing queue."""
         with self._lock:
             items = list(self.briefing_batch_queue)

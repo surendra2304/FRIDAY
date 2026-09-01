@@ -1,11 +1,6 @@
-# -*- coding: utf-8 -*-
 """Deterministic unit tests for Multimodal Screen Perception.6 Voice + Vision Integration."""
 
-import asyncio
-from unittest import mock
-import pytest
 
-from friday.core.types import SafetyLevel, ToolResult
 from friday.agent.agent import FridayAgent
 from friday.tools.builtin.screen_snapshot import ScreenSnapshotTool
 from friday.vision.mock_screen import MockScreenCaptureProvider

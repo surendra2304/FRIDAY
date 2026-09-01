@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Task Checkpointing, Interruption & Resumption Engine for FRIDAY.
 
 Provides:
@@ -13,12 +12,12 @@ Provides:
 - 100% provider-independent and testable offline.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import json
 import sqlite3
-from typing import Any, Dict, List, Optional
 import uuid
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Any
 
 from friday.agent.planner import StepStatus, TaskPlan
 from friday.agent.state import TaskState
@@ -49,17 +48,17 @@ class TaskCheckpoint:
     task_id: str
     goal: str
     state: TaskState
-    active_step_id: Optional[str]
-    plan_dict: Dict[str, Any]
-    completed_steps: List[str]
-    pending_steps: List[str]
-    step_results: Dict[str, Any]
+    active_step_id: str | None
+    plan_dict: dict[str, Any]
+    completed_steps: list[str]
+    pending_steps: list[str]
+    step_results: dict[str, Any]
     environment_hash: str
-    interruption_reason: Optional[InterruptionReason] = None
-    recovery_state: Optional[Dict[str, Any]] = None
+    interruption_reason: InterruptionReason | None = None
+    recovery_state: dict[str, Any] | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         from friday.security.scrubber import recursive_sanitize
         raw_dict = {
             "checkpoint_id": self.checkpoint_id,
@@ -79,7 +78,7 @@ class TaskCheckpoint:
         return recursive_sanitize(raw_dict)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "TaskCheckpoint":
+    def from_dict(cls, data: dict[str, Any]) -> "TaskCheckpoint":
         from friday.security.scrubber import recursive_sanitize
         sanitized_data = recursive_sanitize(data)
         state_val = sanitized_data.get("state", TaskState.PAUSED.value)
@@ -104,9 +103,9 @@ class TaskCheckpoint:
 class TaskCheckpointStore:
     """Stores and retrieves TaskCheckpoint records."""
 
-    def __init__(self, db_path: Optional[str] = None) -> None:
+    def __init__(self, db_path: str | None = None) -> None:
         self.db_path = db_path
-        self._memory_store: Dict[str, TaskCheckpoint] = {}
+        self._memory_store: dict[str, TaskCheckpoint] = {}
         if self.db_path:
             self._init_db()
 
@@ -138,11 +137,11 @@ class TaskCheckpointStore:
         goal: str,
         plan: TaskPlan,
         state: TaskState,
-        active_step_id: Optional[str],
-        step_results: Dict[str, Any],
+        active_step_id: str | None,
+        step_results: dict[str, Any],
         environment_hash: str = "default",
-        interruption_reason: Optional[InterruptionReason] = None,
-        recovery_state: Optional[Dict[str, Any]] = None,
+        interruption_reason: InterruptionReason | None = None,
+        recovery_state: dict[str, Any] | None = None,
     ) -> TaskCheckpoint:
         """Create and save a sanitized task checkpoint."""
         completed_steps = [s.step_id for s in plan.steps if s.status == StepStatus.COMPLETED]
@@ -209,7 +208,7 @@ class TaskCheckpointStore:
         logger.info(f"Saved checkpoint '{chk.checkpoint_id}' for task '{task_id}' ({len(completed_steps)} completed, {len(pending_steps)} pending). Reason: {interruption_reason}")
         return chk
 
-    def get_latest_checkpoint(self, task_id: str) -> Optional[TaskCheckpoint]:
+    def get_latest_checkpoint(self, task_id: str) -> TaskCheckpoint | None:
         """Retrieve the latest checkpoint for a given task ID."""
         if self.db_path:
             with sqlite3.connect(self.db_path) as conn:
@@ -244,7 +243,7 @@ class TaskCheckpointStore:
         self,
         checkpoint: TaskCheckpoint,
         current_environment_hash: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Validate if resumption is safe and whether environmental state changed."""
         is_stale = checkpoint.environment_hash != "default" and checkpoint.environment_hash != current_environment_hash
         requires_replan = is_stale

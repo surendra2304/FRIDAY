@@ -1,9 +1,9 @@
-# -*- coding: utf-8 -*-
 """System Control tool for process inspection, termination, and service status."""
 
 import os
+from typing import Any
+
 import psutil
-from typing import Any, Dict, List, Optional
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel, ToolResult

@@ -3,7 +3,9 @@
 import math
 import uuid
 from unittest import mock
+
 import pytest
+
 from friday.core.types import EmbeddingRecord, Message, Role
 from friday.memory.embeddings.gemini import GeminiEmbeddingProvider
 from friday.memory.embeddings.mock import MockEmbeddingProvider

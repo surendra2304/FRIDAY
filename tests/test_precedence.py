@@ -1,16 +1,16 @@
-# -*- coding: utf-8 -*-
 """Precedence Enforcement & Invariant Tests for Trading Supervision."""
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from friday.core.types import AuthorizationDecision, AuthorizationResponse
 from friday.skills.trading_bot_operator import TradingBotOperator
 from friday.skills.trading_precedence import (
-    CommandPrecedence,
-    PRECEDENCE_SAFETY_GATES,
-    PRECEDENCE_FRIDAY_COMMANDS,
     PRECEDENCE_AI_UNIVERSE_RECOMMENDATIONS,
+    PRECEDENCE_FRIDAY_COMMANDS,
+    PRECEDENCE_SAFETY_GATES,
+    CommandPrecedence,
     tag_trading_command,
     validate_precedence_invariants,
 )

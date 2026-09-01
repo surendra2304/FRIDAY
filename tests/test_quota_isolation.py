@@ -1,13 +1,12 @@
 """Tests for test suite integrity, environment isolation, and quota protection."""
 
 import os
-from pathlib import Path
-from unittest import mock
+
 import pytest
 
-from friday.core.config import Settings, get_settings
-from friday.memory.embeddings.gemini import GeminiEmbeddingProvider
+from friday.core.config import Settings
 from friday.core.exceptions import LLMProviderError
+from friday.memory.embeddings.gemini import GeminiEmbeddingProvider
 
 
 @pytest.mark.security

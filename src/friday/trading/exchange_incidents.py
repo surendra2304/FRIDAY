@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Exchange Incident Manager & Multi-Exchange Aggregation for FRIDAY.
 
 Supervises multi-exchange infrastructure across Binance, Bybit, and OKX:
@@ -9,12 +8,10 @@ Supervises multi-exchange infrastructure across Binance, Bybit, and OKX:
 - Provides comparative reliability reports across venues
 """
 
+import hashlib
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import hashlib
-import json
-import threading
-from typing import Any, Dict, List, Optional, Tuple
 
 from friday.core.logging import get_logger
 
@@ -39,9 +36,9 @@ class LiquidityComparison:
     """Comparative liquidity metrics for a trading pair across venues."""
     symbol: str
     best_venue: str
-    spread_bps: Dict[str, float]  # Venue -> Spread in basis points
-    depth_1pct_usdt: Dict[str, float]  # Venue -> Depth within 1%
-    est_slippage_10k_pct: Dict[str, float]  # Venue -> Estimated slippage for $10k order
+    spread_bps: dict[str, float]  # Venue -> Spread in basis points
+    depth_1pct_usdt: dict[str, float]  # Venue -> Depth within 1%
+    est_slippage_10k_pct: dict[str, float]  # Venue -> Estimated slippage for $10k order
     recommendation: str
 
 
@@ -69,17 +66,17 @@ class ExchangeIncident:
     severity_level: int  # 1 (Critical) to 5 (Informational)
     description: str
     status: str  # OPEN, MITIGATED, RESOLVED
-    recommended_reroute_venue: Optional[str]
+    recommended_reroute_venue: str | None
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    resolved_at: Optional[str] = None
+    resolved_at: str | None = None
 
 
 class ExchangeIncidentManager:
     """Governs multi-exchange reliability, cross-venue liquidity, and order rerouting."""
 
     def __init__(self) -> None:
-        self._incidents: Dict[str, ExchangeIncident] = {}
-        self._health_cache: Dict[str, ExchangeHealthMetric] = {}
+        self._incidents: dict[str, ExchangeIncident] = {}
+        self._health_cache: dict[str, ExchangeHealthMetric] = {}
         self._lock = threading.RLock()
         self._init_defaults()
 
@@ -115,7 +112,7 @@ class ExchangeIncidentManager:
             ),
         }
 
-    def get_exchange_health(self) -> Dict[str, ExchangeHealthMetric]:
+    def get_exchange_health(self) -> dict[str, ExchangeHealthMetric]:
         """Returns real-time health telemetry across all connected exchanges."""
         with self._lock:
             return dict(self._health_cache)
@@ -126,11 +123,11 @@ class ExchangeIncidentManager:
         incident_type: str,
         severity_level: int,
         description: str,
-        recommended_reroute_venue: Optional[str] = "BINANCE",
+        recommended_reroute_venue: str | None = "BINANCE",
     ) -> ExchangeIncident:
         """Records an exchange incident and updates the exchange's health state."""
         now_iso = datetime.now(timezone.utc).isoformat()
-        inc_id = f"exc_{exchange_name.lower()}_{hashlib.md5(f'{incident_type}:{now_iso}'.encode('utf-8')).hexdigest()[:6]}"
+        inc_id = f"exc_{exchange_name.lower()}_{hashlib.md5(f'{incident_type}:{now_iso}'.encode()).hexdigest()[:6]}"
 
         inc = ExchangeIncident(
             incident_id=inc_id,
@@ -187,7 +184,7 @@ class ExchangeIncidentManager:
             recommendation=rec,
         )
 
-    def scan_arbitrage_opportunities(self) -> List[ArbitrageOpportunity]:
+    def scan_arbitrage_opportunities(self) -> list[ArbitrageOpportunity]:
         """Scans for price discrepancies and profitable arbitrage spreads across exchanges."""
         # Simulated live cross-exchange price feeds
         opportunities = [

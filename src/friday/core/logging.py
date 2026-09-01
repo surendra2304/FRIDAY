@@ -2,14 +2,14 @@
 
 import logging
 import os
-from typing import Optional
+
 from friday.core.config import get_settings
 
 
 class SecretMaskingFilter(logging.Filter):
     """Logging filter to mask API keys, tokens, and sensitive strings."""
 
-    def __init__(self, secrets_to_mask: Optional[list[str]] = None):
+    def __init__(self, secrets_to_mask: list[str] | None = None):
         super().__init__()
         from friday.security.scrubber import global_scrubber
         for s in (secrets_to_mask or []):
@@ -43,9 +43,9 @@ class SanitizedFormatter(logging.Formatter):
 
 
 def setup_logging(
-    level: Optional[str] = None,
-    log_file: Optional[str] = None,
-    console_level: Optional[int] = None,
+    level: str | None = None,
+    log_file: str | None = None,
+    console_level: int | None = None,
 ) -> logging.Logger:
     """Initialize root and application loggers with sanitization.
     
@@ -170,9 +170,7 @@ def redact_tool_args(args: dict, *, max_keys: int = 8) -> dict:
 
         if lower_key in _SENSITIVE_ARG_KEYS:
             out[key] = "[REDACTED]"
-        elif isinstance(val, _SAFE_SCALAR_TYPES):
-            out[key] = val
-        elif lower_key in _SAFE_ARG_KEYS and isinstance(val, str) and len(val) <= _MAX_SAFE_STRING_LEN:
+        elif isinstance(val, _SAFE_SCALAR_TYPES) or lower_key in _SAFE_ARG_KEYS and isinstance(val, str) and len(val) <= _MAX_SAFE_STRING_LEN:
             out[key] = val
         else:
             out[key] = "[REDACTED]"

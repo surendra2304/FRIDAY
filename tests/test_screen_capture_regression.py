@@ -1,11 +1,9 @@
-# -*- coding: utf-8 -*-
 """Regression tests for Windows Screen Capture Win32 GDI integer-width, ctypes definitions, and display metadata."""
 
 import ctypes
 from ctypes import wintypes
-import pytest
 
-from friday.vision.windows_screen import WindowsScreenCaptureProvider, BITMAPINFOHEADER
+from friday.vision.windows_screen import BITMAPINFOHEADER, WindowsScreenCaptureProvider
 
 
 def test_windows_screen_gdi_types_configured():

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Authentication, Credential Management & Request Accounting for FRIDAY."""
 
 from friday.auth.credential_pool import (
@@ -16,13 +15,13 @@ from friday.auth.request_accounting import (
 )
 
 __all__ = [
+    "BudgetExceededError",
+    "BudgetLimits",
     "Credential",
     "FailureCategory",
     "GeminiCredentialPool",
-    "credential_pool",
-    "BudgetExceededError",
-    "BudgetLimits",
     "RequestAccountant",
     "RequestRecord",
+    "credential_pool",
     "request_accountant",
 ]

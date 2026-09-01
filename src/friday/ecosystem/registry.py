@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Central Ecosystem Registry for FRIDAY.
 
 Maintains the unified catalog of all managed ecosystem subsystems:
@@ -9,10 +8,11 @@ Maintains the unified catalog of all managed ecosystem subsystems:
 Provides aggregated status queries, parallel health audits, and last-known-good state tracking.
 """
 
+import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import threading
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -26,9 +26,9 @@ class SubsystemEntry:
     display_name: str
     category: str  # trading, engineering, intelligence
     icon: str
-    health_check_callable: Callable[[], Dict[str, Any]]
-    status_callable: Callable[[], Dict[str, Any]]
-    last_known_good: Optional[Dict[str, Any]] = None
+    health_check_callable: Callable[[], dict[str, Any]]
+    status_callable: Callable[[], dict[str, Any]]
+    last_known_good: dict[str, Any] | None = None
     registered_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -36,7 +36,7 @@ class EcosystemRegistry:
     """Central registry tracking all ecosystem subsystems, statuses, and health checks."""
 
     def __init__(self) -> None:
-        self._subsystems: Dict[str, SubsystemEntry] = {}
+        self._subsystems: dict[str, SubsystemEntry] = {}
         self._lock = threading.RLock()
         self._init_default_subsystems()
 
@@ -234,14 +234,14 @@ class EcosystemRegistry:
             self._subsystems[entry.name] = entry
             logger.info(f"[ECOSYSTEM_REGISTRY] Registered subsystem: {entry.name} ({entry.display_name})")
 
-    def get_subsystem(self, name: str) -> Optional[SubsystemEntry]:
+    def get_subsystem(self, name: str) -> SubsystemEntry | None:
         """Retrieves a subsystem registration entry by name (supports aliases)."""
         aliases = {"stratex": "trading_bot", "inference": "ai_universe", "cortex": "nexus"}
         resolved_name = aliases.get(name.lower().strip(), name)
         with self._lock:
             return self._subsystems.get(resolved_name)
 
-    def get_subsystem_status(self, name: str) -> Dict[str, Any]:
+    def get_subsystem_status(self, name: str) -> dict[str, Any]:
         """Executes the status callable for a specific subsystem and returns its telemetry."""
         entry = self.get_subsystem(name)
         if not entry:
@@ -254,12 +254,12 @@ class EcosystemRegistry:
             logger.warning(f"[ECOSYSTEM_REGISTRY] Status error for {name}: {e}")
             return entry.last_known_good or {"status": "ERROR", "error": str(e)}
 
-    def list_subsystems(self) -> List[SubsystemEntry]:
+    def list_subsystems(self) -> list[SubsystemEntry]:
         """Returns list of all registered subsystems."""
         with self._lock:
             return list(self._subsystems.values())
 
-    def get_ecosystem_status(self) -> Dict[str, Any]:
+    def get_ecosystem_status(self) -> dict[str, Any]:
         """Aggregates real-time status across all registered subsystems."""
         with self._lock:
             aggregated = {}
@@ -293,7 +293,7 @@ class EcosystemRegistry:
                 "subsystems": aggregated,
             }
 
-    def get_ecosystem_health(self) -> Dict[str, Any]:
+    def get_ecosystem_health(self) -> dict[str, Any]:
         """Executes health checks across all subsystems and reports overall status."""
         with self._lock:
             health_results = {}
@@ -327,7 +327,7 @@ class EcosystemRegistry:
                 "subsystems": health_results,
             }
 
-    def get_last_known_good(self, name: str) -> Optional[Dict[str, Any]]:
+    def get_last_known_good(self, name: str) -> dict[str, Any] | None:
         """Returns the last known good status dictionary for a subsystem."""
         with self._lock:
             entry = self._subsystems.get(name)

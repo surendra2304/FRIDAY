@@ -3,9 +3,9 @@
 import asyncio
 import struct
 from unittest import mock
+
 import pytest
 
-from friday.core.types import Message, Role
 from friday.voice.audio_io import (
     MockMicrophoneStream,
     MockSpeakerStream,

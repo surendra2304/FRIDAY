@@ -5,13 +5,16 @@ import pytest
 from friday.core.config import Settings
 from friday.core.exceptions import LLMProviderError
 from friday.core.types import Message, Role
+from friday.llm.ai_universe_provider import AIUniverseLLMProvider
 from friday.llm.base import BaseLLMProvider
 from friday.llm.factory import create_llm_provider
-from friday.llm.fallback_chain_provider import FallbackChainLLMProvider, _BLOCKED_TOOL_OUTPUT
+from friday.llm.fallback_chain_provider import (
+    _BLOCKED_TOOL_OUTPUT,
+    FallbackChainLLMProvider,
+)
 from friday.llm.groq_provider import GroqLLMProvider
 from friday.llm.mistral_provider import MistralLLMProvider
 from friday.llm.openrouter_provider import OpenRouterLLMProvider
-from friday.llm.ai_universe_provider import AIUniverseLLMProvider
 
 
 class StubProvider(BaseLLMProvider):

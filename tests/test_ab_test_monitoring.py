@@ -1,13 +1,12 @@
-# -*- coding: utf-8 -*-
 """Validation Tests for A/B Test Monitoring and Control."""
 
 from unittest.mock import MagicMock
+
 import pytest
 
 from friday.core.types import TrustLevel
 from friday.memory.in_memory import InMemoryConversationMemory
 from friday.operators.ab_test_operator import ABTestOperator
-from friday.operators.manager import OperatorManager
 from friday.skills.ab_test_monitor import ABTestMonitorSkill
 from friday.skills.registry import SkillRegistry
 from friday.skills.trading_bot_operator import TradingBotOperator

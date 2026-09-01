@@ -1,13 +1,11 @@
-# -*- coding: utf-8 -*-
 """Daily Executive Briefing Workflow for FRIDAY.
 
 The flagship executive briefing delivering morning strategic debriefs (08:00 UTC)
 and evening wrap-ups (20:00 UTC) across the entire autonomous trading ecosystem.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
 
 from friday.core.logging import get_logger
 from friday.ecosystem.command_center import EcosystemCommandCenter
@@ -34,10 +32,10 @@ class DailyExecutiveBriefingWorkflow:
 
     def __init__(
         self,
-        command_center: Optional[EcosystemCommandCenter] = None,
-        policy_interface: Optional[HumanPolicyInterface] = None,
-        intelligence_engine: Optional[IntelligenceEngine] = None,
-        history_tracker: Optional[EvolutionHistoryTracker] = None,
+        command_center: EcosystemCommandCenter | None = None,
+        policy_interface: HumanPolicyInterface | None = None,
+        intelligence_engine: IntelligenceEngine | None = None,
+        history_tracker: EvolutionHistoryTracker | None = None,
     ) -> None:
         self._command_center = command_center
         self._policy_interface = policy_interface

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """FORGE Health Monitoring Operator for FRIDAY.
 
 Monitors FORGE service availability and AI-Universe backend connectivity every 5 minutes:
@@ -8,14 +7,12 @@ Monitors FORGE service availability and AI-Universe backend connectivity every 5
 - Alerts if AI-Universe bridge from FORGE degrades or fails
 """
 
-from datetime import datetime, timezone
-import threading
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from friday.alert_manager import AlertSeverity, ProductionAlertManager
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role, SafetyLevel, TrustLevel
-from friday.operators.base_operator import BaseOperator, OperatorExecutionResult, OperatorState
+from friday.operators.base_operator import BaseOperator
 from friday.operators.triggers import IntervalTrigger
 from friday.skills.forge_manager import ForgeManagerSkill
 
@@ -34,11 +31,11 @@ class ForgeHealthOperator(BaseOperator):
 
     def __init__(
         self,
-        forge_manager: Optional[ForgeManagerSkill] = None,
-        alert_manager: Optional[ProductionAlertManager] = None,
+        forge_manager: ForgeManagerSkill | None = None,
+        alert_manager: ProductionAlertManager | None = None,
         poll_interval_sec: float = 300.0,
-        memory: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        memory: Any | None = None,
+        authorizer: Any | None = None,
     ) -> None:
         trigger = IntervalTrigger(interval_seconds=poll_interval_sec, name="forge_health_poll_interval")
         super().__init__(
@@ -55,7 +52,7 @@ class ForgeHealthOperator(BaseOperator):
         self.memory = memory
         self._uptime_checks_total: int = 0
         self._uptime_checks_successful: int = 0
-        self._notified_failures: Set[str] = set()
+        self._notified_failures: set[str] = set()
 
     @property
     def forge_manager(self) -> ForgeManagerSkill:
@@ -69,9 +66,9 @@ class ForgeHealthOperator(BaseOperator):
             self._alert_manager = ProductionAlertManager()
         return self._alert_manager
 
-    def tick(self) -> List[Dict[str, Any]]:
+    def tick(self) -> list[dict[str, Any]]:
         """Executes 5-minute health check cycle."""
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         self._uptime_checks_total += 1
 
         try:

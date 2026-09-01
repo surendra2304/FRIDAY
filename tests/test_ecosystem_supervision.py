@@ -1,12 +1,15 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for FRIDAY Ecosystem Command & Supervision Subsystem."""
 
 import pytest
 
 from friday.alert_manager import ProductionAlertManager
-from friday.ecosystem.command_center import AutonomyLevel, EcosystemCommandCenter, EcosystemState
+from friday.ecosystem.command_center import (
+    AutonomyLevel,
+    EcosystemCommandCenter,
+    EcosystemState,
+)
 from friday.ecosystem.executive_dashboard import ExecutiveDashboardRenderer
-from friday.ecosystem.master_voice import MasterVoiceInterface, VoiceToneContext
+from friday.ecosystem.master_voice import MasterVoiceInterface
 from friday.ecosystem.policy_interface import HumanPolicyInterface, PolicyCategory
 from friday.memory.in_memory import InMemoryConversationMemory
 from friday.operators.guardian_angel import GuardianAngelOperator

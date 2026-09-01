@@ -3,7 +3,6 @@
 import math
 import re
 import time
-from typing import List, Optional
 
 from google import genai
 from google.genai import errors as genai_errors
@@ -31,7 +30,7 @@ class GeminiEmbeddingProvider(BaseEmbeddingProvider):
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         base_url: str = "https://generativelanguage.googleapis.com/v1beta",
         model: str = "gemini-embedding-2",
         dimension: int = 768,
@@ -47,7 +46,7 @@ class GeminiEmbeddingProvider(BaseEmbeddingProvider):
         self.max_retries = max_retries
         self.backoff_factor = backoff_factor
         self.max_batch_size = max(1, min(max_batch_size, 32))
-        self._client: Optional[genai.Client] = None
+        self._client: genai.Client | None = None
         if self.api_key:
             try:
                 self._client = genai.Client(api_key=self.api_key)
@@ -81,7 +80,7 @@ class GeminiEmbeddingProvider(BaseEmbeddingProvider):
         return redact_secrets(text)
 
     @staticmethod
-    def normalize_vector(vec: List[float]) -> List[float]:
+    def normalize_vector(vec: list[float]) -> list[float]:
         """Normalize a float vector to unit length (L2 norm)."""
         if not vec:
             return []
@@ -96,7 +95,7 @@ class GeminiEmbeddingProvider(BaseEmbeddingProvider):
             return f"models/{model_name}"
         return model_name
 
-    def embed_text(self, text: str) -> List[float]:
+    def embed_text(self, text: str) -> list[float]:
         """Generate embedding for a single text chunk."""
         if time.time() < GeminiEmbeddingProvider._circuit_breaker_cooldown_until:
             raise LLMProviderError("Gemini embedding circuit breaker is open due to recent quota limits.")
@@ -158,7 +157,7 @@ class GeminiEmbeddingProvider(BaseEmbeddingProvider):
                 err_lower = err_msg.lower()
                 if "429" in err_lower or "quota" in err_lower or "resource exhausted" in err_lower:
                     GeminiEmbeddingProvider._circuit_breaker_cooldown_until = time.time() + 60.0
-                    logger.error(f"Gemini embedding quota exhausted. Opening circuit breaker for 60s.")
+                    logger.error("Gemini embedding quota exhausted. Opening circuit breaker for 60s.")
                     raise LLMProviderError(f"Gemini embedding rate-limited: {err_msg}")
                 if attempt < self.max_retries:
                     wait = 1.0 * (self.backoff_factor ** attempt)
@@ -169,7 +168,7 @@ class GeminiEmbeddingProvider(BaseEmbeddingProvider):
 
         raise LLMProviderError("Failed to obtain embedding from Gemini API after retries.")
 
-    def embed_batch(self, texts: List[str]) -> List[List[float]]:
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
         """Generate embeddings for a list of texts using bounded batch requests."""
         if time.time() < GeminiEmbeddingProvider._circuit_breaker_cooldown_until:
             raise LLMProviderError("Gemini embedding circuit breaker is open due to recent quota limits.")
@@ -180,7 +179,7 @@ class GeminiEmbeddingProvider(BaseEmbeddingProvider):
         if not self.api_key:
             raise LLMProviderError("Gemini API key is required for semantic embeddings.")
 
-        all_vectors: List[List[float]] = []
+        all_vectors: list[list[float]] = []
 
         config = genai_types.EmbedContentConfig(
             output_dimensionality=self.dimension if self.dimension else None

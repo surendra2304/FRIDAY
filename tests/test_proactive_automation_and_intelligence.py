@@ -1,7 +1,7 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for FRIDAY Advanced Proactive Automation & Scheduled Intelligence."""
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from friday.core.notification_router import SmartNotificationRouter, UrgencyTier

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Live transcript printing for Gemini Live sessions.
 
 Renders the conversation live in the terminal as it streams:
@@ -8,18 +7,19 @@ Turn boundaries close open lines; fallbacks print only content the live
 streams missed. Shared by the CLI voice mode and the interactive diagnostic.
 """
 
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from collections.abc import Callable
+from typing import Any
 
 
 class LiveTranscriptPrinter:
     """Prints user/FRIDAY transcripts live from serverContent callbacks."""
 
-    def __init__(self, turn_log: Optional[List[Tuple[float, str, str]]] = None, clock: Callable[[], float] = None):
+    def __init__(self, turn_log: list[tuple[float, str, str]] | None = None, clock: Callable[[], float] | None = None):
         import time as _time
 
-        self._time = clock or _time.perf_counter
+        self._time = clock if clock is not None else _time.perf_counter
         self.turn_log = turn_log if turn_log is not None else []
-        self._state: Dict[str, bool] = {
+        self._state: dict[str, bool] = {
             "user_streaming": False,
             "user_turn_streamed": False,
             "user_last": False,

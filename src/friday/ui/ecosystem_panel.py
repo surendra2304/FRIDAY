@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Ecosystem Dashboard Panel for FRIDAY.
 
 Provides visual UI cards, central alert feeds, and one-click actions across all subsystems:
@@ -9,7 +8,7 @@ Provides visual UI cards, central alert feeds, and one-click actions across all 
 """
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.ecosystem.registry import EcosystemRegistry, ecosystem_registry
 
@@ -19,7 +18,7 @@ class EcosystemDashboardPanel:
 
     def __init__(
         self,
-        registry: Optional[EcosystemRegistry] = None,
+        registry: EcosystemRegistry | None = None,
     ) -> None:
         self._registry = registry or ecosystem_registry
 
@@ -27,7 +26,7 @@ class EcosystemDashboardPanel:
     def registry(self) -> EcosystemRegistry:
         return self._registry
 
-    def render_panel_data(self) -> Dict[str, Any]:
+    def render_panel_data(self) -> dict[str, Any]:
         """Assembles structured UI panel data for dashboard rendering."""
         status = self.registry.get_ecosystem_status()
         health = self.registry.get_ecosystem_health()

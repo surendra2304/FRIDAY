@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Structured Task Planning and Goal Decomposition models for FRIDAY.
 
 Provides explicit, validated, provider-independent task plans:
@@ -9,15 +8,15 @@ Provides explicit, validated, provider-independent task plans:
 - Compatibility with MockLLMProvider and cloud LLMs
 """
 
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set
-import uuid
+from typing import Any
 
+from friday.agent.goal import Goal
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel
-from friday.agent.goal import Goal
 from friday.tools.registry import ToolRegistry
 
 logger = get_logger("agent.planner")
@@ -41,7 +40,6 @@ class StepStatus(str, Enum):
 
 class PlanValidationError(ValueError):
     """Raised when a TaskPlan fails structural, dependency, or parameter validation."""
-    pass
 
 
 @dataclass
@@ -50,27 +48,27 @@ class PlanStep:
 
     step_id: str
     description: str
-    tool_name: Optional[str] = None
-    parameters: Dict[str, Any] = field(default_factory=dict)
-    depends_on: List[str] = field(default_factory=list)
+    tool_name: str | None = None
+    parameters: dict[str, Any] = field(default_factory=dict)
+    depends_on: list[str] = field(default_factory=list)
     safety_level: SafetyLevel = SafetyLevel.SAFE
     requires_confirmation: bool = False
     status: StepStatus = StepStatus.PENDING
-    success_criteria: Optional[str] = None
-    expected_output_type: Optional[str] = None
-    required_capabilities: List[str] = field(default_factory=list)
-    rollback_step_id: Optional[str] = None
+    success_criteria: str | None = None
+    expected_output_type: str | None = None
+    required_capabilities: list[str] = field(default_factory=list)
+    rollback_step_id: str | None = None
     checkpoint_enabled: bool = False
-    preconditions: List[str] = field(default_factory=list)
-    postconditions: List[str] = field(default_factory=list)
-    evidence_source: Optional[str] = None
+    preconditions: list[str] = field(default_factory=list)
+    postconditions: list[str] = field(default_factory=list)
+    evidence_source: str | None = None
     confidence: float = 1.0
-    recovery_strategy: Optional[str] = None
-    result: Optional[Any] = None
-    error: Optional[str] = None
+    recovery_strategy: str | None = None
+    result: Any | None = None
+    error: str | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize plan step to audit-safe dictionary."""
         from friday.security.scrubber import recursive_sanitize
         raw_dict = {
@@ -99,7 +97,7 @@ class PlanStep:
         return recursive_sanitize(raw_dict)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "PlanStep":
+    def from_dict(cls, data: dict[str, Any]) -> "PlanStep":
         """Deserialize PlanStep from dictionary."""
         from friday.security.scrubber import recursive_sanitize
         sanitized_data = recursive_sanitize(data)
@@ -135,14 +133,14 @@ class TaskPlan:
     """A complete, structured plan decomposing a user goal into validated execution steps."""
 
     goal: str
-    steps: List[PlanStep] = field(default_factory=list)
+    steps: list[PlanStep] = field(default_factory=list)
     plan_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    goal_id: Optional[str] = None
-    risk_level: Optional[str] = None
+    goal_id: str | None = None
+    risk_level: str | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize plan to audit-safe dictionary."""
         from friday.security.scrubber import recursive_sanitize
         raw_dict = {
@@ -157,7 +155,7 @@ class TaskPlan:
         return recursive_sanitize(raw_dict)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "TaskPlan":
+    def from_dict(cls, data: dict[str, Any]) -> "TaskPlan":
         """Deserialize TaskPlan and constituent PlanSteps from dictionary."""
         from friday.security.scrubber import recursive_sanitize
         sanitized_data = recursive_sanitize(data)
@@ -172,14 +170,14 @@ class TaskPlan:
             metadata=sanitized_data.get("metadata", {}),
         )
 
-    def get_step(self, step_id: str) -> Optional[PlanStep]:
+    def get_step(self, step_id: str) -> PlanStep | None:
         """Find a step by its ID."""
         for step in self.steps:
             if step.step_id == step_id:
                 return step
         return None
 
-    def get_dependencies_for_step(self, step_id: str) -> List[PlanStep]:
+    def get_dependencies_for_step(self, step_id: str) -> list[PlanStep]:
         """Retrieve PlanStep objects that the given step depends on."""
         step = self.get_step(step_id)
         if not step:
@@ -191,11 +189,11 @@ class TaskPlan:
                 deps.append(dep_step)
         return deps
 
-    def compute_topological_schedule(self) -> List[List[PlanStep]]:
+    def compute_topological_schedule(self) -> list[list[PlanStep]]:
         """Compute waves/levels of steps that can be executed concurrently based on the dependency DAG."""
-        completed_ids: Set[str] = set()
+        completed_ids: set[str] = set()
         remaining_steps = list(self.steps)
-        schedule_waves: List[List[PlanStep]] = []
+        schedule_waves: list[list[PlanStep]] = []
 
         while remaining_steps:
             ready_wave = [
@@ -214,7 +212,7 @@ class TaskPlan:
 
         return schedule_waves
 
-    def validate(self, tool_registry: Optional[ToolRegistry] = None, available_capabilities: Optional[Set[str]] = None) -> bool:
+    def validate(self, tool_registry: ToolRegistry | None = None, available_capabilities: set[str] | None = None) -> bool:
         """Perform comprehensive pre-execution validation on the plan DAG.
 
         Validates:
@@ -232,7 +230,7 @@ class TaskPlan:
         if not self.steps:
             raise PlanValidationError("TaskPlan must contain at least one step.")
 
-        step_map: Dict[str, PlanStep] = {}
+        step_map: dict[str, PlanStep] = {}
         for idx, step in enumerate(self.steps):
             if not step.step_id or not step.step_id.strip():
                 raise PlanValidationError(f"Step at index {idx} has an invalid or empty step_id.")
@@ -287,7 +285,7 @@ class GoalDecomposer:
     """Helper for converting natural language user goals and structured Goal instances into executable TaskPlans."""
 
     @staticmethod
-    def create_from_goal(goal: Goal, tool_registry: Optional[ToolRegistry] = None) -> TaskPlan:
+    def create_from_goal(goal: Goal, tool_registry: ToolRegistry | None = None) -> TaskPlan:
         """Convert a Goal Understanding structured Goal into an executable DAG TaskPlan."""
         if goal.is_ambiguous:
             raise PlanValidationError(f"Cannot generate plan for ambiguous goal: {goal.clarification_needed}")
@@ -295,11 +293,11 @@ class GoalDecomposer:
         if goal.is_prohibited:
             raise PlanValidationError(f"Cannot generate plan for prohibited goal: {goal.prohibition_reason}")
 
-        steps: List[PlanStep] = []
+        steps: list[PlanStep] = []
         for sg in goal.subgoals:
             # Map capability to tool if possible
             tool_name = None
-            params: Dict[str, Any] = {}
+            params: dict[str, Any] = {}
 
             if "system_info" in sg.required_capabilities or "system_diagnostics" in sg.required_capabilities:
                 tool_name = "get_system_info"
@@ -345,11 +343,11 @@ class GoalDecomposer:
     def create_single_step_plan(
         goal: str,
         description: str,
-        tool_name: Optional[str] = None,
-        parameters: Optional[Dict[str, Any]] = None,
+        tool_name: str | None = None,
+        parameters: dict[str, Any] | None = None,
         safety_level: SafetyLevel = SafetyLevel.SAFE,
         requires_confirmation: bool = False,
-        success_criteria: Optional[str] = None,
+        success_criteria: str | None = None,
     ) -> TaskPlan:
         """Create a simple, single-step TaskPlan."""
         step = PlanStep(
@@ -366,10 +364,10 @@ class GoalDecomposer:
     @staticmethod
     def create_multi_step_plan(
         goal: str,
-        step_definitions: List[Dict[str, Any]],
+        step_definitions: list[dict[str, Any]],
     ) -> TaskPlan:
         """Create a multi-step TaskPlan from a list of step definition dictionaries."""
-        steps: List[PlanStep] = []
+        steps: list[PlanStep] = []
         for idx, sdef in enumerate(step_definitions, start=1):
             step_id = sdef.get("step_id", f"step_{idx}")
             desc = sdef.get("description", f"Execute step {idx}")

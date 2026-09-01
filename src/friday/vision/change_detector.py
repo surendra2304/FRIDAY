@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Lightweight perceptual image difference detector and screen change evaluator.
 
 Calculates fast perceptual downsampled luminance hash and Mean Absolute Difference (MAD)
@@ -6,7 +5,7 @@ over raw image bytes to avoid sending unchanged screenshots to Gemini API. Zero 
 """
 
 import hashlib
-from typing import Optional, Tuple
+
 import numpy as np
 
 
@@ -60,10 +59,10 @@ class ScreenChangeDetector:
 
     def __init__(self, change_threshold: float = 0.05) -> None:
         self.change_threshold = change_threshold
-        self._last_sha256: Optional[str] = None
-        self._last_bytes: Optional[bytes] = None
+        self._last_sha256: str | None = None
+        self._last_bytes: bytes | None = None
 
-    def evaluate_change(self, new_image_bytes: bytes) -> Tuple[bool, float]:
+    def evaluate_change(self, new_image_bytes: bytes) -> tuple[bool, float]:
         """Evaluate if new image differs significantly from the last observed image.
 
         Returns:

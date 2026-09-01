@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Market Regime Detection Engine for FRIDAY.
 
 Detects multi-timeframe market states (Trending, Ranging, Breakout, Reversal)
@@ -9,8 +8,7 @@ providing strategy suitability mapping and adaptive risk sizing recommendations.
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-import math
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -44,16 +42,16 @@ class RegimeRecommendation:
     """Strategy and risk management advice tailored to current market regime."""
     primary_regime: MarketState
     timeframe_consensus: str
-    suitable_strategies: List[str]
-    unsuitable_strategies: List[str]
+    suitable_strategies: list[str]
+    unsuitable_strategies: list[str]
     risk_level: str  # LOW, MODERATE, HIGH, EXTREME
     position_sizing_multiplier: float  # e.g., 0.5x - 1.5x
     stop_loss_adjustment_factor: float  # e.g., 0.8x - 1.4x
     explanation: str
-    timeframes: Dict[str, TimeframeRegime]
+    timeframes: dict[str, TimeframeRegime]
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "primary_regime": self.primary_regime.value,
             "timeframe_consensus": self.timeframe_consensus,
@@ -77,11 +75,11 @@ class MarketRegimeDetector:
     def detect_regime(
         self,
         symbol: str = "BTCUSDT",
-        market_data: Optional[Dict[str, Any]] = None,
+        market_data: dict[str, Any] | None = None,
     ) -> RegimeRecommendation:
         """Evaluates indicators across multiple timeframes to generate regime classification and recommendations."""
         market_data = market_data or {}
-        tf_results: Dict[str, TimeframeRegime] = {}
+        tf_results: dict[str, TimeframeRegime] = {}
 
         # 1. Evaluate indicators per timeframe (simulated or parsed from real feeds)
         base_adx = float(market_data.get("adx", 28.5))

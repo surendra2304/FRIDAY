@@ -1,7 +1,5 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for FRIDAY Nexus Manager & Website Supervision."""
 
-from datetime import datetime, timezone, timedelta
 import pytest
 
 from friday.operators.nexus_supervisor import NexusSupervisorOperator

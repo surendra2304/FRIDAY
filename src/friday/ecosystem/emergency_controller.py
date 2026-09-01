@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Master Emergency Controller for FRIDAY Operating System.
 
 Executes sequential, verified 8-subsystem emergency freezes:
@@ -12,13 +11,12 @@ Executes sequential, verified 8-subsystem emergency freezes:
 8. FRIDAY Autonomous Operators (pause background operators; health monitoring stays active)
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
-from friday.core.types import TrustLevel
 
 logger = get_logger("ecosystem.emergency_controller")
 
@@ -38,7 +36,7 @@ class EmergencyHaltReport:
     halt_id: str
     triggered_by: str
     is_active: bool
-    subsystems_halted: Dict[str, SubsystemHaltState]
+    subsystems_halted: dict[str, SubsystemHaltState]
     banner_message: str
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
@@ -50,14 +48,14 @@ class MasterEmergencyController:
 
     def __init__(self) -> None:
         self.is_emergency_active: bool = False
-        self.halt_states: Dict[str, SubsystemHaltState] = {}
+        self.halt_states: dict[str, SubsystemHaltState] = {}
         self._lock = threading.RLock()
 
     def execute_master_emergency_halt(
         self,
         command_phrase: str,
         biometric_confidence: float = 1.0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Executes full 8-subsystem emergency freeze cascade."""
         with self._lock:
             # 1. Biometric verification
@@ -97,7 +95,7 @@ class MasterEmergencyController:
                 banner_message=banner,
             )
 
-            logger.critical(f"[EMERGENCY_CONTROLLER] 🛑 MASTER EMERGENCY HALT EXECUTED ACROSS ALL 8 SUBSYSTEMS.")
+            logger.critical("[EMERGENCY_CONTROLLER] 🛑 MASTER EMERGENCY HALT EXECUTED ACROSS ALL 8 SUBSYSTEMS.")
             return {
                 "is_halted": True,
                 "status": "MASTER_HALT_EXECUTED",
@@ -105,7 +103,7 @@ class MasterEmergencyController:
                 "halt_report": report,
             }
 
-    def resume_subsystem(self, subsystem_name: str, confirmation_token: str) -> Dict[str, Any]:
+    def resume_subsystem(self, subsystem_name: str, confirmation_token: str) -> dict[str, Any]:
         """Resumes an individual subsystem safely. Bulk resumption is strictly prohibited."""
         with self._lock:
             if subsystem_name.upper() == "ALL":
@@ -125,7 +123,7 @@ class MasterEmergencyController:
 
             return {"is_resumed": False, "status": "UNKNOWN_SUBSYSTEM", "error": f"Subsystem '{subsystem_name}' not found."}
 
-    def get_emergency_banner(self) -> Optional[str]:
+    def get_emergency_banner(self) -> str | None:
         """Returns active red emergency banner message if emergency halt is active."""
         with self._lock:
             if not self.is_emergency_active:

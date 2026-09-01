@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Open Application tool: launch known Windows applications by spoken or typed name.
 
 Bridges voice/text intents ("open notepad") to native app launching via
@@ -9,7 +8,7 @@ authorization through the sensitive-action path.
 
 import os
 import subprocess
-from typing import Any, Dict
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel, ToolResult

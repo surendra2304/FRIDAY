@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Windows Device Controller implementation for FRIDAY.
 
 Encapsulates Windows OS APIs, pywinauto, os.startfile, pyautogui, ImageGrab, and pytesseract.
@@ -6,8 +5,7 @@ Encapsulates Windows OS APIs, pywinauto, os.startfile, pyautogui, ImageGrab, and
 
 import os
 import subprocess
-import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from friday.core.device_controller import BaseDeviceController
 from friday.core.logging import get_logger
@@ -34,7 +32,7 @@ class WindowsDeviceController(BaseDeviceController):
 
     device_type: str = "windows"
 
-    def __init__(self, tesseract_cmd: Optional[str] = None) -> None:
+    def __init__(self, tesseract_cmd: str | None = None) -> None:
         self.tesseract_cmd = tesseract_cmd
 
     def _resolve_executable(self, name: str) -> str:
@@ -105,7 +103,7 @@ class WindowsDeviceController(BaseDeviceController):
                 logger.error(f"Failed to type text: {e}")
                 return False
 
-    def screenshot(self) -> Optional[Any]:
+    def screenshot(self) -> Any | None:
         """Capture Windows desktop screen."""
         try:
             from PIL import ImageGrab

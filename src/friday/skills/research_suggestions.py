@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Proactive Research Suggestion Engine for FRIDAY.
 
 Monitors live multi-subsystem ecosystem telemetry and proposes contextual deep research:
@@ -9,10 +8,10 @@ Monitors live multi-subsystem ecosystem telemetry and proposes contextual deep r
 - Invariant: Suggestions are non-intrusive and tagged TrustLevel.UNTRUSTED_EXTERNAL
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import TrustLevel
@@ -40,7 +39,7 @@ class ResearchSuggestionEngine:
 
     def __init__(self) -> None:
         self._lock = threading.RLock()
-        self._suggestions: Dict[str, ResearchSuggestion] = {}
+        self._suggestions: dict[str, ResearchSuggestion] = {}
         self._init_defaults()
 
     def _init_defaults(self) -> None:
@@ -54,11 +53,11 @@ class ResearchSuggestionEngine:
 
     def generate_suggestions_from_ecosystem(
         self,
-        ecosystem_state: Dict[str, Any],
-    ) -> List[ResearchSuggestion]:
+        ecosystem_state: dict[str, Any],
+    ) -> list[ResearchSuggestion]:
         """Evaluates ecosystem telemetry across all 4 operational subsystems."""
         with self._lock:
-            new_suggestions: List[ResearchSuggestion] = []
+            new_suggestions: list[ResearchSuggestion] = []
 
             # 1. Trading Bot Evaluation
             trade = ecosystem_state.get("trading_bot", {})
@@ -83,7 +82,7 @@ class ResearchSuggestionEngine:
             vulns = sec.get("open_vulnerabilities", [])
             if vulns:
                 top_vuln = vulns[0]
-                sid = f"sug-sec-auth"
+                sid = "sug-sec-auth"
                 sug = ResearchSuggestion(
                     suggestion_id=sid,
                     subsystem="sentinel",
@@ -91,7 +90,7 @@ class ResearchSuggestionEngine:
                     suggested_topic=f"Zero-trust authentication and {top_vuln} mitigation best practices",
                     domain_hint="security",
                     depth="deep_dive",
-                    rationale=f"Active security findings in authentication stack.",
+                    rationale="Active security findings in authentication stack.",
                 )
                 self._suggestions[sid] = sug
                 new_suggestions.append(sug)
@@ -100,7 +99,7 @@ class ResearchSuggestionEngine:
             nexus = ecosystem_state.get("nexus", {})
             geo = nexus.get("new_geography")
             if geo:
-                sid = f"sug-nexus-geo"
+                sid = "sug-nexus-geo"
                 sug = ResearchSuggestion(
                     suggestion_id=sid,
                     subsystem="nexus",
@@ -108,7 +107,7 @@ class ResearchSuggestionEngine:
                     suggested_topic=f"Enterprise SaaS competitor landscape and localization in {geo}",
                     domain_hint="competitive",
                     depth="standard",
-                    rationale=f"Regional visitor traffic spike detected.",
+                    rationale="Regional visitor traffic spike detected.",
                 )
                 self._suggestions[sid] = sug
                 new_suggestions.append(sug)
@@ -117,7 +116,7 @@ class ResearchSuggestionEngine:
             forge = ecosystem_state.get("forge", {})
             stack = forge.get("active_stack")
             if stack:
-                sid = f"sug-forge-arch"
+                sid = "sug-forge-arch"
                 sug = ResearchSuggestion(
                     suggestion_id=sid,
                     subsystem="forge",
@@ -125,14 +124,14 @@ class ResearchSuggestionEngine:
                     suggested_topic=f"{stack} scalability benchmarks and engineering tradeoffs",
                     domain_hint="technical",
                     depth="standard",
-                    rationale=f"New architectural deliverable queued in Forge.",
+                    rationale="New architectural deliverable queued in Forge.",
                 )
                 self._suggestions[sid] = sug
                 new_suggestions.append(sug)
 
             return new_suggestions
 
-    def get_pending_suggestions(self) -> List[Dict[str, Any]]:
+    def get_pending_suggestions(self) -> list[dict[str, Any]]:
         """Retrieves pending research proposals formatted for UI or conversational injection."""
         with self._lock:
             return [
@@ -152,7 +151,7 @@ class ResearchSuggestionEngine:
                 if s.status == "PENDING"
             ]
 
-    def accept_suggestion(self, suggestion_id: str) -> Optional[Dict[str, Any]]:
+    def accept_suggestion(self, suggestion_id: str) -> dict[str, Any] | None:
         """Accepts a proposal and returns parameters for IntelX delegation."""
         with self._lock:
             sug = self._suggestions.get(suggestion_id)

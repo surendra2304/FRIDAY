@@ -7,10 +7,11 @@ All event fields are sanitized to avoid leaking secrets.
 import json
 import os
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from friday.core.config import get_settings
+
 from .event import Event, sanitize_metadata
 
 _lock = threading.Lock()
@@ -53,7 +54,7 @@ class ObservabilityManager:
         """
         # Populate timestamp if not provided
         if not event.timestamp:
-            event.timestamp = datetime.utcnow().isoformat() + "Z"
+            event.timestamp = datetime.now(timezone.utc).isoformat()
         # Sanitize result payload if present
         if event.result:
             event.result = sanitize_metadata(event.result)

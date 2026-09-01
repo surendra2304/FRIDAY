@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Cross-System Anomaly Detection Operator for FRIDAY Ecosystem.
 
 Monitors correlations and cascading failure patterns across Trading Bot,
@@ -9,10 +8,10 @@ Nexus Website, FORGE SWE Engine, and AI-Universe Core on a 60-second cycle:
 - Unusual cross-system quietness (zero activity across all four components)
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel
@@ -29,7 +28,7 @@ class AnomalyEvent:
     anomaly_type: str  # CASCADING_FAILURE, CORRELATED_BUILD_AI_FAILURE, MARKET_WEB_ANOMALY, UNUSUAL_QUIETNESS
     severity: str  # CRITICAL, HIGH, MEDIUM, LOW
     description: str
-    affected_subsystems: List[str]
+    affected_subsystems: list[str]
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -38,7 +37,7 @@ class EcosystemAnomalyDetection(BaseOperator):
 
     def __init__(
         self,
-        registry: Optional[EcosystemRegistry] = None,
+        registry: EcosystemRegistry | None = None,
         poll_interval_sec: float = 60.0,
     ) -> None:
         trigger = IntervalTrigger(interval_seconds=poll_interval_sec, name="ecosystem_anomaly_poll_interval")
@@ -52,13 +51,13 @@ class EcosystemAnomalyDetection(BaseOperator):
         self.registry = registry or ecosystem_registry
         self.poll_interval_sec = poll_interval_sec
         self._lock = threading.RLock()
-        self._detected_anomalies: List[AnomalyEvent] = []
+        self._detected_anomalies: list[AnomalyEvent] = []
 
-    def tick(self) -> List[Dict[str, Any]]:
+    def tick(self) -> list[dict[str, Any]]:
         """Executes 60-second cross-subsystem anomaly evaluation."""
         with self._lock:
             now = datetime.now(timezone.utc)
-            events: List[Dict[str, Any]] = []
+            events: list[dict[str, Any]] = []
 
             try:
                 status = self.registry.get_ecosystem_status()
@@ -136,19 +135,19 @@ class EcosystemAnomalyDetection(BaseOperator):
             except Exception as e:
                 logger.error(f"[ECOSYSTEM_ANOMALY] Error evaluating anomaly rules: {e}")
 
-            for e in events:
+            for evt in events:
                 self._detected_anomalies.append(
                     AnomalyEvent(
-                        anomaly_type=e["type"],
-                        severity=e["severity"],
-                        description=e["message"],
-                        affected_subsystems=e.get("affected_subsystems", []),
+                        anomaly_type=evt["type"],
+                        severity=evt["severity"],
+                        description=evt["message"],
+                        affected_subsystems=evt.get("affected_subsystems", []),
                     )
                 )
 
             return events
 
-    def get_detected_anomalies(self) -> List[AnomalyEvent]:
+    def get_detected_anomalies(self) -> list[AnomalyEvent]:
         """Returns log of all detected cross-system anomalies."""
         with self._lock:
             return list(self._detected_anomalies)

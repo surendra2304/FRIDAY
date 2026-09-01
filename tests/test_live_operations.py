@@ -1,10 +1,8 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for FRIDAY Live Trading Operations Center."""
 
-from unittest.mock import MagicMock
 import pytest
 
-from friday.alert_manager import AlertSeverity, ProductionAlertManager
+from friday.alert_manager import ProductionAlertManager
 from friday.emergency_procedures import EmergencyProcedureManager
 from friday.memory.in_memory import InMemoryConversationMemory
 from friday.operators.live_vigilance_operator import LiveVigilanceOperator

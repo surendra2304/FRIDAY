@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Cross-System Research Coordination Workflow for FRIDAY.
 
 Orchestrates automated research triggers across the entire ecosystem:
@@ -20,10 +19,10 @@ Orchestrates automated research triggers across the entire ecosystem:
    - Informs Forge task build specification and library choices.
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import TrustLevel
@@ -54,14 +53,14 @@ class ResearchCoordinationWorkflow:
 
     def __init__(
         self,
-        intelx_skill: Optional[IntelXManagerSkill] = None,
-        library: Optional[ResearchLibrary] = None,
-        injector: Optional[ResearchContextInjector] = None,
+        intelx_skill: IntelXManagerSkill | None = None,
+        library: ResearchLibrary | None = None,
+        injector: ResearchContextInjector | None = None,
     ) -> None:
         self.intelx = intelx_skill or IntelXManagerSkill()
         self.library = library or ResearchLibrary()
         self.injector = injector or ResearchContextInjector(library=self.library)
-        self.event_history: List[ResearchCoordinationEvent] = []
+        self.event_history: list[ResearchCoordinationEvent] = []
         self._lock = threading.RLock()
 
     # =========================================================================
@@ -73,7 +72,7 @@ class ResearchCoordinationWorkflow:
         cve_id: str,
         vulnerability_title: str,
         severity: str = "CRITICAL",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Triggered when Sentinel identifies critical vulnerability; delegates threat intel research."""
         query = (
             f"What is known about {cve_id} ({vulnerability_title})? "
@@ -143,7 +142,7 @@ class ResearchCoordinationWorkflow:
         asset: str,
         price_change_pct: float,
         condition_note: str = "Unusual volume surge",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Triggered when Trading Bot detects volatility; delegates macro/market research."""
         query = (
             f"What events and macroeconomic catalysts are driving {asset} volatility today? "
@@ -203,7 +202,7 @@ class ResearchCoordinationWorkflow:
         self,
         competitor_name: str,
         source_context: str = "Nexus high-intent visitor inquiry",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Triggered when Nexus detects competitor mentions; delegates competitive intelligence research."""
         query = (
             f"Comprehensive competitive analysis on {competitor_name}: "
@@ -263,7 +262,7 @@ class ResearchCoordinationWorkflow:
         self,
         architecture_question: str,
         forge_task_id: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Triggered before Forge builds unfamiliar stack; delegates technical architecture research."""
         query = (
             f"Technical architecture analysis: {architecture_question} — "

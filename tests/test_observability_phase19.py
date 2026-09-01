@@ -1,9 +1,7 @@
-# -*- coding: utf-8 -*-
 """Unit tests for Observability UI: Observability, Timeline Replay, and Unified Status Panel."""
 
-import pytest
-from friday.observability.timeline import ExecutionTimeline, TimelineEvent, global_timeline
 from friday.cli.main import render_status_panel
+from friday.observability.timeline import ExecutionTimeline, global_timeline
 
 
 def test_timeline_recording_and_bounds():

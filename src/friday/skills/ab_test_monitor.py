@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """A/B Test Monitor Skill for Trading Supervision.
 
 Monitors and evaluates live A/B experiments on the Algorithmic Trading Bot
@@ -8,16 +7,11 @@ and comprehensive visual/markdown reports.
 """
 
 from dataclasses import dataclass, field
-import json
-import os
-import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
-from friday.core.types import SafetyLevel
 from friday.skills.base_skill import BaseSkill, SkillExecutionResult
 from friday.skills.trading_bot_operator import TradingBotOperator
-from friday.skills.trading_precedence import CommandPrecedence, tag_trading_command
 
 logger = get_logger("skills.ab_test_monitor")
 
@@ -33,7 +27,7 @@ class ArmMetrics:
     profit_factor: float
     max_drawdown_pct: float
     trade_count: int
-    raw: Dict[str, Any] = field(default_factory=dict)
+    raw: dict[str, Any] = field(default_factory=dict)
 
 
 class ABTestMonitorSkill(BaseSkill):
@@ -58,10 +52,10 @@ class ABTestMonitorSkill(BaseSkill):
         r"\b(?:generate\s+a[/-]?b\s+report|a[/-]?b\s+test\s+report|ab\s+report|create\s+ab\s+report)\b",
     ]
 
-    def __init__(self, bot_operator: Optional[TradingBotOperator] = None) -> None:
+    def __init__(self, bot_operator: TradingBotOperator | None = None) -> None:
         self.bot_operator = bot_operator or TradingBotOperator()
 
-    def get_ab_status(self) -> Dict[str, Any]:
+    def get_ab_status(self) -> dict[str, Any]:
         """Fetch current A/B test state, duration, progress, and trade volumes."""
         raw = self.bot_operator.get_ab_status()
         if not raw or raw.get("status") in ("NO_ACTIVE_TEST", "INACTIVE"):
@@ -106,7 +100,7 @@ class ABTestMonitorSkill(BaseSkill):
             "raw": raw,
         }
 
-    def get_ab_results(self) -> Dict[str, Any]:
+    def get_ab_results(self) -> dict[str, Any]:
         """Fetch and compare performance metrics and statistical significance between arms."""
         raw = self.bot_operator.get_ab_status()
         if not raw or raw.get("status") in ("NO_ACTIVE_TEST", "INACTIVE"):
@@ -173,7 +167,7 @@ class ABTestMonitorSkill(BaseSkill):
             "raw": raw,
         }
 
-    def explain_ab_difference(self) -> Dict[str, Any]:
+    def explain_ab_difference(self) -> dict[str, Any]:
         """Analyze root causes of performance delta between Control and Treatment arms."""
         res_data = self.get_ab_results()
         if not res_data.get("active"):
@@ -221,7 +215,7 @@ class ABTestMonitorSkill(BaseSkill):
             "explanation": analysis,
         }
 
-    def generate_ab_report(self) -> Dict[str, Any]:
+    def generate_ab_report(self) -> dict[str, Any]:
         """Generate a complete Markdown and ASCII/table visualization report of the A/B test."""
         status_data = self.get_ab_status()
         if not status_data.get("active"):
@@ -278,15 +272,15 @@ class ABTestMonitorSkill(BaseSkill):
     def execute(
         self,
         user_request: str,
-        agent: Optional[Any] = None,
-        tool_registry: Optional[Any] = None,
-        llm_provider: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        agent: Any | None = None,
+        tool_registry: Any | None = None,
+        llm_provider: Any | None = None,
+        authorizer: Any | None = None,
         **kwargs: Any,
     ) -> SkillExecutionResult:
         """Executes A/B testing queries, status checks, and report generation."""
         clean_req = user_request.strip().lower()
-        step_results: List[Dict[str, Any]] = []
+        step_results: list[dict[str, Any]] = []
 
         try:
             # 1. Generate Full A/B Report

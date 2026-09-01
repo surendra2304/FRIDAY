@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Emergency Playbook System for FRIDAY Ecosystem.
 
 Executes pre-defined emergency procedures with real-time spoken status updates:
@@ -9,10 +8,9 @@ Executes pre-defined emergency procedures with real-time spoken status updates:
 5. PLAYBOOK:data_breach (instant all-system halt, rotate credentials, export audit trail)
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import threading
-from typing import Any, Dict, List, Optional
 
 from friday.core.logging import get_logger
 
@@ -35,7 +33,7 @@ class PlaybookExecutionResult:
     playbook_id: str
     playbook_name: str
     is_successful: bool
-    step_results: List[PlaybookStepResult]
+    step_results: list[PlaybookStepResult]
     escalation_required: bool
     human_decision_point: str
     post_incident_review_template: str
@@ -46,7 +44,7 @@ class EmergencyPlaybookSystem:
     """Orchestrates automated emergency runbooks and voice progress updates."""
 
     def __init__(self) -> None:
-        self.execution_history: List[PlaybookExecutionResult] = []
+        self.execution_history: list[PlaybookExecutionResult] = []
         self._lock = threading.RLock()
 
     def run_playbook(self, playbook_name_or_query: str) -> PlaybookExecutionResult:

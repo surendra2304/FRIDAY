@@ -1,17 +1,10 @@
-# -*- coding: utf-8 -*-
 """Production Supervision Dashboard for FRIDAY.
 
 Generates real-time visual summaries, metric comparisons, alert tables,
 and status dashboards across the Trading Bot, AI-Universe, and FRIDAY OS tiers.
 """
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
-
-from friday.alert_manager import AlertSeverity, ProductionAlertManager
-from friday.emergency_procedures import EmergencyProcedureManager
-from friday.production_monitor import ProductionMonitor, SystemHealthReport
-from friday.skills.trading_bot_operator import TradingBotOperator
+from typing import Any
 
 
 class ProductionDashboard:
@@ -19,10 +12,10 @@ class ProductionDashboard:
 
     def __init__(
         self,
-        bot_operator: Optional[Any] = None,
-        alert_manager: Optional[Any] = None,
-        emergency_manager: Optional[Any] = None,
-        production_monitor: Optional[Any] = None,
+        bot_operator: Any | None = None,
+        alert_manager: Any | None = None,
+        emergency_manager: Any | None = None,
+        production_monitor: Any | None = None,
     ) -> None:
         if bot_operator is None:
             from friday.skills.trading_bot_operator import TradingBotOperator

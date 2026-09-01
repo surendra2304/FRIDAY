@@ -1,15 +1,15 @@
-# -*- coding: utf-8 -*-
 """FRIDAY Device Control Abstractions (Inspired by OpenJarvis)."""
 
 from typing import Any, Optional
+
 from friday.core.device_controller import BaseDeviceController
-from friday.devices.windows_controller import WindowsDeviceController
 from friday.devices.android_controller import AndroidDeviceController
+from friday.devices.windows_controller import WindowsDeviceController
 
 
 def get_device_controller(
-    device_name: Optional[str] = None,
-    settings: Optional[Any] = None,
+    device_name: str | None = None,
+    settings: Any | None = None,
 ) -> BaseDeviceController:
     """Factory to retrieve the active device controller based on settings or explicit device name."""
     if not device_name:
@@ -32,8 +32,8 @@ def get_device_controller(
 
 
 __all__ = [
+    "AndroidDeviceController",
     "BaseDeviceController",
     "WindowsDeviceController",
-    "AndroidDeviceController",
     "get_device_controller",
 ]

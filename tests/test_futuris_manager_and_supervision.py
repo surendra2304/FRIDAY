@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for Futuris Forecasting Manager & Forecast Supervisor.
 
 Validates:
@@ -23,7 +22,6 @@ Validates:
    - FRIDAY never presents point estimates without uncertainty bounds
 """
 
-import pytest
 
 from friday.core.types import TrustLevel
 from friday.operators.forecast_supervisor_operator import ForecastSupervisorOperator

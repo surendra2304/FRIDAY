@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive End-to-End Ecosystem Test Suite for FRIDAY Operating System.
 
 Verifies deep integration across all 4 managed subsystems and emergency orchestration:
@@ -13,15 +12,18 @@ Verifies deep integration across all 4 managed subsystems and emergency orchestr
 9. test_help_system_skill (capabilities roster & domain guides)
 """
 
-from datetime import datetime, timezone, timedelta
 import os
 import shutil
 import tempfile
+
 import pytest
 
 from friday.core.personalization import PersonalizationEngine
-from friday.ecosystem.command_router import EcosystemCommandRouter, SubsystemRoute
-from friday.ecosystem.cross_orchestrator import CrossBuildTemplate, CrossSystemOrchestrator
+from friday.ecosystem.command_router import EcosystemCommandRouter
+from friday.ecosystem.cross_orchestrator import (
+    CrossBuildTemplate,
+    CrossSystemOrchestrator,
+)
 from friday.ecosystem.emergency_controller import MasterEmergencyController
 from friday.ecosystem.registry import EcosystemRegistry
 from friday.onboarding.wizard import OnboardingStep, OnboardingWizard
@@ -30,7 +32,6 @@ from friday.skills.ecosystem_status import EcosystemStatusSkill
 from friday.skills.forge_manager import ForgeManagerSkill
 from friday.skills.help_system import HelpSystemSkill
 from friday.skills.nexus_manager import NexusManagerSkill
-from friday.skills.registry import SkillRegistry
 from friday.workflows.master_briefing import MasterDailyBriefingWorkflow
 
 

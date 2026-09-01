@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Goal Understanding, Normalization, Classification and Hierarchical Decomposition for Goal Understanding.
 
 Converts high-level natural language user requests into structured, validated Goal instances:
@@ -22,12 +21,12 @@ Converts high-level natural language user requests into structured, validated Go
 - 100% Provider-Independent: Implemented against BaseLLMProvider without cloud vendor coupling.
 """
 
+import re
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-import re
-from typing import Any, Dict, List, Optional, Tuple
-import uuid
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel
@@ -62,13 +61,13 @@ class SubGoal:
     subgoal_id: str
     description: str
     desired_outcome: str
-    dependencies: List[str] = field(default_factory=list)
-    required_capabilities: List[str] = field(default_factory=list)
+    dependencies: list[str] = field(default_factory=list)
+    required_capabilities: list[str] = field(default_factory=list)
     safety_level: SafetyLevel = SafetyLevel.SAFE
     requires_confirmation: bool = False
-    success_conditions: List[str] = field(default_factory=list)
+    success_conditions: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         from friday.security.scrubber import recursive_sanitize
         raw_dict = {
             "subgoal_id": self.subgoal_id,
@@ -83,7 +82,7 @@ class SubGoal:
         return recursive_sanitize(raw_dict)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "SubGoal":
+    def from_dict(cls, data: dict[str, Any]) -> "SubGoal":
         from friday.security.scrubber import recursive_sanitize
         sanitized_data = recursive_sanitize(data)
         safety_str = sanitized_data.get("safety_level", SafetyLevel.SAFE.value)
@@ -108,22 +107,22 @@ class Goal:
     normalized_intent: str
     desired_outcome: str
     request_type: GoalRequestType
-    constraints: List[str] = field(default_factory=list)
-    required_capabilities: List[str] = field(default_factory=list)
-    dependencies: List[str] = field(default_factory=list)
+    constraints: list[str] = field(default_factory=list)
+    required_capabilities: list[str] = field(default_factory=list)
+    dependencies: list[str] = field(default_factory=list)
     risk_level: GoalRiskLevel = GoalRiskLevel.LOW
-    authorization_requirements: List[str] = field(default_factory=list)
-    success_conditions: List[str] = field(default_factory=list)
-    cancellation_conditions: List[str] = field(default_factory=list)
-    subgoals: List[SubGoal] = field(default_factory=list)
+    authorization_requirements: list[str] = field(default_factory=list)
+    success_conditions: list[str] = field(default_factory=list)
+    cancellation_conditions: list[str] = field(default_factory=list)
+    subgoals: list[SubGoal] = field(default_factory=list)
     is_ambiguous: bool = False
-    clarification_needed: Optional[str] = None
+    clarification_needed: str | None = None
     is_prohibited: bool = False
-    prohibition_reason: Optional[str] = None
+    prohibition_reason: str | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize goal to dictionary."""
         from friday.security.scrubber import recursive_sanitize
         raw_dict = {
@@ -150,7 +149,7 @@ class Goal:
         return recursive_sanitize(raw_dict)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Goal":
+    def from_dict(cls, data: dict[str, Any]) -> "Goal":
         from friday.security.scrubber import recursive_sanitize
         sanitized_data = recursive_sanitize(data)
         req_type_str = sanitized_data.get("request_type", GoalRequestType.INFORMATION_REQUEST.value)
@@ -209,15 +208,15 @@ class GoalUnderstandingEngine:
 
     def __init__(
         self,
-        llm_provider: Optional[BaseLLMProvider] = None,
+        llm_provider: BaseLLMProvider | None = None,
     ) -> None:
         self.llm = llm_provider
 
     def analyze_goal(
         self,
         user_request: str,
-        context_summary: Optional[str] = None,
-        environmental_context: Optional[str] = None,
+        context_summary: str | None = None,
+        environmental_context: str | None = None,
     ) -> Goal:
         """Parse user request, classify request type, evaluate safety/risk, and formulate Goal."""
         goal_id = f"goal_{uuid.uuid4().hex[:12]}"
@@ -329,15 +328,15 @@ class GoalUnderstandingEngine:
         request: str,
         request_type: GoalRequestType,
         risk_level: GoalRiskLevel,
-    ) -> List[SubGoal]:
+    ) -> list[SubGoal]:
         """Decompose request into ordered or dependency-aware SubGoal nodes."""
-        subgoals: List[SubGoal] = []
+        subgoals: list[SubGoal] = []
         lower = request.lower()
 
         # For multi-step compound requests (e.g. "read file X then calculate Y and search memory")
         if " then " in lower or " and then " in lower or " followed by " in lower or " after that " in lower:
             parts = re.split(r"\b(?:and\s+then|then|followed\s+by|after\s+that)\b", request, flags=re.IGNORECASE)
-            prev_id: Optional[str] = None
+            prev_id: str | None = None
             for idx, p in enumerate(parts, start=1):
                 clean_p = p.strip(" ,.;")
                 if not clean_p:
@@ -417,7 +416,7 @@ class GoalUnderstandingEngine:
 
         return subgoals
 
-    def _classify_request_heuristics(self, request: str) -> Tuple[GoalRequestType, GoalRiskLevel, List[str]]:
+    def _classify_request_heuristics(self, request: str) -> tuple[GoalRequestType, GoalRiskLevel, list[str]]:
         """Heuristically categorize request type, risk tier, and capability tags."""
         lower = request.lower()
 
@@ -440,7 +439,7 @@ class GoalUnderstandingEngine:
         # Default to information request
         return GoalRequestType.INFORMATION_REQUEST, GoalRiskLevel.LOW, ["llm_reasoning"]
 
-    def _extract_constraints(self, request: str) -> List[str]:
+    def _extract_constraints(self, request: str) -> list[str]:
         """Extract explicit operational constraints mentioned in prompt."""
         constraints = []
         lower = request.lower()
@@ -460,7 +459,7 @@ class GoalUnderstandingEngine:
 
         return constraints
 
-    def _detect_conflicting_constraints(self, constraints: List[str], request: str) -> Tuple[bool, Optional[str]]:
+    def _detect_conflicting_constraints(self, constraints: list[str], request: str) -> tuple[bool, str | None]:
         """Detect mutually contradictory instructions in user request."""
         lower = request.lower()
 

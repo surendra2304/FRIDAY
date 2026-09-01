@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Research Dashboard Panel for FRIDAY User Interface.
 
 Renders rich visual intelligence panels:
@@ -10,8 +9,6 @@ Renders rich visual intelligence panels:
 - Invariant: All rendered evidence tagged TrustLevel.UNTRUSTED_EXTERNAL
 """
 
-from typing import Any, Dict, List, Optional
-from friday.core.types import TrustLevel
 from friday.skills.intelx_manager import IntelXManagerSkill
 from friday.skills.research_suggestions import ResearchSuggestionEngine
 
@@ -21,15 +18,15 @@ class ResearchDashboardPanel:
 
     def __init__(
         self,
-        intelx_skill: Optional[IntelXManagerSkill] = None,
-        suggestion_engine: Optional[ResearchSuggestionEngine] = None,
+        intelx_skill: IntelXManagerSkill | None = None,
+        suggestion_engine: ResearchSuggestionEngine | None = None,
     ) -> None:
         self.intelx = intelx_skill or IntelXManagerSkill()
         self.suggestions = suggestion_engine or ResearchSuggestionEngine()
 
     def render_panel(
         self,
-        domain_filter: Optional[str] = None,
+        domain_filter: str | None = None,
     ) -> str:
         """Renders comprehensive Research & Intelligence Dashboard markdown."""
         health = self.intelx.get_intelx_health()

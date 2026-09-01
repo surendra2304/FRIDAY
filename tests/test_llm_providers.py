@@ -1,6 +1,7 @@
 """Tests for LLM provider abstractions."""
 
 import pytest
+
 from friday.core.config import Settings
 from friday.core.exceptions import ConfigError, LLMProviderError
 from friday.core.types import Message, Role, ToolCall
@@ -176,6 +177,7 @@ def test_gemini_request_translation():
 
 def test_gemini_direct_response_generation():
     from unittest import mock
+
     from google.genai import types
 
     provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY", model="gemini-2.5-flash")
@@ -202,6 +204,7 @@ def test_gemini_direct_response_generation():
 
 def test_gemini_tool_call_response_generation():
     from unittest import mock
+
     from google.genai import types
 
     provider = GeminiLLMProvider(api_key="TEST_GEMINI_API_KEY", model="gemini-2.5-flash")
@@ -256,6 +259,7 @@ def test_gemini_error_handling_and_secret_masking():
 
 def test_gemini_safety_block_handling():
     from unittest import mock
+
     from google.genai import types
 
     provider = GeminiLLMProvider(api_key="test-key")

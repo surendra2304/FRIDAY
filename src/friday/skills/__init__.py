@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """FRIDAY Skills System (Inspired by OpenJarvis)."""
 
 from friday.skills.base_skill import BaseSkill, SkillExecutionResult

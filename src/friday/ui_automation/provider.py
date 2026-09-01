@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """UI Automation provider abstraction for FRIDAY.
 
 Provides a concrete Windows implementation using `pywinauto` that is imported lazily
@@ -9,7 +8,7 @@ import difflib
 import os
 import subprocess
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -37,10 +36,10 @@ class UIElement:
     """
 
     handle: Any
-    automation_id: Optional[str]
-    name: Optional[str]
-    control_type: Optional[str]
-    rectangle: Dict[str, int]
+    automation_id: str | None
+    name: str | None
+    control_type: str | None
+    rectangle: dict[str, int]
 
     @staticmethod
     def from_uia(element: "UIAWrapper") -> "UIElement":
@@ -60,10 +59,10 @@ class UIAutomationProvider:
     platform does not support UI Automation.
     """
 
-    def __init__(self, *, app: Optional[Any] = None):
+    def __init__(self, *, app: Any | None = None):
         self._app = app
 
-    def find_element(self, query: str) -> Optional[UIElement]:
+    def find_element(self, query: str) -> UIElement | None:
         raise NotImplementedError
 
     def launch_application(self, executable: str) -> bool:
@@ -81,7 +80,7 @@ class UIAutomationProvider:
     def type_text(self, element: UIElement, text: str) -> bool:
         raise NotImplementedError
 
-    def capture_state(self) -> Dict[str, Any]:
+    def capture_state(self) -> dict[str, Any]:
         raise NotImplementedError
 
 
@@ -91,8 +90,8 @@ class WindowsUIAutomationProvider(UIAutomationProvider):
             raise RuntimeError("pywinauto is not available on this system.")
         super().__init__(app=Application(backend="uia").connect(path="explorer.exe", timeout=5))
 
-    def _enumerate_all_elements(self) -> List[UIElement]:
-        elements: List[UIElement] = []
+    def _enumerate_all_elements(self) -> list[UIElement]:
+        elements: list[UIElement] = []
         for win in findwindows.find_elements():
             try:
                 wrapper = UIAWrapper(win)
@@ -101,7 +100,7 @@ class WindowsUIAutomationProvider(UIAutomationProvider):
                 continue
         return elements
 
-    def find_element(self, query: str) -> Optional[UIElement]:
+    def find_element(self, query: str) -> UIElement | None:
         candidates = self._enumerate_all_elements()
         query_norm = query.lower().strip()
         best_score = 0.0
@@ -123,7 +122,7 @@ class WindowsUIAutomationProvider(UIAutomationProvider):
                 best_el = el
         if best_el:
             # Attach confidence for later use
-            setattr(best_el, "confidence", best_score)
+            best_el.confidence = best_score
         return best_el
 
     def launch_application(self, executable: str) -> bool:
@@ -180,7 +179,7 @@ class WindowsUIAutomationProvider(UIAutomationProvider):
         except Exception:
             return False
 
-    def capture_state(self) -> Dict[str, Any]:
+    def capture_state(self) -> dict[str, Any]:
         state = {}
         for win in findwindows.find_elements():
             try:
@@ -195,4 +194,4 @@ class WindowsUIAutomationProvider(UIAutomationProvider):
                 continue
         return state
 
-__all__ = ["UIAutomationProvider", "WindowsUIAutomationProvider", "UIElement"]
+__all__ = ["UIAutomationProvider", "UIElement", "WindowsUIAutomationProvider"]

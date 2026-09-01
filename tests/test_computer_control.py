@@ -1,17 +1,11 @@
-# -*- coding: utf-8 -*-
 """Deterministic security unit tests for Safe Computer Control & Hard Block Policy."""
 
 from datetime import datetime, timedelta, timezone
-import pytest
 
-from friday.core.types import SafetyLevel
 from friday.vision.actions import ActionType, ComputerActionProposal, ProposalBuilder
 from friday.vision.computer_control import (
     ComputerActionExecutor,
     ExecutionStatus,
-    HARD_BLOCKED_INTENTS,
-    SAFE_HOTKEY_ALLOWLIST,
-    SAFE_KEY_ALLOWLIST,
 )
 from friday.vision.windows_input_driver import MockWindowsInputDriver
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Real Physical Audio Hardware Integration & Verification Test.
 
 Test Type: HARDWARE / REAL AUDIO IO
@@ -11,12 +10,13 @@ Validates:
    never silently converted into synthetic passes.
 """
 
-import sys
 import time
+
 import pytest
 
 pytestmark = [pytest.mark.hardware]
 
+from friday.core.exceptions import VoiceError
 from friday.voice.audio_io import (
     MicrophoneStream,
     SpeakerStream,
@@ -24,7 +24,6 @@ from friday.voice.audio_io import (
     compute_pcm_rms,
     get_audio_diagnostics,
 )
-from friday.core.exceptions import VoiceError
 
 
 def test_real_audio_hardware_diagnostics_and_devices():

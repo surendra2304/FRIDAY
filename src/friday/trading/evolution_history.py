@@ -1,14 +1,13 @@
-# -*- coding: utf-8 -*-
 """Evolution History & Institutional Learning Tracker for FRIDAY.
 
 Tracks strategy lifecycle genealogy, promotions, incubations, and retirement autopsies.
 Analyzes failure patterns across retired strategies to prevent repeating unprofitable design paradigms.
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -33,7 +32,7 @@ class EvolutionHistoryTracker:
     """Maintains strategy genealogy and extracts statistical learning insights."""
 
     def __init__(self) -> None:
-        self._retirements: List[StrategyRetirementRecord] = []
+        self._retirements: list[StrategyRetirementRecord] = []
         self._lock = threading.RLock()
         self._init_defaults()
 
@@ -118,14 +117,14 @@ class EvolutionHistoryTracker:
         logger.info(f"[EVOLUTION_HISTORY] Strategy retirement logged: {name} ({root_cause})")
         return record
 
-    def get_failure_pattern_analysis(self) -> Dict[str, Any]:
+    def get_failure_pattern_analysis(self) -> dict[str, Any]:
         """Analyzes statistical patterns and failure proportions across retired strategies."""
         with self._lock:
             total = len(self._retirements)
             if total == 0:
                 return {"total_retired": 0, "categories": {}, "top_failure_mode": "None"}
 
-            counts: Dict[str, int] = {}
+            counts: dict[str, int] = {}
             for r in self._retirements:
                 counts[r.root_cause_category] = counts.get(r.root_cause_category, 0) + 1
 

@@ -14,7 +14,9 @@ import asyncio
 import queue
 import struct
 import threading
-from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
+import time
+from collections.abc import AsyncIterator
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -26,7 +28,7 @@ except ImportError:
     sd = None  # type: ignore
 
 
-def get_audio_diagnostics() -> Dict[str, Any]:
+def get_audio_diagnostics() -> dict[str, Any]:
     """Retrieve diagnostic information for local audio hardware."""
     if sd is None:
         return {
@@ -66,7 +68,7 @@ def get_audio_diagnostics() -> Dict[str, Any]:
         }
 
 
-def check_device_availability(device_type: str = "input") -> Tuple[bool, Optional[str]]:
+def check_device_availability(device_type: str = "input") -> tuple[bool, str | None]:
     """Check if the requested audio device type ('input' or 'output') is available and functional."""
     if sd is None:
         return False, "sounddevice library unavailable"
@@ -95,7 +97,7 @@ def check_device_availability(device_type: str = "input") -> Tuple[bool, Optiona
         return False, str(e)
 
 
-def normalize_audio_device(device: Optional[Union[int, str]]) -> Optional[Union[int, str]]:
+def normalize_audio_device(device: int | str | None) -> int | str | None:
     """Return a sounddevice-compatible selector from config text.
 
     ``sounddevice`` accepts either an integer index or a device-name substring.
@@ -123,7 +125,7 @@ class MicrophoneStream:
         sample_rate: int = 16000,
         channels: int = 1,
         chunk_duration_ms: int = 40,
-        device: Optional[Union[int, str]] = None,
+        device: int | str | None = None,
         max_queue_size: int = 100,
     ):
         self.sample_rate = sample_rate
@@ -133,11 +135,11 @@ class MicrophoneStream:
         self.block_size = int(self.sample_rate * (self.chunk_duration_ms / 1000.0))
         self.max_queue_size = max_queue_size
 
-        self._stream: Optional[Any] = None
-        self._queue: Optional[asyncio.Queue[bytes]] = None
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._stream: Any | None = None
+        self._queue: asyncio.Queue[bytes] | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
         self._active = False
-        self._error: Optional[str] = None
+        self._error: str | None = None
         # Echo suppression: while muted, captured frames are dropped instead of
         # enqueued (e.g. while the speaker is playing FRIDAY's voice).
         self._muted = False
@@ -147,7 +149,7 @@ class MicrophoneStream:
         self.captured_chunks = 0
         self.captured_bytes = 0
 
-    def start(self, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
+    def start(self, loop: asyncio.AbstractEventLoop | None = None) -> None:
         """Start capturing audio chunks from the microphone."""
         if self._active:
             return
@@ -267,7 +269,7 @@ class MicrophoneStream:
         return self._active
 
     @property
-    def error(self) -> Optional[str]:
+    def error(self) -> str | None:
         return self._error
 
     @property
@@ -282,7 +284,7 @@ class SpeakerStream:
         self,
         sample_rate: int = 24000,
         channels: int = 1,
-        device: Optional[Union[int, str]] = None,
+        device: int | str | None = None,
         max_buffer_chunks: int = 100,
         prebuffer_ms: float = 100.0,
     ):
@@ -295,14 +297,14 @@ class SpeakerStream:
         self.prebuffer_ms = max(0.0, prebuffer_ms)
         self.prebuffer_bytes = int(self.sample_rate * 2 * self.channels * (self.prebuffer_ms / 1000.0))
         self._prebuffer = bytearray()
-        self._stream: Optional[Any] = None
+        self._stream: Any | None = None
         self._active = False
         self._queue: queue.Queue[bytes] = queue.Queue(maxsize=max_buffer_chunks)
         self._remainder = bytearray()
         self._lock = threading.Lock()
-        self._error: Optional[str] = None
+        self._error: str | None = None
         # Echo suppression: optionally mute a MicrophoneStream while playing
-        self._mic_to_mute: Optional["MicrophoneStream"] = None
+        self._mic_to_mute: MicrophoneStream | None = None
         self._playing = False
         self._drain_blocks = 0
 
@@ -311,7 +313,7 @@ class SpeakerStream:
         self.played_chunks = 0
         self.played_bytes = 0
 
-    def set_echo_mute_target(self, mic: Optional["MicrophoneStream"]) -> None:
+    def set_echo_mute_target(self, mic: MicrophoneStream | None) -> None:
         """Wire a MicrophoneStream to be muted while this speaker is playing."""
         self._mic_to_mute = mic
 
@@ -536,7 +538,7 @@ class SpeakerStream:
             )
 
     @property
-    def error(self) -> Optional[str]:
+    def error(self) -> str | None:
         return self._error
 
 
@@ -561,8 +563,8 @@ class MockMicrophoneStream:
     def __init__(
         self,
         sample_rate: int = 16000,
-        chunks: Optional[List[bytes]] = None,
-        simulate_error: Optional[str] = None,
+        chunks: list[bytes] | None = None,
+        simulate_error: str | None = None,
     ):
         self.sample_rate = sample_rate
         self.chunks = list(chunks or [])
@@ -571,7 +573,7 @@ class MockMicrophoneStream:
         self._error = None
         self._queue: asyncio.Queue[bytes] = asyncio.Queue()
 
-    def start(self, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
+    def start(self, loop: asyncio.AbstractEventLoop | None = None) -> None:
         if self.simulate_error:
             self._error = self.simulate_error
             self._active = False
@@ -599,7 +601,7 @@ class MockMicrophoneStream:
         return self._active
 
     @property
-    def error(self) -> Optional[str]:
+    def error(self) -> str | None:
         return self._error
 
 
@@ -609,10 +611,10 @@ class MockSpeakerStream:
     def __init__(
         self,
         sample_rate: int = 24000,
-        simulate_error: Optional[str] = None,
+        simulate_error: str | None = None,
     ):
         self.sample_rate = sample_rate
-        self.played_chunks: List[bytes] = []
+        self.played_chunks: list[bytes] = []
         self.simulate_error = simulate_error
         self._active = False
         self._error = None
@@ -650,5 +652,5 @@ class MockSpeakerStream:
         return self._active
 
     @property
-    def error(self) -> Optional[str]:
+    def error(self) -> str | None:
         return self._error

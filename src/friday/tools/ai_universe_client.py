@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """AI Universe Client and Tool Integration (AI Universe Integration).
 
 Communicates asynchronously with the external AI Universe multi-agent debate API
@@ -6,11 +5,11 @@ hosted locally at http://localhost:8000 (or configured via FRIDAY_UNIVERSE_API_U
 """
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 import httpx
 from pydantic import BaseModel, Field
 
-from friday.core.config import get_settings
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel, ToolResult
 from friday.core.verification import evaluate_ai_universe_response
@@ -28,7 +27,7 @@ class AIAgentInfo(BaseModel):
     purpose: str = Field(default="", description="Core mission or directive")
     provider: str = Field(default="", description="Cloud or local LLM provider")
     model: str = Field(default="", description="Live assigned model")
-    strengths: List[str] = Field(default_factory=list, description="Key domain strengths")
+    strengths: list[str] = Field(default_factory=list, description="Key domain strengths")
     status: str = Field(default="active", description="Agent availability status")
 
 
@@ -37,13 +36,13 @@ class AIUniverseResponse(BaseModel):
 
     answer: str = Field(default="", description="Synthesized debate conclusion or answer")
     confidence: float = Field(default=0.0, description="Confidence score between 0.0 and 1.0")
-    unresolved_disagreements: List[str] = Field(default_factory=list, description="List of lingering agent disagreements")
-    key_evidence: List[str] = Field(default_factory=list, description="Key citations and evidence points")
+    unresolved_disagreements: list[str] = Field(default_factory=list, description="List of lingering agent disagreements")
+    key_evidence: list[str] = Field(default_factory=list, description="Key citations and evidence points")
     run_id: str = Field(default="", description="Unique debate run execution identifier")
-    agents_used: List[str] = Field(default_factory=list, description="List of participating agent IDs")
-    models_used: List[str] = Field(default_factory=list, description="List of active models evaluated")
-    mode_used: Optional[str] = Field(default=None, description="Mode utilized (e.g. 'consensus' or 'debate')")
-    provenance: Dict[str, Any] = Field(default_factory=dict, description="Execution provenance and audit metadata")
+    agents_used: list[str] = Field(default_factory=list, description="List of participating agent IDs")
+    models_used: list[str] = Field(default_factory=list, description="List of active models evaluated")
+    mode_used: str | None = Field(default=None, description="Mode utilized (e.g. 'consensus' or 'debate')")
+    provenance: dict[str, Any] = Field(default_factory=dict, description="Execution provenance and audit metadata")
 
 
 class AIUniverseClient:
@@ -51,24 +50,31 @@ class AIUniverseClient:
 
     def __init__(
         self,
-        base_url: Optional[str] = None,
-        api_key: Optional[str] = None,
+        base_url: str | None = None,
+        api_key: str | None = None,
         timeout: float = 45.0,
     ) -> None:
         import os
-        if not base_url or "localhost" in base_url or "127.0.0.1" in base_url:
-            self.base_url = (os.getenv("INFERENCE_URL") or "https://inference-3i2b.onrender.com").rstrip("/")
-        else:
+        if base_url:
             self.base_url = base_url.rstrip("/")
+        else:
+            self.base_url = (
+                os.getenv("INFERENCE_URL")
+                or os.getenv("FRIDAY_UNIVERSE_API_URL")
+                or "https://inference-3i2b.onrender.com"
+            ).rstrip("/")
 
-        self.api_key = (
-            api_key
-            or os.getenv("INFERENCE_API_KEY")
-            or "inference_api"
-        ).strip()
-        self.timeout = max(timeout, 60.0)
+        if api_key is not None:
+            self.api_key = api_key.strip()
+        else:
+            self.api_key = (
+                os.getenv("INFERENCE_API_KEY")
+                or os.getenv("FRIDAY_UNIVERSE_API_KEY")
+                or "inference_api"
+            ).strip()
+        self.timeout = timeout
 
-    def _get_headers(self) -> Dict[str, str]:
+    def _get_headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["X-FRIDAY-API-Key"] = self.api_key
@@ -76,7 +82,7 @@ class AIUniverseClient:
             headers["Authorization"] = f"Bearer {self.api_key}"
         return headers
 
-    async def get_status(self) -> Dict[str, Any]:
+    async def get_status(self) -> dict[str, Any]:
         """Fetch AI Universe status and agents configuration from GET /v1/friday/status."""
         url = f"{self.base_url}/v1/friday/status"
         headers = self._get_headers()
@@ -89,7 +95,7 @@ class AIUniverseClient:
             resp.raise_for_status()
             return resp.json()
 
-    async def get_agents(self) -> List[AIAgentInfo]:
+    async def get_agents(self) -> list[AIAgentInfo]:
         """Discover live roster of all specialist agents from GET /v1/friday/agents."""
         url = f"{self.base_url}/v1/friday/agents"
         headers = self._get_headers()
@@ -105,7 +111,7 @@ class AIUniverseClient:
                 return [AIAgentInfo(**item) for item in data]
             return []
 
-    async def get_info(self) -> Dict[str, Any]:
+    async def get_info(self) -> dict[str, Any]:
         """Fetch AI Universe platform info from GET /v1/friday/info."""
         url = f"{self.base_url}/v1/friday/info"
         headers = self._get_headers()
@@ -129,26 +135,11 @@ class AIUniverseClient:
         logger.info(f"Sending to {url} with key {key_preview}...")
 
         timeout_obj = httpx.Timeout(self.timeout, connect=15.0, read=self.timeout, write=15.0)
-        try:
-            async with httpx.AsyncClient(timeout=timeout_obj) as client:
-                resp = await client.post(url, json=payload, headers=headers)
-                resp.raise_for_status()
-                data = resp.json()
-                return AIUniverseResponse(**data)
-        except Exception as err:
-            logger.warning(f"Async httpx request failed ({err}); attempting direct HTTP fallback...")
-            import json, urllib.request, ssl
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
-            req = urllib.request.Request(
-                url,
-                data=json.dumps(payload).encode("utf-8"),
-                headers={**headers, "User-Agent": "FRIDAY-Client"},
-            )
-            with urllib.request.urlopen(req, context=ctx, timeout=self.timeout) as response:
-                data = json.loads(response.read().decode("utf-8"))
-                return AIUniverseResponse(**data)
+        async with httpx.AsyncClient(timeout=timeout_obj) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+            return AIUniverseResponse(**data)
 
     async def debate(self, question: str, max_agents: int = 5) -> AIUniverseResponse:
         """Trigger an in-depth multi-agent debate via POST /v1/friday/debate."""
@@ -199,7 +190,7 @@ class AIUniverseTool(BaseTool):
         "required": [],
     }
 
-    def __init__(self, client: Optional[AIUniverseClient] = None, memory: Optional[Any] = None) -> None:
+    def __init__(self, client: AIUniverseClient | None = None, memory: Any | None = None) -> None:
         super().__init__()
         self.client = client or AIUniverseClient()
         self.memory = memory
@@ -361,7 +352,7 @@ class AIUniverseTool(BaseTool):
             logger.error(f"AI Universe communication failed: {ex}")
             return ToolResult(
                 name=self.name,
-                content=f"AI Universe connection failed: {str(ex)}. Ensure AI Universe is running at {self.client.base_url}.",
+                content=f"AI Universe connection failed: {ex!s}. Ensure AI Universe is running at {self.client.base_url}.",
                 is_error=True,
                 safety_level=self.safety_level,
             )
@@ -382,7 +373,7 @@ class GetAIUniverseStatusTool(BaseTool):
         "required": [],
     }
 
-    def __init__(self, client: Optional[AIUniverseClient] = None) -> None:
+    def __init__(self, client: AIUniverseClient | None = None) -> None:
         super().__init__()
         self.client = client or AIUniverseClient()
 
@@ -430,7 +421,7 @@ class GetAIUniverseStatusTool(BaseTool):
 
             return ToolResult(
                 name=self.name,
-                content=f"Failed to query AI Universe status: {str(ex)}. Ensure AI Universe is running at {self.client.base_url}.",
+                content=f"Failed to query AI Universe status: {ex!s}. Ensure AI Universe is running at {self.client.base_url}.",
                 is_error=True,
                 safety_level=self.safety_level,
             )

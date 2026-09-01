@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive unit test suite for Evidence-Based Verification.9: Perception Reliability, Caching & Cost Optimization.
 
 Tests:
@@ -13,12 +12,12 @@ Tests:
 """
 
 import time
+
 import pytest
 
 from friday.vision.cache_manager import PerceptionCacheManager
-from friday.vision.mock_screen import MockScreenCaptureProvider, create_synthetic_png
+from friday.vision.mock_screen import MockScreenCaptureProvider
 from friday.vision.mock_vision import MockVisionProvider
-from friday.vision.screen_context import ScreenContext
 
 
 # 1. Unchanged Screen Suppression

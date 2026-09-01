@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Executive Dashboard Renderer for FRIDAY Ecosystem.
 
 Generates a single-pane-of-glass Markdown dashboard summarizing overall ecosystem health,
@@ -6,7 +5,6 @@ tri-system status, portfolio metrics, active predictions, decisions, and governa
 """
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
 
 from friday.ecosystem.command_center import EcosystemCommandCenter
 from friday.ecosystem.policy_interface import HumanPolicyInterface
@@ -19,10 +17,10 @@ class ExecutiveDashboardRenderer:
 
     def __init__(
         self,
-        command_center: Optional[EcosystemCommandCenter] = None,
-        policy_interface: Optional[HumanPolicyInterface] = None,
-        portfolio_manager: Optional[StrategyPortfolioManager] = None,
-        intelligence_engine: Optional[IntelligenceEngine] = None,
+        command_center: EcosystemCommandCenter | None = None,
+        policy_interface: HumanPolicyInterface | None = None,
+        portfolio_manager: StrategyPortfolioManager | None = None,
+        intelligence_engine: IntelligenceEngine | None = None,
     ) -> None:
         self._command_center = command_center
         self._policy_interface = policy_interface
@@ -88,12 +86,12 @@ class ExecutiveDashboardRenderer:
             f"- **Daily Loss Limit Proximity:** `{risk.get('daily_loss_limit_proximity_pct'):.1f}%` of maximum limit\n"
             f"- **Single Asset Max Concentration:** `{risk.get('single_asset_max_exposure_pct'):.1f}%` (BTC Ceiling: 50%)\n\n"
             f"## 📜 Active Human Governance Policies\n" + "\n".join(policy_lines) + "\n\n"
-            f"## 🚨 Active Vigilance & Market Alerts\n" + "\n".join(alert_lines) + "\n\n"
-            f"## 📝 Autonomous Decisions Audit Log\n" + "\n".join(dec_lines) + "\n\n"
-            f"---\n"
-            f"### ⚡ Quick Voice Command Reference\n"
-            f"- `\"Ecosystem status\"` → Conversational tri-system status\n"
-            f"- `\"Set autonomy to level 2\"` → Adjust autonomy mode (Biometric Auth)\n"
-            f"- `\"What decisions did the system make today?\"` → Autonomous decision log\n"
-            f"- `\"What are my current policies?\"` → Human policy audit review\n"
+            "## 🚨 Active Vigilance & Market Alerts\n" + "\n".join(alert_lines) + "\n\n"
+            "## 📝 Autonomous Decisions Audit Log\n" + "\n".join(dec_lines) + "\n\n"
+            "---\n"
+            "### ⚡ Quick Voice Command Reference\n"
+            "- `\"Ecosystem status\"` → Conversational tri-system status\n"
+            "- `\"Set autonomy to level 2\"` → Adjust autonomy mode (Biometric Auth)\n"
+            "- `\"What decisions did the system make today?\"` → Autonomous decision log\n"
+            "- `\"What are my current policies?\"` → Human policy audit review\n"
         )

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Provider Independence & Model Replacement Test Suite for Core Architecture & Types0.10.
 
 Proves:
@@ -9,21 +8,17 @@ Proves:
 """
 
 import json
-from typing import Any, Dict, List, Optional
-import pytest
+from typing import Any
 
 from friday.agent.agent import FridayAgent
-from friday.agent.executor import StepStatus, TaskExecutionEngine
-from friday.agent.goal import GoalRequestType, GoalRiskLevel, GoalUnderstandingEngine
-from friday.agent.planner import GoalDecomposer, PlanStep, TaskPlan
-from friday.agent.safety_gate import AutonomousSafetyGate, TaskRiskLevel
-from friday.agent.state import TaskState
+from friday.agent.executor import TaskExecutionEngine
+from friday.agent.goal import GoalUnderstandingEngine
+from friday.agent.planner import PlanStep, TaskPlan
 from friday.agent.verification import StepVerifier, VerificationStatus
 from friday.core.config import Settings
 from friday.core.types import Message, Role, SafetyLevel, ToolCall, ToolResult
 from friday.llm.base import BaseLLMProvider
 from friday.memory.in_memory import InMemoryConversationMemory
-from friday.memory.task_context import ActiveTaskContext
 from friday.tools.base import BaseTool
 from friday.tools.registry import ToolRegistry
 from friday.vision.base import BaseVisionProvider, VisionAnalysisResult
@@ -35,9 +30,9 @@ class LocalEchoLLMProvider(BaseLLMProvider):
 
     def __init__(self, model: str = "local-echo-model-v1", temperature: float = 0.0, max_tokens: int = 512):
         super().__init__(model=model, temperature=temperature, max_tokens=max_tokens)
-        self.call_history: List[List[Message]] = []
+        self.call_history: list[list[Message]] = []
 
-    def generate(self, messages: List[Message], tools: Optional[List[Dict[str, Any]]] = None) -> Message:
+    def generate(self, messages: list[Message], tools: list[dict[str, Any]] | None = None) -> Message:
         self.call_history.append(messages)
         # Check if the last message is a TOOL execution result
         last_msg = messages[-1]

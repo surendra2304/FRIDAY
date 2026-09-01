@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Morning Briefing Workflow for Daily Intelligence.
 
 Aggregates calendar meetings (.ics feed), real-time weather information (via web search),
@@ -6,14 +5,13 @@ and system status to provide a concise, spoken daily briefing:
 "Good morning Surendra. You have X meetings today. The weather is Y."
 """
 
-from typing import Any, Dict, Optional
-import os
 import re
 from datetime import datetime
+from typing import Any
 
 from friday.core.config import get_settings
 from friday.core.logging import get_logger
-from friday.tools.builtin.calendar import GetTodaysEventsTool, _parse_ics_content
+from friday.tools.builtin.calendar import GetTodaysEventsTool
 from friday.tools.builtin.web_tools import WebSearchTool
 
 logger = get_logger("workflows.briefing")
@@ -24,8 +22,8 @@ class MorningBriefingWorkflow:
 
     def __init__(
         self,
-        calendar_tool: Optional[GetTodaysEventsTool] = None,
-        search_tool: Optional[WebSearchTool] = None,
+        calendar_tool: GetTodaysEventsTool | None = None,
+        search_tool: WebSearchTool | None = None,
     ) -> None:
         self.calendar_tool = calendar_tool or GetTodaysEventsTool()
         self.search_tool = search_tool or WebSearchTool()
@@ -40,7 +38,7 @@ class MorningBriefingWorkflow:
         pattern = r"\b(?:morning\s+briefing|daily\s+briefing|give\s+me\s+(?:my\s+)?briefing|brief\s+me|my\s+schedule\s+today|today'?s?\s+agenda)\b"
         return bool(re.search(pattern, user_prompt, re.IGNORECASE))
 
-    async def generate_briefing(self, user_name: Optional[str] = None) -> Dict[str, Any]:
+    async def generate_briefing(self, user_name: str | None = None) -> dict[str, Any]:
         """Fetch today's schedule and weather to construct the spoken briefing."""
         settings = get_settings()
         name = user_name or getattr(settings, "user_name", "Surendra") or "Surendra"

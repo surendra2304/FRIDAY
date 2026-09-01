@@ -2,6 +2,7 @@
 
 import asyncio
 from unittest import mock
+
 import pytest
 
 from friday.agent.agent import FridayAgent
@@ -433,7 +434,6 @@ def test_open_application_tool_in_default_registry_and_live_decl():
     """open_application is in the agent's default registry AND the Live tool declarations."""
     from friday.llm.mock_provider import MockLLMProvider
     from friday.memory.in_memory import InMemoryConversationMemory
-    from friday.tools.builtin.open_application import OpenApplicationTool
 
     agent = FridayAgent(
         settings=Settings(env="testing", llm_provider="mock", agent_name="FRIDAY"),
@@ -450,6 +450,7 @@ def test_open_application_tool_in_default_registry_and_live_decl():
 
 def test_open_application_launch_and_safety(monkeypatch):
     from types import SimpleNamespace
+
     from friday.tools.builtin.open_application import OpenApplicationTool
 
     tool = OpenApplicationTool()

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Eight-System Integration Test Suite for FRIDAY.
 
 Validates end-to-end multi-subsystem workflows across all 8 registered systems:
@@ -20,7 +19,6 @@ Test Flows:
 5. Ecosystem Command Router 8-system intent mapping
 """
 
-import pytest
 
 from friday.core.prediction_decisions import PredictionInformedDecisionEngine
 from friday.ecosystem.command_router import EcosystemCommandRouter, SubsystemRoute
@@ -31,8 +29,6 @@ from friday.skills.ecosystem_status import EcosystemStatusSkill
 from friday.skills.futuris_manager import FuturisManagerSkill
 from friday.skills.intelx_manager import IntelXManagerSkill
 from friday.workflows.master_briefing import MasterDailyBriefingWorkflow
-from friday.workflows.prediction_tracking import PredictionTrackingWorkflow
-from friday.workflows.predictive_briefing import PredictiveBriefingWorkflow
 
 
 def test_eight_system_registry_registration_and_health():

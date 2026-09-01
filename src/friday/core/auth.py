@@ -1,19 +1,24 @@
 from abc import ABC, abstractmethod
-from typing import Any, Optional, Tuple
+from typing import Any
+
+from friday.core.exceptions import SecurityError
 from friday.core.types import (
     AuthorizationDecision,
     AuthorizationRequest,
     AuthorizationResponse,
     SafetyLevel,
 )
-from friday.core.exceptions import SecurityError
-from friday.security.authorization import ToolAuthorizer, ToolAuthorizationCapability, tool_authorizer
+from friday.security.authorization import (
+    ToolAuthorizationCapability,
+    ToolAuthorizer,
+    tool_authorizer,
+)
 
 
 class BaseAuthorizer(ABC):
     """Abstract Base Class for validating and authorizing tool execution requests."""
 
-    def __init__(self, authorizer: Optional[ToolAuthorizer] = None) -> None:
+    def __init__(self, authorizer: ToolAuthorizer | None = None) -> None:
         self.tool_authorizer: ToolAuthorizer = authorizer or tool_authorizer
 
     def issue_capability_for_request(self, request: AuthorizationRequest) -> ToolAuthorizationCapability:
@@ -30,10 +35,10 @@ class BaseAuthorizer(ABC):
     def authorize_skill(
         self,
         skill: Any,
-        environment: Optional[str] = None,
-        blocked_capabilities: Optional[Any] = None,
-        allowed_capabilities: Optional[Any] = None,
-    ) -> Tuple[bool, str]:
+        environment: str | None = None,
+        blocked_capabilities: Any | None = None,
+        allowed_capabilities: Any | None = None,
+    ) -> tuple[bool, str]:
         """Validate if a Skill is permitted to execute under capability gating policies."""
         skill_name = getattr(skill, "name", "unknown_skill")
         required_caps = getattr(skill, "required_capabilities", [])
@@ -55,7 +60,6 @@ class BaseAuthorizer(ABC):
         Returns:
             AuthorizationResponse containing the decision, optional reason, and capability.
         """
-        pass
 
 
 class DefaultSecureAuthorizer(BaseAuthorizer):
@@ -91,8 +95,8 @@ class AutoApproveAuthorizer(BaseAuthorizer):
         self,
         test_only_explicit_ack: bool = False,
         allow_dangerous_for_testing: bool = False,
-        allowed_tools: Optional[Any] = None,
-        authorizer: Optional[ToolAuthorizer] = None,
+        allowed_tools: Any | None = None,
+        authorizer: ToolAuthorizer | None = None,
     ) -> None:
         import os
         # 1. Reject in production environments
@@ -109,14 +113,14 @@ class AutoApproveAuthorizer(BaseAuthorizer):
 
         super().__init__(authorizer=authorizer)
         self.allow_dangerous_for_testing: bool = allow_dangerous_for_testing
-        self.allowed_tools: Optional[set] = set(allowed_tools) if allowed_tools is not None else None
+        self.allowed_tools: set | None = set(allowed_tools) if allowed_tools is not None else None
 
     @classmethod
     def create_for_testing(
         cls,
         allow_dangerous: bool = False,
-        allowed_tools: Optional[Any] = None,
-        authorizer: Optional[ToolAuthorizer] = None,
+        allowed_tools: Any | None = None,
+        authorizer: ToolAuthorizer | None = None,
     ) -> "AutoApproveAuthorizer":
         """Explicit test-only factory constructor for isolated testing harnesses."""
         return cls(

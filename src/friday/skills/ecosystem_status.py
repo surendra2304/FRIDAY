@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Unified Ecosystem Master Status Skill for FRIDAY.
 
 Synthesizes multi-tier health, operational metrics, and active workloads across all 8 subsystems:
@@ -12,7 +11,7 @@ Synthesizes multi-tier health, operational metrics, and active workloads across 
 8. FRIDAY Core (Multimodal AI Operating System & Local Device Orchestration)
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.ecosystem.registry import EcosystemRegistry
@@ -27,17 +26,17 @@ class EcosystemStatusSkill(BaseSkill):
     name = "ecosystem_status"
     description = "Provides unified status and health audit reports across all 8 subsystems in the FRIDAY ecosystem."
 
-    def __init__(self, registry: Optional[EcosystemRegistry] = None) -> None:
+    def __init__(self, registry: EcosystemRegistry | None = None) -> None:
         super().__init__()
         self.registry = registry or EcosystemRegistry()
 
     def execute(
         self,
         user_request: str,
-        agent: Optional[Any] = None,
-        tool_registry: Optional[Any] = None,
-        llm_provider: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        agent: Any | None = None,
+        tool_registry: Any | None = None,
+        llm_provider: Any | None = None,
+        authorizer: Any | None = None,
         **kwargs: Any,
     ) -> SkillExecutionResult:
         """Processes status requests and generates comprehensive markdown reports."""
@@ -131,7 +130,7 @@ class EcosystemStatusSkill(BaseSkill):
                 "",
                 f"**Overall Ecosystem Health:** `{status.get('overall_health', 'HEALTHY')}` | **Active Subsystems:** `{len(subs)}/8`",
                 "",
-                "### 1. 📈 Stratex: 24/7 Algorithmic Trading Platform",
+                "### 1. 📈 Trading Bot: Algorithmic Trading Bot (Stratex: 24/7 Algorithmic Trading Platform)",
                 f"- **Status:** `{trade.get('status', 'RUNNING')}` | **Mode:** `{trade.get('mode', 'TESTNET')}`",
                 f"- **Account Equity:** `${trade.get('equity_usdt', 10450.0):,.2f} USDT` (Daily PnL: `+{trade.get('daily_pnl_usdt', 245.50):,.2f}`)",
                 f"- **Active Positions:** `{trade.get('active_positions_count', 2)}` open positions",

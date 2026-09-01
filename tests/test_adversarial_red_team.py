@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Adversarial Red-Team & Prompt-Injection Test Suite for Core Architecture & Types0.9.
 
 Attacks tested across the entire autonomous cognitive lifecycle:
@@ -11,21 +10,17 @@ Attacks tested across the entire autonomous cognitive lifecycle:
 7. Background Task Resource Exhaustion & Runaway Loop Attacks.
 """
 
-from unittest import mock
 import pytest
 
-from friday.agent.checkpoint import InterruptionReason, TaskCheckpoint, TaskCheckpointStore
-from friday.agent.planner import PlanStep, StepStatus, TaskPlan
+from friday.agent.checkpoint import TaskCheckpointStore
+from friday.agent.planner import PlanStep, TaskPlan
 from friday.agent.safety_gate import AutonomousSafetyGate, TaskRiskLevel
 from friday.agent.state import TaskState
-from friday.core.types import SafetyLevel, ToolResult
 from friday.memory.task_context import ActiveTaskContext
-from friday.tools.base import BaseTool
 from friday.tools.registry import ToolRegistry
 from friday.vision.action_preparer import GroundingStatus, PerceptionActionPreparer
 from friday.vision.screen_context import ScreenContext
 from friday.vision.ui_elements import BoundingBox, ElementType, UIElement
-
 
 # --- 1. Malicious Screen Text & OCR Jailbreak Defense ---
 

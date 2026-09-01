@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """IntelX Autonomous Deep Research Manager Skill for FRIDAY.
 
 Provides comprehensive client methods and natural language voice commands to delegate,
@@ -11,14 +10,15 @@ supervise, and synthesize deep research tasks via IntelX:
 - Strict Security Boundary: All research content is tagged TrustLevel.UNTRUSTED_EXTERNAL
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import re
 import threading
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Any
 
 from friday.core.logging import get_logger
-from friday.core.types import SafetyLevel, TrustLevel
+from friday.core.types import TrustLevel
 from friday.skills.base_skill import BaseSkill, SkillExecutionResult
 
 logger = get_logger("skills.intelx_manager")
@@ -31,8 +31,8 @@ class ResearchFinding:
     run_id: str
     claim: str
     confidence: float  # 0.0 to 1.0
-    citations: List[str] = field(default_factory=list)
-    evidence_spans: List[str] = field(default_factory=list)
+    citations: list[str] = field(default_factory=list)
+    evidence_spans: list[str] = field(default_factory=list)
     is_disputed: bool = False
     discovered_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
@@ -61,12 +61,12 @@ class ResearchRun:
     depth: str  # quick_scan, standard, deep_dive
     phase: str  # PLANNING, SEARCHING, SYNTHESIZING, CONTRADICTION_CHECK, COMPLETED, FAILED, CANCELLED
     progress_pct: float  # 0.0 to 100.0
-    findings: List[ResearchFinding] = field(default_factory=list)
-    contradictions: List[ResearchContradiction] = field(default_factory=list)
+    findings: list[ResearchFinding] = field(default_factory=list)
+    contradictions: list[ResearchContradiction] = field(default_factory=list)
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    completed_at: Optional[str] = None
-    summary_report: Optional[str] = None
-    failure_reason: Optional[str] = None
+    completed_at: str | None = None
+    summary_report: str | None = None
+    failure_reason: str | None = None
 
 
 class IntelXManagerSkill(BaseSkill):
@@ -96,13 +96,13 @@ class IntelXManagerSkill(BaseSkill):
     def __init__(
         self,
         base_url: str = "http://localhost:8004",
-        api_client: Optional[Callable[..., Dict[str, Any]]] = None,
+        api_client: Callable[..., dict[str, Any]] | None = None,
     ) -> None:
         super().__init__()
         self.base_url = base_url
         self.api_client = api_client
         self._lock = threading.RLock()
-        self._runs: Dict[str, ResearchRun] = {}
+        self._runs: dict[str, ResearchRun] = {}
         self._init_default_data()
 
     def _init_default_data(self) -> None:
@@ -176,9 +176,9 @@ class IntelXManagerSkill(BaseSkill):
     def submit_research(
         self,
         question: str,
-        domain_hint: Optional[str] = None,
+        domain_hint: str | None = None,
         depth: str = "standard",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Submits deep research request via POST /api/v1/friday/research."""
         clean_q = (question or "").strip()
         if not clean_q:
@@ -228,7 +228,7 @@ class IntelXManagerSkill(BaseSkill):
                 "trust_level": TrustLevel.UNTRUSTED_EXTERNAL.value,
             }
 
-    def get_research_status(self, run_id: str) -> Dict[str, Any]:
+    def get_research_status(self, run_id: str) -> dict[str, Any]:
         """Queries research run execution phase, progress percentage, and item counts."""
         with self._lock:
             run = self._runs.get(run_id)
@@ -251,10 +251,10 @@ class IntelXManagerSkill(BaseSkill):
                 "trust_level": TrustLevel.UNTRUSTED_EXTERNAL.value,
             }
 
-    def get_research_findings(self, run_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_research_findings(self, run_id: str | None = None) -> list[dict[str, Any]]:
         """Retrieves structured findings with confidence scores, citations, and evidence spans."""
         with self._lock:
-            findings_list: List[ResearchFinding] = []
+            findings_list: list[ResearchFinding] = []
             if run_id:
                 run = self._runs.get(run_id)
                 if run:
@@ -282,10 +282,10 @@ class IntelXManagerSkill(BaseSkill):
                 for f in sorted_findings
             ]
 
-    def get_contradictions(self, run_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_contradictions(self, run_id: str | None = None) -> list[dict[str, Any]]:
         """Retrieves disputed claims presenting both affirmative and dissenting evidence."""
         with self._lock:
-            contradictions_list: List[ResearchContradiction] = []
+            contradictions_list: list[ResearchContradiction] = []
             if run_id:
                 run = self._runs.get(run_id)
                 if run:
@@ -317,12 +317,12 @@ class IntelXManagerSkill(BaseSkill):
 
     def get_research_report(
         self,
-        run_id: Optional[str] = None,
+        run_id: str | None = None,
         report_format: str = "markdown",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Retrieves executive research report in Markdown or JSON format."""
         with self._lock:
-            target_run: Optional[ResearchRun] = None
+            target_run: ResearchRun | None = None
             if run_id:
                 target_run = self._runs.get(run_id)
             elif self._runs:
@@ -373,10 +373,10 @@ class IntelXManagerSkill(BaseSkill):
                 "trust_level": TrustLevel.UNTRUSTED_EXTERNAL.value,
             }
 
-    def cancel_research(self, run_id: Optional[str] = None) -> Dict[str, Any]:
+    def cancel_research(self, run_id: str | None = None) -> dict[str, Any]:
         """Cancels an in-flight research run (requires SENSITIVE clearance)."""
         with self._lock:
-            target_run: Optional[ResearchRun] = None
+            target_run: ResearchRun | None = None
             if run_id:
                 target_run = self._runs.get(run_id)
             else:
@@ -397,7 +397,7 @@ class IntelXManagerSkill(BaseSkill):
                 "trust_level": TrustLevel.UNTRUSTED_EXTERNAL.value,
             }
 
-    def get_intelx_health(self) -> Dict[str, Any]:
+    def get_intelx_health(self) -> dict[str, Any]:
         """Performs connectivity and pipeline health audit on IntelX service."""
         return {
             "status": "HEALTHY",
@@ -429,10 +429,10 @@ class IntelXManagerSkill(BaseSkill):
     def execute(
         self,
         user_request: str,
-        agent: Optional[Any] = None,
-        tool_registry: Optional[Any] = None,
-        llm_provider: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        agent: Any | None = None,
+        tool_registry: Any | None = None,
+        llm_provider: Any | None = None,
+        authorizer: Any | None = None,
     ) -> SkillExecutionResult:
         """Dispatches natural language voice commands to IntelX research operations."""
         req = user_request.lower().strip()

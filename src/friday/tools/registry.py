@@ -1,16 +1,22 @@
 """Tool Registry for tool registration, discovery, schema export, validation, and execution."""
 
-from typing import Any, Dict, List, Optional
-import uuid
 import asyncio
+import uuid
+from typing import Any
+
 from friday.core.exceptions import ToolError
 from friday.core.logging import get_logger, redact_tool_args
 from friday.core.types import SafetyLevel, ToolResult
-from .errors import ToolErrorDetail, ToolTimeoutError, CircuitBreakerError
-from .circuit import CircuitBreaker
-from .execution_context import ExecutionContext
+from friday.security.authorization import (
+    ToolAuthorizationCapability,
+    ToolAuthorizer,
+    tool_authorizer,
+)
 from friday.tools.base import BaseTool
-from friday.security.authorization import ToolAuthorizer, ToolAuthorizationCapability, tool_authorizer
+
+from .circuit import CircuitBreaker
+from .errors import CircuitBreakerError, ToolErrorDetail, ToolTimeoutError
+from .execution_context import ExecutionContext
 
 logger = get_logger("tools.registry")
 
@@ -19,9 +25,9 @@ class ToolRegistry:
     """Central registry for managing agent tools and enforcing safety policies."""
 
     def __init__(self) -> None:
-        self._tools: Dict[str, BaseTool] = {}
-        from concurrent.futures import ThreadPoolExecutor
+        self._tools: dict[str, BaseTool] = {}
         import threading
+        from concurrent.futures import ThreadPoolExecutor
         self._thread_executor = ThreadPoolExecutor(max_workers=20, thread_name_prefix="friday-tool-worker")
         self._timed_out_executions = set()
         self._timed_out_lock = threading.Lock()
@@ -35,19 +41,19 @@ class ToolRegistry:
         self._tools[tool.name] = tool
         logger.debug(f"Registered tool: '{tool.name}' [Safety: {tool.safety_level.value}]")
 
-    def get(self, name: str) -> Optional[BaseTool]:
+    def get(self, name: str) -> BaseTool | None:
         """Retrieve a registered tool by name."""
         return self._tools.get(name)
 
-    def get_tool(self, name: str) -> Optional[BaseTool]:
+    def get_tool(self, name: str) -> BaseTool | None:
         """Retrieve a registered tool by name (alias for get)."""
         return self._tools.get(name)
 
-    def list_tools(self) -> List[BaseTool]:
+    def list_tools(self) -> list[BaseTool]:
         """List all registered tools."""
         return list(self._tools.values())
 
-    def get_schemas(self, max_safety: Optional[SafetyLevel] = None) -> List[Dict[str, Any]]:
+    def get_schemas(self, max_safety: SafetyLevel | None = None) -> list[dict[str, Any]]:
         """Export OpenAI-compatible schemas for all registered tools.
 
         Optionally filters tools by maximum safety tolerance.
@@ -71,11 +77,11 @@ class ToolRegistry:
     def execute(
         self,
         name: str,
-        arguments: Dict[str, Any],
+        arguments: dict[str, Any],
         tool_call_id: str = "",
-        authorization: Optional[ToolAuthorizationCapability] = None,
-        exec_context: Optional[ExecutionContext] = None,
-        authorizer: Optional[ToolAuthorizer] = None,
+        authorization: ToolAuthorizationCapability | None = None,
+        exec_context: ExecutionContext | None = None,
+        authorizer: ToolAuthorizer | None = None,
         **kwargs: Any,
     ) -> ToolResult:
         """Validate and execute a tool by name with cryptographic authorization checks.
@@ -285,7 +291,7 @@ class ToolRegistry:
             return ToolResult(
                 tool_call_id=exec_id,
                 name=name,
-                content=f"Tool execution encountered an internal error: {str(e)}",
+                content=f"Tool execution encountered an internal error: {e!s}",
                 is_error=True,
                 safety_level=tool.safety_level,
                 error_detail=error_detail,

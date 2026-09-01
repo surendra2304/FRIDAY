@@ -1,9 +1,5 @@
-# -*- coding: utf-8 -*-
 """Unit tests for ReadOwnCodebaseTool and SelfDevAgent (Recursive Self-Improvement)."""
 
-from pathlib import Path
-from unittest import mock
-import pytest
 
 from friday.agents.specialists.self_dev_agent import SelfDevAgent
 from friday.core.types import SafetyLevel

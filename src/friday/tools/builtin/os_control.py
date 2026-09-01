@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """OS control tools: system volume, power actions, and window management.
 
 All tools are Windows-native and degrade gracefully when the underlying

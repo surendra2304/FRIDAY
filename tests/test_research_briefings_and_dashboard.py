@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for Research Briefings, Intelligence Dashboard & Suggestions.
 
 Validates:

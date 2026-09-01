@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Proactive Anomaly Investigator for FRIDAY Operating System.
 
 Autonomously investigates subsystem anomalies before the user inquires:
@@ -7,10 +6,10 @@ Autonomously investigates subsystem anomalies before the user inquires:
 3. Cross-system correlation -> Identifies common root causes (e.g. AI provider outage causing Forge build failures)
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel
@@ -45,7 +44,7 @@ class ProactiveAnomalyInvestigator(BaseOperator):
             triggers=[trigger],
             notification_category="anomaly_investigation",
         )
-        self.investigation_history: List[AnomalyInvestigationResult] = []
+        self.investigation_history: list[AnomalyInvestigationResult] = []
         self._lock = threading.RLock()
 
     def investigate_trading_anomaly(
@@ -83,7 +82,7 @@ class ProactiveAnomalyInvestigator(BaseOperator):
     def investigate_nexus_anomaly(
         self,
         conversion_drop_pct: float,
-        recent_deployment_id: Optional[str] = "dep_20260828_01",
+        recent_deployment_id: str | None = "dep_20260828_01",
     ) -> AnomalyInvestigationResult:
         """Investigates website conversion anomalies and correlates with recent deploys."""
         with self._lock:
@@ -118,8 +117,8 @@ class ProactiveAnomalyInvestigator(BaseOperator):
                 f"reasoning timeouts in FORGE ({forge_failures_count} builds failed). This is a provider capacity issue, not a FORGE engine bug."
             )
             spoken = (
-                f"Forge build failures are being driven by AI-Universe upstream provider degradation, "
-                f"not code errors. I have routed requests to backup LLM providers."
+                "Forge build failures are being driven by AI-Universe upstream provider degradation, "
+                "not code errors. I have routed requests to backup LLM providers."
             )
 
             res = AnomalyInvestigationResult(
@@ -134,7 +133,7 @@ class ProactiveAnomalyInvestigator(BaseOperator):
             logger.info(f"[ANOMALY_INVESTIGATOR] Completed cross-system investigation: {spoken}")
             return res
 
-    def tick(self) -> List[Dict[str, Any]]:
+    def tick(self) -> list[dict[str, Any]]:
         """Periodic audit tick."""
         with self._lock:
             # Returns any unhandled investigation events

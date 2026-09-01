@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Security Audit & Autonomous Authorization Gate Regression Suite for Computer Action Execution.10.
 
 Validates the 10 Autonomous Multi-Step Capability Security Vectors:
@@ -14,23 +13,19 @@ Validates the 10 Autonomous Multi-Step Capability Security Vectors:
 10. Provider Independence & Offline Safety: All security layers operate 100% locally with pure Python logic, independent of cloud provider behavior.
 """
 
-import json
-from typing import Dict, List, Optional
-import pytest
 
 from friday.agent.agent import FridayAgent
-from friday.agent.checkpoint import TaskCheckpoint, TaskCheckpointStore
-from friday.agent.executor import TaskExecutionEngine, TaskExecutionResult
-from friday.agent.planner import GoalDecomposer, PlanStep, PlanValidationError, StepStatus, TaskPlan
-from friday.agent.recovery import AutonomousRecoveryManager, FailureAnalyzer, FailureDiagnosis, FailureType, RecoveryStrategy
-from friday.agent.state import InvalidStateTransitionError, ReasoningStateMachine, TaskState
-from friday.agent.verification import StepVerifier, VerificationResult, VerificationStatus
-from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer
+from friday.agent.checkpoint import TaskCheckpointStore
+from friday.agent.planner import PlanStep, StepStatus, TaskPlan
+from friday.agent.recovery import (
+    AutonomousRecoveryManager,
+    FailureDiagnosis,
+    FailureType,
+    RecoveryStrategy,
+)
+from friday.agent.state import TaskState
 from friday.core.config import Settings
 from friday.core.types import (
-    AuthorizationDecision,
-    AuthorizationRequest,
-    AuthorizationResponse,
     SafetyLevel,
     ToolResult,
 )
@@ -39,10 +34,9 @@ from friday.memory.in_memory import InMemoryConversationMemory
 from friday.memory.task_context import ActiveTaskContext
 from friday.tasks.manager import LongRunningTaskManager, TaskLifecycleStatus
 from friday.tools.base import BaseTool
-from friday.tools.builtin.calculator import CalculatorTool
 from friday.tools.orchestrator import DataFlowResolver
 from friday.tools.registry import ToolRegistry
-from friday.vision.actions import ActionType, ComputerActionProposal, ProposalBuilder
+from friday.vision.actions import ProposalBuilder
 from friday.vision.computer_control import ComputerActionExecutor, ExecutionStatus
 
 
@@ -222,14 +216,6 @@ def test_vector_9_parameter_chaining_injection_defense():
 # Vector 10: Provider Independence & Offline Safety
 def test_vector_10_provider_independence_and_offline_safety():
     """Verify all autonomous safety components operate 100% offline with zero external cloud dependencies."""
-    from friday.agent.state import ReasoningStateMachine
-    from friday.agent.planner import GoalDecomposer
-    from friday.agent.executor import TaskExecutionEngine
-    from friday.agent.verification import StepVerifier
-    from friday.agent.recovery import AutonomousRecoveryManager
-    from friday.agent.checkpoint import TaskCheckpointStore
-    from friday.tools.orchestrator import DataFlowResolver, ToolOrchestrator
-    from friday.tasks.manager import LongRunningTaskManager
 
     # Validate that all modules initialize and function without network access or cloud SDK imports
     assert True

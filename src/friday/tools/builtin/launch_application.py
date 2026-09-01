@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Universal Application Launcher tool for FRIDAY.
 
 Provides flexible, direct launching of applications, executable paths,
@@ -8,7 +7,7 @@ with optional arguments and working directory.
 
 import os
 import subprocess
-from typing import Any, Dict, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel, ToolResult

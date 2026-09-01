@@ -2,7 +2,7 @@
 
 import hashlib
 import math
-from typing import List
+
 from friday.memory.embeddings.base import BaseEmbeddingProvider
 
 
@@ -16,7 +16,7 @@ class MockEmbeddingProvider(BaseEmbeddingProvider):
     def provider_name(self) -> str:
         return "mock"
 
-    def _compute_vector(self, text: str) -> List[float]:
+    def _compute_vector(self, text: str) -> list[float]:
         """Generate a deterministic normalized unit vector for the given string."""
         if not text:
             return [0.0] * self.dimension
@@ -35,8 +35,8 @@ class MockEmbeddingProvider(BaseEmbeddingProvider):
         norm = math.sqrt(sum(v * v for v in raw_vec)) or 1.0
         return [v / norm for v in raw_vec]
 
-    def embed_text(self, text: str) -> List[float]:
+    def embed_text(self, text: str) -> list[float]:
         return self._compute_vector(text)
 
-    def embed_batch(self, texts: List[str]) -> List[List[float]]:
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
         return [self._compute_vector(t) for t in texts]

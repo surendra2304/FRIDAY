@@ -1,15 +1,13 @@
-# -*- coding: utf-8 -*-
 """Comprehensive test suite for Trace-Based Learning, TraceAnalyzer, and Dynamic Routing."""
 
-import os
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 import pytest
 
 from friday.agents.base_agent import BaseAgent
 from friday.agents.decomposer import DecomposedSubtask
 from friday.agents.registry import AgentRegistry
 from friday.agents.router import AgentRouter
-from friday.core.types import Message, Role
 from friday.learning.trace_analyzer import TraceAnalyzer
 from friday.llm.mock_provider import MockLLMProvider
 from friday.memory.sqlite import SQLiteConversationMemory
@@ -28,7 +26,7 @@ class MockNamedLLM(MockLLMProvider):
 
 class DummySpecialistAgent(BaseAgent):
     """Specialist agent for testing routing."""
-    def __init__(self, name: str, role: str, allowed_tools: Optional[List[str]] = None, provider_name: str = "mock"):
+    def __init__(self, name: str, role: str, allowed_tools: list[str] | None = None, provider_name: str = "mock"):
         llm = MockNamedLLM(prov_name=provider_name)
         super().__init__(
             agent_id=f"agent_{name}",

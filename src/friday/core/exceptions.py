@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Unified Error Taxonomy and Exception Hierarchy for FRIDAY.
 
 Provides structured domain exceptions across all subsystems:
@@ -25,9 +24,9 @@ Invariants:
 """
 
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any
 
-from friday.security.scrubber import redact_secrets, recursive_sanitize
+from friday.security.scrubber import recursive_sanitize, redact_secrets
 
 
 class ErrorCode(str, Enum):
@@ -58,9 +57,9 @@ class FridayError(Exception):
     def __init__(
         self,
         message: str = "",
-        error_code: Optional[ErrorCode] = None,
-        internal_details: Optional[Dict[str, Any]] = None,
-        cause: Optional[Exception] = None,
+        error_code: ErrorCode | None = None,
+        internal_details: dict[str, Any] | None = None,
+        cause: Exception | None = None,
     ) -> None:
         self.raw_message = message or self.default_user_message
         self.error_code = error_code or self.default_code
@@ -77,7 +76,7 @@ class FridayError(Exception):
             return f"[{self.error_code.value}] The operation could not be completed. Please check task parameters."
         return f"[{self.error_code.value}] {safe_msg}"
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to sanitized diagnostic dictionary."""
         return {
             "error_code": self.error_code.value,
@@ -108,7 +107,6 @@ class ValidationError(FridayError):
 
 class ConfigError(ValidationError):
     """Raised when configuration validation or loading fails."""
-    pass
 
 
 class AuthorizationError(FridayError):
@@ -125,7 +123,6 @@ class SecurityError(FridayError):
 
 class SafetyError(SecurityError):
     """Raised when safety constraints or confirmation requirements are rejected."""
-    pass
 
 
 class ProviderError(FridayError):
@@ -136,7 +133,6 @@ class ProviderError(FridayError):
 
 class LLMProviderError(ProviderError):
     """Raised when an LLM provider request fails or returns an invalid payload."""
-    pass
 
 
 class QuotaExceededError(FridayError):
@@ -159,7 +155,6 @@ class VisionError(FridayError):
 
 class VisionProviderError(VisionError):
     """Raised when a multimodal vision provider request fails."""
-    pass
 
 
 class VoiceError(FridayError):
@@ -176,7 +171,6 @@ class ToolError(FridayError):
 
 class ToolExecutionError(ToolError):
     """Raised when tool execution crashes or returns unexpected error."""
-    pass
 
 
 class TimeoutError(FridayError):
@@ -193,7 +187,6 @@ class StateError(FridayError):
 
 class StateTransitionError(StateError):
     """Raised when a state machine transition is rejected."""
-    pass
 
 
 class PersistenceError(FridayError):
@@ -204,7 +197,6 @@ class PersistenceError(FridayError):
 
 class MemoryError(PersistenceError):
     """Raised when memory operations fail."""
-    pass
 
 
 class TaskCancelledError(FridayError):

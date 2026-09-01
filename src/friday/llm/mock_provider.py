@@ -1,6 +1,8 @@
 """Deterministic Mock LLM Provider for offline testing and development."""
 
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
+
 from friday.core.types import Message, Role, ToolCall
 from friday.llm.base import BaseLLMProvider
 
@@ -13,11 +15,11 @@ class MockLLMProvider(BaseLLMProvider):
         model: str = "mock-model",
         temperature: float = 0.0,
         max_tokens: int = 2048,
-        custom_responder: Optional[Callable[[List[Message], Optional[List[Dict[str, Any]]]], Message]] = None,
+        custom_responder: Callable[[list[Message], list[dict[str, Any]] | None], Message] | None = None,
     ):
         super().__init__(model=model, temperature=temperature, max_tokens=max_tokens)
         self.custom_responder = custom_responder
-        self.call_history: List[List[Message]] = []
+        self.call_history: list[list[Message]] = []
 
     @property
     def provider_name(self) -> str:
@@ -25,8 +27,8 @@ class MockLLMProvider(BaseLLMProvider):
 
     def generate(
         self,
-        messages: List[Message],
-        tools: Optional[List[Dict[str, Any]]] = None,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None = None,
     ) -> Message:
         self.call_history.append(messages)
 

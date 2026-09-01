@@ -1,8 +1,6 @@
-# -*- coding: utf-8 -*-
 """Built-in System Health Audit Skill for FRIDAY."""
 
-import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.skills.base_skill import BaseSkill, SkillExecutionResult
@@ -30,13 +28,13 @@ class SystemHealthAuditSkill(BaseSkill):
     def execute(
         self,
         user_request: str,
-        agent: Optional[Any] = None,
-        tool_registry: Optional[Any] = None,
-        llm_provider: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        agent: Any | None = None,
+        tool_registry: Any | None = None,
+        llm_provider: Any | None = None,
+        authorizer: Any | None = None,
         **kwargs: Any,
     ) -> SkillExecutionResult:
-        step_results: List[Dict[str, Any]] = []
+        step_results: list[dict[str, Any]] = []
         res_tool = tool_registry.get("get_system_resources") if tool_registry else None
         info_tool = tool_registry.get("get_system_info") if tool_registry else None
 

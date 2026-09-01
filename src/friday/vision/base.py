@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
 """Base interfaces and data structures for FRIDAY Vision Provider subsystem."""
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
@@ -12,15 +11,15 @@ class VisionAnalysisResult:
     """Structured response container for visual image/screen analysis."""
 
     text: str
-    description: Optional[str] = None
-    visual_elements: List[Dict[str, Any]] = field(default_factory=list)
-    model: Optional[str] = None
+    description: str | None = None
+    visual_elements: list[dict[str, Any]] = field(default_factory=list)
+    model: str | None = None
     created_at: datetime = field(default_factory=datetime.utcnow)
     is_error: bool = False
-    error_message: Optional[str] = None
-    raw_response: Optional[Dict[str, Any]] = None
+    error_message: str | None = None
+    raw_response: dict[str, Any] | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert analysis result to safe dictionary."""
         return {
             "text": self.text,
@@ -55,4 +54,3 @@ class BaseVisionProvider(ABC):
         Returns:
             VisionAnalysisResult containing structured visual observations.
         """
-        pass

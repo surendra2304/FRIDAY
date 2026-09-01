@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """External Analytics Integration Provider for FRIDAY Trading.
 
 Provides data formatting, charting payload generation, and integration hooks for
@@ -6,11 +5,12 @@ TradingView webhooks, Lightweight Charts, and third-party risk analysis platform
 """
 
 from datetime import datetime, timezone
-import json
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
-from friday.trading.portfolio_analytics import PortfolioAnalyticsEngine, PortfolioMetrics
+from friday.trading.portfolio_analytics import (
+    PortfolioAnalyticsEngine,
+)
 from friday.trading.regime_detector import MarketRegimeDetector
 from friday.trading.risk_dashboard import RiskManagementDashboard
 
@@ -22,9 +22,9 @@ class ExternalAnalyticsProvider:
 
     def __init__(
         self,
-        portfolio_engine: Optional[PortfolioAnalyticsEngine] = None,
-        regime_detector: Optional[MarketRegimeDetector] = None,
-        risk_dashboard: Optional[RiskManagementDashboard] = None,
+        portfolio_engine: PortfolioAnalyticsEngine | None = None,
+        regime_detector: MarketRegimeDetector | None = None,
+        risk_dashboard: RiskManagementDashboard | None = None,
     ) -> None:
         self.portfolio_engine = portfolio_engine or PortfolioAnalyticsEngine()
         self.regime_detector = regime_detector or MarketRegimeDetector()
@@ -34,8 +34,8 @@ class ExternalAnalyticsProvider:
         self,
         symbol: str = "BTCUSDT",
         timeframe: str = "1h",
-        indicators: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+        indicators: list[str] | None = None,
+    ) -> dict[str, Any]:
         """Generates TradingView Lightweight Charts compatible configuration payload."""
         indicators = indicators or ["EMA_20", "EMA_50", "Supertrend", "ATR_Bands"]
         regime = self.regime_detector.detect_regime(symbol=symbol)
@@ -54,7 +54,7 @@ class ExternalAnalyticsProvider:
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
-    def generate_portfolio_chart_payload(self) -> Dict[str, Any]:
+    def generate_portfolio_chart_payload(self) -> dict[str, Any]:
         """Generates rich time-series and allocation chart payloads for UI visualization."""
         metrics = self.portfolio_engine.calculate_metrics()
         risk = self.risk_dashboard.evaluate_risk()

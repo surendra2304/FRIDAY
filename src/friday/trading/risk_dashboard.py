@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Risk Management Dashboard & Stress Testing Engine for FRIDAY.
 
 Provides real-time portfolio risk heatmaps, concentration risk analysis (HHI),
@@ -6,11 +5,10 @@ liquidity & counterparty risk scoring, Monte Carlo simulations (10,000 paths),
 and historical crisis stress tests (2020 Flash Crash, 2022 Liquidity Shock).
 """
 
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import math
-import random
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -41,12 +39,12 @@ class RiskProfile:
     var_95_usdt: float
     var_99_usdt: float
     cvar_95_usdt: float
-    stress_tests: List[StressTestScenario]
-    risk_heatmap: Dict[str, Dict[str, Any]]
-    recommendations: List[str]
+    stress_tests: list[StressTestScenario]
+    risk_heatmap: dict[str, dict[str, Any]]
+    recommendations: list[str]
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "total_portfolio_equity": round(self.total_portfolio_equity, 2),
             "total_exposure_usdt": round(self.total_exposure_usdt, 2),
@@ -74,8 +72,8 @@ class RiskManagementDashboard:
     def evaluate_risk(
         self,
         equity: float = 10540.25,
-        positions: Optional[List[Dict[str, Any]]] = None,
-        strategy_weights: Optional[Dict[str, float]] = None,
+        positions: list[dict[str, Any]] | None = None,
+        strategy_weights: dict[str, float] | None = None,
     ) -> RiskProfile:
         """Performs complete portfolio risk assessment and stress testing."""
         positions = positions or [
@@ -97,7 +95,7 @@ class RiskManagementDashboard:
 
         # 2. Concentration Risk (Herfindahl-Hirschman Index / HHI)
         # HHI = sum of squared asset exposure shares
-        asset_exposures: Dict[str, float] = {}
+        asset_exposures: dict[str, float] = {}
         for p in positions:
             sym = p.get("symbol", "BTCUSDT")
             val = abs(float(p.get("size", 0.0))) * float(p.get("mark_price", 60000.0))
@@ -170,7 +168,7 @@ class RiskManagementDashboard:
         }
 
         # 6. Actionable Risk Recommendations
-        recs: List[str] = [
+        recs: list[str] = [
             f"Maintain current leverage buffer ({effective_leverage:.2f}x effective leverage is well below the 5.0x safety limit).",
             f"Asset concentration is {conc_rating} (HHI={hhi:.2f}). No immediate rebalancing required.",
             "All stress test scenarios passed with zero liquidation risk under current stop-loss brackets.",
@@ -192,7 +190,7 @@ class RiskManagementDashboard:
             recommendations=recs,
         )
 
-    def render_markdown_dashboard(self, profile: Optional[RiskProfile] = None) -> str:
+    def render_markdown_dashboard(self, profile: RiskProfile | None = None) -> str:
         """Renders comprehensive Risk Management Dashboard in Markdown."""
         p = profile or self.evaluate_risk()
 

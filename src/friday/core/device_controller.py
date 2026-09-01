@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Base Device Controller Abstraction for FRIDAY (Inspired by OpenJarvis).
 
 Defines an operating system and hardware-agnostic interface for controlling devices
@@ -6,7 +5,7 @@ Defines an operating system and hardware-agnostic interface for controlling devi
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 
 class BaseDeviceController(ABC):
@@ -17,27 +16,22 @@ class BaseDeviceController(ABC):
     @abstractmethod
     def open_app(self, name: str) -> bool:
         """Launch or switch to an application by common name or identifier."""
-        pass
 
     @abstractmethod
     def click(self, x: int, y: int) -> bool:
         """Synthesize a cursor or touch tap at coordinate (x, y)."""
-        pass
 
     @abstractmethod
     def type_text(self, text: str) -> bool:
         """Type literal text into the active input focus."""
-        pass
 
     @abstractmethod
-    def screenshot(self) -> Optional[Any]:
+    def screenshot(self) -> Any | None:
         """Capture the current display as an image buffer or PIL Image."""
-        pass
 
     @abstractmethod
     def read_screen_text(self) -> str:
         """Extract visible text from the current screen (OCR or accessibility tree)."""
-        pass
 
     def close_app(self, name: str) -> bool:
         """Close an application by name (optional best-effort implementation)."""

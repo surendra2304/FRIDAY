@@ -2,8 +2,8 @@
 
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
-import pytest
+from typing import Any
+
 from friday.agent.agent import FridayAgent
 from friday.core.config import Settings
 from friday.core.types import Message, Role, ToolCall
@@ -172,7 +172,7 @@ def test_agent_memory_search_end_to_end(tmp_path):
     c2 = agent2.create_new_conversation(title="Car discussion")
 
     # Custom responder that calls search_memory tool
-    def search_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def search_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         if any(m.role == Role.TOOL and "Porsche" in m.content for m in messages):
             return Message(role=Role.ASSISTANT, content="You previously mentioned your favorite car is the Porsche 911.")
         return Message(

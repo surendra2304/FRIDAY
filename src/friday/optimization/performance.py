@@ -1,17 +1,16 @@
-# -*- coding: utf-8 -*-
 """Performance Optimization & Latency Benchmarking for FRIDAY.
 
 Tracks latency benchmarks (Voice < 500ms, Decision < 200ms, API < 100ms),
 manages memory optimization, and profiles system concurrency.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import gc
-import os
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -37,15 +36,15 @@ class PerformanceOptimizer:
             "cognitive_decision_making": 200.0, # < 200ms
             "rest_api_query": 100.0,           # < 100ms
         }
-        self._benchmarks: List[LatencyBenchmark] = []
+        self._benchmarks: list[LatencyBenchmark] = []
         self._lock = threading.RLock()
 
     def benchmark_operation(
         self,
         op_name: str,
         func: Callable[[], Any],
-        target_ms: Optional[float] = None,
-    ) -> Tuple[Any, LatencyBenchmark]:
+        target_ms: float | None = None,
+    ) -> tuple[Any, LatencyBenchmark]:
         """Executes a function and records precise high-resolution latency."""
         target = target_ms or self.latency_targets.get(op_name, 200.0)
         t0 = time.perf_counter()
@@ -66,7 +65,7 @@ class PerformanceOptimizer:
 
         return result, bm
 
-    def optimize_memory(self) -> Dict[str, Any]:
+    def optimize_memory(self) -> dict[str, Any]:
         """Runs explicit garbage collection and memory optimization."""
         t0 = time.perf_counter()
         collected = gc.collect()
@@ -80,7 +79,7 @@ class PerformanceOptimizer:
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
-    def get_performance_summary(self) -> Dict[str, Any]:
+    def get_performance_summary(self) -> dict[str, Any]:
         """Generates performance and latency compliance overview."""
         with self._lock:
             if not self._benchmarks:

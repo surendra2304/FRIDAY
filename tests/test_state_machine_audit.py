@@ -1,30 +1,26 @@
-# -*- coding: utf-8 -*-
 """Formal State Machine, Lifecycle, and Invariant Test Suite for FRIDAY."""
 
 import threading
 import time
-import pytest
-from datetime import datetime, timezone
 
+import pytest
+
+from friday.agent.checkpoint import (
+    InterruptionReason,
+    TaskCheckpointStore,
+)
+from friday.agent.executor import TaskExecutionEngine
+from friday.agent.planner import PlanStep, StepStatus, TaskPlan
+from friday.agent.recovery import (
+    AutonomousRecoveryManager,
+    FailureDiagnosis,
+    FailureType,
+    RecoveryStrategy,
+)
 from friday.agent.state import (
     InvalidStateTransitionError,
     ReasoningStateMachine,
     TaskState,
-    VALID_TRANSITIONS,
-)
-from friday.agent.executor import TaskExecutionEngine, StepExecutionResult
-from friday.agent.planner import PlanStep, StepStatus, TaskPlan
-from friday.agent.checkpoint import (
-    InterruptionReason,
-    TaskCheckpoint,
-    TaskCheckpointStore,
-)
-from friday.agent.recovery import (
-    AutonomousRecoveryManager,
-    FailureAnalyzer,
-    FailureDiagnosis,
-    FailureType,
-    RecoveryStrategy,
 )
 from friday.core.auth import AutoApproveAuthorizer
 from friday.core.types import SafetyLevel, ToolResult

@@ -1,14 +1,12 @@
-# -*- coding: utf-8 -*-
 """Deterministic unit tests for Multimodal Screen Perception.2 Windows Screen Capture and ScreenSnapshotTool."""
 
 from unittest import mock
-import pytest
 
 from friday.core.types import SafetyLevel
-from friday.vision.screen_base import BaseScreenCaptureProvider, ScreenSnapshot
-from friday.vision.mock_screen import MockScreenCaptureProvider, create_synthetic_png
-from friday.vision.windows_screen import WindowsScreenCaptureProvider
 from friday.tools.builtin.screen_snapshot import ScreenSnapshotTool
+from friday.vision.mock_screen import MockScreenCaptureProvider, create_synthetic_png
+from friday.vision.screen_base import ScreenSnapshot
+from friday.vision.windows_screen import WindowsScreenCaptureProvider
 
 
 def test_screen_snapshot_dataclass():

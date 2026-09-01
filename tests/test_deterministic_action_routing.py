@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Hard regression tests for Deterministic Computer Action Fast-Path Routing.
 
 Verifies:
@@ -10,17 +9,13 @@ Verifies:
    deterministic spatial operations succeed cleanly without errors.
 """
 
-from unittest import mock
-import pytest
 
 from friday.agent.agent import FridayAgent
 from friday.core.auth import AutoApproveAuthorizer
 from friday.core.config import Settings
-from friday.core.types import SafetyLevel
 from friday.vision.mock_vision import MockVisionProvider
 from friday.vision.windows_input_driver import MockWindowsInputDriver
 from friday.vision.windows_screen import WindowsScreenCaptureProvider
-from friday.vision.actions import ActionType
 
 
 class ExplodingVisionProvider(MockVisionProvider):

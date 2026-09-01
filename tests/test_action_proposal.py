@@ -1,12 +1,10 @@
-# -*- coding: utf-8 -*-
 """Deterministic unit tests for Multimodal Screen Perception.7 Computer Action Proposal Layer & Safety Gating."""
 
-import pytest
 
-from friday.core.types import SafetyLevel
 from friday.agent.agent import FridayAgent
-from friday.vision.actions import ActionType, ComputerActionProposal, ProposalBuilder
+from friday.core.types import SafetyLevel
 from friday.tools.builtin.action_proposal import ProposeComputerActionTool
+from friday.vision.actions import ActionType, ProposalBuilder
 
 
 def test_proposal_builder_click_and_type():

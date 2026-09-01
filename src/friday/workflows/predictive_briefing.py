@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Predictive Briefing Workflow for FRIDAY.
 
 Compiles daily and weekly predictive intelligence debriefs alongside operational status:
@@ -18,10 +17,10 @@ Compiles daily and weekly predictive intelligence debriefs alongside operational
 - Invariant: Predictions are always presented with explicit confidence intervals; TrustLevel.UNTRUSTED_EXTERNAL.
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import TrustLevel
@@ -37,10 +36,10 @@ class PredictiveBriefingSnapshot:
     briefing_type: str  # DAILY_PREDICTIVE, WEEKLY_PREDICTIVE
     spoken_summary: str
     markdown_report: str
-    outlook: Dict[str, Any]
-    risk_horizon: List[Dict[str, Any]]
-    opportunity_signals: List[Dict[str, Any]]
-    confidence_assessment: Dict[str, Any]
+    outlook: dict[str, Any]
+    risk_horizon: list[dict[str, Any]]
+    opportunity_signals: list[dict[str, Any]]
+    confidence_assessment: dict[str, Any]
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     trust_level: str = TrustLevel.UNTRUSTED_EXTERNAL.value
 
@@ -48,9 +47,9 @@ class PredictiveBriefingSnapshot:
 class PredictiveBriefingWorkflow:
     """Orchestrates daily predictive briefings and weekly accuracy retrospectives."""
 
-    def __init__(self, futuris_skill: Optional[FuturisManagerSkill] = None) -> None:
+    def __init__(self, futuris_skill: FuturisManagerSkill | None = None) -> None:
         self.futuris = futuris_skill or FuturisManagerSkill()
-        self._history: List[PredictiveBriefingSnapshot] = []
+        self._history: list[PredictiveBriefingSnapshot] = []
         self._lock = threading.RLock()
 
     def generate_daily_predictive_briefing(self) -> PredictiveBriefingSnapshot:
@@ -70,7 +69,7 @@ class PredictiveBriefingWorkflow:
             }
 
             # 2. Risk Horizon (48-Hour Probability-Weighted Risks)
-            risk_horizon = [
+            risk_horizon: list[dict[str, Any]] = [
                 {
                     "system": "Nexus",
                     "risk": "Checkout Capacity Saturation",
@@ -98,7 +97,7 @@ class PredictiveBriefingWorkflow:
             ]
 
             # 3. Opportunity Signals
-            opportunity_signals = [
+            opportunity_signals: list[dict[str, Any]] = [
                 {
                     "system": "Nexus",
                     "opportunity": "High-Conversion Window",
@@ -186,7 +185,7 @@ class PredictiveBriefingWorkflow:
             logger.info(f"[PREDICTIVE_BRIEFING] Generated Daily Predictive Briefing '{bid}'")
             return snapshot
 
-    def generate_weekly_predictive_review(self) -> Dict[str, Any]:
+    def generate_weekly_predictive_review(self) -> dict[str, Any]:
         """Generates 7-day predictive accuracy retrospective and upcoming forecast summary."""
         with self._lock:
             cal = self.futuris.get_calibration_report()

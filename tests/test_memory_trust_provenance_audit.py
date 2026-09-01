@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Memory Trust Classification, Provenance, and Anti-Injection Audit Tests.
 
 Verifies:
@@ -10,10 +9,9 @@ Verifies:
 """
 
 from datetime import datetime, timezone
-import pytest
 
-from friday.core.types import Message, MemorySearchResult, Role, TrustLevel
-from friday.memory.policies import should_embed_message, should_retrieve_memory
+from friday.core.types import MemorySearchResult, Message, Role, TrustLevel
+from friday.memory.policies import should_embed_message
 
 
 class TestMemoryTrustClassificationAndAntiInjectionAudit:

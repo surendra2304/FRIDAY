@@ -2,12 +2,11 @@
 
 import asyncio
 from unittest import mock
+
 import pytest
 from google.genai import types as genai_types
 
-from friday.core.config import Settings
-from friday.core.exceptions import LLMProviderError
-from friday.core.types import Message, Role, ToolResult, SafetyLevel
+from friday.core.types import SafetyLevel, ToolResult
 from friday.tools.base import BaseTool
 from friday.tools.registry import ToolRegistry
 from friday.voice.audio_io import MicrophoneStream, SpeakerStream
@@ -398,7 +397,6 @@ def test_reconnect_session_resumption_no_transparent_param(mock_agent):
 @pytest.mark.anyio
 async def test_goaway_reconnection_loop_lifecycle(mock_agent):
     """Verify that GoAway message terminates receiver loop gracefully without leaking tasks or erroring."""
-    from friday.voice.gemini_live_session import LiveSessionState
 
     session = GeminiLiveVoiceSession(
         api_key="TEST_GEMINI_API_KEY",

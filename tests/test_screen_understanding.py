@@ -1,15 +1,11 @@
-# -*- coding: utf-8 -*-
 """Deterministic unit tests for Multimodal Screen Perception.3 Screen Understanding & Prompt Injection Defense."""
 
-from unittest import mock
-import pytest
 
-from friday.core.types import SafetyLevel
-from friday.vision.mock_screen import MockScreenCaptureProvider, create_synthetic_png
-from friday.vision.mock_vision import MockVisionProvider
-from friday.vision.screen_context import ScreenContext
-from friday.vision.screen_analyzer import ScreenAnalyzer, DEFAULT_ANALYSIS_PROMPT
 from friday.tools.builtin.screen_snapshot import ScreenSnapshotTool
+from friday.vision.mock_screen import MockScreenCaptureProvider
+from friday.vision.mock_vision import MockVisionProvider
+from friday.vision.screen_analyzer import ScreenAnalyzer
+from friday.vision.screen_context import ScreenContext
 
 
 def test_screen_context_formatting_untrusted_data():

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Formal Verification, Assertion Engine & Bounded Self-Correction for FRIDAY.
 
 Provides:
@@ -9,11 +8,12 @@ Provides:
 - Completely provider-independent and 100% testable offline.
 """
 
+import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-import re
-from typing import Any, Callable, Dict, Optional
+from typing import Any
 
 from friday.agent.planner import PlanStep, StepStatus, TaskPlan
 from friday.core.logging import get_logger
@@ -35,10 +35,10 @@ class VerificationResult:
 
     status: VerificationStatus
     criterion: str
-    evidence: Optional[str] = None
-    diagnostics: Optional[str] = None
-    suggested_correction: Optional[Dict[str, Any]] = None
-    evidence_source: Optional[str] = None
+    evidence: str | None = None
+    diagnostics: str | None = None
+    suggested_correction: dict[str, Any] | None = None
+    evidence_source: str | None = None
     confidence: float = 1.0
     is_real_success: bool = True
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -47,7 +47,7 @@ class VerificationResult:
     def passed(self) -> bool:
         return self.status == VerificationStatus.PASSED and self.is_real_success
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "status": self.status.value,
             "criterion": self.criterion,
@@ -68,12 +68,12 @@ class StepVerifier:
     def verify_step_result(
         step: PlanStep,
         step_result: Any,
-        custom_validator: Optional[Callable[[PlanStep, Any], VerificationResult]] = None,
-        environment_state: Optional[Dict[str, Any]] = None,
+        custom_validator: Callable[[PlanStep, Any], VerificationResult] | None = None,
+        environment_state: dict[str, Any] | None = None,
     ) -> VerificationResult:
         """Verify that a step's execution result satisfies its postconditions and real-world evidence."""
-        import os
         import json
+        import os
 
         if custom_validator:
             return custom_validator(step, step_result)
@@ -397,7 +397,7 @@ class StepVerifier:
     @staticmethod
     def verify_plan_completion(
         plan: TaskPlan,
-        step_verification_results: Dict[str, VerificationResult],
+        step_verification_results: dict[str, VerificationResult],
     ) -> VerificationResult:
         """Verify the overall plan outcome after all steps have executed."""
         failed_steps = [
@@ -427,7 +427,7 @@ class SelfCorrectionPolicy:
 
     def __init__(self, max_correction_attempts: int = 3) -> None:
         self.max_correction_attempts = max_correction_attempts
-        self._attempt_counts: Dict[str, int] = {}
+        self._attempt_counts: dict[str, int] = {}
 
     def get_remaining_attempts(self, step_id: str) -> int:
         used = self._attempt_counts.get(step_id, 0)
@@ -445,8 +445,8 @@ class SelfCorrectionPolicy:
         self,
         step: PlanStep,
         failure_evidence: VerificationResult,
-        corrector_fn: Optional[Callable[[PlanStep, VerificationResult], Optional[PlanStep]]] = None,
-    ) -> Optional[PlanStep]:
+        corrector_fn: Callable[[PlanStep, VerificationResult], PlanStep | None] | None = None,
+    ) -> PlanStep | None:
         """Generate an adjusted PlanStep for retry if within bounds."""
         if not self.can_attempt_correction(step.step_id):
             logger.warning(f"Step '{step.step_id}': Maximum correction attempts ({self.max_correction_attempts}) exhausted.")

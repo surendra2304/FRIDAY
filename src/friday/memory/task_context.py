@@ -1,5 +1,5 @@
-# -*- coding: utf-8 -*-
 from __future__ import annotations
+
 """Active Working Task Memory & Context Isolation for FRIDAY.
 
 Provides:
@@ -11,10 +11,10 @@ Provides:
 - 100% provider-independent and testable offline.
 """
 
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
-import uuid
+from typing import TYPE_CHECKING, Any
 
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role
@@ -31,10 +31,10 @@ class TaskObservation:
     """Safe, sanitized factual observation recorded during a step."""
     step_id: str
     content: str
-    source_tool: Optional[str] = None
+    source_tool: str | None = None
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "step_id": self.step_id,
             "content": self.content,
@@ -48,32 +48,32 @@ class ActiveTaskContext:
 
     def __init__(
         self,
-        task_id: Optional[str] = None,
+        task_id: str | None = None,
         goal: str = "",
-        plan: Optional[Any] = None,
+        plan: Any | None = None,
         max_observations: int = 15,
         max_output_chars_per_step: int = 1000,
         ttl_seconds: float = 3600.0,
     ) -> None:
         self.task_id: str = task_id or str(uuid.uuid4())
         self.goal: str = goal
-        self.plan: Optional[Any] = plan
+        self.plan: Any | None = plan
         self.state: Any = "NOT_STARTED"
-        self.active_step_id: Optional[str] = None
+        self.active_step_id: str | None = None
         self.max_observations = max_observations
         self.max_output_chars_per_step = max_output_chars_per_step
         self.ttl_seconds = ttl_seconds
 
-        self.step_outputs: Dict[str, str] = {}
-        self.step_verifications: Dict[str, VerificationResult] = {}
-        self.constraints: List[str] = []
-        self.user_clarifications: List[str] = []
-        self.observations: List[TaskObservation] = []
-        self.failures: List[Dict[str, Any]] = []
-        self.recovery_attempts: List[Dict[str, Any]] = []
-        self.temp_variables: Dict[str, Any] = {}
-        self.authorization_decisions: List[Dict[str, Any]] = []
-        self.checkpoint_references: List[str] = []
+        self.step_outputs: dict[str, str] = {}
+        self.step_verifications: dict[str, VerificationResult] = {}
+        self.constraints: list[str] = []
+        self.user_clarifications: list[str] = []
+        self.observations: list[TaskObservation] = []
+        self.failures: list[dict[str, Any]] = []
+        self.recovery_attempts: list[dict[str, Any]] = []
+        self.temp_variables: dict[str, Any] = {}
+        self.authorization_decisions: list[dict[str, Any]] = []
+        self.checkpoint_references: list[str] = []
         self.created_at: datetime = datetime.now(timezone.utc)
         self.updated_at: datetime = datetime.now(timezone.utc)
 
@@ -137,7 +137,7 @@ class ActiveTaskContext:
             self.checkpoint_references.append(checkpoint_id)
             self.updated_at = datetime.now(timezone.utc)
 
-    def record_failure(self, step_id: str, error_msg: str, diagnosis: Optional[str] = None) -> None:
+    def record_failure(self, step_id: str, error_msg: str, diagnosis: str | None = None) -> None:
         """Record a failure event during task execution."""
         self.failures.append({
             "step_id": step_id,
@@ -161,10 +161,10 @@ class ActiveTaskContext:
         self,
         step_id: str,
         result: Any,
-        verification: Optional[VerificationResult] = None,
+        verification: VerificationResult | None = None,
     ) -> None:
         """Record sanitized step result and verification outcome."""
-        from friday.security.scrubber import redact_secrets, recursive_sanitize
+        from friday.security.scrubber import recursive_sanitize, redact_secrets
 
         res_str = str(result)
 
@@ -186,7 +186,7 @@ class ActiveTaskContext:
             self.step_verifications[step_id] = verification
         self.updated_at = datetime.now(timezone.utc)
 
-    def add_observation(self, step_id: str, content: str, source_tool: Optional[str] = None) -> None:
+    def add_observation(self, step_id: str, content: str, source_tool: str | None = None) -> None:
         """Record a sanitized observation, evicting oldest if capacity reached."""
         clean = content.strip()
         if not clean:
@@ -255,7 +255,7 @@ class ActiveTaskContext:
 
         return "\n".join(lines)
 
-    def finalize_and_extract_long_term_summary(self, success: bool) -> Optional[Message]:
+    def finalize_and_extract_long_term_summary(self, success: bool) -> Message | None:
         """Finalize working context: discard ephemeral scratch state and return factual summary for long-term memory."""
         if not self.goal:
             return None
@@ -297,7 +297,7 @@ class ActiveTaskContext:
         self.state = "NOT_STARTED"
         self.updated_at = datetime.now(timezone.utc)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize working memory for diagnostics and audit logging."""
         from friday.security.scrubber import recursive_sanitize
         state_str = self.state.value if hasattr(self.state, "value") else str(self.state)
@@ -321,7 +321,7 @@ class ActiveTaskContext:
         return recursive_sanitize(raw_dict)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ActiveTaskContext":
+    def from_dict(cls, data: dict[str, Any]) -> ActiveTaskContext:
         """Deserialize an ActiveTaskContext instance from dictionary (e.g. from checkpoint restoration)."""
         from friday.security.scrubber import recursive_sanitize
         sanitized_data = recursive_sanitize(data)

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Production Performance Optimizer for FRIDAY Operating System.
 
 Delivers ultra-low latency execution and robust resource management:
@@ -9,13 +8,14 @@ Delivers ultra-low latency execution and robust resource management:
 5. Non-blocking asynchronous health checking
 """
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import gc
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -29,7 +29,7 @@ class PerformanceBenchmark:
     latency_ms: float
     target_sla_ms: float
     is_compliant: bool
-    details: Dict[str, Any] = field(default_factory=dict)
+    details: dict[str, Any] = field(default_factory=dict)
 
 
 class LazySubsystemConnector:
@@ -38,7 +38,7 @@ class LazySubsystemConnector:
     def __init__(self, subsystem_name: str, connection_factory: Callable[[], Any]) -> None:
         self.subsystem_name = subsystem_name
         self.connection_factory = connection_factory
-        self._connection: Optional[Any] = None
+        self._connection: Any | None = None
         self._is_connected = False
         self._lock = threading.RLock()
 
@@ -68,7 +68,7 @@ class ProductionOptimizer:
     # 1. Memory Profiling & Leak Detection
     # =========================================================================
 
-    def profile_memory(self) -> Dict[str, Any]:
+    def profile_memory(self) -> dict[str, Any]:
         """Profiles heap objects and garbage collection generations."""
         gc.collect()
         counts = gc.get_count()
@@ -89,7 +89,7 @@ class ProductionOptimizer:
     # 2. Parallel Operator Execution
     # =========================================================================
 
-    def execute_operators_parallel(self, operator_callables: List[Callable[[], Any]]) -> List[Any]:
+    def execute_operators_parallel(self, operator_callables: list[Callable[[], Any]]) -> list[Any]:
         """Executes independent operator polling ticks concurrently."""
         futures = [self.executor.submit(fn) for fn in operator_callables]
         results = []

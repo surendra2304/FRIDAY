@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Scheduled Intelligence Operator for FRIDAY Operating System.
 
 Provides dynamic, context-aware scheduling beyond static cron:
@@ -8,10 +7,10 @@ Provides dynamic, context-aware scheduling beyond static cron:
 4. Calendar-aware skip conditions (defers spoken briefings when user is in a meeting)
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
 import threading
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel
@@ -51,17 +50,17 @@ class ScheduledIntelligenceOperator(BaseOperator):
         )
         self.default_hour = default_morning_hour
         self.default_minute = default_morning_minute
-        self.voice_interaction_history: List[datetime] = []
+        self.voice_interaction_history: list[datetime] = []
         self._lock = threading.RLock()
-        self._last_briefing_date: Optional[str] = None
+        self._last_briefing_date: str | None = None
 
-    def record_voice_interaction(self, timestamp: Optional[datetime] = None) -> None:
+    def record_voice_interaction(self, timestamp: datetime | None = None) -> None:
         """Records user voice command timestamp to learn morning wake-up routine."""
         with self._lock:
             ts = timestamp or datetime.now(timezone.utc)
             self.voice_interaction_history.append(ts)
 
-    def calculate_learned_briefing_time(self, target_date: Optional[datetime] = None) -> datetime:
+    def calculate_learned_briefing_time(self, target_date: datetime | None = None) -> datetime:
         """Calculates optimal briefing time based on average morning voice interactions (±15 min)."""
         with self._lock:
             base_date = target_date or datetime.now(timezone.utc)
@@ -82,7 +81,7 @@ class ScheduledIntelligenceOperator(BaseOperator):
 
     def evaluate_briefing_eligibility(
         self,
-        current_time: Optional[datetime] = None,
+        current_time: datetime | None = None,
         calendar_busy: bool = False,
         severe_weather_alert: bool = False,
         market_open: bool = True,
@@ -138,7 +137,7 @@ class ScheduledIntelligenceOperator(BaseOperator):
                 target_time_utc=target_str,
             )
 
-    def tick(self) -> List[Dict[str, Any]]:
+    def tick(self) -> list[dict[str, Any]]:
         """Executes periodic schedule check."""
         with self._lock:
             res = self.evaluate_briefing_eligibility()

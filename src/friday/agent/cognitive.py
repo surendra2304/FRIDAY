@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Structured Cognitive Intelligence Loop for FRIDAY Agent.
 
 Architecture:
@@ -16,10 +15,10 @@ Core Capabilities:
   * Strict Invariant: High confidence NEVER bypasses authorization policies.
 """
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
-import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.agent.goal import GoalRequestType, GoalUnderstandingEngine
 from friday.agent.planner import PlanStep, TaskPlan
@@ -54,7 +53,7 @@ class ConfidenceAssessment:
     perception_confidence: float = 1.0
     tool_selection_confidence: float = 1.0
     verification_confidence: float = 1.0
-    reasons: List[str] = field(default_factory=list)
+    reasons: list[str] = field(default_factory=list)
 
     @property
     def min_confidence(self) -> float:
@@ -70,7 +69,7 @@ class ConfidenceAssessment:
         """Determines if confidence is too low, requiring user clarification instead of guessing."""
         return self.understanding_confidence < threshold or self.planning_confidence < threshold
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "understanding_confidence": round(self.understanding_confidence, 2),
             "planning_confidence": round(self.planning_confidence, 2),
@@ -88,15 +87,15 @@ class CognitiveDecision:
     current_phase: CognitivePhase
     confidence: ConfidenceAssessment
     lacks_information: bool = False
-    clarification_prompt: Optional[str] = None
+    clarification_prompt: str | None = None
     perception_required: bool = False
     memory_useful: bool = False
     tool_necessary: bool = False
     plan_unsafe: bool = False
     requires_user_confirmation: bool = False
     should_continue_autonomously: bool = True
-    suggested_action: Optional[str] = None
-    explanation: Optional[str] = None
+    suggested_action: str | None = None
+    explanation: str | None = None
 
 
 class CognitiveIntelligenceEngine:
@@ -125,8 +124,8 @@ class CognitiveIntelligenceEngine:
 
     def __init__(
         self,
-        llm_provider: Optional[BaseLLMProvider] = None,
-        authorizer: Optional[BaseAuthorizer] = None,
+        llm_provider: BaseLLMProvider | None = None,
+        authorizer: BaseAuthorizer | None = None,
         clarification_threshold: float = 0.65,
     ) -> None:
         self.llm = llm_provider
@@ -137,7 +136,7 @@ class CognitiveIntelligenceEngine:
     def evaluate_request(
         self,
         user_input: str,
-        available_tools: Optional[List[str]] = None,
+        available_tools: list[str] | None = None,
         has_memory: bool = True,
         has_screen_capture: bool = True,
     ) -> CognitiveDecision:
@@ -215,7 +214,7 @@ class CognitiveIntelligenceEngine:
     def check_plan_safety_and_confidence(
         self,
         plan: TaskPlan,
-        authorizer: Optional[BaseAuthorizer] = None,
+        authorizer: BaseAuthorizer | None = None,
     ) -> CognitiveDecision:
         """Execute CHECK_PLAN phase: validate safety, cycles, authorization, and plan confidence."""
         confidence = ConfidenceAssessment()

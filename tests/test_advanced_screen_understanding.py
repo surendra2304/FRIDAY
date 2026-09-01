@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive unit test suite for Evidence-Based Verification.2: Advanced Screen & UI Understanding.
 
 Tests:
@@ -11,12 +10,8 @@ Tests:
 7. Provider independence with MockScreenCaptureProvider and MockVisionProvider.
 """
 
-from datetime import datetime, timezone
 import json
-import pytest
 
-from friday.memory.in_memory import InMemoryConversationMemory
-from friday.vision.actions import ProposalBuilder
 from friday.vision.change_detector import ScreenChangeDetector
 from friday.vision.mock_screen import MockScreenCaptureProvider
 from friday.vision.mock_vision import MockVisionProvider
@@ -24,7 +19,7 @@ from friday.vision.screen_analyzer import ScreenAnalyzer, parse_vision_json_resp
 from friday.vision.screen_awareness import ScreenAwarenessController
 from friday.vision.screen_context import ScreenContext
 from friday.vision.ui_elements import BoundingBox, ElementType, UIElement
-from friday.vision.vision_memory import VisionMemoryManager, redact_sensitive_visual_text
+from friday.vision.vision_memory import redact_sensitive_visual_text
 
 
 # 1. UI Observation Parsing

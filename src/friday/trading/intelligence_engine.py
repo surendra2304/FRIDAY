@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Market Intelligence & Prediction Oversight Engine for FRIDAY.
 
 Aggregates deep directional forecasts from AI-Universe, alternative data intelligence
@@ -6,10 +5,10 @@ Aggregates deep directional forecasts from AI-Universe, alternative data intelli
 prediction calibration and directional accuracy.
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import threading
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -25,7 +24,7 @@ class AssetPrediction:
     expected_move_24h_pct: float  # e.g., +2.4%
     expected_volatility_pct: float  # e.g., 3.8%
     model_confidence: float  # 0.0 to 1.0 (e.g., 0.84)
-    key_drivers: List[str]
+    key_drivers: list[str]
     support_level: float
     resistance_level: float
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -58,7 +57,7 @@ class AccuracyReport:
     rolling_30d_directional_accuracy_pct: float  # e.g., 78.5%
     brier_score: float  # 0.0 to 1.0 (lower is better, e.g. 0.142)
     total_predictions_evaluated: int
-    asset_accuracies: Dict[str, float]  # Symbol -> Accuracy %
+    asset_accuracies: dict[str, float]  # Symbol -> Accuracy %
     calibration_status: str  # WELL_CALIBRATED, DEGRADED
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
@@ -78,11 +77,11 @@ class IntelligenceEngine:
     """Processes predictions, evaluates alternative data, and tracks forecast accuracy."""
 
     def __init__(self) -> None:
-        self._predictions: Dict[str, AssetPrediction] = {}
-        self._sentiment: Optional[SentimentTelemetry] = None
-        self._on_chain: Optional[OnChainTelemetry] = None
-        self._accuracy: Optional[AccuracyReport] = None
-        self._alerts: List[IntelligenceAlert] = []
+        self._predictions: dict[str, AssetPrediction] = {}
+        self._sentiment: SentimentTelemetry | None = None
+        self._on_chain: OnChainTelemetry | None = None
+        self._accuracy: AccuracyReport | None = None
+        self._alerts: list[IntelligenceAlert] = []
         self._lock = threading.RLock()
         self._init_defaults()
 
@@ -171,7 +170,7 @@ class IntelligenceEngine:
             ),
         ]
 
-    def get_prediction(self, symbol: str = "BTCUSDT") -> Optional[AssetPrediction]:
+    def get_prediction(self, symbol: str = "BTCUSDT") -> AssetPrediction | None:
         """Retrieves prediction for a specific asset."""
         with self._lock:
             sym = symbol.upper().replace("/", "")
@@ -182,7 +181,7 @@ class IntelligenceEngine:
                         return v
             return self._predictions.get(sym, self._predictions.get("BTCUSDT"))
 
-    def get_market_intelligence_report(self) -> Dict[str, Any]:
+    def get_market_intelligence_report(self) -> dict[str, Any]:
         """Generates unified market intelligence data packet."""
         with self._lock:
             return {
@@ -199,7 +198,7 @@ class IntelligenceEngine:
         with self._lock:
             return self._accuracy or AccuracyReport(78.5, 0.142, 120, {"BTCUSDT": 82.5}, "WELL_CALIBRATED")
 
-    def get_active_alerts(self) -> List[IntelligenceAlert]:
+    def get_active_alerts(self) -> list[IntelligenceAlert]:
         """Returns active intelligence alerts."""
         with self._lock:
             return list(self._alerts)

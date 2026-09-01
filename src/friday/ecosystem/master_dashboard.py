@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Ecosystem Master Dashboard for FRIDAY.
 
 Provides a unified single-pane-of-glass dashboard for all three managed systems:
@@ -10,7 +9,6 @@ Provides a unified single-pane-of-glass dashboard for all three managed systems:
 """
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
 
 from friday.ecosystem.command_center import EcosystemCommandCenter
 from friday.skills.forge_manager import ForgeManagerSkill
@@ -22,9 +20,9 @@ class EcosystemMasterDashboard:
 
     def __init__(
         self,
-        command_center: Optional[EcosystemCommandCenter] = None,
-        forge_manager: Optional[ForgeManagerSkill] = None,
-        intelligence_engine: Optional[IntelligenceEngine] = None,
+        command_center: EcosystemCommandCenter | None = None,
+        forge_manager: ForgeManagerSkill | None = None,
+        intelligence_engine: IntelligenceEngine | None = None,
     ) -> None:
         self._command_center = command_center
         self._forge_manager = forge_manager
@@ -70,10 +68,10 @@ class EcosystemMasterDashboard:
         # Cross-system activity feed
         feed_items = [
             f"• 🔵 **[TRADING]** Multi-exchange portfolio active across Binance, Bybit, and OKX (P&L: `+${bot.get('daily_pnl_usdt', 0):,.2f}`).",
-            f"• 🟠 **[FORGE]** Task `forge_task_01` verified and delivered (`dist/forge_build_cross_exchange_router_v1.0.zip`).",
-            f"• 🟢 **[AI-UNIVERSE]** Directional prediction model updated: 76% Bullish on BTCUSDT (Confidence: 84%).",
-            f"• 🟠 **[FORGE]** Task `forge_task_02` build progress at 65.0% (L2 Order Book Aggregator).",
-            f"• 🟣 **[FRIDAY]** Guardian Angel 24/7 continuous 10s monitoring active with zero safety breaches.",
+            "• 🟠 **[FORGE]** Task `forge_task_01` verified and delivered (`dist/forge_build_cross_exchange_router_v1.0.zip`).",
+            "• 🟢 **[AI-UNIVERSE]** Directional prediction model updated: 76% Bullish on BTCUSDT (Confidence: 84%).",
+            "• 🟠 **[FORGE]** Task `forge_task_02` build progress at 65.0% (L2 Order Book Aggregator).",
+            "• 🟣 **[FRIDAY]** Guardian Angel 24/7 continuous 10s monitoring active with zero safety breaches.",
         ]
 
         return (
@@ -95,8 +93,8 @@ class EcosystemMasterDashboard:
             f"- **Multi-Agent Debate:** `{ai.get('debate_engine_status')}` (Bull / Bear / Risk Officer)\n"
             f"- **Active Directional Forecasts:** `{ai.get('active_predictions_count')}` assets tracked (BTC, ETH, SOL)\n\n"
             f"## 📜 Chronological Cross-System Activity Feed\n" + "\n".join(feed_items) + "\n\n"
-            f"## 🚨 Emergency Master Controls\n"
-            f"- `\"Emergency stop trading\"` → Triggers instant kill-switch across all connected exchange venues\n"
-            f"- `\"Cancel FORGE task [id]\"` → Halts running autonomous build pipeline\n"
-            f"- `\"Set autonomy to level 1\"` → Switches ecosystem into non-executing SHADOW_MODE\n"
+            "## 🚨 Emergency Master Controls\n"
+            "- `\"Emergency stop trading\"` → Triggers instant kill-switch across all connected exchange venues\n"
+            "- `\"Cancel FORGE task [id]\"` → Halts running autonomous build pipeline\n"
+            "- `\"Set autonomy to level 1\"` → Switches ecosystem into non-executing SHADOW_MODE\n"
         )

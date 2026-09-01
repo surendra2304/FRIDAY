@@ -1,9 +1,8 @@
-# -*- coding: utf-8 -*-
 """Data structures and container models for FRIDAY Screen Understanding context."""
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.vision.ui_elements import ElementType, UIElement
 
@@ -13,32 +12,32 @@ class ScreenContext:
     """Normalized structured representation of analyzed screen visual context."""
 
     summary: str
-    active_application: Optional[str] = None
-    window_title: Optional[str] = None
-    visible_text: Optional[str] = None
-    ui_elements: List[UIElement] = field(default_factory=list)
-    buttons: List[str] = field(default_factory=list)
-    dialogs: List[str] = field(default_factory=list)
-    errors: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
-    charts: List[str] = field(default_factory=list)
+    active_application: str | None = None
+    window_title: str | None = None
+    visible_text: str | None = None
+    ui_elements: list[UIElement] = field(default_factory=list)
+    buttons: list[str] = field(default_factory=list)
+    dialogs: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    charts: list[str] = field(default_factory=list)
     width: int = 0
     height: int = 0
     display_id: str = "primary"
     captured_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     is_error: bool = False
-    error_message: Optional[str] = None
+    error_message: str | None = None
     overall_confidence: float = 1.0
-    screen_state_id: Optional[str] = None
-    provider_model: Optional[str] = None
+    screen_state_id: str | None = None
+    provider_model: str | None = None
     source: str = "fresh"
     is_cached: bool = False
 
-    def get_elements_by_type(self, element_type: ElementType) -> List[UIElement]:
+    def get_elements_by_type(self, element_type: ElementType) -> list[UIElement]:
         """Filter detected elements by their structural type."""
         return [el for el in self.ui_elements if el.element_type == element_type]
 
-    def find_element_by_label(self, label: str, min_confidence: float = 0.5) -> Optional[UIElement]:
+    def find_element_by_label(self, label: str, min_confidence: float = 0.5) -> UIElement | None:
         """Find the best-matching UI element with label matching the query."""
         clean = label.strip().lower()
         candidates = [
@@ -50,7 +49,7 @@ class ScreenContext:
             return max(candidates, key=lambda el: el.confidence)
         return None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert screen context into safe dictionary representation with provenance."""
         return {
             "summary": self.summary,

@@ -1,11 +1,9 @@
-# -*- coding: utf-8 -*-
 """ChromaDB local-first vector store for Full-Duplex Voice Engine2 Semantic Vector Memory."""
 
 import os
-from pathlib import Path
 import threading
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.memory.embeddings.base import BaseEmbeddingProvider
@@ -20,7 +18,7 @@ class ChromaVectorStore:
         self,
         persist_dir: str = "data/chroma",
         collection_name: str = "friday_memories",
-        embedding_provider: Optional[BaseEmbeddingProvider] = None,
+        embedding_provider: BaseEmbeddingProvider | None = None,
         cache_ttl_seconds: float = 60.0,
     ) -> None:
         self.persist_dir = persist_dir
@@ -31,7 +29,7 @@ class ChromaVectorStore:
         self._client = None
         self._collection = None
         # In-memory query cache: key -> (timestamp, results)
-        self._query_cache: Dict[str, Tuple[float, List[Dict[str, Any]]]] = {}
+        self._query_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 
     def _ensure_initialized(self) -> None:
         """Lazily initialize ChromaDB client and collection on first use."""
@@ -62,8 +60,8 @@ class ChromaVectorStore:
         self,
         memory_id: str,
         text: str,
-        metadata: Optional[Dict[str, Any]] = None,
-        embedding: Optional[List[float]] = None,
+        metadata: dict[str, Any] | None = None,
+        embedding: list[float] | None = None,
     ) -> bool:
         """Embed text and insert or update vector record in ChromaDB."""
         if not text or not text.strip():
@@ -111,14 +109,14 @@ class ChromaVectorStore:
         query_text: str,
         top_k: int = 5,
         min_similarity: float = 0.0,
-        where_filter: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        where_filter: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         """Query ChromaDB for semantically similar memories with 60-second caching."""
         if not query_text or not query_text.strip():
             return []
 
         clean_query = query_text.strip().lower()
-        cache_key = f"{clean_query}:{top_k}:{min_similarity}:{str(where_filter)}"
+        cache_key = f"{clean_query}:{top_k}:{min_similarity}:{where_filter!s}"
         now = time.time()
 
         # Check 60-second cache
@@ -142,7 +140,7 @@ class ChromaVectorStore:
 
         with self._lock:
             try:
-                kwargs: Dict[str, Any] = {
+                kwargs: dict[str, Any] = {
                     "query_embeddings": [query_vec],
                     "n_results": max(1, top_k),
                 }

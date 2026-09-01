@@ -13,18 +13,15 @@ Covers:
 - Restart persistence
 """
 
-import os
-import sqlite3
-import tempfile
-import time
 from unittest import mock
+
 import pytest
 
+from friday.core.exceptions import LLMProviderError
 from friday.core.types import Message, Role
+from friday.memory.embeddings.mock import MockEmbeddingProvider
 from friday.memory.policies import should_embed_message, should_retrieve_memory
 from friday.memory.sqlite import SQLiteConversationMemory
-from friday.memory.embeddings.mock import MockEmbeddingProvider
-from friday.core.exceptions import LLMProviderError
 
 
 @pytest.mark.unit

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """End-to-End Test: FRIDAY - Sentinel Integration.
 
 Validates:
@@ -8,8 +7,8 @@ Validates:
 """
 
 from friday.core.types import TrustLevel
-from friday.skills.sentinel_manager import SentinelManagerSkill, SecurityFinding
 from friday.operators.sentinel_vigilance_operator import SentinelVigilanceOperator
+from friday.skills.sentinel_manager import SecurityFinding, SentinelManagerSkill
 
 
 def test_voice_command_run_security_scan_and_alert_on_critical():

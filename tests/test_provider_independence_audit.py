@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Provider Independence & Decoupling Audit Test Suite.
 
 Test Type: UNIT / INTEGRATION
@@ -11,41 +10,28 @@ Verifies:
 5. Task checkpointing, state serialization, and recovery function identically regardless of underlying LLM/Vision provider.
 """
 
-from datetime import datetime, timezone
 import json
-import pytest
 from unittest import mock
+
+import pytest
 
 # Mark test type
 pytestmark = [pytest.mark.unit, pytest.mark.integration]
 
 from friday.agent.agent import FridayAgent
-from friday.agent.checkpoint import TaskCheckpointStore
-from friday.agent.executor import StepStatus, TaskExecutionEngine
-from friday.agent.goal import GoalUnderstandingEngine
-from friday.agent.planner import GoalDecomposer, PlanStep, TaskPlan
-from friday.agent.recovery import AutonomousRecoveryManager
-from friday.agent.state import ReasoningStateMachine, TaskState
-from friday.agent.verification import StepVerifier, VerificationResult, VerificationStatus
-from friday.core.auth import AutoApproveAuthorizer, DefaultSecureAuthorizer, SafetyLevel
+from friday.agent.state import TaskState
+from friday.core.auth import AutoApproveAuthorizer
 from friday.core.config import Settings
-from friday.core.types import Message, Role, ToolCall, ToolResult
-from friday.llm.base import BaseLLMProvider
+from friday.core.types import Message, Role, ToolCall
 from friday.llm.mock_provider import MockLLMProvider
 from friday.llm.openai_provider import OpenAILLMProvider
 from friday.memory.in_memory import InMemoryConversationMemory
-from friday.memory.sqlite import SQLiteConversationMemory
-from friday.memory.task_context import ActiveTaskContext
-from friday.tools.base import BaseTool
 from friday.tools.builtin.system_info import SystemInfoTool
 from friday.tools.registry import ToolRegistry
-from friday.vision.base import BaseVisionProvider, VisionAnalysisResult
 from friday.vision.mock_screen import MockScreenCaptureProvider, create_synthetic_png
 from friday.vision.mock_vision import MockVisionProvider
 from friday.vision.openai_vision import OpenAIVisionProvider
 from friday.vision.pipeline import PerceptionPipeline
-from friday.vision.screen_analyzer import ScreenAnalyzer
-
 
 # ============================================================================
 # 1. Zero Gemini SDK Import in Core Modules
@@ -54,17 +40,18 @@ from friday.vision.screen_analyzer import ScreenAnalyzer
 def test_core_layers_have_no_gemini_sdk_imports():
     """Verify that core agent, memory, tools, planning, and verification modules do not import google.genai."""
     import inspect
+
     import friday.agent.agent as agent_mod
-    import friday.agent.planner as planner_mod
     import friday.agent.executor as executor_mod
-    import friday.agent.verification as verifier_mod
-    import friday.agent.state as state_mod
+    import friday.agent.planner as planner_mod
     import friday.agent.recovery as recovery_mod
-    import friday.tools.base as tools_base_mod
-    import friday.tools.registry as registry_mod
+    import friday.agent.state as state_mod
+    import friday.agent.verification as verifier_mod
     import friday.core.auth as auth_mod
     import friday.memory.in_memory as memory_mod
     import friday.memory.task_context as context_mod
+    import friday.tools.base as tools_base_mod
+    import friday.tools.registry as registry_mod
 
     checked_modules = [
         agent_mod, planner_mod, executor_mod, verifier_mod, state_mod,

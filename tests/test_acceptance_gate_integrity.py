@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Regression and Anti-Tampering Test Suite for Real-World Acceptance Architecture.
 
 Proves that:
@@ -11,13 +10,12 @@ Proves that:
 
 import ast
 from pathlib import Path
-import pytest
 
+import tests.real_world_acceptance_test as acceptance_module
 from tests.real_world_acceptance_test import (
     GenuineAcceptanceRunner,
     OutcomeClassification,
 )
-import tests.real_world_acceptance_test as acceptance_module
 
 
 def test_no_hardcoded_placeholder_variables_in_acceptance_test():

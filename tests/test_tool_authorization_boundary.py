@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive regression test suite for ToolRegistry cryptographic authorization boundary.
 
 Proves:
@@ -14,28 +13,26 @@ Proves:
 """
 
 import time
-from typing import Any, Dict
+
 import pytest
 
 from friday.agent.agent import FridayAgent
 from friday.agent.executor import TaskExecutionEngine
-from friday.core.auth import AutoApproveAuthorizer, AutoDenyAuthorizer, DefaultSecureAuthorizer
 from friday.agent.planner import PlanStep, StepStatus, TaskPlan
+from friday.core.auth import (
+    AutoApproveAuthorizer,
+    AutoDenyAuthorizer,
+)
 from friday.core.types import (
     AuthorizationDecision,
     AuthorizationRequest,
-    Message,
-    Role,
     SafetyLevel,
     ToolCall,
     ToolResult,
 )
 from friday.llm.mock_provider import MockLLMProvider
 from friday.security.authorization import (
-    ToolAuthorizationCapability,
     ToolAuthorizer,
-    compute_arguments_hash,
-    tool_authorizer,
 )
 from friday.tools.base import BaseTool
 from friday.tools.registry import ToolRegistry

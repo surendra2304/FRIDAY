@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Sandboxed, safety-bounded computer action executor and policy enforcement layer.
 
 Enforces:
@@ -18,11 +17,12 @@ Enforces:
 4. Comprehensive Audit Logging without Secret Leakage.
 """
 
+import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
-import re
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.vision.actions import ActionType, ComputerActionProposal
@@ -50,18 +50,18 @@ HARD_BLOCKED_INTENTS = [
     re.compile(r"(uac\b|disable-windowsoptionalfeature|set-executionpolicy\s+unrestricted|disable-netfirewallrule)", re.IGNORECASE),
 ]
 
-SAFE_KEY_ALLOWLIST: Set[str] = {
+SAFE_KEY_ALLOWLIST: set[str] = {
     "enter", "return", "tab", "space", "backspace", "escape", "esc", "up", "down", "left", "right",
     "home", "end", "pageup", "pagedown", "insert", "delete", "f1", "f2", "f3", "f4", "f5", "f6",
     "f7", "f8", "f9", "f10", "f11", "f12",
 }
 
-SAFE_HOTKEY_ALLOWLIST: Set[str] = {
+SAFE_HOTKEY_ALLOWLIST: set[str] = {
     "ctrl+c", "ctrl+v", "ctrl+x", "ctrl+a", "ctrl+z", "ctrl+y", "ctrl+s", "ctrl+f",
     "ctrl+shift+f", "ctrl+shift+p", "alt+tab", "ctrl+tab",
 }
 
-DANGEROUS_HOTKEYS: Set[str] = {
+DANGEROUS_HOTKEYS: set[str] = {
     "win+r", "ctrl+alt+del", "ctrl+alt+delete", "alt+f4", "win+x", "ctrl+shift+esc",
 }
 
@@ -89,9 +89,9 @@ class ActionExecutionResult:
     executed_at: datetime
     is_sandboxed: bool
     is_physical_execution: bool = False
-    verification_details: Optional[Dict[str, Any]] = None
+    verification_details: dict[str, Any] | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Return safe representation without secrets."""
         return {
             "proposal_id": self.proposal_id,
@@ -112,15 +112,15 @@ class ComputerActionExecutor:
     def __init__(
         self,
         sandboxed: bool = True,
-        confirmation_callback: Optional[Callable[[ComputerActionProposal], bool]] = None,
-        driver: Optional[BaseWindowsInputDriver] = None,
-        max_proposal_age_seconds: Optional[float] = 300.0,
+        confirmation_callback: Callable[[ComputerActionProposal], bool] | None = None,
+        driver: BaseWindowsInputDriver | None = None,
+        max_proposal_age_seconds: float | None = 300.0,
     ) -> None:
         self.sandboxed = sandboxed
         self.confirmation_callback = confirmation_callback
         self.max_proposal_age_seconds = max_proposal_age_seconds
-        self.execution_audit_log: List[ActionExecutionResult] = []
-        self._executed_proposal_ids: Set[str] = set()
+        self.execution_audit_log: list[ActionExecutionResult] = []
+        self._executed_proposal_ids: set[str] = set()
 
         if driver is not None:
             self.driver = driver
@@ -129,7 +129,7 @@ class ComputerActionExecutor:
         else:
             self.driver = WindowsNativeInputDriver()
 
-    def evaluate_safety_policy(self, proposal: ComputerActionProposal) -> Optional[str]:
+    def evaluate_safety_policy(self, proposal: ComputerActionProposal) -> str | None:
         """Check if proposal violates hard security boundaries.
 
         Returns:
@@ -163,7 +163,7 @@ class ComputerActionExecutor:
         self,
         proposal: ComputerActionProposal,
         now: datetime,
-    ) -> Optional[Tuple[ExecutionStatus, str]]:
+    ) -> tuple[ExecutionStatus, str] | None:
         """Validate proposal identity, replay status, freshness, and coordinates."""
         # 1. Replay prevention
         if proposal.is_executed or proposal.proposal_id in self._executed_proposal_ids:
@@ -314,7 +314,7 @@ class ComputerActionExecutor:
         # Genuine Physical Execution on Windows host
         try:
             op_success = False
-            verification_info: Dict[str, Any] = {}
+            verification_info: dict[str, Any] = {}
             act = proposal.action_type
 
             if act == ActionType.MOVE:

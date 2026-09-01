@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """End-to-End Test: Nexus - Sentinel Security Coordination.
 
 Validates:
@@ -7,10 +6,10 @@ Validates:
 3. Critical finding automatically creates Nexus incident and alerts operator.
 """
 
-from friday.ecosystem.asset_registry import AssetRegistry, AssetType
-from friday.skills.sentinel_manager import SentinelManagerSkill, SecurityFinding
-from friday.workflows.security_coordination import SecurityCoordinationWorkflow
 from friday.core.types import TrustLevel
+from friday.ecosystem.asset_registry import AssetRegistry, AssetType
+from friday.skills.sentinel_manager import SecurityFinding, SentinelManagerSkill
+from friday.workflows.security_coordination import SecurityCoordinationWorkflow
 
 
 def test_nexus_new_asset_detection_and_incident_creation():

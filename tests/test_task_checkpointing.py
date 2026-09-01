@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Deterministic unit test suite for Computer Action Execution.7 Interruption, Checkpointing & Resumption.
 
 Validates:
@@ -17,21 +16,22 @@ Validates:
 """
 
 from pathlib import Path
-from typing import Dict, List, Optional
+
 import pytest
 
 from friday.agent.agent import FridayAgent
-from friday.agent.checkpoint import TaskCheckpoint, TaskCheckpointStore
-from friday.agent.executor import TaskExecutionEngine, TaskExecutionResult
-from friday.agent.planner import GoalDecomposer, PlanStep, StepStatus, TaskPlan
-from friday.agent.state import InvalidStateTransitionError, ReasoningStateMachine, TaskState
-from friday.agent.verification import VerificationResult, VerificationStatus
+from friday.agent.checkpoint import TaskCheckpointStore
+from friday.agent.planner import PlanStep, StepStatus, TaskPlan
+from friday.agent.state import (
+    InvalidStateTransitionError,
+    ReasoningStateMachine,
+    TaskState,
+)
 from friday.core.config import Settings
 from friday.core.types import SafetyLevel, ToolResult
 from friday.llm.mock_provider import MockLLMProvider
 from friday.memory.in_memory import InMemoryConversationMemory
 from friday.tools.base import BaseTool
-from friday.tools.builtin.system_info import SystemInfoTool
 from friday.tools.registry import ToolRegistry
 
 
@@ -48,7 +48,7 @@ class StepTrackerTool(BaseTool):
 
     def __init__(self):
         super().__init__()
-        self.call_history: List[str] = []
+        self.call_history: list[str] = []
 
     def execute(self, step_name: str = "default", **kwargs):
         self.call_history.append(step_name)

@@ -1,24 +1,29 @@
 """Tests for coordinated multi-tool execution (parallel & sequential)."""
 
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 import pytest
+
 from friday.agent.agent import FridayAgent
-from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer, AutoApproveAuthorizer
+from friday.core.auth import (
+    AutoApproveAuthorizer,
+    BaseAuthorizer,
+)
 from friday.core.config import Settings
 from friday.core.types import (
     AuthorizationDecision,
     AuthorizationRequest,
     AuthorizationResponse,
-    SafetyLevel,
-    ToolResult,
-    Role,
     Message,
+    Role,
+    SafetyLevel,
     ToolCall,
+    ToolResult,
 )
+from friday.llm.mock_provider import MockLLMProvider
 from friday.tools.base import BaseTool
 from friday.tools.registry import ToolRegistry
-from friday.llm.mock_provider import MockLLMProvider
 
 
 class MockSafeToolA(BaseTool):
@@ -83,7 +88,7 @@ class ExecutionSpyAuthorizer(BaseAuthorizer):
     """Spy authorizer that counts requests and records tool safety levels."""
 
     def __init__(self):
-        self.requests: List[AuthorizationRequest] = []
+        self.requests: list[AuthorizationRequest] = []
 
     def authorize(self, request: AuthorizationRequest) -> AuthorizationResponse:
         self.requests.append(request)
@@ -106,7 +111,7 @@ def registry():
 # --- 1. Test single tool call ---
 def test_single_tool_call(registry):
     call_count = 0
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -134,7 +139,7 @@ def test_single_tool_call(registry):
 # --- 2. Test two independent tool calls (Parallel execution test) ---
 def test_two_independent_safe_tool_calls(registry):
     call_count = 0
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -178,7 +183,7 @@ def test_two_independent_safe_tool_calls(registry):
 # --- 3. Test multiple safe tool calls ---
 def test_multiple_safe_tool_calls(registry):
     call_count = 0
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -212,7 +217,7 @@ def test_multiple_safe_tool_calls(registry):
 # --- 4. Test one success + one failure ---
 def test_one_success_one_failure(registry):
     call_count = 0
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -252,7 +257,7 @@ def test_one_success_one_failure(registry):
 # --- 5. Test all failures ---
 def test_all_failures(registry):
     call_count = 0
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -286,7 +291,7 @@ def test_all_failures(registry):
 # --- 6. Test multiple safety classifications (Mixed forcing sequential execution) ---
 def test_mixed_safety_classifications(registry):
     call_count = 0
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -320,7 +325,7 @@ def test_mixed_safety_classifications(registry):
 def test_authorization_interactions(registry):
     spy_auth = ExecutionSpyAuthorizer()
     call_count = 0
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -360,7 +365,7 @@ def test_result_correlation_and_order(registry):
         ToolCall(id="tc3", name="safe_a", arguments={"val": "3"}),
     ]
 
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -390,7 +395,7 @@ def test_result_correlation_and_order(registry):
 # --- 9. Test sequential follow-up after parallel results ---
 def test_sequential_follow_up_after_parallel_results(registry):
     call_count = 0
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -433,7 +438,7 @@ def test_sequential_follow_up_after_parallel_results(registry):
 # --- 10. Verify max iteration guardrail ---
 def test_max_iteration_guardrail_multi_tool(registry):
     # Iterate forever requesting tool calls
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         return Message(
             role=Role.ASSISTANT,
             content="Endless tools",

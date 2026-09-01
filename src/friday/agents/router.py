@@ -1,13 +1,12 @@
-# -*- coding: utf-8 -*-
 """Agent Router for FRIDAY Multi-Agent Specialist System.
 
 Scores candidates from the Agent Registry based on role alignment, capabilities,
 and tool availability, then selects the best specialist agent for a subtask.
 """
 
-from dataclasses import dataclass
 import re
-from typing import Any, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Any
 
 from friday.agents.base_agent import BaseAgent
 from friday.agents.decomposer import DecomposedSubtask
@@ -32,10 +31,10 @@ class AgentRouter:
     def __init__(
         self,
         registry: AgentRegistry,
-        default_agent: Optional[BaseAgent] = None,
-        memory: Optional[Any] = None,
-        skill_registry: Optional[Any] = None,
-        trace_analyzer: Optional[Any] = None,
+        default_agent: BaseAgent | None = None,
+        memory: Any | None = None,
+        skill_registry: Any | None = None,
+        trace_analyzer: Any | None = None,
     ) -> None:
         self.registry = registry
         self.default_agent = default_agent
@@ -58,13 +57,13 @@ class AgentRouter:
         else:
             self.trace_analyzer = trace_analyzer
 
-    def find_matching_skill(self, user_request: str, threshold: float = 0.80) -> Optional[Tuple[Any, float]]:
+    def find_matching_skill(self, user_request: str, threshold: float = 0.80) -> tuple[Any, float] | None:
         """Look up if user request directly activates an installed Skill."""
         if self.skill_registry:
             return self.skill_registry.find_matching_skill(user_request, threshold=threshold)
         return None
 
-    def get_prioritized_providers(self, candidate_providers: List[str]) -> List[str]:
+    def get_prioritized_providers(self, candidate_providers: list[str]) -> list[str]:
         """De-prioritize failing providers to the bottom of the fallback chain."""
         if self.trace_analyzer:
             return self.trace_analyzer.filter_and_rank_fallback_providers(candidate_providers)
@@ -116,13 +115,13 @@ class AgentRouter:
                     rationale="Self-modification intent detected; routed directly to SelfDevAgent.",
                 )
 
-        best_agent: Optional[BaseAgent] = None
+        best_agent: BaseAgent | None = None
         best_score: float = -1.0
         best_rationale: str = ""
 
         for agent in agents:
             score = 0.0
-            rationale_parts: List[str] = []
+            rationale_parts: list[str] = []
 
             # 1. Direct role match
             agent_role = agent.role.lower().strip()

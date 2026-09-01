@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Filesystem and terminal tools with strict safety gating.
 
 file_operations: read/write/append/list/move are SAFE user-directed actions;
@@ -10,7 +9,7 @@ exposed through the SAFE tool surface.
 
 import shutil
 from pathlib import Path
-from typing import Any, List
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel, ToolResult
@@ -87,7 +86,7 @@ class FileOperationsTool(BaseTool):
                 if not p.is_dir():
                     return ToolResult(name=self.name, content=f"Directory not found: {p}", is_error=True,
                                       safety_level=self.safety_level)
-                entries: List[str] = [f"{e.name}{'' if e.is_dir() else ''}" for e in p.iterdir()]
+                entries: list[str] = [f"{e.name}{'' if e.is_dir() else ''}" for e in p.iterdir()]
                 listing = "\n".join(sorted(entries)[:200]) or "(empty directory)"
                 return ToolResult(name=self.name, content=listing, is_error=False,
                                   safety_level=self.safety_level)

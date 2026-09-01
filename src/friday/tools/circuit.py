@@ -1,5 +1,5 @@
 import time
-from typing import Dict, Optional
+
 
 class CircuitBreaker:
     """Simple circuit breaker per tool.
@@ -10,7 +10,7 @@ class CircuitBreaker:
         self.max_failures = max_failures
         self.reset_timeout = reset_timeout
         # state: {tool_name: (failure_count, opened_timestamp)}
-        self._state: Dict[str, tuple[int, Optional[float]]] = {}
+        self._state: dict[str, tuple[int, float | None]] = {}
 
     def record_success(self, tool_name: str) -> None:
         self._state.pop(tool_name, None)

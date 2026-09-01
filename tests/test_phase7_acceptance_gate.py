@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive End-to-End Multimodal Autonomous Acceptance Gate for Computer Action Execution.11.
 
 Validates the full Computer Action Execution Autonomous Architecture across 8 core integration scenarios:
@@ -20,26 +19,16 @@ Validates the full Computer Action Execution Autonomous Architecture across 8 co
    No raw screenshots, base64 buffers, passwords, bearer tokens, or private chain-of-thought persisted in SQLite memory or task checkpoints.
 """
 
-from datetime import datetime, timezone
 import json
 import time
-from typing import Any, Dict, List, Optional
-import pytest
 
 from friday.agent.agent import FridayAgent
-from friday.agent.checkpoint import TaskCheckpoint, TaskCheckpointStore
-from friday.agent.executor import ExecutionProgress, TaskExecutionEngine, TaskExecutionResult
+from friday.agent.checkpoint import TaskCheckpointStore
+from friday.agent.executor import TaskExecutionEngine
 from friday.agent.planner import GoalDecomposer, PlanStep, StepStatus, TaskPlan
-from friday.agent.recovery import AutonomousRecoveryManager, FailureAnalyzer, FailureDiagnosis, FailureType, RecoveryStrategy
-from friday.agent.state import ReasoningStateMachine, TaskState
-from friday.agent.verification import StepVerifier, VerificationResult, VerificationStatus
-from friday.auth.credential_pool import GeminiCredentialPool
-from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer
+from friday.agent.state import TaskState
 from friday.core.config import Settings
 from friday.core.types import (
-    AuthorizationDecision,
-    AuthorizationRequest,
-    AuthorizationResponse,
     SafetyLevel,
     ToolResult,
 )
@@ -49,14 +38,13 @@ from friday.memory.task_context import ActiveTaskContext
 from friday.tasks.manager import LongRunningTaskManager, TaskLifecycleStatus
 from friday.tools.base import BaseTool
 from friday.tools.builtin.calculator import CalculatorTool
-from friday.tools.orchestrator import DataFlowResolver, ToolOrchestrator
+from friday.tools.orchestrator import DataFlowResolver
 from friday.tools.registry import ToolRegistry
-from friday.vision.actions import ActionType, ComputerActionProposal, ProposalBuilder
+from friday.vision.actions import ProposalBuilder
 from friday.vision.computer_control import ComputerActionExecutor, ExecutionStatus
 from friday.vision.mock_screen import MockScreenCaptureProvider
 from friday.vision.mock_vision import MockVisionProvider
 from friday.vision.screen_analyzer import ScreenAnalyzer
-from friday.vision.screen_context import ScreenContext
 
 
 class MockDataExtractionTool(BaseTool):

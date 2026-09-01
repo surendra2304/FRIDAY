@@ -7,7 +7,7 @@ model (`llama-3.3-70b-versatile`), the exact same prompt is retried once with
 """
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.exceptions import LLMProviderError
 from friday.core.logging import get_logger
@@ -23,8 +23,8 @@ logger = get_logger("llm.groq")
 
 GROQ_DEFAULT_BASE_URL = "https://api.groq.com/openai/v1"
 GROQ_DEFAULT_MODEL = "openai/gpt-oss-120b"
-GROQ_FALLBACK_MODEL = "qwen/qwen3.8-27b"
-GROQ_UNIVERSAL_FALLBACK_MODEL = "openai/gpt-oss-20b"
+GROQ_FALLBACK_MODEL = "openai/gpt-oss-20b"
+GROQ_UNIVERSAL_FALLBACK_MODEL = "openai/gpt-oss-120b"
 
 
 class _RateLimitedError(Exception):
@@ -59,7 +59,7 @@ class GroqLLMProvider(BaseLLMProvider):
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         base_url: str = GROQ_DEFAULT_BASE_URL,
         model: str = GROQ_DEFAULT_MODEL,
         fallback_model: str = GROQ_FALLBACK_MODEL,
@@ -67,7 +67,7 @@ class GroqLLMProvider(BaseLLMProvider):
         temperature: float = 0.7,
         max_tokens: int = 2048,
         timeout: float = 60.0,
-        credential_pool: Optional[Any] = None,
+        credential_pool: Any | None = None,
     ):
         super().__init__(model=model, temperature=temperature, max_tokens=max_tokens)
         if not api_key and credential_pool is not None:
@@ -80,7 +80,7 @@ class GroqLLMProvider(BaseLLMProvider):
         self.fallback_model = fallback_model
         self.universal_fallback_model = universal_fallback_model
         self.timeout = timeout
-        self._client: Optional[Any] = None
+        self._client: Any | None = None
 
     @property
     def provider_name(self) -> str:
@@ -104,8 +104,8 @@ class GroqLLMProvider(BaseLLMProvider):
 
     def generate(
         self,
-        messages: List[Message],
-        tools: Optional[List[Dict[str, Any]]] = None,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None = None,
     ) -> Message:
         """Call Groq chat completions with automatic in-provider model fallbacks.
 
@@ -139,7 +139,7 @@ class GroqLLMProvider(BaseLLMProvider):
                         f"Groq rate limited on both '{self.model}' and '{self.fallback_model}': {fallback_error}"
                     ) from fallback_error
             raise LLMProviderError(f"Groq rate limited on '{self.model}': {primary_error}") from primary_error
-        except _ModelNotFoundError as primary_error:
+        except _ModelNotFoundError:
             logger.warning(
                 f"Groq model '{self.model}' not found (404). Retrying same prompt with "
                 f"universally available model '{self.universal_fallback_model}'..."
@@ -155,11 +155,11 @@ class GroqLLMProvider(BaseLLMProvider):
     def _generate_with_model(
         self,
         model: str,
-        messages: List[Message],
-        tools: Optional[List[Dict[str, Any]]],
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None,
     ) -> Message:
         client = self._get_client()
-        kwargs: Dict[str, Any] = {
+        kwargs: dict[str, Any] = {
             "model": model,
             "messages": [m.to_provider_dict() for m in messages],
             "temperature": self.temperature,
@@ -195,7 +195,7 @@ class GroqLLMProvider(BaseLLMProvider):
 
         content = getattr(choice_msg, "content", None) or ""
         tool_calls_raw = getattr(choice_msg, "tool_calls", None)
-        tool_calls: Optional[List[ToolCall]] = None
+        tool_calls: list[ToolCall] | None = None
 
         if tool_calls_raw:
             tool_calls = []

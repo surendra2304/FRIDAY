@@ -1,15 +1,17 @@
-# -*- coding: utf-8 -*-
 """Unit tests for AI Universe Integration & Verification Logic."""
 
 from unittest import mock
-import pytest
-import httpx
 
-from friday.core.config import Settings
-from friday.core.types import SafetyLevel
+import httpx
+import pytest
+
 from friday.core.verification import evaluate_ai_universe_response
 from friday.memory.in_memory import InMemoryConversationMemory
-from friday.tools.ai_universe_client import AIUniverseClient, AIUniverseResponse, AIUniverseTool
+from friday.tools.ai_universe_client import (
+    AIUniverseClient,
+    AIUniverseResponse,
+    AIUniverseTool,
+)
 
 
 def test_ai_universe_verification_confidence_gating():

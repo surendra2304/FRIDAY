@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive unit test suite for Cognitive Task Planning.5: Active Working Memory & Task Context.
 
 Tests:
@@ -12,12 +11,10 @@ Tests:
 8. Expiration / TTL handling.
 """
 
-from datetime import datetime, timezone
-import pytest
 
-from friday.memory.task_context import ActiveTaskContext, TaskObservation
 from friday.agent.state import TaskState
 from friday.agent.verification import VerificationResult, VerificationStatus
+from friday.memory.task_context import ActiveTaskContext
 
 
 # 1. Task Context Isolation

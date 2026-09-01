@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive unit test suite for Cognitive Task Planning.4: Formal Verification, Self-Correction & Bounded Recovery.
 
 Tests:
@@ -12,13 +11,10 @@ Tests:
 8. Computer action proposals remain Proposal != Execution during verification and self-correction.
 """
 
-from unittest import mock
 import pytest
 
 from friday.agent.executor import (
-    StepExecutionResult,
     TaskExecutionEngine,
-    TaskExecutionResult,
 )
 from friday.agent.planner import (
     PlanStep,
@@ -28,21 +24,14 @@ from friday.agent.planner import (
 from friday.agent.recovery import (
     AutonomousRecoveryManager,
     FailureAnalyzer,
-    FailureDiagnosis,
     FailureType,
     RecoveryStrategy,
 )
 from friday.agent.state import TaskState
 from friday.agent.verification import (
-    SelfCorrectionPolicy,
     StepVerifier,
-    VerificationResult,
-    VerificationStatus,
 )
-from friday.core.auth import DefaultSecureAuthorizer
 from friday.core.types import (
-    AuthorizationDecision,
-    AuthorizationResponse,
     SafetyLevel,
     ToolResult,
 )

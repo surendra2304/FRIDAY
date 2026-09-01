@@ -1,8 +1,6 @@
-# -*- coding: utf-8 -*-
 """Unit tests for Proactive Screen Reading (The Watcher) (The Watcher)."""
 
 from unittest import mock
-import pytest
 
 from friday.core.config import Settings
 from friday.core.types import Message, Role, ToolResult

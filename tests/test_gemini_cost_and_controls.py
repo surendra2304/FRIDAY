@@ -1,8 +1,9 @@
 """Tests for Gemini model controls, cost policies, retries, timeouts, and usage observability."""
 
 from unittest import mock
-import httpx
+
 import pytest
+
 from friday.agent.agent import FridayAgent
 from friday.core.config import Settings
 from friday.core.exceptions import ConfigError, LLMProviderError
@@ -105,9 +106,8 @@ def test_gemini_timeout_handling():
     provider._client = mock.Mock()
     provider._client.models.generate_content.side_effect = Exception("Read timed out.")
 
-    with mock.patch("time.sleep"):
-        with pytest.raises(LLMProviderError) as exc_info:
-            provider.generate([Message(role=Role.USER, content="Hello")])
+    with mock.patch("time.sleep"), pytest.raises(LLMProviderError) as exc_info:
+        provider.generate([Message(role=Role.USER, content="Hello")])
 
     assert "Gemini provider error" in str(exc_info.value)
     assert "Read timed out" in str(exc_info.value)

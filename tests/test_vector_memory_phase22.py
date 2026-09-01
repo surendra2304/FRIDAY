@@ -1,14 +1,10 @@
-# -*- coding: utf-8 -*-
 """Unit tests for Full-Duplex Voice Engine2: True Semantic Vector Memory (ChromaDB + Gemini Embeddings)."""
 
-import os
 import time
-from typing import List
-import pytest
 
 from friday.memory.embeddings.base import BaseEmbeddingProvider
-from friday.memory.vector_store import ChromaVectorStore
 from friday.memory.sqlite import SQLiteConversationMemory
+from friday.memory.vector_store import ChromaVectorStore
 
 
 class MockConceptEmbeddingProvider(BaseEmbeddingProvider):
@@ -21,7 +17,7 @@ class MockConceptEmbeddingProvider(BaseEmbeddingProvider):
     def provider_name(self) -> str:
         return "mock_concept"
 
-    def embed_text(self, text: str) -> List[float]:
+    def embed_text(self, text: str) -> list[float]:
         t = (text or "").lower()
         # "coding", "programming", "software", "python" -> vector [1.0, 0.0, 0.0, 0.0]
         if any(w in t for w in ["cod", "program", "software", "python", "script"]):
@@ -32,7 +28,7 @@ class MockConceptEmbeddingProvider(BaseEmbeddingProvider):
         # Default fallback vector
         return [0.0, 0.0, 1.0, 0.0]
 
-    def embed_batch(self, texts: List[str]) -> List[List[float]]:
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
         return [self.embed_text(t) for t in texts]
 
 

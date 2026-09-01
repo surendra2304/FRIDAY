@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for Prediction-Informed Decisions, Proactive Forecasting, and Tracking.
 
 Validates:
@@ -20,7 +19,6 @@ Validates:
    - UNTRUSTED_EXTERNAL boundary enforcement
 """
 
-import pytest
 
 from friday.core.prediction_decisions import PredictionInformedDecisionEngine
 from friday.core.types import TrustLevel

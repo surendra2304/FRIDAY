@@ -1,7 +1,8 @@
 """Built-in tool for reading file contents safely."""
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
+
 from friday.core.types import SafetyLevel, ToolResult
 from friday.tools.base import BaseTool
 
@@ -12,7 +13,7 @@ class FileReaderTool(BaseTool):
     name = "read_file"
     description = "Read the contents of a text file within the workspace safely. Path must be relative to the workspace root."
     safety_level = SafetyLevel.SAFE
-    parameters: Dict[str, Any] = {
+    parameters: dict[str, Any] = {
         "type": "object",
         "properties": {
             "path": {
@@ -119,7 +120,7 @@ class FileReaderTool(BaseTool):
         except Exception as e:
             return ToolResult(
                 name=self.name,
-                content=f"Error: Unable to read file. Details: {str(e)}",
+                content=f"Error: Unable to read file. Details: {e!s}",
                 is_error=True,
                 safety_level=self.safety_level,
             )

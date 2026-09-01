@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """A/B Test Operator for Autonomous Trading Experiment Monitoring.
 
 Persistent background operator that monitors the Algorithmic Trading Bot's
@@ -14,13 +13,13 @@ Alert Conditions:
 """
 
 from datetime import datetime, timezone
-import os
-import threading
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role, SafetyLevel, TrustLevel
-from friday.operators.base_operator import BaseOperator, OperatorExecutionResult, OperatorState
+from friday.operators.base_operator import (
+    BaseOperator,
+)
 from friday.operators.triggers import IntervalTrigger
 from friday.skills.trading_bot_operator import TradingBotOperator
 from friday.skills.trading_precedence import CommandPrecedence, tag_trading_command
@@ -33,11 +32,11 @@ class ABTestOperator(BaseOperator):
 
     def __init__(
         self,
-        bot_operator: Optional[TradingBotOperator] = None,
+        bot_operator: TradingBotOperator | None = None,
         poll_interval: float = 900.0,  # 15 minutes default
-        memory: Optional[Any] = None,
-        notification_manager: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        memory: Any | None = None,
+        notification_manager: Any | None = None,
+        authorizer: Any | None = None,
     ) -> None:
         trigger = IntervalTrigger(interval_seconds=poll_interval, name="ab_test_poll_interval")
         super().__init__(
@@ -52,11 +51,11 @@ class ABTestOperator(BaseOperator):
         self.bot_operator = bot_operator or TradingBotOperator()
         self.memory = memory
         self.poll_interval = poll_interval
-        self.alerted_events: Set[str] = set()
+        self.alerted_events: set[str] = set()
 
-    def check_state(self) -> Dict[str, Any]:
+    def check_state(self) -> dict[str, Any]:
         """Perform a synchronous inspection of live A/B experiment status and statistical thresholds."""
-        alerts: List[Dict[str, Any]] = []
+        alerts: list[dict[str, Any]] = []
 
         try:
             raw = self.bot_operator.get_ab_status()
@@ -197,7 +196,7 @@ class ABTestOperator(BaseOperator):
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
-    def _record_alert(self, alert: Dict[str, Any]) -> None:
+    def _record_alert(self, alert: dict[str, Any]) -> None:
         """Surface alert through notification channel and persist to memory tagged UNTRUSTED_EXTERNAL."""
         if self.notification_manager:
             try:
@@ -229,10 +228,10 @@ class ABTestOperator(BaseOperator):
                     },
                 )
                 self.memory.add_message(msg)
-                logger.info(f"[AB_OPERATOR] Persisted A/B alert into memory with TrustLevel.UNTRUSTED_EXTERNAL")
+                logger.info("[AB_OPERATOR] Persisted A/B alert into memory with TrustLevel.UNTRUSTED_EXTERNAL")
             except Exception as e:
                 logger.debug(f"[AB_OPERATOR] Failed to record alert to memory: {e}")
 
-    def execute_action(self, event_data: Dict[str, Any]) -> Any:
+    def execute_action(self, event_data: dict[str, Any]) -> Any:
         """Executes A/B test inspection cycle."""
         return self.check_state()

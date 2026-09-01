@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
 """Timeline logger and execution replay for Observability UI Observability."""
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -18,8 +17,8 @@ class TimelineEvent:
     timestamp: str
     event_type: str  # e.g., 'state_transition', 'cognitive_phase', 'tool_start', 'tool_end', 'agent_routed'
     description: str
-    details: Dict[str, Any] = field(default_factory=dict)
-    duration_ms: Optional[float] = None
+    details: dict[str, Any] = field(default_factory=dict)
+    duration_ms: float | None = None
 
 
 class ExecutionTimeline:
@@ -27,9 +26,9 @@ class ExecutionTimeline:
 
     def __init__(self, max_events: int = 200) -> None:
         self.max_events = max(1, max_events)
-        self._events: List[TimelineEvent] = []
+        self._events: list[TimelineEvent] = []
         self._lock = threading.RLock()
-        self._active_status: Dict[str, Any] = {
+        self._active_status: dict[str, Any] = {
             "cognitive_phase": "IDLE",
             "active_agent": "General",
             "selected_provider": "Default",
@@ -41,8 +40,8 @@ class ExecutionTimeline:
         self,
         event_type: str,
         description: str,
-        details: Optional[Dict[str, Any]] = None,
-        duration_ms: Optional[float] = None,
+        details: dict[str, Any] | None = None,
+        duration_ms: float | None = None,
     ) -> TimelineEvent:
         """Record an execution transition in the active timeline."""
         now = datetime.now(timezone.utc).isoformat()
@@ -63,11 +62,11 @@ class ExecutionTimeline:
 
     def update_status(
         self,
-        cognitive_phase: Optional[str] = None,
-        active_agent: Optional[str] = None,
-        selected_provider: Optional[str] = None,
-        active_tool: Optional[str] = None,
-        last_latency_ms: Optional[float] = None,
+        cognitive_phase: str | None = None,
+        active_agent: str | None = None,
+        selected_provider: str | None = None,
+        active_tool: str | None = None,
+        last_latency_ms: float | None = None,
     ) -> None:
         """Update live status panel metadata."""
         with self._lock:
@@ -82,12 +81,12 @@ class ExecutionTimeline:
             if last_latency_ms is not None:
                 self._active_status["last_latency_ms"] = last_latency_ms
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """Retrieve copy of current status metadata."""
         with self._lock:
             return dict(self._active_status)
 
-    def get_events(self, limit: int = 50) -> List[TimelineEvent]:
+    def get_events(self, limit: int = 50) -> list[TimelineEvent]:
         """Return chronological events up to limit."""
         with self._lock:
             return list(self._events[-limit:])

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Master Voice Conversational Interface for FRIDAY Ecosystem.
 
 Provides natural language dialogue and context-aware tone adjustments:
@@ -11,7 +10,6 @@ Provides natural language dialogue and context-aware tone adjustments:
 """
 
 from enum import Enum
-from typing import Any, Dict, List, Optional
 
 from friday.core.logging import get_logger
 from friday.ecosystem.command_center import EcosystemCommandCenter, EcosystemState
@@ -32,9 +30,9 @@ class MasterVoiceInterface:
 
     def __init__(
         self,
-        command_center: Optional[EcosystemCommandCenter] = None,
-        intelligence_engine: Optional[IntelligenceEngine] = None,
-        history_tracker: Optional[EvolutionHistoryTracker] = None,
+        command_center: EcosystemCommandCenter | None = None,
+        intelligence_engine: IntelligenceEngine | None = None,
+        history_tracker: EvolutionHistoryTracker | None = None,
     ) -> None:
         self._command_center = command_center
         self._intel_engine = intelligence_engine

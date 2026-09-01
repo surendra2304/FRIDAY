@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Voice-Activated Advanced Trading Analytics Skill for FRIDAY.
 
 Provides interactive voice and text commands for quantitative trading analysis:
@@ -11,7 +10,7 @@ Provides interactive voice and text commands for quantitative trading analysis:
 """
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.skills.base_skill import BaseSkill, SkillExecutionResult
@@ -46,11 +45,11 @@ class VoiceTradingSkill(BaseSkill):
 
     def __init__(
         self,
-        portfolio_engine: Optional[Any] = None,
-        regime_detector: Optional[Any] = None,
-        predictor: Optional[Any] = None,
-        risk_dashboard: Optional[Any] = None,
-        coordinator: Optional[Any] = None,
+        portfolio_engine: Any | None = None,
+        regime_detector: Any | None = None,
+        predictor: Any | None = None,
+        risk_dashboard: Any | None = None,
+        coordinator: Any | None = None,
     ) -> None:
         self._portfolio_engine = portfolio_engine
         self._regime_detector = regime_detector
@@ -99,15 +98,15 @@ class VoiceTradingSkill(BaseSkill):
     def execute(
         self,
         user_request: str,
-        agent: Optional[Any] = None,
-        tool_registry: Optional[Any] = None,
-        llm_provider: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        agent: Any | None = None,
+        tool_registry: Any | None = None,
+        llm_provider: Any | None = None,
+        authorizer: Any | None = None,
         **kwargs: Any,
     ) -> SkillExecutionResult:
         """Dispatches natural language voice trading requests."""
         clean_req = user_request.strip().lower()
-        step_results: List[Dict[str, Any]] = []
+        step_results: list[dict[str, Any]] = []
 
         try:
             # 1. Market Regime Detection

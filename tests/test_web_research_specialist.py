@@ -1,14 +1,14 @@
-# -*- coding: utf-8 -*-
 """Unit tests for Autonomous Web Research & Information Synthesis."""
 
 from unittest import mock
-import pytest
-import httpx
 
 from friday.agents.specialists.research_agent import ResearchAgent
 from friday.core.types import Message, Role, SafetyLevel
 from friday.llm.mock_provider import MockLLMProvider
-from friday.tools.builtin.web_research import FetchWebpageContentTool, SynthesizeInformationTool
+from friday.tools.builtin.web_research import (
+    FetchWebpageContentTool,
+    SynthesizeInformationTool,
+)
 from friday.tools.registry import ToolRegistry
 
 

@@ -1,6 +1,7 @@
 """Tool for searching historical conversation messages across persistent memory."""
 
-from typing import Any, Dict, Optional
+from typing import Any
+
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel, ToolResult
 from friday.memory.base import BaseMemory
@@ -31,7 +32,7 @@ class MemorySearchTool(BaseTool):
         return SafetyLevel.SAFE
 
     @property
-    def parameters(self) -> Dict[str, Any]:
+    def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -61,7 +62,7 @@ class MemorySearchTool(BaseTool):
                 safety_level=self.safety_level,
             )
 
-        conversation_id: Optional[str] = kwargs.get("conversation_id")
+        conversation_id: str | None = kwargs.get("conversation_id")
         limit = min(20, max(1, int(kwargs.get("limit", 5))))
 
         try:

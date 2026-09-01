@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Capability Routing Layer Test Suite.
 
 Test Type: UNIT / PERFORMANCE / SECURITY
@@ -23,9 +22,7 @@ from friday.routing.capability_router import (
     CapabilityMetadata,
     CapabilityRouter,
     ExecutionCapabilityType,
-    RoutingDecision,
 )
-
 
 # ============================================================================
 # 1. Direct Reasoning Preference (0 External Calls)

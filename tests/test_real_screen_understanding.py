@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Real hardware manual verification test for Screen Understanding.
 
 Test Type: HARDWARE / LIVE
@@ -8,18 +7,18 @@ for comprehensive visual analysis (application detection, visible text, UI eleme
 """
 
 import sys
+
 import pytest
 
 # Mark as hardware test (opt-in only via pytest -m hardware)
 pytestmark = [pytest.mark.hardware, pytest.mark.live]
 
-from friday.core.config import get_settings
-from friday.core.logging import setup_logging
 from friday.auth.credential_pool import credential_pool
-from friday.vision.windows_screen import WindowsScreenCaptureProvider
+from friday.core.config import get_settings
+from friday.tools.builtin.screen_snapshot import ScreenSnapshotTool
 from friday.vision.gemini_vision import GeminiVisionProvider
 from friday.vision.screen_analyzer import ScreenAnalyzer
-from friday.tools.builtin.screen_snapshot import ScreenSnapshotTool
+from friday.vision.windows_screen import WindowsScreenCaptureProvider
 
 
 def test_hardware_screen_understanding():

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Production Security & Hardening Manager for FRIDAY.
 
 Provides:
@@ -8,8 +7,6 @@ Provides:
 4. Tamper-Evident Audit Trail: Cryptographic SHA-256 signing of sensitive operations and compliance reporting.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import hashlib
 import hmac
 import json
@@ -17,7 +14,9 @@ import math
 import os
 import re
 import threading
-from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -29,7 +28,7 @@ class VoiceBiometricProfile:
     """Registered 256-dimensional voice biometric template."""
     speaker_id: str
     speaker_name: str
-    embedding: List[float]
+    embedding: list[float]
     enrolled_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     sample_count: int = 1
 
@@ -59,12 +58,12 @@ class ProductionSecurityManager:
         r"(?i)\bdisable\s+(?:kill\s+switch|safety\s+filters|limits)\b",
     ]
 
-    def __init__(self, master_secret: Optional[str] = None) -> None:
+    def __init__(self, master_secret: str | None = None) -> None:
         self.master_secret = master_secret or os.environ.get("FRIDAY_MASTER_SECRET", "FRIDAY_SECURE_PRODUCTION_ROOT_KEY_2026")
-        self._enrolled_voices: Dict[str, VoiceBiometricProfile] = {}
-        self._trusted_devices: Dict[str, Dict[str, Any]] = {}
-        self._threat_incidents: List[ThreatIncident] = []
-        self._signed_audit_blocks: List[Dict[str, Any]] = []
+        self._enrolled_voices: dict[str, VoiceBiometricProfile] = {}
+        self._trusted_devices: dict[str, dict[str, Any]] = {}
+        self._threat_incidents: list[ThreatIncident] = []
+        self._signed_audit_blocks: list[dict[str, Any]] = []
         self._lock = threading.RLock()
 
         # Seed default enrolled operator voice (Surendra) with deterministic 256-d embedding
@@ -96,9 +95,9 @@ class ProductionSecurityManager:
     def verify_voice_biometrics(
         self,
         speaker_id: str,
-        embedding: List[float],
+        embedding: list[float],
         similarity_threshold: float = 0.85,
-    ) -> Tuple[bool, float, str]:
+    ) -> tuple[bool, float, str]:
         """Calculates cosine similarity between provided voice embedding and enrolled profile."""
         with self._lock:
             profile = self._enrolled_voices.get(speaker_id)
@@ -139,7 +138,7 @@ class ProductionSecurityManager:
         device_id: str,
         client_ip: str = "127.0.0.1",
         min_trust_score: float = 0.80,
-    ) -> Tuple[bool, float]:
+    ) -> tuple[bool, float]:
         """Evaluates hardware device fingerprint trust score and IP validation."""
         with self._lock:
             device = self._trusted_devices.get(device_id)
@@ -154,7 +153,7 @@ class ProductionSecurityManager:
     # 2. Encrypted Envelope Protection & Secure Storage
     # =========================================================================
 
-    def encrypt_payload(self, data: str, key_override: Optional[str] = None) -> str:
+    def encrypt_payload(self, data: str, key_override: str | None = None) -> str:
         """Encrypts payload into an authenticated base64 envelope with HMAC-SHA256 signature."""
         secret = (key_override or self.master_secret).encode("utf-8")
         raw_bytes = data.encode("utf-8")
@@ -174,7 +173,7 @@ class ProductionSecurityManager:
         }
         return json.dumps(envelope)
 
-    def decrypt_payload(self, envelope_str: str, key_override: Optional[str] = None) -> str:
+    def decrypt_payload(self, envelope_str: str, key_override: str | None = None) -> str:
         """Verifies HMAC signature and decrypts envelope payload."""
         secret = (key_override or self.master_secret).encode("utf-8")
         try:
@@ -198,7 +197,7 @@ class ProductionSecurityManager:
     # 3. Intrusion & Prompt Injection Detection
     # =========================================================================
 
-    def scan_prompt_injection(self, text: str) -> Tuple[bool, str, float]:
+    def scan_prompt_injection(self, text: str) -> tuple[bool, str, float]:
         """Scans input prompt for jailbreak attempts, delimiter manipulation, or bypass patterns."""
         for pattern in self.INJECTION_PATTERNS:
             match = re.search(pattern, text)
@@ -222,7 +221,7 @@ class ProductionSecurityManager:
     ) -> ThreatIncident:
         """Records a new security threat incident."""
         now_iso = datetime.now(timezone.utc).isoformat()
-        inc_id = "threat_" + hashlib.md5(f"{threat_type}:{details}:{now_iso}".encode("utf-8")).hexdigest()[:8]
+        inc_id = "threat_" + hashlib.md5(f"{threat_type}:{details}:{now_iso}".encode()).hexdigest()[:8]
 
         incident = ThreatIncident(
             incident_id=inc_id,
@@ -246,9 +245,9 @@ class ProductionSecurityManager:
     def sign_decision(
         self,
         decision_id: str,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         operator_id: str = "operator_surendra",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Cryptographically signs an authoritative decision envelope with SHA-256."""
         now_iso = datetime.now(timezone.utc).isoformat()
         serialized = json.dumps(payload, sort_keys=True)
@@ -268,7 +267,7 @@ class ProductionSecurityManager:
 
         return signed_block
 
-    def verify_decision_signature(self, signed_block: Dict[str, Any]) -> bool:
+    def verify_decision_signature(self, signed_block: dict[str, Any]) -> bool:
         """Verifies non-repudiation signature of a signed decision block."""
         try:
             decision_id = signed_block["decision_id"]
@@ -286,7 +285,7 @@ class ProductionSecurityManager:
             logger.error(f"[SECURITY] Signature verification failed: {e}")
             return False
 
-    def generate_compliance_report(self) -> Dict[str, Any]:
+    def generate_compliance_report(self) -> dict[str, Any]:
         """Generates comprehensive regulatory and security compliance summary."""
         with self._lock:
             return {

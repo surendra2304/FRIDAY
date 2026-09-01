@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
 """Base interfaces and data structures for FRIDAY Screen Capture subsystem."""
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
@@ -18,9 +17,9 @@ class ScreenSnapshot:
     display_id: str = "primary"
     captured_at: datetime = field(default_factory=datetime.utcnow)
     is_error: bool = False
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Return safe non-image dictionary metadata (zero raw image data exposed)."""
         return {
             "mime_type": self.mime_type,
@@ -61,9 +60,7 @@ class BaseScreenCaptureProvider(ABC):
         Returns:
             ScreenSnapshot object with raw image bytes and dimensions.
         """
-        pass
 
     @abstractmethod
-    def list_displays(self) -> List[Dict[str, Any]]:
+    def list_displays(self) -> list[dict[str, Any]]:
         """Return metadata for all available system displays."""
-        pass

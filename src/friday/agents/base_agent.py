@@ -1,13 +1,12 @@
-# -*- coding: utf-8 -*-
 """Base Specialist Agent definition for FRIDAY Multi-Agent Specialist System.
 
 Encapsulates an identity, role, scoped memory, allowed tools, and execution loop
 utilizing the Unified Multi-Provider AI Gateway.
 """
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
 import uuid
+from dataclasses import dataclass, field
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role, ToolCall, ToolResult
@@ -23,7 +22,7 @@ class AgentTask:
     """Task specification dispatched to a specialist agent."""
     task_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     goal: str = ""
-    context: Dict[str, Any] = field(default_factory=dict)
+    context: dict[str, Any] = field(default_factory=dict)
     subtask_index: int = 0
     total_subtasks: int = 1
 
@@ -36,9 +35,9 @@ class AgentTaskResult:
     role: str
     success: bool
     output: str
-    tool_calls: List[ToolCall] = field(default_factory=list)
-    tool_results: List[ToolResult] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    tool_results: list[ToolResult] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class BaseAgent:
@@ -50,9 +49,9 @@ class BaseAgent:
         role: str,
         instructions: str,
         llm_provider: BaseLLMProvider,
-        tool_registry: Optional[ToolRegistry] = None,
-        allowed_tools: Optional[List[str]] = None,
-        preferred_models: Optional[List[str]] = None,
+        tool_registry: ToolRegistry | None = None,
+        allowed_tools: list[str] | None = None,
+        preferred_models: list[str] | None = None,
         memory_scope: str = "task",
         max_iterations: int = 5,
     ) -> None:
@@ -67,7 +66,7 @@ class BaseAgent:
         self.max_iterations = max_iterations
         self.memory = InMemoryConversationMemory()
 
-    def get_scoped_tool_schemas(self) -> Optional[List[Dict[str, Any]]]:
+    def get_scoped_tool_schemas(self) -> list[dict[str, Any]] | None:
         """Return tool schemas filtered by allowed_tools if specified."""
         all_schemas = self.tool_registry.get_schemas()
         if not all_schemas:
@@ -104,8 +103,8 @@ class BaseAgent:
             self.memory.add_message(m)
 
         tool_schemas = self.get_scoped_tool_schemas()
-        executed_calls: List[ToolCall] = []
-        executed_results: List[ToolResult] = []
+        executed_calls: list[ToolCall] = []
+        executed_results: list[ToolResult] = []
         iterations = 0
         final_output = ""
         success = True

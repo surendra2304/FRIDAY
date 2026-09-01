@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Email Drafting & Delivery Workflow for Web Research & Email Automation.
 
 Orchestrates voice/text email drafting using the FallbackChainLLMProvider,
@@ -6,8 +5,8 @@ presents the draft to the user with a confirmation prompt ("Would you like me to
 and prepares the SENSITIVE send_email tool call.
 """
 
-from typing import Any, Dict, Optional
 import re
+from typing import Any
 
 from friday.core.config import get_settings
 from friday.core.logging import get_logger
@@ -20,7 +19,7 @@ logger = get_logger("workflows.email_workflow")
 class EmailDraftingWorkflow:
     """Orchestrates LLM-powered email generation, preview, and confirmation prompts."""
 
-    def __init__(self, send_tool: Optional[SendEmailTool] = None) -> None:
+    def __init__(self, send_tool: SendEmailTool | None = None) -> None:
         self.send_tool = send_tool or SendEmailTool()
 
     def can_handle(self, user_prompt: str) -> bool:
@@ -30,7 +29,7 @@ class EmailDraftingWorkflow:
         pattern = r"\b(?:draft|write|compose|prepare)\s+(?:an?\s+)?email\s+(?:to\s+(?P<recipient>[^,\.\n]+?))?\s+(?:about|regarding|for|with\s+subject)\s+(?P<topic>.+)"
         return bool(re.search(pattern, user_prompt, re.IGNORECASE))
 
-    def extract_draft_intent(self, user_prompt: str) -> Dict[str, str]:
+    def extract_draft_intent(self, user_prompt: str) -> dict[str, str]:
         """Parse recipient and subject/topic from the user's drafting request."""
         pattern = r"\b(?:draft|write|compose|prepare)\s+(?:an?\s+)?email\s+(?:to\s+(?P<recipient>[^,\.\n]+?))?\s+(?:about|regarding|for|with\s+subject)\s+(?P<topic>.+)"
         match = re.search(pattern, user_prompt, re.IGNORECASE)
@@ -46,7 +45,7 @@ class EmailDraftingWorkflow:
 
         return {"recipient": recipient, "topic": topic}
 
-    async def draft_email(self, user_prompt: str) -> Dict[str, Any]:
+    async def draft_email(self, user_prompt: str) -> dict[str, Any]:
         """Generate email subject and body using the LLM and return structured draft."""
         parsed = self.extract_draft_intent(user_prompt)
         recipient = parsed["recipient"]

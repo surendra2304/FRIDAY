@@ -1,15 +1,14 @@
-# -*- coding: utf-8 -*-
 """Strategy Portfolio Manager for FRIDAY Evolution Oversight.
 
 Manages strategy lifecycle states (LIVE, INCUBATION, TESTNET, EVOLVING, PROBATION, RETIRED),
 tracks strategy age, performance rankings, and candidate evaluation metrics.
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-import threading
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -35,7 +34,7 @@ class StrategyCandidate:
     name: str
     description: str
     timeframe: str
-    indicators: List[str]
+    indicators: list[str]
     edge_hypothesis: str
     profit_factor_2y: float
     sharpe_2y: float
@@ -55,7 +54,7 @@ class StrategyPortfolioManager:
     """Tracks and organizes all active, candidate, and historical trading strategies."""
 
     def __init__(self) -> None:
-        self._strategies: Dict[str, StrategyCandidate] = {}
+        self._strategies: dict[str, StrategyCandidate] = {}
         self._lock = threading.RLock()
         self._init_defaults()
 
@@ -163,7 +162,7 @@ class StrategyPortfolioManager:
             age_days=2,
         )
 
-    def get_candidate(self, name_or_id: str) -> Optional[StrategyCandidate]:
+    def get_candidate(self, name_or_id: str) -> StrategyCandidate | None:
         """Retrieves a strategy by name or candidate ID."""
         with self._lock:
             for s in self._strategies.values():
@@ -171,7 +170,7 @@ class StrategyPortfolioManager:
                     return s
             return None
 
-    def get_latest_candidate(self) -> Optional[StrategyCandidate]:
+    def get_latest_candidate(self) -> StrategyCandidate | None:
         """Returns the primary strategy awaiting human review."""
         with self._lock:
             for s in self._strategies.values():
@@ -190,7 +189,7 @@ class StrategyPortfolioManager:
             logger.info(f"[STRATEGY_PORTFOLIO] {s.name} transitioned: {old_state.value} -> {new_state.value}")
             return True
 
-    def get_portfolio_overview(self) -> Dict[str, Any]:
+    def get_portfolio_overview(self) -> dict[str, Any]:
         """Returns strategy distribution across all lifecycle stages."""
         with self._lock:
             live = [s for s in self._strategies.values() if s.lifecycle_state == StrategyLifecycleState.LIVE]

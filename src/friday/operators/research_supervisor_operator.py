@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Research Supervisor Operator for FRIDAY.
 
 Supervises in-flight IntelX research tasks on a continuous 60-second polling cycle:
@@ -9,10 +8,10 @@ Supervises in-flight IntelX research tasks on a continuous 60-second polling cyc
 - Invariant: All data persisted or emitted carries TrustLevel.UNTRUSTED_EXTERNAL
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
 import threading
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel, TrustLevel
@@ -26,12 +25,12 @@ logger = get_logger("operators.research_supervisor")
 @dataclass
 class ResearchSupervisorState:
     """Internal state tracking active research runs, known completed runs, and contradictions."""
-    last_poll_time: Optional[datetime] = None
-    last_successful_poll: Optional[datetime] = None
-    unreachable_since: Optional[datetime] = None
-    known_completed_run_ids: List[str] = field(default_factory=list)
-    known_contradiction_ids: List[str] = field(default_factory=list)
-    known_failed_run_ids: List[str] = field(default_factory=list)
+    last_poll_time: datetime | None = None
+    last_successful_poll: datetime | None = None
+    unreachable_since: datetime | None = None
+    known_completed_run_ids: list[str] = field(default_factory=list)
+    known_contradiction_ids: list[str] = field(default_factory=list)
+    known_failed_run_ids: list[str] = field(default_factory=list)
 
 
 class ResearchSupervisorOperator(BaseOperator):
@@ -41,7 +40,7 @@ class ResearchSupervisorOperator(BaseOperator):
 
     def __init__(
         self,
-        skill: Optional[IntelXManagerSkill] = None,
+        skill: IntelXManagerSkill | None = None,
         poll_interval_sec: float = 60.0,
     ) -> None:
         trigger = IntervalTrigger(interval_seconds=poll_interval_sec, name="research_supervisor_poll_interval")
@@ -57,10 +56,10 @@ class ResearchSupervisorOperator(BaseOperator):
         self.supervisor_state = ResearchSupervisorState()
         self._lock = threading.RLock()
 
-    def run_cycle(self) -> List[Dict[str, Any]]:
+    def run_cycle(self) -> list[dict[str, Any]]:
         """Executes a single 60s supervisory evaluation across IntelX research runs."""
         now = datetime.now(timezone.utc)
-        alerts: List[Dict[str, Any]] = []
+        alerts: list[dict[str, Any]] = []
 
         with self._lock:
             self.supervisor_state.last_poll_time = now

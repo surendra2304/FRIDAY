@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Ecosystem Forecast Dashboard Panel for FRIDAY.
 
 Renders rich GitHub-Flavored Markdown visual panel:
@@ -10,7 +9,6 @@ Renders rich GitHub-Flavored Markdown visual panel:
 - Key driver analysis (causal breakdown by percentage contribution)
 """
 
-from typing import Any, Dict, List, Optional
 
 from friday.skills.futuris_manager import FuturisManagerSkill
 
@@ -18,7 +16,7 @@ from friday.skills.futuris_manager import FuturisManagerSkill
 class EcosystemForecastDashboard:
     """Renders comprehensive terminal and web UI dashboard markdown views."""
 
-    def __init__(self, futuris_skill: Optional[FuturisManagerSkill] = None) -> None:
+    def __init__(self, futuris_skill: FuturisManagerSkill | None = None) -> None:
         self.futuris = futuris_skill or FuturisManagerSkill()
 
     def render_full_dashboard(self) -> str:

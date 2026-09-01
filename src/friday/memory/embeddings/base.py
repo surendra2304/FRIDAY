@@ -1,7 +1,6 @@
 """Base interface for embedding providers."""
 
 from abc import ABC, abstractmethod
-from typing import List
 
 
 class BaseEmbeddingProvider(ABC):
@@ -15,14 +14,11 @@ class BaseEmbeddingProvider(ABC):
     @abstractmethod
     def provider_name(self) -> str:
         """Name of the embedding provider."""
-        pass
 
     @abstractmethod
-    def embed_text(self, text: str) -> List[float]:
+    def embed_text(self, text: str) -> list[float]:
         """Generate an embedding vector for a single text input."""
-        pass
 
     @abstractmethod
-    def embed_batch(self, texts: List[str]) -> List[List[float]]:
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
         """Generate embedding vectors for a batch of text inputs."""
-        pass

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Long-Running Autonomous Stress-Test & Deterministic Simulation Suite.
 
 Stress-tests FRIDAY with:
@@ -13,22 +12,14 @@ Stress-tests FRIDAY with:
    strictly terminates in a valid terminal state (COMPLETED, CANCELLED, FAILED) without infinite loops.
 """
 
-from datetime import datetime, timezone
 import random
-import time
-from typing import Any, Dict, List, Optional
-import pytest
-from unittest.mock import MagicMock
+from typing import Any
 
-from friday.agent.checkpoint import InterruptionReason, TaskCheckpoint, TaskCheckpointStore
-from friday.agent.executor import StepExecutionResult, TaskExecutionEngine, TaskExecutionResult
-from friday.agent.planner import GoalDecomposer, PlanStep, StepStatus, TaskPlan
-from friday.agent.recovery import AutonomousRecoveryManager, FailureAnalyzer, FailureDiagnosis, FailureType, RecoveryStrategy
-from friday.agent.state import ReasoningStateMachine, TaskState, VALID_TRANSITIONS
-from friday.agent.verification import StepVerifier, VerificationResult, VerificationStatus
-from friday.core.auth import DefaultSecureAuthorizer
+from friday.agent.checkpoint import InterruptionReason, TaskCheckpointStore
+from friday.agent.executor import TaskExecutionEngine
+from friday.agent.planner import PlanStep, StepStatus, TaskPlan
+from friday.agent.state import VALID_TRANSITIONS, ReasoningStateMachine, TaskState
 from friday.core.types import SafetyLevel, ToolResult
-from friday.memory.task_context import ActiveTaskContext
 from friday.tools.base import BaseTool
 from friday.tools.registry import ToolRegistry
 

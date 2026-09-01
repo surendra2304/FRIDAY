@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Computer Control Safety and Real-Machine Validation Test Suite for Core Architecture & Types0.7.
 
 Validates:
@@ -10,23 +9,19 @@ Validates:
 6. Safe, reversible action gating under strict local policies.
 """
 
-from unittest import mock
-import pytest
 
 from friday.agent.planner import PlanStep
 from friday.agent.safety_gate import AutonomousSafetyGate, TaskRiskLevel
 from friday.core.types import SafetyLevel
 from friday.tools.registry import ToolRegistry
 from friday.vision.action_preparer import (
-    ActionPreparationResult,
     GroundedElementTarget,
     GroundingStatus,
     PerceptionActionPreparer,
 )
-from friday.vision.actions import ActionType, ComputerActionProposal
+from friday.vision.actions import ActionType
 from friday.vision.screen_context import ScreenContext
 from friday.vision.ui_elements import BoundingBox, ElementType, UIElement
-
 
 # --- 1. Hard-Block Safety Gate Validation ---
 

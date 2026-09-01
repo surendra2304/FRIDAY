@@ -1,9 +1,8 @@
+import hashlib
 import re
 import unicodedata
-import hashlib
-from enum import Enum, auto
 from dataclasses import dataclass
-from typing import List
+from enum import Enum, auto
 
 
 class InjectionRisk(Enum):
@@ -35,7 +34,7 @@ def _hash_content(content: str) -> str:
 
 
 # High‑risk regex patterns – anything matching these will be BLOCKED.
-_HIGH_RISK_PATTERNS: List[re.Pattern] = [
+_HIGH_RISK_PATTERNS: list[re.Pattern] = [
     re.compile(r"ignore previous instructions", re.IGNORECASE),
     re.compile(r"\[SYSTEM\].*", re.IGNORECASE),
     re.compile(r"\[USER\].*", re.IGNORECASE),
@@ -45,7 +44,7 @@ _HIGH_RISK_PATTERNS: List[re.Pattern] = [
 ]
 
 # Medium‑risk patterns – require explicit user confirmation.
-_MEDIUM_RISK_PATTERNS: List[re.Pattern] = [
+_MEDIUM_RISK_PATTERNS: list[re.Pattern] = [
     re.compile(r"\\b(?:run|execute)\\b", re.IGNORECASE),
     re.compile(r"(?:https?:\/\/)?[\w.-]+\.[a-z]{2,}\/[\w\/?=&%#-]*", re.IGNORECASE),
 ]

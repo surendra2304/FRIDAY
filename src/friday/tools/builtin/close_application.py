@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Close Application tool: gracefully close an open window by title.
 
 Uses UI Automation to find a top-level window whose title contains the given

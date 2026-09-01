@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Evolution Oversight Operator for FRIDAY.
 
 Supervises the trading bot's strategy evolution laboratory every 15 minutes:
@@ -9,16 +8,17 @@ Supervises the trading bot's strategy evolution laboratory every 15 minutes:
 - Detects evolution laboratory stagnation (>3 days without candidate progression)
 """
 
-from datetime import datetime, timezone
-import threading
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from friday.alert_manager import AlertSeverity, ProductionAlertManager
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role, SafetyLevel, TrustLevel
-from friday.operators.base_operator import BaseOperator, OperatorExecutionResult, OperatorState
+from friday.operators.base_operator import BaseOperator
 from friday.operators.triggers import IntervalTrigger
-from friday.trading.strategy_portfolio import StrategyLifecycleState, StrategyPortfolioManager
+from friday.trading.strategy_portfolio import (
+    StrategyLifecycleState,
+    StrategyPortfolioManager,
+)
 
 logger = get_logger("operators.evolution_oversight")
 
@@ -36,11 +36,11 @@ class EvolutionOversightOperator(BaseOperator):
 
     def __init__(
         self,
-        portfolio_manager: Optional[StrategyPortfolioManager] = None,
-        alert_manager: Optional[ProductionAlertManager] = None,
+        portfolio_manager: StrategyPortfolioManager | None = None,
+        alert_manager: ProductionAlertManager | None = None,
         poll_interval_sec: float = 900.0,  # 15 minutes default
-        memory: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        memory: Any | None = None,
+        authorizer: Any | None = None,
     ) -> None:
         trigger = IntervalTrigger(interval_seconds=poll_interval_sec, name="evolution_oversight_poll_interval")
         super().__init__(
@@ -55,7 +55,7 @@ class EvolutionOversightOperator(BaseOperator):
         self._alert_manager = alert_manager
         self.poll_interval_sec = poll_interval_sec
         self.memory = memory
-        self._alerted_candidates: Set[str] = set()
+        self._alerted_candidates: set[str] = set()
 
     @property
     def portfolio_manager(self) -> StrategyPortfolioManager:
@@ -69,9 +69,9 @@ class EvolutionOversightOperator(BaseOperator):
             self._alert_manager = ProductionAlertManager()
         return self._alert_manager
 
-    def tick(self) -> List[Dict[str, Any]]:
+    def tick(self) -> list[dict[str, Any]]:
         """Executes a 15-minute evolution laboratory supervisory cycle."""
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
 
         overview = self.portfolio_manager.get_portfolio_overview()
         candidates = overview["candidates_awaiting_review"]

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Futuris Forecasting Manager Skill for FRIDAY Operating System.
 
 Provides full REST API client wrapping Futuris's probabilistic forecasting SDK:
@@ -11,11 +10,10 @@ Provides full REST API client wrapping Futuris's probabilistic forecasting SDK:
 - Invariant: All forecast payloads carry TrustLevel.UNTRUSTED_EXTERNAL
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import re
-import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import TrustLevel
@@ -44,10 +42,10 @@ class ProbabilisticForecast:
     lower_bound: float  # e.g. p05 or p10
     upper_bound: float  # e.g. p95 or p90
     units: str
-    drivers: List[ForecastDriver] = field(default_factory=list)
+    drivers: list[ForecastDriver] = field(default_factory=list)
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     status: str = "COMPLETED"  # RUNNING, COMPLETED, FAILED, INVALIDATED
-    actual_realized: Optional[float] = None
+    actual_realized: float | None = None
     trust_level: str = TrustLevel.UNTRUSTED_EXTERNAL.value
 
 
@@ -61,8 +59,8 @@ class FuturisManagerSkill(BaseSkill):
     def __init__(self, base_url: str = "http://localhost:8005") -> None:
         super().__init__()
         self.base_url = base_url
-        self._forecasts: Dict[str, ProbabilisticForecast] = {}
-        self._scenarios: Dict[str, Dict[str, Any]] = {}
+        self._forecasts: dict[str, ProbabilisticForecast] = {}
+        self._scenarios: dict[str, dict[str, Any]] = {}
         self._lock = threading.RLock()
         self._init_defaults()
 
@@ -130,7 +128,7 @@ class FuturisManagerSkill(BaseSkill):
         target: str,
         horizon: str = "24 hours",
         confidence_level: float = 0.90,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Submits request for probabilistic forecast with explicit confidence intervals."""
         with self._lock:
             fid = f"fc-{target.lower()[:8].replace(' ', '-')}-{len(self._forecasts)+101}"
@@ -185,8 +183,8 @@ class FuturisManagerSkill(BaseSkill):
         self,
         question: str,
         base_forecast_id: str,
-        changes: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        changes: dict[str, Any],
+    ) -> dict[str, Any]:
         """Executes counterfactual what-if simulation on top of a baseline forecast."""
         with self._lock:
             base = self._forecasts.get(base_forecast_id)
@@ -223,7 +221,7 @@ class FuturisManagerSkill(BaseSkill):
             logger.info(f"[FUTURIS_MANAGER] Executed scenario '{scen_id}': {question}")
             return scenario_data
 
-    def get_forecast_status(self, forecast_id: str) -> Optional[Dict[str, Any]]:
+    def get_forecast_status(self, forecast_id: str) -> dict[str, Any] | None:
         """Retrieves forecast status, distribution bounds, and drivers."""
         with self._lock:
             fc = self._forecasts.get(forecast_id)
@@ -246,7 +244,7 @@ class FuturisManagerSkill(BaseSkill):
                 "trust_level": fc.trust_level,
             }
 
-    def get_calibration_report(self) -> Dict[str, Any]:
+    def get_calibration_report(self) -> dict[str, Any]:
         """Retrieves empirical calibration report and Brier accuracy score."""
         return {
             "engine": "Futuris Probabilistic Forecaster",
@@ -259,7 +257,7 @@ class FuturisManagerSkill(BaseSkill):
             "trust_level": TrustLevel.UNTRUSTED_EXTERNAL.value,
         }
 
-    def list_recent_forecasts(self, limit: int = 5) -> List[Dict[str, Any]]:
+    def list_recent_forecasts(self, limit: int = 5) -> list[dict[str, Any]]:
         """Lists recent forecasts with interval bounds and status."""
         with self._lock:
             fcs = list(self._forecasts.values())[-limit:]
@@ -285,10 +283,10 @@ class FuturisManagerSkill(BaseSkill):
     def execute(
         self,
         user_request: str,
-        agent: Optional[Any] = None,
-        tool_registry: Optional[Any] = None,
-        llm_provider: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        agent: Any | None = None,
+        tool_registry: Any | None = None,
+        llm_provider: Any | None = None,
+        authorizer: Any | None = None,
         **kwargs: Any,
     ) -> SkillExecutionResult:
         """Processes natural language forecasting commands with strict uncertainty intervals."""

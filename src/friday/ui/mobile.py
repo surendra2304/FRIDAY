@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Mobile Dashboard Interface for FRIDAY Operating System.
 
 Responsive single-column interface tailored for mobile companions:
@@ -8,10 +7,10 @@ Responsive single-column interface tailored for mobile companions:
 4. Offline cache sync indicator and state management
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
 import threading
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -24,8 +23,8 @@ class MobileViewData:
     active_tab: str  # home, trading, forge, nexus, alerts
     is_offline: bool
     last_synced_at: str
-    cards: List[Dict[str, Any]] = field(default_factory=list)
-    pending_emergency_action: Optional[str] = None
+    cards: list[dict[str, Any]] = field(default_factory=list)
+    pending_emergency_action: str | None = None
 
 
 class MobileDashboardInterface:
@@ -35,7 +34,7 @@ class MobileDashboardInterface:
 
     def __init__(self) -> None:
         self._active_tab = "home"
-        self._cached_state: Dict[str, Any] = {
+        self._cached_state: dict[str, Any] = {
             "trading_equity": 10450.0,
             "active_positions": 2,
             "forge_active_tasks": 1,
@@ -43,7 +42,7 @@ class MobileDashboardInterface:
             "recent_alerts": ["Supertrend ATR stop loss updated"],
         }
         self._last_sync = datetime.now(timezone.utc)
-        self._pending_double_tap: Optional[Dict[str, Any]] = None
+        self._pending_double_tap: dict[str, Any] | None = None
         self._lock = threading.RLock()
 
     def set_tab(self, tab_name: str) -> bool:
@@ -55,7 +54,7 @@ class MobileDashboardInterface:
                 return True
             return False
 
-    def handle_emergency_tap(self, action_name: str, tap_time: Optional[datetime] = None) -> Dict[str, Any]:
+    def handle_emergency_tap(self, action_name: str, tap_time: datetime | None = None) -> dict[str, Any]:
         """Enforces double-tap confirmation within 3 seconds for emergency actions."""
         with self._lock:
             now = tap_time or datetime.now(timezone.utc)
@@ -88,7 +87,7 @@ class MobileDashboardInterface:
     def render_mobile_view(self, is_offline: bool = False) -> MobileViewData:
         """Renders the mobile card view for the active tab."""
         with self._lock:
-            cards: List[Dict[str, Any]] = []
+            cards: list[dict[str, Any]] = []
 
             if self._active_tab == "home":
                 cards = [

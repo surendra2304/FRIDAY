@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Event-Driven Triggers for FRIDAY Persistent Operators.
 
 Supports:
@@ -9,12 +8,13 @@ Supports:
 5. IntervalTrigger: Periodic timer trigger.
 """
 
-from abc import ABC, abstractmethod
-from datetime import datetime, timezone
 import os
 import time
-from typing import Any, Callable, Dict, List, Optional, Set
 import uuid
+from abc import ABC, abstractmethod
+from collections.abc import Callable
+from datetime import datetime, timezone
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -24,7 +24,7 @@ logger = get_logger("operators.triggers")
 class BaseTrigger(ABC):
     """Abstract Base Class for all event-driven triggers."""
 
-    def __init__(self, name: str, trigger_id: Optional[str] = None) -> None:
+    def __init__(self, name: str, trigger_id: str | None = None) -> None:
         self.trigger_id = trigger_id or f"trig_{uuid.uuid4().hex[:8]}"
         self.name = name
         self.is_active: bool = False
@@ -38,9 +38,8 @@ class BaseTrigger(ABC):
         self.is_active = False
 
     @abstractmethod
-    def evaluate(self) -> Optional[Dict[str, Any]]:
+    def evaluate(self) -> dict[str, Any] | None:
         """Check for events. Returns event dictionary if fired, else None."""
-        pass
 
 
 class FileSystemTrigger(BaseTrigger):
@@ -49,16 +48,16 @@ class FileSystemTrigger(BaseTrigger):
     def __init__(
         self,
         watch_path: str,
-        name: Optional[str] = None,
+        name: str | None = None,
         recursive: bool = False,
-        events_to_watch: Optional[List[str]] = None,
+        events_to_watch: list[str] | None = None,
     ) -> None:
         trigger_name = name or f"file_watch:{os.path.basename(watch_path)}"
         super().__init__(name=trigger_name)
         self.watch_path = os.path.abspath(watch_path)
         self.recursive = recursive
         self.events_to_watch = set(events_to_watch or ["created", "modified"])
-        self._file_snapshots: Dict[str, float] = {}
+        self._file_snapshots: dict[str, float] = {}
         self._initialized = False
         self._watchdog_observer = None
 
@@ -78,7 +77,7 @@ class FileSystemTrigger(BaseTrigger):
                 pass
             self._watchdog_observer = None
 
-    def _get_current_files(self) -> Dict[str, float]:
+    def _get_current_files(self) -> dict[str, float]:
         """Collect current files and their modification timestamps."""
         files = {}
         if not os.path.exists(self.watch_path):
@@ -115,7 +114,7 @@ class FileSystemTrigger(BaseTrigger):
     def _update_snapshots(self) -> None:
         self._file_snapshots = self._get_current_files()
 
-    def evaluate(self) -> Optional[Dict[str, Any]]:
+    def evaluate(self) -> dict[str, Any] | None:
         """Compare current file system state against previous snapshot."""
         if not self.is_active or not os.path.exists(self.watch_path):
             return None
@@ -166,16 +165,16 @@ class ProcessTrigger(BaseTrigger):
     def __init__(
         self,
         process_name: str,
-        name: Optional[str] = None,
+        name: str | None = None,
         watch_event: str = "started",
     ) -> None:
         super().__init__(name=name or f"process_watch:{process_name}")
         self.process_name = process_name.lower().strip()
         self.watch_event = watch_event.lower().strip()  # "started", "stopped", "any"
-        self._known_pids: Set[int] = set()
+        self._known_pids: set[int] = set()
         self._initialized = False
 
-    def _scan_pids(self) -> Set[int]:
+    def _scan_pids(self) -> set[int]:
         import psutil
         pids = set()
         for p in psutil.process_iter(["pid", "name"]):
@@ -196,7 +195,7 @@ class ProcessTrigger(BaseTrigger):
         self._initialized = True
         logger.info(f"ProcessTrigger started for '{self.process_name}' (PIDs: {self._known_pids})")
 
-    def evaluate(self) -> Optional[Dict[str, Any]]:
+    def evaluate(self) -> dict[str, Any] | None:
         if not self.is_active:
             return None
 
@@ -246,7 +245,7 @@ class ConditionTrigger(BaseTrigger):
         super().__init__(name=name)
         self.predicate = predicate
 
-    def evaluate(self) -> Optional[Dict[str, Any]]:
+    def evaluate(self) -> dict[str, Any] | None:
         if not self.is_active:
             return None
         try:
@@ -264,12 +263,12 @@ class ConditionTrigger(BaseTrigger):
 class IntervalTrigger(BaseTrigger):
     """Periodic interval timer trigger."""
 
-    def __init__(self, interval_seconds: float, name: Optional[str] = None) -> None:
+    def __init__(self, interval_seconds: float, name: str | None = None) -> None:
         super().__init__(name=name or f"interval_{interval_seconds}s")
         self.interval_seconds = interval_seconds
-        self.last_tick: Optional[float] = None
+        self.last_tick: float | None = None
 
-    def evaluate(self) -> Optional[Dict[str, Any]]:
+    def evaluate(self) -> dict[str, Any] | None:
         if not self.is_active:
             return None
         now = time.time()

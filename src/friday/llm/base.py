@@ -1,7 +1,8 @@
 """Base LLM Provider interface."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from friday.core.types import Message
 
 
@@ -16,8 +17,8 @@ class BaseLLMProvider(ABC):
     @abstractmethod
     def generate(
         self,
-        messages: List[Message],
-        tools: Optional[List[Dict[str, Any]]] = None,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None = None,
     ) -> Message:
         """Synchronously send messages and return the assistant response message.
 
@@ -28,10 +29,8 @@ class BaseLLMProvider(ABC):
         Returns:
             Assistant Message instance containing content and/or tool_calls.
         """
-        pass
 
     @property
     @abstractmethod
     def provider_name(self) -> str:
         """Name of the provider (e.g. 'mock', 'openai', 'ollama')."""
-        pass

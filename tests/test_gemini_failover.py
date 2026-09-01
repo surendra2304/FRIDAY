@@ -1,13 +1,13 @@
 """Deterministic unit tests for Multi-Project Gemini Credential Failover System."""
 
-from datetime import datetime, timedelta
 import threading
-import time
+from datetime import datetime, timedelta
 from unittest import mock
+
 import pytest
 from google.genai import types
 
-from friday.auth.credential_pool import GeminiCredentialPool, Credential
+from friday.auth.credential_pool import GeminiCredentialPool
 from friday.core.exceptions import LLMProviderError
 from friday.core.types import Message, Role
 from friday.llm.gemini_provider import GeminiLLMProvider
@@ -168,9 +168,8 @@ def test_failover_test_5_all_five_fail_clean_exit():
     mock_client.models.generate_content.side_effect = Exception("429 Quota Exhausted Everywhere")
     provider._client = mock_client
 
-    with mock.patch("time.sleep"):
-        with pytest.raises(LLMProviderError) as exc_info:
-            provider.generate([Message(role=Role.USER, content="Hello")])
+    with mock.patch("time.sleep"), pytest.raises(LLMProviderError) as exc_info:
+        provider.generate([Message(role=Role.USER, content="Hello")])
 
     assert "Gemini" in str(exc_info.value)
     # All 5 credentials failed

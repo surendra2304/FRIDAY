@@ -1,13 +1,12 @@
-# -*- coding: utf-8 -*-
 """Deterministic Computer Action Detector for FRIDAY.
 
 Parses purely geometric, non-semantic computer control operations from natural language
 without requiring multimodal Vision or external LLM inference.
 """
 
-from dataclasses import dataclass
 import re
-from typing import Any, Dict, Optional, Tuple
+from dataclasses import dataclass
+from typing import Any
 
 from friday.core.types import SafetyLevel
 from friday.vision.actions import ActionType, ComputerActionProposal
@@ -17,7 +16,7 @@ from friday.vision.actions import ActionType, ComputerActionProposal
 class DeterministicActionIntent:
     """Structured intent representation for a detected deterministic action."""
     action_type: ActionType
-    arguments: Dict[str, Any]
+    arguments: dict[str, Any]
     intent: str
     confidence: float
     risk_level: SafetyLevel
@@ -75,7 +74,7 @@ class DeterministicActionDetector:
     )
 
     @classmethod
-    def get_display_metrics(cls, display_id: str = "primary") -> Tuple[int, int, int, int]:
+    def get_display_metrics(cls, display_id: str = "primary") -> tuple[int, int, int, int]:
         """Fetch left, top, width, height for the requested display."""
         try:
             from friday.vision.windows_screen import WindowsScreenCaptureProvider
@@ -102,7 +101,7 @@ class DeterministicActionDetector:
         return (0, 0, 1920, 1080)
 
     @classmethod
-    def detect(cls, user_input: str) -> Optional[DeterministicActionIntent]:
+    def detect(cls, user_input: str) -> DeterministicActionIntent | None:
         """Classify user input into a deterministic action intent if solvable without vision."""
         text = user_input.strip()
         if not text:

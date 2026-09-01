@@ -1,12 +1,10 @@
-# -*- coding: utf-8 -*-
 """Unit tests for Email Tools & Email Drafting Workflow (Web Research & Email Automation)."""
 
 import smtplib
 from unittest import mock
-import pytest
 
 from friday.core.types import Message, Role, SafetyLevel
-from friday.tools.builtin.email_tools import SendEmailTool, _send_smtp_email
+from friday.tools.builtin.email_tools import SendEmailTool
 from friday.workflows.email_workflow import EmailDraftingWorkflow
 
 

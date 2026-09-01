@@ -1,22 +1,20 @@
-# -*- coding: utf-8 -*-
 """Unit tests for Trading Supervision & AI-Universe Advisory Architecture."""
 
-import json
 from unittest import mock
+
 import pytest
 
-from friday.core.auth import DefaultSecureAuthorizer, AutoApproveAuthorizer
-from friday.core.types import Message, Role, SafetyLevel, TrustLevel
+from friday.core.types import TrustLevel
 from friday.memory.in_memory import InMemoryConversationMemory
 from friday.operators.advisory_watchdog import AdvisoryWatchdogOperator
-from friday.skills.advisory_supervisor import AdvisorySupervisorSkill, ContestedAdvisory
+from friday.skills.advisory_supervisor import AdvisorySupervisorSkill
 from friday.skills.registry import SkillRegistry
 from friday.skills.trading_bot_operator import BotStatus, TradingBotOperator
 from friday.skills.trading_precedence import (
-    CommandPrecedence,
-    PRECEDENCE_SAFETY_GATES,
-    PRECEDENCE_FRIDAY_COMMANDS,
     PRECEDENCE_AI_UNIVERSE_RECOMMENDATIONS,
+    PRECEDENCE_FRIDAY_COMMANDS,
+    PRECEDENCE_SAFETY_GATES,
+    CommandPrecedence,
     tag_trading_command,
     validate_precedence_invariants,
 )

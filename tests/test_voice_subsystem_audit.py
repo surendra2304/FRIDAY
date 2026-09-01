@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Voice Subsystem Audit and Regression Tests for FRIDAY.
 
 Verifies:
@@ -11,24 +10,22 @@ Verifies:
 """
 
 import asyncio
-import numpy as np
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import numpy as np
+
 from friday.auth.credential_pool import GeminiCredentialPool
-from friday.core.types import SafetyLevel, ToolResult
 from friday.voice.audio_io import (
-    MicrophoneStream,
     MockMicrophoneStream,
     MockSpeakerStream,
-    SpeakerStream,
     check_device_availability,
     compute_pcm_rms,
     get_audio_diagnostics,
 )
-from friday.voice.gemini_live_session import GeminiLiveVoiceSession, LiveSessionState
-from friday.voice.gemini_provider import GeminiVoiceInput, GeminiVoiceOutput, GeminiVoiceProvider
-
+from friday.voice.gemini_live_session import GeminiLiveVoiceSession
+from friday.voice.gemini_provider import (
+    GeminiVoiceProvider,
+)
 
 # ============================================================================
 # 1. Audio I/O, PCM Buffering & Instant Interruption Purge Tests

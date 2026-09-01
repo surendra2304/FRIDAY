@@ -1,4 +1,4 @@
-from typing import Set, Optional
+
 
 class ExecutionContext:
     """Carries request‑level data for tool orchestration.
@@ -8,11 +8,11 @@ class ExecutionContext:
     - circuit_breaker: shared CircuitBreaker instance for all tools in this request
     """
 
-    def __init__(self, retry_budget: int = 10, max_depth: int = 5, circuit_breaker: Optional[object] = None):
+    def __init__(self, retry_budget: int = 10, max_depth: int = 5, circuit_breaker: object | None = None):
         self.retry_budget: int = retry_budget
         self.max_depth: int = max_depth
         self.depth: int = 0
-        self.seen_execution_ids: Set[str] = set()
+        self.seen_execution_ids: set[str] = set()
         self.circuit_breaker = circuit_breaker
 
     def decrement_budget(self) -> bool:

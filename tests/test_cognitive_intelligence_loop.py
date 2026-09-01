@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for FRIDAY's Structured Cognitive Intelligence Loop.
 
 Test Type: UNIT / INTEGRATION / SECURITY
@@ -18,17 +17,14 @@ import pytest
 pytestmark = [pytest.mark.unit, pytest.mark.integration, pytest.mark.security]
 
 from friday.agent.cognitive import (
-    CognitiveDecision,
     CognitiveIntelligenceEngine,
     CognitivePhase,
-    ConfidenceAssessment,
 )
-from friday.agent.planner import PlanStep, StepStatus, TaskPlan
+from friday.agent.planner import PlanStep, TaskPlan
 from friday.agent.verification import VerificationResult, VerificationStatus
-from friday.core.auth import AutoApproveAuthorizer, AutoDenyAuthorizer, DefaultSecureAuthorizer, SafetyLevel
+from friday.core.auth import DefaultSecureAuthorizer, SafetyLevel
 from friday.core.types import ToolResult
 from friday.llm.mock_provider import MockLLMProvider
-
 
 # ============================================================================
 # 1. UNDERSTAND & CLARIFY on Low Confidence / Missing Info

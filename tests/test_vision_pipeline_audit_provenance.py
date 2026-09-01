@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Vision Pipeline End-to-End Audit & Provenance Verification Suite.
 
 Verifies:
@@ -11,19 +10,12 @@ Verifies:
 7. Prompt injection attempts embedded in visual text are safely isolated and flagged.
 """
 
-from datetime import datetime, timezone
-import hashlib
 import time
-import pytest
-from unittest.mock import MagicMock
 
-from friday.vision.base import VisionAnalysisResult
 from friday.vision.mock_screen import MockScreenCaptureProvider
 from friday.vision.mock_vision import MockVisionProvider
-from friday.vision.pipeline import PerceptionPipeline, PerceptionResult
-from friday.vision.screen_base import ScreenSnapshot
-from friday.vision.screen_context import ScreenContext
-from friday.vision.ui_elements import BoundingBox, ElementType, UIElement
+from friday.vision.pipeline import PerceptionPipeline
+from friday.vision.ui_elements import BoundingBox
 
 
 def create_solid_png_bytes(width: int = 100, height: int = 100, color: tuple = (255, 0, 0)) -> bytes:

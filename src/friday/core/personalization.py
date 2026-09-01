@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Personalization Engine for FRIDAY Operating System.
 
 Learns, adapts, and tunes user interaction styles continuously:
@@ -9,13 +8,13 @@ Learns, adapts, and tunes user interaction styles continuously:
 5. Direct user preference commands ("Change my preferences")
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import json
 import os
-from pathlib import Path
 import threading
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -28,7 +27,7 @@ class PersonalizationProfile:
     response_length: str = "brief"  # brief, normal, detailed
     communication_style: str = "concise_bullets"  # concise_bullets, conversational, formal
     alert_timing: str = "immediate"  # immediate, batched_briefing
-    subsystem_weights: Dict[str, float] = field(
+    subsystem_weights: dict[str, float] = field(
         default_factory=lambda: {
             "trading_bot": 0.35,
             "nexus": 0.25,
@@ -45,7 +44,7 @@ class PersonalizationProfile:
 class PersonalizationEngine:
     """Tracks behavioral signals and dynamically refines FRIDAY's voice and text delivery."""
 
-    def __init__(self, profile_file_path: Optional[str] = None) -> None:
+    def __init__(self, profile_file_path: str | None = None) -> None:
         self.profile_file = Path(profile_file_path or os.path.join("data", "personalization_profile.json"))
         self.profile_file.parent.mkdir(parents=True, exist_ok=True)
         self.profile = PersonalizationProfile()
@@ -108,11 +107,11 @@ class PersonalizationEngine:
                 self.profile.alert_timing = "batched_briefing"
             self.save_profile()
 
-    def update_preferences_explicitly(self, command_text: str) -> Dict[str, Any]:
+    def update_preferences_explicitly(self, command_text: str) -> dict[str, Any]:
         """Handles user voice requests like 'Change my preferences to detailed responses'."""
         with self._lock:
             clean = command_text.lower()
-            changes: List[str] = []
+            changes: list[str] = []
 
             if "detailed" in clean or "elaborate" in clean:
                 self.profile.response_length = "detailed"

@@ -1,11 +1,9 @@
-# -*- coding: utf-8 -*-
 """Self-Development Specialist Agent for Recursive Self-Improvement (Recursive Self-Improvement).
 
 Inherits from DeveloperAgent, specialized in introspecting FRIDAY's internal codebase architecture,
 planning self-modifications, extending agent tools, and executing safe automated code updates.
 """
 
-from typing import Any, Dict, List, Optional
 
 from friday.agents.specialists.developer_agent import DeveloperAgent
 from friday.llm.base import BaseLLMProvider
@@ -19,10 +17,10 @@ class SelfDevAgent(DeveloperAgent):
         self,
         agent_id: str = "self_dev_agent_01",
         role: str = "self_developer",
-        instructions: Optional[str] = None,
-        llm_provider: Optional[BaseLLMProvider] = None,
-        tool_registry: Optional[ToolRegistry] = None,
-        allowed_tools: Optional[List[str]] = None,
+        instructions: str | None = None,
+        llm_provider: BaseLLMProvider | None = None,
+        tool_registry: ToolRegistry | None = None,
+        allowed_tools: list[str] | None = None,
         max_iterations: int = 10,
     ) -> None:
         default_instructions = (

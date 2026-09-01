@@ -14,18 +14,17 @@ H. Existing text tool execution behavior is unchanged.
 import asyncio
 import logging
 from unittest import mock
+
 import pytest
 
 from friday.core.logging import redact_tool_args
 from friday.core.types import (
     SafetyLevel,
-    ToolCall,
     ToolResult,
 )
 from friday.tools.base import BaseTool
 from friday.tools.registry import ToolRegistry
 from friday.voice.gemini_live_session import GeminiLiveVoiceSession
-
 
 # ---------------------------------------------------------------------------
 # Helper stubs
@@ -92,9 +91,10 @@ def _make_session(agent=None) -> GeminiLiveVoiceSession:
 
 
 def _make_agent(registry: ToolRegistry, authorizer=None):
-    from friday.core.auth import AutoApproveAuthorizer, DefaultSecureAuthorizer
     from unittest.mock import MagicMock
+
     from friday.agent.agent import FridayAgent
+    from friday.core.auth import DefaultSecureAuthorizer
     agent = MagicMock()
     agent.tools = registry
     agent.authorizer = authorizer or DefaultSecureAuthorizer()

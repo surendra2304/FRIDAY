@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Screen Analyzer orchestrating screenshot capture, prompt formatting, and structured UI understanding.
 
 Enforces strict prompt-injection boundaries: treats visible screen text as UNTRUSTED DATA,
@@ -8,17 +7,18 @@ instructions from overriding system policy.
 
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from friday.core.config import get_settings
 from friday.core.logging import get_logger
 from friday.vision.base import BaseVisionProvider
 from friday.vision.gemini_vision import GeminiVisionProvider
+from friday.vision.mock_screen import MockScreenCaptureProvider
 from friday.vision.mock_vision import MockVisionProvider
 from friday.vision.screen_base import BaseScreenCaptureProvider
-from friday.vision.windows_screen import WindowsScreenCaptureProvider
-from friday.vision.mock_screen import MockScreenCaptureProvider
 from friday.vision.screen_context import ScreenContext
 from friday.vision.ui_elements import BoundingBox, ElementType, UIElement
+from friday.vision.windows_screen import WindowsScreenCaptureProvider
 
 logger = get_logger("vision.screen_analyzer")
 
@@ -55,7 +55,7 @@ Provide your output as a valid JSON object matching this schema:
 Ensure the JSON is properly formatted."""
 
 
-def parse_vision_json_response(raw_text: str) -> Dict[str, Any]:
+def parse_vision_json_response(raw_text: str) -> dict[str, Any]:
     """Extract and parse structured JSON from vision model output safely."""
     if not raw_text or not raw_text.strip():
         return {}
@@ -94,8 +94,8 @@ class ScreenAnalyzer:
 
     def __init__(
         self,
-        capture_provider: Optional[BaseScreenCaptureProvider] = None,
-        vision_provider: Optional[BaseVisionProvider] = None,
+        capture_provider: BaseScreenCaptureProvider | None = None,
+        vision_provider: BaseVisionProvider | None = None,
     ) -> None:
         self._capture_provider = capture_provider
         self._vision_provider = vision_provider
@@ -121,7 +121,7 @@ class ScreenAnalyzer:
     def analyze_current_screen(
         self,
         display: str = "primary",
-        user_query: Optional[str] = None,
+        user_query: str | None = None,
         **kwargs: Any,
     ) -> ScreenContext:
         """Capture the screen and analyze its contents via Gemini multimodal vision."""
@@ -149,7 +149,11 @@ class ScreenAnalyzer:
                 "Focus your visual analysis to answer their question based solely on what is visible."
             )
         # 2b. Guard raw vision output for prompt‑injection patterns
-        from friday.security.prompt_injection import guard_content, SourceType, InjectionRisk
+        from friday.security.prompt_injection import (
+            InjectionRisk,
+            SourceType,
+            guard_content,
+        )
         # Guard will be applied after vision result is obtained (see below)
 
         # 3. Request multimodal vision analysis
@@ -198,7 +202,7 @@ class ScreenAnalyzer:
         charts = parsed_data.get("charts", [])
 
         # Parse structured UI elements
-        ui_elements: List[UIElement] = []
+        ui_elements: list[UIElement] = []
         raw_elements = parsed_data.get("ui_elements", [])
         if isinstance(raw_elements, list):
             for item in raw_elements:

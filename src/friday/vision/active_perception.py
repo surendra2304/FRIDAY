@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Active Perception & Information Seeking Engine for Evidence-Based Verification.6.
 
 Determines whether current multimodal / task context is sufficient to proceed or if
@@ -10,14 +9,14 @@ to force observation loops.
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from friday.core.logging import get_logger
+from friday.vision.base import BaseVisionProvider
+from friday.vision.change_detector import ScreenChangeDetector
 from friday.vision.screen_analyzer import ScreenAnalyzer
 from friday.vision.screen_base import BaseScreenCaptureProvider
-from friday.vision.base import BaseVisionProvider
 from friday.vision.screen_context import ScreenContext
-from friday.vision.change_detector import ScreenChangeDetector
 
 logger = get_logger("vision.active_perception")
 
@@ -38,11 +37,11 @@ class ObservationDecision:
     should_observe: bool
     reason: str
     confidence: float
-    target_area: Optional[str] = None
+    target_area: str | None = None
     observation_count: int = 0
     quota_exhausted: bool = False
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "necessity": self.necessity.value,
             "should_observe": self.should_observe,
@@ -59,8 +58,8 @@ class ActivePerceptionEngine:
 
     def __init__(
         self,
-        capture_provider: Optional[BaseScreenCaptureProvider] = None,
-        vision_provider: Optional[BaseVisionProvider] = None,
+        capture_provider: BaseScreenCaptureProvider | None = None,
+        vision_provider: BaseVisionProvider | None = None,
         max_consecutive_observations: int = 3,
         confidence_threshold: float = 0.75,
     ) -> None:
@@ -72,12 +71,12 @@ class ActivePerceptionEngine:
         )
         self._change_detector = ScreenChangeDetector(change_threshold=0.05)
         self._consecutive_observations: int = 0
-        self._last_context: Optional[ScreenContext] = None
+        self._last_context: ScreenContext | None = None
 
     def evaluate_necessity(
         self,
-        current_context: Optional[ScreenContext] = None,
-        task_requirement: Optional[str] = None,
+        current_context: ScreenContext | None = None,
+        task_requirement: str | None = None,
         uncertainty_score: float = 0.0,
         has_executed_action: bool = False,
     ) -> ObservationDecision:
@@ -143,12 +142,12 @@ class ActivePerceptionEngine:
 
     def observe_if_needed(
         self,
-        current_context: Optional[ScreenContext] = None,
-        task_requirement: Optional[str] = None,
+        current_context: ScreenContext | None = None,
+        task_requirement: str | None = None,
         uncertainty_score: float = 0.0,
         has_executed_action: bool = False,
         display: str = "primary",
-    ) -> Tuple[Optional[ScreenContext], ObservationDecision]:
+    ) -> tuple[ScreenContext | None, ObservationDecision]:
         """Perform targeted observation only when decision indicates necessity."""
         decision = self.evaluate_necessity(
             current_context=current_context,

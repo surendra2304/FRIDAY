@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive System Reliability & Failure-Injection Test Suite for Core Architecture & Types0.3.
 
 Tests:
@@ -15,38 +14,31 @@ Tests:
 11. Simultaneous multi-component failures (LLM + Tool + Network timeout).
 """
 
-from datetime import datetime, timezone
-import json
-import sqlite3
-import tempfile
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
+
 import pytest
 
 from friday.agent.agent import FridayAgent
-from friday.agent.checkpoint import InterruptionReason, TaskCheckpoint, TaskCheckpointStore
+from friday.agent.checkpoint import InterruptionReason, TaskCheckpointStore
 from friday.agent.executor import StepStatus, TaskExecutionEngine
-from friday.agent.goal import Goal, GoalRequestType, GoalUnderstandingEngine
-from friday.agent.planner import GoalDecomposer, PlanStep, TaskPlan
-from friday.agent.recovery import AutonomousRecoveryManager, FailureAnalyzer, FailureDiagnosis, FailureType, RecoveryStrategy
+from friday.agent.planner import PlanStep, TaskPlan
+from friday.agent.recovery import (
+    AutonomousRecoveryManager,
+    FailureAnalyzer,
+    FailureType,
+    RecoveryStrategy,
+)
 from friday.agent.safety_gate import AutonomousSafetyGate, TaskRiskLevel
-from friday.agent.state import InvalidStateTransitionError, ReasoningStateMachine, TaskState
-from friday.agent.verification import StepVerifier, VerificationResult, VerificationStatus
-from friday.core.auth import AutoApproveAuthorizer, AutoDenyAuthorizer, DefaultSecureAuthorizer
+from friday.agent.state import TaskState
 from friday.core.config import Settings
-from friday.core.exceptions import LLMProviderError, ToolError
+from friday.core.exceptions import LLMProviderError
 from friday.core.types import SafetyLevel, ToolResult
 from friday.llm.mock_provider import MockLLMProvider
 from friday.memory.in_memory import InMemoryConversationMemory
-from friday.memory.sqlite import SQLiteConversationMemory
 from friday.memory.task_context import ActiveTaskContext
-from friday.tasks.manager import LongRunningTaskManager, TaskLifecycleStatus
 from friday.tools.base import BaseTool
 from friday.tools.registry import ToolRegistry
-from friday.vision.mock_screen import MockScreenCaptureProvider
-from friday.vision.mock_vision import MockVisionProvider
-from friday.voice.mock_provider import MockVoiceProvider
-
 
 # --- FAULT INJECTION FIXTURES & TOOLS ---
 

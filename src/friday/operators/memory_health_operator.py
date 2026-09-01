@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Memory Health Monitor Operator for FRIDAY Operating System.
 
 Monitors memory database size, query performance, consolidation job success,
@@ -6,10 +5,10 @@ alerts on unbounded growth, automatically triggers compaction when fragmented,
 and validates daily backup snapshots.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
 import threading
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from friday.core.backup_recovery import BackupRecoveryManager, backup_recovery_manager
 from friday.core.logging import get_logger
@@ -39,8 +38,8 @@ class MemoryHealthMonitor(BaseOperator):
 
     def __init__(
         self,
-        consolidation_engine: Optional[MemoryConsolidationEngine] = None,
-        backup_mgr: Optional[BackupRecoveryManager] = None,
+        consolidation_engine: MemoryConsolidationEngine | None = None,
+        backup_mgr: BackupRecoveryManager | None = None,
         poll_interval_sec: float = 60.0,
     ) -> None:
         trigger = IntervalTrigger(interval_seconds=poll_interval_sec, name="memory_health_poll_interval")
@@ -56,13 +55,13 @@ class MemoryHealthMonitor(BaseOperator):
         self.poll_interval_sec = poll_interval_sec
         self._lock = threading.RLock()
         self._compaction_count = 0
-        self._alert_events: List[Dict[str, Any]] = []
+        self._alert_events: list[dict[str, Any]] = []
 
-    def tick(self) -> List[Dict[str, Any]]:
+    def tick(self) -> list[dict[str, Any]]:
         """Executes 60-second memory audit cycle."""
         with self._lock:
             now = datetime.now(timezone.utc)
-            events: List[Dict[str, Any]] = []
+            events: list[dict[str, Any]] = []
 
             # 1. Audit sizing & unbounded growth
             episodic_count = len(self.consolidation.episodic_memory)

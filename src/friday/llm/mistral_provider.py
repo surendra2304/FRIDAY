@@ -6,7 +6,7 @@ chain (Groq -> Mistral -> OpenRouter -> AIUniverse).
 """
 
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.exceptions import LLMProviderError
 from friday.core.logging import get_logger
@@ -30,7 +30,7 @@ class MistralLLMProvider(BaseLLMProvider):
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         base_url: str = MISTRAL_DEFAULT_BASE_URL,
         model: str = MISTRAL_DEFAULT_MODEL,
         temperature: float = 0.7,
@@ -38,7 +38,7 @@ class MistralLLMProvider(BaseLLMProvider):
         timeout: float = 60.0,
         max_retries: int = 3,
         backoff_factor: float = 2.0,
-        credential_pool: Optional[Any] = None,
+        credential_pool: Any | None = None,
     ):
         super().__init__(model=model, temperature=temperature, max_tokens=max_tokens)
         if not api_key and credential_pool is not None:
@@ -51,7 +51,7 @@ class MistralLLMProvider(BaseLLMProvider):
         self.timeout = timeout
         self.max_retries = max_retries
         self.backoff_factor = backoff_factor
-        self._client: Optional[Any] = None
+        self._client: Any | None = None
 
     @property
     def provider_name(self) -> str:
@@ -75,12 +75,12 @@ class MistralLLMProvider(BaseLLMProvider):
 
     def generate(
         self,
-        messages: List[Message],
-        tools: Optional[List[Dict[str, Any]]] = None,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None = None,
     ) -> Message:
         """Call Mistral chat completions with retry on transient errors."""
         client = self._get_client()
-        kwargs: Dict[str, Any] = {
+        kwargs: dict[str, Any] = {
             "model": self.model,
             "messages": [m.to_provider_dict() for m in messages],
             "temperature": self.temperature,
@@ -91,7 +91,7 @@ class MistralLLMProvider(BaseLLMProvider):
             kwargs["tool_choice"] = "auto"
 
         initial_delay = 1.0
-        last_error: Optional[Exception] = None
+        last_error: Exception | None = None
 
         for attempt in range(self.max_retries + 1):
             try:

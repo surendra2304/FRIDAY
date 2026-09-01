@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Live Performance Analytics for FRIDAY.
 
 Computes rolling 30-day performance metrics, cross-environment comparisons (Live vs Testnet vs Paper),
@@ -7,8 +6,7 @@ strategy return attribution, and AI advisory alpha contribution analysis.
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import math
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -50,11 +48,11 @@ class LiveAnalyticsReport:
     rolling_30d_profit_factor: float
     rolling_30d_max_dd_pct: float
     ai_advisory_alpha_impact_pct: float
-    strategy_attributions: List[StrategyLiveAttribution]
-    environment_comparisons: List[EnvironmentComparison]
+    strategy_attributions: list[StrategyLiveAttribution]
+    environment_comparisons: list[EnvironmentComparison]
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "rolling_30d_return_pct": round(self.rolling_30d_return_pct, 2),
             "rolling_30d_sharpe": round(self.rolling_30d_sharpe, 2),

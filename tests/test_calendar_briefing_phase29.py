@@ -1,14 +1,11 @@
-# -*- coding: utf-8 -*-
 """Unit tests for Calendar Tool & Morning Briefing Workflow."""
 
-from datetime import datetime, date
+from datetime import date
 from unittest import mock
-import pytest
 
 from friday.core.types import SafetyLevel
 from friday.tools.builtin.calendar import GetTodaysEventsTool, _parse_ics_content
 from friday.workflows.briefing_workflow import MorningBriefingWorkflow
-
 
 SAMPLE_ICS = """BEGIN:VCALENDAR
 VERSION:2.0

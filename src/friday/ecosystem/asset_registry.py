@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Asset Registry for FRIDAY.
 
 Maintains a unified, live inventory of all securable assets across FRIDAY ecosystem:
@@ -11,11 +10,11 @@ Tracks per-asset scan histories, findings counts, risk levels, next scheduled sc
 and computes aggregate security posture scores.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
-from enum import Enum
 import threading
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from enum import Enum
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import TrustLevel
@@ -41,14 +40,14 @@ class SecurableAsset:
     subsystem: str  # nexus, forge, trading_bot, infrastructure
     risk_level: str = "CLEAN"  # CRITICAL, HIGH, MEDIUM, LOW, CLEAN
     open_findings_count: int = 0
-    last_scan_time: Optional[str] = None
-    last_scan_result: Optional[Dict[str, Any]] = None
-    next_scheduled_scan: Optional[str] = None
+    last_scan_time: str | None = None
+    last_scan_result: dict[str, Any] | None = None
+    next_scheduled_scan: str | None = None
     critical_findings_count: int = 0
     high_findings_count: int = 0
     medium_findings_count: int = 0
     low_findings_count: int = 0
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
     registered_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -56,7 +55,7 @@ class AssetRegistry:
     """Central registry tracking all securable ecosystem assets and posture metrics."""
 
     def __init__(self) -> None:
-        self._assets: Dict[str, SecurableAsset] = {}
+        self._assets: dict[str, SecurableAsset] = {}
         self._lock = threading.RLock()
         self._init_default_assets()
 
@@ -155,22 +154,22 @@ class AssetRegistry:
                 return True
             return False
 
-    def get_asset(self, asset_id: str) -> Optional[SecurableAsset]:
+    def get_asset(self, asset_id: str) -> SecurableAsset | None:
         """Retrieve an asset by its identifier."""
         with self._lock:
             return self._assets.get(asset_id)
 
-    def get_all_assets(self) -> List[SecurableAsset]:
+    def get_all_assets(self) -> list[SecurableAsset]:
         """List all registered securable assets."""
         with self._lock:
             return list(self._assets.values())
 
-    def get_assets_by_subsystem(self, subsystem: str) -> List[SecurableAsset]:
+    def get_assets_by_subsystem(self, subsystem: str) -> list[SecurableAsset]:
         """List assets belonging to a specific subsystem."""
         with self._lock:
             return [a for a in self._assets.values() if a.subsystem.lower() == subsystem.lower()]
 
-    def get_highest_risk_asset(self) -> Optional[SecurableAsset]:
+    def get_highest_risk_asset(self) -> SecurableAsset | None:
         """Find the asset with the highest vulnerability severity."""
         with self._lock:
             if not self._assets:
@@ -185,9 +184,9 @@ class AssetRegistry:
     def update_scan_result(
         self,
         asset_id: str,
-        findings: List[Dict[str, Any]],
+        findings: list[dict[str, Any]],
         mode: str = "full_web",
-    ) -> Optional[SecurableAsset]:
+    ) -> SecurableAsset | None:
         """Update scan timestamps, findings counts, and risk levels for an asset."""
         with self._lock:
             asset = self._assets.get(asset_id)
@@ -225,7 +224,7 @@ class AssetRegistry:
             }
             return asset
 
-    def calculate_security_posture_score(self) -> Dict[str, Any]:
+    def calculate_security_posture_score(self) -> dict[str, Any]:
         """Calculate aggregate 0 - 100 security score based on active findings across all assets."""
         with self._lock:
             total_assets = len(self._assets)

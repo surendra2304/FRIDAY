@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Nexus Supervisor Operator for FRIDAY.
 
 Continuously monitors Nexus Autonomous Website & Growth Engine on a 30-second cycle:
@@ -10,10 +9,10 @@ Continuously monitors Nexus Autonomous Website & Growth Engine on a 30-second cy
 - Invariant: All data persisted or emitted carries TrustLevel.UNTRUSTED_EXTERNAL.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
 import threading
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel
@@ -27,12 +26,12 @@ logger = get_logger("operators.nexus_supervisor")
 @dataclass
 class NexusSupervisorState:
     """Internal state tracking incidents, leads, approvals, and anomaly thresholds."""
-    last_poll_time: Optional[datetime] = None
-    last_successful_poll: Optional[datetime] = None
-    unreachable_since: Optional[datetime] = None
-    known_incident_ids: List[str] = field(default_factory=list)
-    known_lead_ids: List[str] = field(default_factory=list)
-    pending_approvals_since: Optional[datetime] = None
+    last_poll_time: datetime | None = None
+    last_successful_poll: datetime | None = None
+    unreachable_since: datetime | None = None
+    known_incident_ids: list[str] = field(default_factory=list)
+    known_lead_ids: list[str] = field(default_factory=list)
+    pending_approvals_since: datetime | None = None
     baseline_conversion_rate: float = 3.82
     anomaly_alerted: bool = False
     uptime_ratio_pct: float = 100.0
@@ -43,7 +42,7 @@ class NexusSupervisorOperator(BaseOperator):
 
     def __init__(
         self,
-        skill: Optional[NexusManagerSkill] = None,
+        skill: NexusManagerSkill | None = None,
         poll_interval_sec: float = 30.0,
     ) -> None:
         trigger = IntervalTrigger(interval_seconds=poll_interval_sec, name="nexus_supervisor_poll_interval")
@@ -58,14 +57,14 @@ class NexusSupervisorOperator(BaseOperator):
         self.poll_interval_sec = poll_interval_sec
         self.supervisor_state = NexusSupervisorState()
         self._lock = threading.RLock()
-        self._alert_events: List[Dict[str, Any]] = []
+        self._alert_events: list[dict[str, Any]] = []
 
-    def tick(self) -> List[Dict[str, Any]]:
+    def tick(self) -> list[dict[str, Any]]:
         """Executes a 30-second polling and supervision cycle against Nexus APIs."""
         with self._lock:
             now = datetime.now(timezone.utc)
             self.supervisor_state.last_poll_time = now
-            events: List[Dict[str, Any]] = []
+            events: list[dict[str, Any]] = []
 
             try:
                 # 1. Poll Site Overview
@@ -174,7 +173,7 @@ class NexusSupervisorOperator(BaseOperator):
             self._alert_events.extend(events)
             return events
 
-    def inject_incident(self, incident: Dict[str, Any]) -> None:
+    def inject_incident(self, incident: dict[str, Any]) -> None:
         """Helper to inject simulated incidents for testing."""
         with self._lock:
             self.skill._active_incidents.append(incident)
@@ -184,7 +183,7 @@ class NexusSupervisorOperator(BaseOperator):
         with self._lock:
             self.skill._conversion_rate_today = rate
 
-    def get_alert_history(self) -> List[Dict[str, Any]]:
+    def get_alert_history(self) -> list[dict[str, Any]]:
         """Returns complete list of emitted supervisor events."""
         with self._lock:
             return list(self._alert_events)

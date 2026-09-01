@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Long-Running Task Management & Reliable Background Execution System for FRIDAY.
 
 Provides:
@@ -18,15 +17,16 @@ Provides:
 - 100% provider-independent and testable offline.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from enum import Enum
 import json
-from pathlib import Path
 import sqlite3
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from enum import Enum
+from pathlib import Path
+from typing import Any
 
 from friday.agent.agent import FridayAgent
 from friday.agent.checkpoint import TaskCheckpointStore
@@ -56,11 +56,11 @@ class TaskLifecycleStatus(str, Enum):
 @dataclass
 class TaskScope:
     """Operational boundaries defining allowed tools and resources for a task."""
-    allowed_tools: Optional[List[str]] = None
-    allowed_paths: Optional[List[str]] = None
+    allowed_tools: list[str] | None = None
+    allowed_paths: list[str] | None = None
     network_allowed: bool = False
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "allowed_tools": self.allowed_tools,
             "allowed_paths": self.allowed_paths,
@@ -68,7 +68,7 @@ class TaskScope:
         }
 
     @classmethod
-    def from_dict(cls, data: Optional[Dict[str, Any]]) -> "TaskScope":
+    def from_dict(cls, data: dict[str, Any] | None) -> "TaskScope":
         if not data:
             return cls()
         return cls(
@@ -84,14 +84,14 @@ class TaskBudget:
     max_tool_calls: int = 50
     max_model_requests: int = 20
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "max_tool_calls": self.max_tool_calls,
             "max_model_requests": self.max_model_requests,
         }
 
     @classmethod
-    def from_dict(cls, data: Optional[Dict[str, Any]]) -> "TaskBudget":
+    def from_dict(cls, data: dict[str, Any] | None) -> "TaskBudget":
         if not data:
             return cls()
         return cls(
@@ -109,11 +109,11 @@ class TaskSpec:
     budget: TaskBudget = field(default_factory=TaskBudget)
     timeout_seconds: float = 300.0
     retry_limit: int = 3
-    deadline: Optional[datetime] = None
+    deadline: datetime | None = None
     verification_required: bool = True
-    authorizer: Optional[BaseAuthorizer] = None
+    authorizer: BaseAuthorizer | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "task_id": self.task_id,
             "goal": redact_secrets(self.goal),
@@ -134,16 +134,16 @@ class TaskProgressReport:
     status: TaskLifecycleStatus
     completed_steps: int
     total_steps: int
-    current_step_id: Optional[str]
+    current_step_id: str | None
     progress_percentage: float
     elapsed_seconds: float
     retry_budget: int = 3
     retries_used: int = 0
-    deadline: Optional[datetime] = None
-    error: Optional[str] = None
+    deadline: datetime | None = None
+    error: str | None = None
     last_updated: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "task_id": self.task_id,
             "goal": self.goal,
@@ -164,7 +164,7 @@ class TaskProgressReport:
 class TaskPersistenceStore:
     """Durable SQLite storage for background tasks and execution progress."""
 
-    def __init__(self, db_path: Optional[str] = None) -> None:
+    def __init__(self, db_path: str | None = None) -> None:
         self.db_path = db_path or ":memory:"
         self._lock = threading.Lock()
         self._conn = None
@@ -224,11 +224,11 @@ class TaskPersistenceStore:
         goal: str,
         status: TaskLifecycleStatus,
         spec: TaskSpec,
-        plan: Optional[TaskPlan] = None,
+        plan: TaskPlan | None = None,
         completed_steps: int = 0,
         total_steps: int = 0,
         progress_pct: float = 0.0,
-        error: Optional[str] = None,
+        error: str | None = None,
     ) -> None:
         """Persist or update background task state."""
         now_iso = datetime.now(timezone.utc).isoformat()
@@ -265,7 +265,7 @@ class TaskPersistenceStore:
                 if not self._conn:
                     conn.close()
 
-    def get_incomplete_tasks(self) -> List[Dict[str, Any]]:
+    def get_incomplete_tasks(self) -> list[dict[str, Any]]:
         """Retrieve tasks that were active when process stopped."""
         with self._lock:
             conn = self._get_connection()
@@ -290,8 +290,8 @@ class LongRunningTaskManager:
         default_timeout_seconds: float = 300.0,
         max_concurrent_tasks: int = 5,
         default_retry_budget: int = 3,
-        db_path: Optional[str] = None,
-        checkpoint_store: Optional[TaskCheckpointStore] = None,
+        db_path: str | None = None,
+        checkpoint_store: TaskCheckpointStore | None = None,
     ) -> None:
         self.agent = agent
         self.default_timeout_seconds = default_timeout_seconds
@@ -300,8 +300,8 @@ class LongRunningTaskManager:
         self.persistence = TaskPersistenceStore(db_path=db_path)
         self.checkpoint_store = checkpoint_store or getattr(agent, "checkpoint_store", TaskCheckpointStore())
 
-        self._tasks: Dict[str, Dict[str, Any]] = {}
-        self._completion_listeners: List[Callable[[TaskProgressReport], None]] = []
+        self._tasks: dict[str, dict[str, Any]] = {}
+        self._completion_listeners: list[Callable[[TaskProgressReport], None]] = []
         self._lock = threading.RLock()
 
     def add_completion_listener(self, listener: Callable[[TaskProgressReport], None]) -> None:
@@ -310,7 +310,7 @@ class LongRunningTaskManager:
             if listener not in self._completion_listeners:
                 self._completion_listeners.append(listener)
 
-    def _emit_task_event(self, event_type: str, task_id: str, data: Optional[Dict[str, Any]] = None) -> None:
+    def _emit_task_event(self, event_type: str, task_id: str, data: dict[str, Any] | None = None) -> None:
         """Emit a task-related event via the global ObservabilityManager."""
         manager = get_observability_manager()
         payload = {"task_id": task_id}
@@ -332,14 +332,14 @@ class LongRunningTaskManager:
     def submit_task(
         self,
         goal: str,
-        steps: Optional[List[Dict[str, Any]]] = None,
-        timeout_seconds: Optional[float] = None,
-        retry_budget: Optional[int] = None,
-        deadline: Optional[datetime] = None,
-        scope: Optional[TaskScope] = None,
-        budget: Optional[TaskBudget] = None,
-        authorizer: Optional[BaseAuthorizer] = None,
-        on_progress: Optional[Callable[[TaskProgressReport], None]] = None,
+        steps: list[dict[str, Any]] | None = None,
+        timeout_seconds: float | None = None,
+        retry_budget: int | None = None,
+        deadline: datetime | None = None,
+        scope: TaskScope | None = None,
+        budget: TaskBudget | None = None,
+        authorizer: BaseAuthorizer | None = None,
+        on_progress: Callable[[TaskProgressReport], None] | None = None,
     ) -> str:
         """Submit and launch a new long-running task in the background with explicit safety bounds."""
         with self._lock:
@@ -431,7 +431,7 @@ class LongRunningTaskManager:
             self._emit_task_event("submitted", task_id, {"goal": goal})
             return task_id
 
-    def get_task_status(self, task_id: str) -> Optional[TaskProgressReport]:
+    def get_task_status(self, task_id: str) -> TaskProgressReport | None:
         """Retrieve progress and lifecycle status of a task."""
         with self._lock:
             t = self._tasks.get(task_id)
@@ -554,9 +554,9 @@ class LongRunningTaskManager:
             self._notify_completion(task_id)
             return True
 
-    def recover_after_crash(self, auto_resume: bool = False) -> List[str]:
+    def recover_after_crash(self, auto_resume: bool = False) -> list[str]:
         """Audit and recover incomplete background tasks from durable store following process restart."""
-        recovered_ids: List[str] = []
+        recovered_ids: list[str] = []
         with self._lock:
             incomplete = self.persistence.get_incomplete_tasks()
             for rec in incomplete:
@@ -624,10 +624,15 @@ class LongRunningTaskManager:
             except Exception as ex:
                 logger.error(f"Error in completion listener for task '{task_id}': {ex}")
 
-    def list_tasks(self) -> List[TaskProgressReport]:
+    def list_tasks(self) -> list[TaskProgressReport]:
         """List all managed background tasks."""
         with self._lock:
-            return [self.get_task_status(tid) for tid in self._tasks.keys() if self.get_task_status(tid)]
+            results: list[TaskProgressReport] = []
+            for tid in self._tasks.keys():
+                st = self.get_task_status(tid)
+                if st is not None:
+                    results.append(st)
+            return results
 
     def _task_worker(self, task_id: str, is_resumption: bool = False) -> None:
         """Background execution worker thread with timeout, cancellation, & verification checks."""

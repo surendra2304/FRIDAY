@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Forecast Supervisor Operator for FRIDAY.
 
 Continuously monitors Futuris probabilistic forecasts and webhook telemetry on a 60-second cycle:
@@ -11,10 +10,10 @@ Continuously monitors Futuris probabilistic forecasts and webhook telemetry on a
 - Invariant: All alert payloads carry TrustLevel.UNTRUSTED_EXTERNAL
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import TrustLevel
@@ -31,7 +30,7 @@ class ForecastAlert:
     alert_type: str  # THRESHOLD_CROSSED, FORECAST_INVALIDATED, MODEL_DEGRADED
     message: str
     metric: str
-    confidence_interval: List[float]
+    confidence_interval: list[float]
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     acknowledged: bool = False
     trust_level: str = TrustLevel.UNTRUSTED_EXTERNAL.value
@@ -42,21 +41,21 @@ class ForecastSupervisorOperator:
 
     def __init__(
         self,
-        futuris_skill: Optional[FuturisManagerSkill] = None,
+        futuris_skill: FuturisManagerSkill | None = None,
         poll_interval_seconds: float = 60.0,
     ) -> None:
         self.futuris = futuris_skill or FuturisManagerSkill()
         self.poll_interval_seconds = poll_interval_seconds
-        self.active_alerts: List[ForecastAlert] = []
+        self.active_alerts: list[ForecastAlert] = []
         self._lock = threading.RLock()
 
     def run_supervisory_cycle(
         self,
-        telemetry_override: Optional[Dict[str, Any]] = None,
-    ) -> List[ForecastAlert]:
+        telemetry_override: dict[str, Any] | None = None,
+    ) -> list[ForecastAlert]:
         """Runs a single supervisory cycle checking thresholds, calibration, and invalidations."""
         with self._lock:
-            new_alerts: List[ForecastAlert] = []
+            new_alerts: list[ForecastAlert] = []
             now_iso = datetime.now(timezone.utc).isoformat()
 
             # 1. Check Threshold Exceedances on In-Flight Forecasts

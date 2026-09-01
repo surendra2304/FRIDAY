@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Deterministic unit test suite for Computer Action Execution.3 Multi-Step Task Execution Engine & Progress Tracker.
 
 Validates:
@@ -14,19 +13,15 @@ Validates:
 10. Provider independence: Operates 100% offline with MockLLMProvider and zero vendor SDK dependencies.
 """
 
-from typing import Dict, List, Optional
-import pytest
 
 from friday.agent.agent import FridayAgent
 from friday.agent.executor import (
     ExecutionProgress,
-    StepExecutionResult,
     TaskExecutionEngine,
-    TaskExecutionResult,
 )
-from friday.agent.planner import GoalDecomposer, PlanStep, StepStatus, TaskPlan
-from friday.agent.state import ReasoningStateMachine, TaskState
-from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer
+from friday.agent.planner import GoalDecomposer, StepStatus
+from friday.agent.state import TaskState
+from friday.core.auth import BaseAuthorizer
 from friday.core.config import Settings
 from friday.core.types import (
     AuthorizationDecision,
@@ -181,7 +176,7 @@ def test_execution_engine_progress_tracking_callbacks():
     registry = ToolRegistry()
     registry.register(AddNumbersTool())
 
-    progress_events: List[ExecutionProgress] = []
+    progress_events: list[ExecutionProgress] = []
 
     def on_progress(p: ExecutionProgress):
         progress_events.append(p)

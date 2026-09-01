@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Guardian Angel Operator for FRIDAY.
 
 The ultimate 24/7 ecosystem watchdog monitoring all subsystems every 10 seconds:
@@ -8,15 +7,13 @@ The ultimate 24/7 ecosystem watchdog monitoring all subsystems every 10 seconds:
 - Initiates operator responsiveness checks ("Are you okay?") during unacknowledged crises
 """
 
-from datetime import datetime, timezone
-import threading
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from friday.alert_manager import AlertSeverity, ProductionAlertManager
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role, SafetyLevel, TrustLevel
 from friday.ecosystem.command_center import EcosystemCommandCenter, EcosystemState
-from friday.operators.base_operator import BaseOperator, OperatorExecutionResult, OperatorState
+from friday.operators.base_operator import BaseOperator
 from friday.operators.triggers import IntervalTrigger
 
 logger = get_logger("operators.guardian_angel")
@@ -34,11 +31,11 @@ class GuardianAngelOperator(BaseOperator):
 
     def __init__(
         self,
-        command_center: Optional[EcosystemCommandCenter] = None,
-        alert_manager: Optional[ProductionAlertManager] = None,
+        command_center: EcosystemCommandCenter | None = None,
+        alert_manager: ProductionAlertManager | None = None,
         poll_interval_sec: float = 10.0,
-        memory: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        memory: Any | None = None,
+        authorizer: Any | None = None,
     ) -> None:
         trigger = IntervalTrigger(interval_seconds=poll_interval_sec, name="guardian_angel_poll_interval")
         super().__init__(
@@ -54,7 +51,7 @@ class GuardianAngelOperator(BaseOperator):
         self.poll_interval_sec = poll_interval_sec
         self.memory = memory
         self._unacknowledged_critical_ticks: int = 0
-        self._alerted_states: Set[str] = set()
+        self._alerted_states: set[str] = set()
 
     @property
     def command_center(self) -> EcosystemCommandCenter:
@@ -68,9 +65,9 @@ class GuardianAngelOperator(BaseOperator):
             self._alert_manager = ProductionAlertManager()
         return self._alert_manager
 
-    def tick(self) -> List[Dict[str, Any]]:
+    def tick(self) -> list[dict[str, Any]]:
         """Executes a 10-second continuous ecosystem supervisory cycle."""
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
 
         status = self.command_center.get_ecosystem_status()
         state = status.get("ecosystem_state", "SUPERVISED_AUTONOMY")

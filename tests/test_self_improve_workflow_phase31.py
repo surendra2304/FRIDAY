@@ -1,11 +1,13 @@
-# -*- coding: utf-8 -*-
 """Unit tests for SelfImprovementWorkflow (Recursive Self-Improvement)."""
 
 from unittest import mock
-import pytest
 
 from friday.core.types import Message, Role, SafetyLevel
-from friday.tools.builtin.dev_tools import ReadOwnCodebaseTool, RunTestsTool, WriteCodeFileTool
+from friday.tools.builtin.dev_tools import (
+    ReadOwnCodebaseTool,
+    RunTestsTool,
+    WriteCodeFileTool,
+)
 from friday.tools.builtin.git_tools import GitCommitTool, GitPushTool
 from friday.tools.registry import ToolRegistry
 from friday.workflows.self_improve_workflow import SelfImprovementWorkflow

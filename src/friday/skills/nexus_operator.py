@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Nexus Operator Skill for FRIDAY.
 
 Manages autonomous interaction with Nexus (Autonomous Website & Growth Intelligence Engine):
@@ -11,11 +10,10 @@ Manages autonomous interaction with Nexus (Autonomous Website & Growth Intellige
 - Invariant: All Nexus-generated data is stored with TrustLevel.UNTRUSTED_EXTERNAL.
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import re
-import threading
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.skills.base_skill import BaseSkill, SkillExecutionResult
@@ -81,7 +79,7 @@ class NexusOperatorSkill(BaseSkill):
         self.mock_mode = mock_mode
         self._lock = threading.RLock()
         self._telemetry = NexusSiteTelemetry()
-        self._active_experiments: Dict[str, Dict[str, Any]] = {
+        self._active_experiments: dict[str, dict[str, Any]] = {
             "exp_hero_cta_v2": {
                 "experiment_id": "exp_hero_cta_v2",
                 "name": "Hero CTA Copy & Contrast Optimization",
@@ -97,7 +95,7 @@ class NexusOperatorSkill(BaseSkill):
                 "conversion_lift_pct": 8.5,
             },
         }
-        self._leads: List[Dict[str, Any]] = [
+        self._leads: list[dict[str, Any]] = [
             {
                 "lead_id": "lead_9481",
                 "score": 94,
@@ -115,13 +113,13 @@ class NexusOperatorSkill(BaseSkill):
                 "suggested_action": "Send developer quickstart email sequence",
             },
         ]
-        self._incidents: List[Dict[str, Any]] = []
+        self._incidents: list[dict[str, Any]] = []
 
     # =========================================================================
     # Core API Methods
     # =========================================================================
 
-    def get_site_status(self) -> Dict[str, Any]:
+    def get_site_status(self) -> dict[str, Any]:
         """Queries Nexus GET /v1/friday/command with {command: 'get_site_status'}."""
         with self._lock:
             return {
@@ -136,12 +134,12 @@ class NexusOperatorSkill(BaseSkill):
                 "last_updated": datetime.now(timezone.utc).isoformat(),
             }
 
-    def get_high_intent_leads(self) -> List[Dict[str, Any]]:
+    def get_high_intent_leads(self) -> list[dict[str, Any]]:
         """Returns top high-intent visitor leads with behavioral evidence and scoring."""
         with self._lock:
             return list(self._leads)
 
-    def diagnose_conversion_drop(self) -> Dict[str, Any]:
+    def diagnose_conversion_drop(self) -> dict[str, Any]:
         """Triggers Nexus autonomous diagnostic workflow and returns root-cause findings."""
         with self._lock:
             return {
@@ -155,12 +153,12 @@ class NexusOperatorSkill(BaseSkill):
                 "verified_by_nexus_policy": True,
             }
 
-    def get_pending_incidents(self) -> List[Dict[str, Any]]:
+    def get_pending_incidents(self) -> list[dict[str, Any]]:
         """Retrieves active website incidents with severity."""
         with self._lock:
             return list(self._incidents)
 
-    def start_nexus_workflow(self, name: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def start_nexus_workflow(self, name: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         """Submits a workflow trigger through Nexus's policy authorization engine."""
         with self._lock:
             workflow_id = f"wf_nexus_{int(datetime.now(timezone.utc).timestamp())}"
@@ -173,7 +171,7 @@ class NexusOperatorSkill(BaseSkill):
                 "authorized_by_policy_engine": True,
             }
 
-    def pause_nexus_experiment(self, experiment_id: str) -> Dict[str, Any]:
+    def pause_nexus_experiment(self, experiment_id: str) -> dict[str, Any]:
         """Safely halts an active website growth experiment."""
         with self._lock:
             exp = self._active_experiments.get(experiment_id)
@@ -195,7 +193,7 @@ class NexusOperatorSkill(BaseSkill):
                 "message": f"Website experiment `{experiment_id}` ({exp['name']}) has been safely PAUSED.",
             }
 
-    def explain_nexus_decision(self, request_id: str = "req_latest") -> Dict[str, Any]:
+    def explain_nexus_decision(self, request_id: str = "req_latest") -> dict[str, Any]:
         """Retrieves the complete reasoning chain including AI-Universe debate for a decision."""
         with self._lock:
             return {
@@ -214,7 +212,7 @@ class NexusOperatorSkill(BaseSkill):
                 },
             }
 
-    def run_nexus_health_check(self) -> Dict[str, Any]:
+    def run_nexus_health_check(self) -> dict[str, Any]:
         """Runs comprehensive operational audit of Nexus subsystem."""
         with self._lock:
             return {
@@ -233,15 +231,15 @@ class NexusOperatorSkill(BaseSkill):
     def execute(
         self,
         user_request: str,
-        agent: Optional[Any] = None,
-        tool_registry: Optional[Any] = None,
-        llm_provider: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        agent: Any | None = None,
+        tool_registry: Any | None = None,
+        llm_provider: Any | None = None,
+        authorizer: Any | None = None,
         **kwargs: Any,
     ) -> SkillExecutionResult:
         """Executes voice-driven Nexus growth and website commands."""
         clean = user_request.strip().lower()
-        step_results: List[Dict[str, Any]] = []
+        step_results: list[dict[str, Any]] = []
 
         try:
             # 1. "Website status" / "Site health"

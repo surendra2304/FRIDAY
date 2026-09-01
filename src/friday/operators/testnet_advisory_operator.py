@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Testnet Advisory Operator for Live Binance Futures Execution Supervision.
 
 Persistent background operator that monitors live Binance Futures Testnet
@@ -13,13 +12,13 @@ Alert Conditions:
 """
 
 from datetime import datetime, timezone
-import os
-import threading
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role, SafetyLevel, TrustLevel
-from friday.operators.base_operator import BaseOperator, OperatorExecutionResult, OperatorState
+from friday.operators.base_operator import (
+    BaseOperator,
+)
 from friday.operators.triggers import IntervalTrigger
 from friday.skills.trading_bot_operator import TradingBotOperator
 from friday.skills.trading_precedence import CommandPrecedence, tag_trading_command
@@ -34,11 +33,11 @@ class TestnetAdvisoryOperator(BaseOperator):
 
     def __init__(
         self,
-        bot_operator: Optional[TradingBotOperator] = None,
+        bot_operator: TradingBotOperator | None = None,
         poll_interval: float = 900.0,  # 15 minutes default
-        memory: Optional[Any] = None,
-        notification_manager: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        memory: Any | None = None,
+        notification_manager: Any | None = None,
+        authorizer: Any | None = None,
     ) -> None:
         trigger = IntervalTrigger(interval_seconds=poll_interval, name="testnet_advisory_poll_interval")
         super().__init__(
@@ -53,12 +52,12 @@ class TestnetAdvisoryOperator(BaseOperator):
         self.bot_operator = bot_operator or TradingBotOperator()
         self.memory = memory
         self.poll_interval = poll_interval
-        self.last_mode: Optional[str] = None
-        self.alerted_events: Set[str] = set()
+        self.last_mode: str | None = None
+        self.alerted_events: set[str] = set()
 
-    def check_state(self) -> Dict[str, Any]:
+    def check_state(self) -> dict[str, Any]:
         """Performs a synchronous inspection of live testnet advisory metrics and safety limits."""
-        alerts: List[Dict[str, Any]] = []
+        alerts: list[dict[str, Any]] = []
 
         try:
             raw = self.bot_operator.get_testnet_advisory_status()
@@ -154,7 +153,7 @@ class TestnetAdvisoryOperator(BaseOperator):
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
-    def _record_alert(self, alert: Dict[str, Any]) -> None:
+    def _record_alert(self, alert: dict[str, Any]) -> None:
         """Surface alert through notification channels and log to memory with TrustLevel.UNTRUSTED_EXTERNAL."""
         if self.notification_manager:
             try:
@@ -185,10 +184,10 @@ class TestnetAdvisoryOperator(BaseOperator):
                     },
                 )
                 self.memory.add_message(msg)
-                logger.info(f"[TESTNET_OPERATOR] Persisted testnet alert into memory with TrustLevel.UNTRUSTED_EXTERNAL")
+                logger.info("[TESTNET_OPERATOR] Persisted testnet alert into memory with TrustLevel.UNTRUSTED_EXTERNAL")
             except Exception as e:
                 logger.debug(f"[TESTNET_OPERATOR] Failed to record alert to memory: {e}")
 
-    def execute_action(self, event_data: Dict[str, Any]) -> Any:
+    def execute_action(self, event_data: dict[str, Any]) -> Any:
         """Executes testnet advisory inspection cycle."""
         return self.check_state()

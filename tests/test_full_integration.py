@@ -1,13 +1,12 @@
-# -*- coding: utf-8 -*-
 """Full End-to-End Integration Tests for FRIDAY Trading Supervision."""
 
+
 import pytest
-from unittest.mock import MagicMock
 
 from friday.agent.agent import FridayAgent
 from friday.core.auth import DefaultSecureAuthorizer
 from friday.core.config import Settings
-from friday.core.types import Message, Role, TrustLevel
+from friday.core.types import Role, TrustLevel
 from friday.memory.in_memory import InMemoryConversationMemory
 from friday.skills.advisory_supervisor import AdvisorySupervisorSkill
 from friday.skills.registry import SkillRegistry

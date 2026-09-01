@@ -2,7 +2,8 @@
 
 import datetime
 import time
-from typing import Any, Dict
+from typing import Any
+
 from friday.core.types import SafetyLevel, ToolResult
 from friday.tools.base import BaseTool
 
@@ -13,7 +14,7 @@ class TimeDateTool(BaseTool):
     name = "get_time_date"
     description = "Retrieve current local time, date, day of the week, and Unix epoch timestamp from the host system."
     safety_level = SafetyLevel.SAFE
-    parameters: Dict[str, Any] = {
+    parameters: dict[str, Any] = {
         "type": "object",
         "properties": {},
         "required": [],

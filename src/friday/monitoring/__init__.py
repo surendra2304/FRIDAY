@@ -1,14 +1,13 @@
-# -*- coding: utf-8 -*-
 """FRIDAY Monitoring Package."""
 
 from friday.monitoring.production_monitor import (
     ComprehensiveProductionMonitor,
-    ResourceMetrics,
     MonitoringSnapshot,
+    ResourceMetrics,
 )
 
 __all__ = [
     "ComprehensiveProductionMonitor",
-    "ResourceMetrics",
     "MonitoringSnapshot",
+    "ResourceMetrics",
 ]

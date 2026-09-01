@@ -1,13 +1,10 @@
-# -*- coding: utf-8 -*-
 """Adversarial and recursive sanitization tests for memory persistence models."""
 
 import json
-import pytest
-from friday.security.scrubber import recursive_sanitize
+
+from friday.agent.checkpoint import TaskCheckpoint, TaskState
 from friday.memory.task_context import ActiveTaskContext, TaskObservation
-from friday.agent.checkpoint import TaskCheckpoint, InterruptionReason, TaskState
-from friday.agent.goal import Goal, GoalRequestType, GoalRiskLevel, SubGoal
-from friday.agent.planner import TaskPlan, PlanStep, StepStatus, SafetyLevel
+from friday.security.scrubber import recursive_sanitize
 
 
 def test_recursive_nested_data_sanitization():

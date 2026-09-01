@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Concurrency, Timeout & Cancellation Stress Test Suite for FRIDAY.
 
 Stress-tests:
@@ -12,22 +11,23 @@ Stress-tests:
 
 import threading
 import time
-import pytest
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.agent.agent import FridayAgent
 from friday.agent.executor import TaskExecutionEngine
-from friday.agent.planner import PlanStep, StepStatus, TaskPlan
-from friday.agent.state import ReasoningStateMachine, TaskState
+from friday.agent.planner import PlanStep, TaskPlan
+from friday.agent.state import TaskState
 from friday.core.auth import DefaultSecureAuthorizer
 from friday.core.types import Message, Role, SafetyLevel, ToolCall, ToolResult
 from friday.llm.mock_provider import MockLLMProvider
 from friday.memory.in_memory import InMemoryConversationMemory
 from friday.security.authorization import ToolAuthorizer
-from friday.tasks.manager import LongRunningTaskManager, TaskBudget, TaskLifecycleStatus, TaskScope, TaskSpec
+from friday.tasks.manager import (
+    LongRunningTaskManager,
+    TaskLifecycleStatus,
+)
 from friday.tools.base import BaseTool
 from friday.tools.registry import ToolRegistry
-
 
 # ---------------------------------------------------------------------------
 # Test Fixtures: Intentionally Slow and Blocking Tools
@@ -53,7 +53,7 @@ class IntentionallyBlockingTool(BaseTool):
         self.cancelled_count = 0
         self.lock = threading.Lock()
 
-    def execute(self, sleep_seconds: float = 2.0, cancellation_token: Optional[threading.Event] = None, **kwargs: Any) -> ToolResult:
+    def execute(self, sleep_seconds: float = 2.0, cancellation_token: threading.Event | None = None, **kwargs: Any) -> ToolResult:
         with self.lock:
             self.started_count += 1
 
@@ -96,7 +96,7 @@ class StateModifyingSideEffectTool(BaseTool):
 
     def __init__(self) -> None:
         super().__init__()
-        self.executed_actions: List[str] = []
+        self.executed_actions: list[str] = []
         self.lock = threading.Lock()
 
     def execute(self, action_id: str, **kwargs: Any) -> ToolResult:

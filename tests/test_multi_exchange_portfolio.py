@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for FRIDAY Multi-Exchange Portfolio Supervision."""
 
 import pytest

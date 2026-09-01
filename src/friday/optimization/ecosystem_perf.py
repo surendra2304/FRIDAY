@@ -1,16 +1,15 @@
-# -*- coding: utf-8 -*-
 """Ecosystem Performance Optimization for FRIDAY.
 
 Provides parallel health auditing, TTL caching, lazy loading of heavy payloads,
 background data refresh, and latency SLA benchmarking.
 """
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
-import time
 import threading
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -35,7 +34,7 @@ class EcosystemPerformanceOptimizer:
     ) -> None:
         self.default_ttl = timedelta(seconds=default_cache_ttl_sec)
         self.max_workers = max_workers
-        self._cache: Dict[str, CacheEntry] = {}
+        self._cache: dict[str, CacheEntry] = {}
         self._lock = threading.RLock()
 
         # Latency SLA benchmarks (targets in seconds)
@@ -49,7 +48,7 @@ class EcosystemPerformanceOptimizer:
         self,
         cache_key: str,
         compute_fn: Callable[[], Any],
-        ttl_sec: Optional[int] = None,
+        ttl_sec: int | None = None,
     ) -> Any:
         """Retrieves cached item if fresh, or computes and caches the result."""
         with self._lock:
@@ -74,11 +73,11 @@ class EcosystemPerformanceOptimizer:
 
     def parallel_health_check(
         self,
-        check_callables: Dict[str, Callable[[], Dict[str, Any]]],
+        check_callables: dict[str, Callable[[], dict[str, Any]]],
         timeout_sec: float = 3.0,
-    ) -> Dict[str, Dict[str, Any]]:
+    ) -> dict[str, dict[str, Any]]:
         """Executes subsystem health checks concurrently in parallel."""
-        results: Dict[str, Dict[str, Any]] = {}
+        results: dict[str, dict[str, Any]] = {}
 
         with ThreadPoolExecutor(max_workers=min(self.max_workers, len(check_callables) or 1)) as executor:
             future_to_name = {

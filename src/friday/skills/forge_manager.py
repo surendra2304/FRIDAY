@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """FORGE Task Manager Skill for FRIDAY.
 
 Manages autonomous software engineering tasks executed by FORGE:
@@ -12,11 +11,11 @@ Manages autonomous software engineering tasks executed by FORGE:
 - get_forge_health: Performs health and connection check (GET /api/health)
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import re
 import threading
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role, TrustLevel
@@ -36,15 +35,15 @@ class ForgeTaskDetails:
     priority: str
     state: str  # PENDING, READY, RUNNING, BLOCKED, FAILED, VERIFYING, COMPLETED, CANCELLED
     progress_pct: float
-    files_created: List[str]
-    artifacts: List[str]
-    verification_results: Dict[str, Any]
+    files_created: list[str]
+    artifacts: list[str]
+    verification_results: dict[str, Any]
     test_coverage_pct: float
-    logs: List[str]
-    delivery_package_path: Optional[str]
+    logs: list[str]
+    delivery_package_path: str | None
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    completed_at: Optional[str] = None
-    failure_reason: Optional[str] = None
+    completed_at: str | None = None
+    failure_reason: str | None = None
 
     @property
     def status(self) -> str:
@@ -93,12 +92,12 @@ class ForgeManagerSkill(BaseSkill):
 
     def __init__(
         self,
-        auth_client: Optional[ForgeAuthClient] = None,
-        memory: Optional[Any] = None,
+        auth_client: ForgeAuthClient | None = None,
+        memory: Any | None = None,
     ) -> None:
         self._auth_client = auth_client
         self.memory = memory
-        self._tasks: Dict[str, ForgeTaskDetails] = {}
+        self._tasks: dict[str, ForgeTaskDetails] = {}
         self._lock = threading.RLock()
         self._init_defaults()
 
@@ -161,8 +160,8 @@ class ForgeManagerSkill(BaseSkill):
     def submit_build_request(
         self,
         goal: str,
-        options: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        options: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Calls FORGE POST /api/tasks with the expanded goal specification."""
         if not self.auth_client.acquire_rate_limit():
             raise ForgeRateLimitExceeded("FORGE API rate limit (10 req/min) exceeded.")
@@ -216,13 +215,13 @@ class ForgeManagerSkill(BaseSkill):
         self,
         goal: str,
         priority: str = "NORMAL",
-        deadline: Optional[str] = None,
+        deadline: str | None = None,
     ) -> str:
         """Alias for submit_build_request returning task_id string."""
         res = self.submit_build_request(goal, options={"priority": priority, "deadline": deadline})
         return res["task_id"]
 
-    def get_task_status(self, task_id: str) -> Dict[str, Any]:
+    def get_task_status(self, task_id: str) -> dict[str, Any]:
         """Calls FORGE GET /api/tasks/{task_id} returning state, progress, ETA, and timeline."""
         with self._lock:
             task = self._tasks.get(task_id)
@@ -253,7 +252,7 @@ class ForgeManagerSkill(BaseSkill):
                 "completed_at": task.completed_at,
             }
 
-    def get_task_artifacts(self, task_id: str) -> List[str]:
+    def get_task_artifacts(self, task_id: str) -> list[str]:
         """Retrieves list of generated software artifact paths/URLs."""
         return list(self.get_artifacts(task_id).get("artifacts", []))
 
@@ -274,7 +273,7 @@ class ForgeManagerSkill(BaseSkill):
             f"- **Delivery Package:** `{insp['delivery_package_path'] or 'In Progress'}`"
         )
 
-    def get_task_logs(self, task_id: str) -> Dict[str, Any]:
+    def get_task_logs(self, task_id: str) -> dict[str, Any]:
         """Calls FORGE GET /api/tasks/{task_id}/logs returning execution logs."""
         with self._lock:
             task = self._tasks.get(task_id)
@@ -286,7 +285,7 @@ class ForgeManagerSkill(BaseSkill):
                 "total_entries": len(task.logs),
             }
 
-    def inspect_task(self, task_id: str) -> Dict[str, Any]:
+    def inspect_task(self, task_id: str) -> dict[str, Any]:
         """Calls FORGE GET /api/tasks/{task_id}/inspect returning files, verification, and artifacts."""
         with self._lock:
             task = self._tasks.get(task_id)
@@ -304,7 +303,7 @@ class ForgeManagerSkill(BaseSkill):
                 "delivery_package_path": task.delivery_package_path,
             }
 
-    def list_tasks(self, limit: int = 10) -> Dict[str, Any]:
+    def list_tasks(self, limit: int = 10) -> dict[str, Any]:
         """Lists recent FORGE tasks (GET /api/tasks)."""
         with self._lock:
             recent = list(self._tasks.values())[-limit:]
@@ -322,7 +321,7 @@ class ForgeManagerSkill(BaseSkill):
                 ],
             }
 
-    def get_artifacts(self, task_id: str) -> Dict[str, Any]:
+    def get_artifacts(self, task_id: str) -> dict[str, Any]:
         """Retrieves completion reports and verification manifests (GET /api/tasks/{id}/artifacts)."""
         with self._lock:
             task = self._tasks.get(task_id)
@@ -334,7 +333,7 @@ class ForgeManagerSkill(BaseSkill):
                 "delivery_package_path": task.delivery_package_path,
             }
 
-    def cancel_task(self, task_id: str) -> Dict[str, Any]:
+    def cancel_task(self, task_id: str) -> dict[str, Any]:
         """Cancels a running task (POST /api/tasks/{task_id}/cancel)."""
         with self._lock:
             task = self._tasks.get(task_id)
@@ -362,7 +361,7 @@ class ForgeManagerSkill(BaseSkill):
             logger.info(f"[FORGE_MANAGER] Cancelled task {task_id}")
             return {"task_id": task_id, "cancelled": True, "state": "CANCELLED"}
 
-    def get_forge_health(self) -> Dict[str, Any]:
+    def get_forge_health(self) -> dict[str, Any]:
         """Health check on FORGE service (GET /api/health)."""
         with self._lock:
             running_tasks = sum(1 for t in self._tasks.values() if t.state in ("RUNNING", "VERIFYING", "READY"))
@@ -379,15 +378,15 @@ class ForgeManagerSkill(BaseSkill):
     def execute(
         self,
         user_request: str,
-        agent: Optional[Any] = None,
-        tool_registry: Optional[Any] = None,
-        llm_provider: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        agent: Any | None = None,
+        tool_registry: Any | None = None,
+        llm_provider: Any | None = None,
+        authorizer: Any | None = None,
         **kwargs: Any,
     ) -> SkillExecutionResult:
         """Executes voice-driven FORGE task management queries."""
         clean = user_request.strip().lower()
-        step_results: List[Dict[str, Any]] = []
+        step_results: list[dict[str, Any]] = []
 
         try:
             # 1. "Forge status"
@@ -459,7 +458,7 @@ class ForgeManagerSkill(BaseSkill):
             # 6. "What did Forge deliver?"
             if any(k in clean for k in ["what did forge deliver", "forge artifacts", "show forge artifacts"]):
                 with self._lock:
-                    all_artifacts: List[str] = []
+                    all_artifacts: list[str] = []
                     for t in self._tasks.values():
                         all_artifacts.extend(t.artifacts)
                 if all_artifacts:

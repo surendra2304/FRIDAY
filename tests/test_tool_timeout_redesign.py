@@ -1,9 +1,8 @@
-# -*- coding: utf-8 -*-
 """Verification test suite for hardened tool execution timeouts and cancellation."""
 
-import time
-import pytest
 import threading
+import time
+
 from friday.core.types import SafetyLevel, ToolResult
 from friday.tools.base import BaseTool
 from friday.tools.registry import ToolRegistry
