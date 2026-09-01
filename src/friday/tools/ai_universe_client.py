@@ -167,6 +167,7 @@ class AIUniverseTool(BaseTool):
         "strategic dilemmas, architectural second opinions, or comprehensive validation debates."
     )
     safety_level = SafetyLevel.SAFE
+    timeout = 90.0
     parameters = {
         "type": "object",
         "properties": {
