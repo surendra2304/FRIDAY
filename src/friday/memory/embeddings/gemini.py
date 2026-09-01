@@ -42,14 +42,17 @@ class GeminiEmbeddingProvider(BaseEmbeddingProvider):
         super().__init__(model=model, dimension=dimension)
         self.api_key = api_key or ""
         self.base_url = base_url.rstrip("/")
-        self.timeout = timeout
+        self.timeout = timeout or 10.0
         self.max_retries = max_retries
         self.backoff_factor = backoff_factor
         self.max_batch_size = max(1, min(max_batch_size, 32))
         self._client: genai.Client | None = None
         if self.api_key:
             try:
-                self._client = genai.Client(api_key=self.api_key)
+                self._client = genai.Client(
+                    api_key=self.api_key,
+                    http_options=genai_types.HttpOptions(timeout=int(self.timeout * 1000)),
+                )
             except Exception as e:
                 logger.warning(f"Failed to initialize GenAI embedding client: {self._mask_key(str(e))}")
 
@@ -59,7 +62,10 @@ class GeminiEmbeddingProvider(BaseEmbeddingProvider):
         if self._client is None:
             if not self.api_key:
                 raise LLMProviderError("Gemini API key is required for semantic embeddings.")
-            self._client = genai.Client(api_key=self.api_key)
+            self._client = genai.Client(
+                api_key=self.api_key,
+                http_options=genai_types.HttpOptions(timeout=int(self.timeout * 1000)),
+            )
         return self._client
 
     @property
