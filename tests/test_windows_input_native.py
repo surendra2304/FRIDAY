@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Real Windows OS integration tests for Win32 SendInput and ComputerActionExecutor.
 
 Exercises:
@@ -10,6 +9,7 @@ Exercises:
 """
 
 import sys
+
 import pytest
 
 from friday.vision.actions import ActionType, ComputerActionProposal, ProposalBuilder

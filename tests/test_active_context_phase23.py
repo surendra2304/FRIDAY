@@ -1,13 +1,17 @@
-# -*- coding: utf-8 -*-
 """Unit tests for Full-Duplex Voice Engine3: Active Screen Awareness."""
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from friday.vision.active_context import get_active_window_context, format_active_window_prompt
 from friday.agent.prompts import get_default_system_prompt
 from friday.core.config import Settings
-from friday.tools.builtin.screen_ocr import GetActiveAppContextTool, ReadActiveWindowTextTool
+from friday.tools.builtin.screen_ocr import (
+    GetActiveAppContextTool,
+    ReadActiveWindowTextTool,
+)
+from friday.vision.active_context import (
+    format_active_window_prompt,
+    get_active_window_context,
+)
 
 
 def test_get_active_window_context_mocked():

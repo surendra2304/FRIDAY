@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Production Security Hardening Suite for FRIDAY Operating System.
 
 Comprehensive enterprise-grade security layer providing:
@@ -11,14 +10,14 @@ Comprehensive enterprise-grade security layer providing:
 """
 
 import base64
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
 import hashlib
 import os
 import re
 import threading
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
 try:
     from cryptography.fernet import Fernet
@@ -38,7 +37,7 @@ logger = get_logger("security.production_hardening")
 class CredentialVault:
     """Manages encryption and decryption of secrets at rest using Fernet."""
 
-    def __init__(self, encryption_key: Optional[str] = None) -> None:
+    def __init__(self, encryption_key: str | None = None) -> None:
         raw_key = encryption_key or os.getenv("FRIDAY_CREDENTIAL_ENCRYPTION_KEY")
         if not raw_key:
             # Generate deterministic fallback or random key for testing/dev
@@ -56,7 +55,7 @@ class CredentialVault:
                 self._key = raw_key
 
         self._fernet = Fernet(self._key) if HAS_FERNET else None
-        self._vault: Dict[str, bytes] = {}
+        self._vault: dict[str, bytes] = {}
         self._lock = threading.RLock()
 
     def store_secret(self, key_name: str, secret_value: str) -> None:
@@ -70,7 +69,7 @@ class CredentialVault:
                 encrypted = base64.b64encode(val_bytes)
             self._vault[key_name] = encrypted
 
-    def retrieve_secret(self, key_name: str) -> Optional[str]:
+    def retrieve_secret(self, key_name: str) -> str | None:
         """Decrypts and returns stored secret."""
         with self._lock:
             encrypted = self._vault.get(key_name)
@@ -110,10 +109,10 @@ class BiometricSecurityEngine:
         self.max_failed_attempts = max_failed_attempts
         self.lockout_duration = timedelta(minutes=lockout_duration_minutes)
         self._failed_attempts = 0
-        self._locked_until: Optional[datetime] = None
+        self._locked_until: datetime | None = None
         self._lock = threading.RLock()
 
-    def is_locked_out(self) -> Tuple[bool, int]:
+    def is_locked_out(self) -> tuple[bool, int]:
         """Checks whether the biometric engine is currently in lockout state."""
         with self._lock:
             if not self._locked_until:
@@ -197,10 +196,10 @@ class RateLimiter:
     def __init__(self, max_requests_per_minute: int = 100) -> None:
         self.max_requests = max_requests_per_minute
         self.window = 60.0  # seconds
-        self._requests: Dict[str, List[float]] = {}
+        self._requests: dict[str, list[float]] = {}
         self._lock = threading.RLock()
 
-    def allow_request(self, client_id: str = "default_client") -> Tuple[bool, int, int]:
+    def allow_request(self, client_id: str = "default_client") -> tuple[bool, int, int]:
         """Checks rate limit. Returns (allowed, remaining_requests, retry_after_sec)."""
         with self._lock:
             now = time.time()
@@ -239,8 +238,8 @@ class IntrusionDetector:
     """Monitors unusual command patterns and rapid failed authorization bursts."""
 
     def __init__(self) -> None:
-        self._alerts: List[SecurityAlert] = []
-        self._command_frequency: Dict[str, List[float]] = {}
+        self._alerts: list[SecurityAlert] = []
+        self._command_frequency: dict[str, list[float]] = {}
         self._lock = threading.RLock()
 
     def audit_command_attempt(
@@ -248,7 +247,7 @@ class IntrusionDetector:
         command: str,
         client_id: str = "local_operator",
         is_authorized: bool = True,
-    ) -> Optional[SecurityAlert]:
+    ) -> SecurityAlert | None:
         """Analyzes command pattern for intrusion signatures."""
         with self._lock:
             now = time.time()
@@ -290,7 +289,7 @@ class IntrusionDetector:
 
             return None
 
-    def get_security_alerts(self) -> List[SecurityAlert]:
+    def get_security_alerts(self) -> list[SecurityAlert]:
         """Returns all recorded security intrusion alerts."""
         with self._lock:
             return list(self._alerts)
@@ -324,9 +323,9 @@ class CredentialScrubber:
         return sanitized
 
     @classmethod
-    def scrub_dict(cls, data: Dict[str, Any]) -> Dict[str, Any]:
+    def scrub_dict(cls, data: dict[str, Any]) -> dict[str, Any]:
         """Recursively sanitizes dictionary structures."""
-        scrubbed: Dict[str, Any] = {}
+        scrubbed: dict[str, Any] = {}
         for k, v in data.items():
             if any(s in k.lower() for s in ["key", "secret", "password", "token", "auth", "credential"]):
                 scrubbed[k] = "[REDACTED_SECRET]"

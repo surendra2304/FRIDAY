@@ -1,12 +1,13 @@
-# -*- coding: utf-8 -*-
 """Unit tests for Git & GitHub Automation."""
 
-import pytest
 from unittest.mock import MagicMock, patch
 
-from friday.tools.builtin.git_tools import GitStatusTool, GitCommitTool, GitPushTool
-from friday.tools.builtin.github_tools import ListGitHubIssuesTool, CreateGitHubIssueTool
 from friday.core.types import SafetyLevel
+from friday.tools.builtin.git_tools import GitCommitTool, GitPushTool, GitStatusTool
+from friday.tools.builtin.github_tools import (
+    CreateGitHubIssueTool,
+    ListGitHubIssuesTool,
+)
 
 
 def test_git_status_tool():

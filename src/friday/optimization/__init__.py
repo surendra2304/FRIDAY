@@ -1,12 +1,11 @@
-# -*- coding: utf-8 -*-
 """FRIDAY Optimization Package."""
 
 from friday.optimization.performance import (
-    PerformanceOptimizer,
     LatencyBenchmark,
+    PerformanceOptimizer,
 )
 
 __all__ = [
-    "PerformanceOptimizer",
     "LatencyBenchmark",
+    "PerformanceOptimizer",
 ]

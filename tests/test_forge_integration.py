@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for FRIDAY Ecosystem Master Control & FORGE Integration."""
 
 import pytest
@@ -7,7 +6,7 @@ from friday.alert_manager import ProductionAlertManager
 from friday.ecosystem.command_center import EcosystemCommandCenter
 from friday.ecosystem.master_dashboard import EcosystemMasterDashboard
 from friday.ecosystem.orchestrator import EcosystemOrchestrator, TargetSubsystem
-from friday.integrations.forge_auth import ForgeAuthClient, ForgeRateLimitExceeded
+from friday.integrations.forge_auth import ForgeAuthClient
 from friday.memory.in_memory import InMemoryConversationMemory
 from friday.operators.forge_monitor import ForgeMonitorOperator
 from friday.security.production_security import ProductionSecurityManager

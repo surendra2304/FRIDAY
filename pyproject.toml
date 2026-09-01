@@ -66,3 +66,56 @@ markers = [
     "live: Real external Google Gemini API tests (opt-in only via pytest -m live)",
     "hardware: Real physical microphone, speaker, and display hardware tests (opt-in only via pytest -m hardware)",
 ]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = [
+    "E501",   # line length
+    "E722",   # bare except
+    "E402",   # module import not at top
+    "E741",   # ambiguous variable name
+    "F401",   # unused imports
+    "F841",   # unused local variables
+    "W291",   # trailing whitespace
+    "W292",   # no newline at end of file
+    "W293",   # blank line whitespace
+    "B008",   # function call in default argument
+    "B904",   # raise ... from err
+    "SIM105", # contextlib.suppress
+    "SIM115", # context manager for open
+    "SIM108", # ternary operator
+    "SIM117", # nested with
+    "UP007",  # Optional / Union syntax
+    "UP006",  # typing syntax
+    "UP035",  # typing deprecated
+    "UP017",  # datetime.UTC
+]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_ignores = false
+disable_error_code = [
+    "attr-defined",
+    "assignment",
+    "no-untyped-def",
+    "union-attr",
+    "call-arg",
+    "arg-type",
+    "import-untyped",
+    "override",
+    "operator",
+    "no-untyped-call",
+    "type-arg",
+    "var-annotated",
+    "dict-item",
+    "no-redef",
+    "misc",
+    "index",
+    "truthy-function",
+    "return-value",
+]

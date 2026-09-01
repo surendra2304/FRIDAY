@@ -2,7 +2,8 @@
 
 import datetime
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
+
 from friday.core.types import SafetyLevel, ToolResult
 from friday.tools.base import BaseTool
 
@@ -13,7 +14,7 @@ class FileListingTool(BaseTool):
     name = "list_dir"
     description = "List files and subdirectories within a directory relative to the workspace root. Output is limited to 100 items."
     safety_level = SafetyLevel.SAFE
-    parameters: Dict[str, Any] = {
+    parameters: dict[str, Any] = {
         "type": "object",
         "properties": {
             "path": {
@@ -107,7 +108,7 @@ class FileListingTool(BaseTool):
         except Exception as e:
             return ToolResult(
                 name=self.name,
-                content=f"Error: Unable to list directory. Details: {str(e)}",
+                content=f"Error: Unable to list directory. Details: {e!s}",
                 is_error=True,
                 safety_level=self.safety_level,
             )

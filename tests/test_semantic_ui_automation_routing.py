@@ -3,11 +3,8 @@
 from types import SimpleNamespace
 from unittest import mock
 
-import pytest
-
 from friday.core.types import AuthorizationDecision, AuthorizationResponse
 from friday.vision.intent_detector import ActionIntent, IntentDetector
-
 
 # ---------------------------------------------------------------------------
 # IntentDetector patterns

@@ -1,9 +1,8 @@
-# -*- coding: utf-8 -*-
 """Unit tests for AI Universe LLM Provider and Fallback Chain Integration."""
 
 from unittest import mock
+
 import pytest
-import httpx
 
 from friday.core.config import Settings
 from friday.core.exceptions import LLMProviderError

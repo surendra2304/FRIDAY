@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """End-to-End Test: Forge - Sentinel Deployment Security Gate.
 
 Validates:
@@ -10,7 +9,7 @@ Validates:
 """
 
 from friday.ecosystem.asset_registry import AssetRegistry
-from friday.skills.sentinel_manager import SentinelManagerSkill, SecurityFinding
+from friday.skills.sentinel_manager import SecurityFinding, SentinelManagerSkill
 from friday.workflows.security_coordination import SecurityCoordinationWorkflow
 
 

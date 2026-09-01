@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Safe Win32 Input Synthesis Driver and Test Mock for Windows OS.
 
 Provides:
@@ -9,12 +8,12 @@ Provides:
 - `check_desktop_interactivity`: Honest hardware/environment probe for active interactive desktop.
 """
 
-from abc import ABC, abstractmethod
 import ctypes
-from ctypes import wintypes
 import sys
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from abc import ABC, abstractmethod
+from ctypes import wintypes
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -22,7 +21,7 @@ logger = get_logger("vision.input_driver")
 _DPI_AWARENESS_SET = False
 
 # Windows Virtual Key Codes
-VK_MAP: Dict[str, int] = {
+VK_MAP: dict[str, int] = {
     "backspace": 0x08,
     "tab": 0x09,
     "enter": 0x0D,
@@ -138,7 +137,7 @@ class POINT(ctypes.Structure):
     ]
 
 
-def check_desktop_interactivity() -> Tuple[bool, str]:
+def check_desktop_interactivity() -> tuple[bool, str]:
     """Check if the current Windows session has an active, accessible interactive desktop."""
     if sys.platform != "win32":
         return False, "Operating system is not Windows"
@@ -161,47 +160,38 @@ class BaseWindowsInputDriver(ABC):
     @abstractmethod
     def move_cursor(self, x: int, y: int) -> bool:
         """Move mouse cursor to absolute pixel coordinates (x, y)."""
-        pass
 
     @abstractmethod
-    def click(self, x: Optional[int] = None, y: Optional[int] = None, button: str = "left") -> bool:
+    def click(self, x: int | None = None, y: int | None = None, button: str = "left") -> bool:
         """Click mouse button at specified or current coordinates."""
-        pass
 
     @abstractmethod
-    def double_click(self, x: Optional[int] = None, y: Optional[int] = None) -> bool:
+    def double_click(self, x: int | None = None, y: int | None = None) -> bool:
         """Perform rapid double left click."""
-        pass
 
     @abstractmethod
     def scroll(self, delta_y: int) -> bool:
         """Scroll mouse wheel vertically."""
-        pass
 
     @abstractmethod
     def press_key(self, key: str) -> bool:
         """Press and release a single allowlisted key."""
-        pass
 
     @abstractmethod
     def type_text(self, text: str) -> bool:
         """Type safe text string via Unicode input synthesis."""
-        pass
 
     @abstractmethod
-    def hotkey(self, keys: List[str]) -> bool:
+    def hotkey(self, keys: list[str]) -> bool:
         """Execute a combination of modifier and target keys."""
-        pass
 
     @abstractmethod
-    def get_cursor_position(self) -> Tuple[int, int]:
+    def get_cursor_position(self) -> tuple[int, int]:
         """Return current mouse cursor position (x, y)."""
-        pass
 
     @abstractmethod
-    def get_screen_dimensions(self) -> Tuple[int, int]:
+    def get_screen_dimensions(self) -> tuple[int, int]:
         """Return screen width and height in pixels."""
-        pass
 
 
 class WindowsNativeInputDriver(BaseWindowsInputDriver):
@@ -246,12 +236,12 @@ class WindowsNativeInputDriver(BaseWindowsInputDriver):
         except Exception as e:
             logger.debug(f"Could not set process DPI awareness: {e}")
 
-    def get_screen_dimensions(self) -> Tuple[int, int]:
+    def get_screen_dimensions(self) -> tuple[int, int]:
         width = int(self._user32.GetSystemMetrics(SM_CXSCREEN))
         height = int(self._user32.GetSystemMetrics(SM_CYSCREEN))
         return (width, height)
 
-    def get_cursor_position(self) -> Tuple[int, int]:
+    def get_cursor_position(self) -> tuple[int, int]:
         pt = POINT()
         ok = self._user32.GetCursorPos(ctypes.byref(pt))
         if not ok:
@@ -313,7 +303,7 @@ class WindowsNativeInputDriver(BaseWindowsInputDriver):
         cur_x, cur_y = self.get_cursor_position()
         return abs(cur_x - target_x) <= 2 and abs(cur_y - target_y) <= 2
 
-    def click(self, x: Optional[int] = None, y: Optional[int] = None, button: str = "left") -> bool:
+    def click(self, x: int | None = None, y: int | None = None, button: str = "left") -> bool:
         if x is not None and y is not None:
             self.move_cursor(x, y)
 
@@ -340,7 +330,7 @@ class WindowsNativeInputDriver(BaseWindowsInputDriver):
         time.sleep(0.02)
         return sent == 2
 
-    def double_click(self, x: Optional[int] = None, y: Optional[int] = None) -> bool:
+    def double_click(self, x: int | None = None, y: int | None = None) -> bool:
         if x is not None and y is not None:
             self.move_cursor(x, y)
 
@@ -405,7 +395,7 @@ class WindowsNativeInputDriver(BaseWindowsInputDriver):
 
         return all_sent
 
-    def hotkey(self, keys: List[str]) -> bool:
+    def hotkey(self, keys: list[str]) -> bool:
         if not keys:
             return True
 
@@ -447,13 +437,13 @@ class MockWindowsInputDriver(BaseWindowsInputDriver):
     def __init__(self, screen_width: int = 1920, screen_height: int = 1080) -> None:
         self.screen_width = screen_width
         self.screen_height = screen_height
-        self.cursor_pos: Tuple[int, int] = (0, 0)
-        self.call_log: List[Dict[str, Any]] = []
+        self.cursor_pos: tuple[int, int] = (0, 0)
+        self.call_log: list[dict[str, Any]] = []
 
-    def get_screen_dimensions(self) -> Tuple[int, int]:
+    def get_screen_dimensions(self) -> tuple[int, int]:
         return (self.screen_width, self.screen_height)
 
-    def get_cursor_position(self) -> Tuple[int, int]:
+    def get_cursor_position(self) -> tuple[int, int]:
         return self.cursor_pos
 
     def move_cursor(self, x: int, y: int) -> bool:
@@ -461,13 +451,13 @@ class MockWindowsInputDriver(BaseWindowsInputDriver):
         self.call_log.append({"action": "move_cursor", "x": x, "y": y})
         return True
 
-    def click(self, x: Optional[int] = None, y: Optional[int] = None, button: str = "left") -> bool:
+    def click(self, x: int | None = None, y: int | None = None, button: str = "left") -> bool:
         if x is not None and y is not None:
             self.cursor_pos = (int(x), int(y))
         self.call_log.append({"action": "click", "x": self.cursor_pos[0], "y": self.cursor_pos[1], "button": button})
         return True
 
-    def double_click(self, x: Optional[int] = None, y: Optional[int] = None) -> bool:
+    def double_click(self, x: int | None = None, y: int | None = None) -> bool:
         if x is not None and y is not None:
             self.cursor_pos = (int(x), int(y))
         self.call_log.append({"action": "double_click", "x": self.cursor_pos[0], "y": self.cursor_pos[1]})
@@ -485,6 +475,6 @@ class MockWindowsInputDriver(BaseWindowsInputDriver):
         self.call_log.append({"action": "type_text", "text": text})
         return True
 
-    def hotkey(self, keys: List[str]) -> bool:
+    def hotkey(self, keys: list[str]) -> bool:
         self.call_log.append({"action": "hotkey", "keys": list(keys)})
         return True

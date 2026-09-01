@@ -1,15 +1,17 @@
-# -*- coding: utf-8 -*-
 """Unit tests for Autonomous Self-Coding Dev Agent."""
 
-import os
 from unittest import mock
+
 import pytest
 
 from friday.agents.specialists.developer_agent import DeveloperAgent
-from friday.core.config import Settings
 from friday.core.types import SafetyLevel, ToolResult
 from friday.llm.mock_provider import MockLLMProvider
-from friday.tools.builtin.dev_tools import CreateGitBranchTool, RunTestsTool, WriteCodeFileTool
+from friday.tools.builtin.dev_tools import (
+    CreateGitBranchTool,
+    RunTestsTool,
+    WriteCodeFileTool,
+)
 from friday.tools.registry import ToolRegistry
 from friday.workflows.dev_workflow import AutonomousDevWorkflow
 

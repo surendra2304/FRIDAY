@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Intelligence Vigilance Operator for FRIDAY.
 
 Supervises AI-Universe prediction streams and alternative market data feeds every 15 minutes:
@@ -8,14 +7,12 @@ Supervises AI-Universe prediction streams and alternative market data feeds ever
 - Prediction model accuracy decay detection (<60% directional accuracy)
 """
 
-from datetime import datetime, timezone
-import threading
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from friday.alert_manager import AlertSeverity, ProductionAlertManager
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role, SafetyLevel, TrustLevel
-from friday.operators.base_operator import BaseOperator, OperatorExecutionResult, OperatorState
+from friday.operators.base_operator import BaseOperator
 from friday.operators.triggers import IntervalTrigger
 from friday.trading.intelligence_engine import IntelligenceEngine
 
@@ -34,11 +31,11 @@ class IntelligenceVigilanceOperator(BaseOperator):
 
     def __init__(
         self,
-        intelligence_engine: Optional[IntelligenceEngine] = None,
-        alert_manager: Optional[ProductionAlertManager] = None,
+        intelligence_engine: IntelligenceEngine | None = None,
+        alert_manager: ProductionAlertManager | None = None,
         poll_interval_sec: float = 900.0,  # 15 minutes default
-        memory: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        memory: Any | None = None,
+        authorizer: Any | None = None,
     ) -> None:
         trigger = IntervalTrigger(interval_seconds=poll_interval_sec, name="intelligence_vigilance_poll_interval")
         super().__init__(
@@ -53,7 +50,7 @@ class IntelligenceVigilanceOperator(BaseOperator):
         self._alert_manager = alert_manager
         self.poll_interval_sec = poll_interval_sec
         self.memory = memory
-        self._alerted_whales: Set[str] = set()
+        self._alerted_whales: set[str] = set()
 
     @property
     def intel_engine(self) -> IntelligenceEngine:
@@ -67,9 +64,9 @@ class IntelligenceVigilanceOperator(BaseOperator):
             self._alert_manager = ProductionAlertManager()
         return self._alert_manager
 
-    def tick(self) -> List[Dict[str, Any]]:
+    def tick(self) -> list[dict[str, Any]]:
         """Executes a 15-minute intelligence monitoring cycle."""
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
 
         report = self.intel_engine.get_market_intelligence_report()
         predictions = report.get("predictions", {})

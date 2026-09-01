@@ -1,9 +1,8 @@
-# -*- coding: utf-8 -*-
 """Git CLI automation tools for Git & GitHub Automation."""
 
-import subprocess
 import os
-from typing import Any, Dict, Optional
+import subprocess
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel, ToolResult
@@ -12,7 +11,7 @@ from friday.tools.base import BaseTool
 logger = get_logger("tools.git_tools")
 
 
-def _run_git_command(args: list[str], cwd: Optional[str] = None) -> tuple[int, str, str]:
+def _run_git_command(args: list[str], cwd: str | None = None) -> tuple[int, str, str]:
     """Execute git command synchronously with timeout."""
     cmd = ["git"] + args
     working_dir = cwd or os.getcwd()
@@ -50,7 +49,7 @@ class GitStatusTool(BaseTool):
         "required": [],
     }
 
-    def execute(self, cwd: Optional[str] = None, **kwargs: Any) -> ToolResult:
+    def execute(self, cwd: str | None = None, **kwargs: Any) -> ToolResult:
         code, out, err = _run_git_command(["status"], cwd=cwd)
         if code != 0:
             return ToolResult(
@@ -91,7 +90,7 @@ class GitCommitTool(BaseTool):
         "required": ["message"],
     }
 
-    def execute(self, message: str, cwd: Optional[str] = None, **kwargs: Any) -> ToolResult:
+    def execute(self, message: str, cwd: str | None = None, **kwargs: Any) -> ToolResult:
         msg = (message or "").strip()
         if not msg:
             return ToolResult(
@@ -166,9 +165,9 @@ class GitPushTool(BaseTool):
 
     def execute(
         self,
-        remote: Optional[str] = "origin",
-        branch: Optional[str] = None,
-        cwd: Optional[str] = None,
+        remote: str | None = "origin",
+        branch: str | None = None,
+        cwd: str | None = None,
         **kwargs: Any,
     ) -> ToolResult:
         rem = remote or "origin"

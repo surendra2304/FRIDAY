@@ -1,10 +1,10 @@
-# -*- coding: utf-8 -*-
 """Advisory Command Validation Tests for FRIDAY Trading Supervision."""
 
 import pytest
-from tests.mock_trading_bot import MockTradingBotServer, MockTradingBotState
+
 from friday.skills.advisory_supervisor import AdvisorySupervisorSkill
 from friday.skills.trading_bot_operator import TradingBotOperator
+from tests.mock_trading_bot import MockTradingBotServer
 
 
 @pytest.fixture(scope="module")

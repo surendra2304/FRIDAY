@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Proactive Screen Reading (The Watcher) for Proactive Screen Reading.
 
 Passively reads active screen context via local OCR (Tesseract) and active window tracking,
@@ -8,7 +7,7 @@ assistance (e.g. debugging code errors, proofreading email drafts).
 
 import json
 import re
-from typing import Any, Dict, Optional
+from typing import Any
 
 from friday.core.config import get_settings
 from friday.core.logging import get_logger
@@ -25,8 +24,8 @@ class ScreenWatcherService:
 
     def __init__(
         self,
-        notification_manager: Optional[NotificationManager] = None,
-        llm_provider: Optional[Any] = None,
+        notification_manager: NotificationManager | None = None,
+        llm_provider: Any | None = None,
     ) -> None:
         self.notification_manager = notification_manager
         self.llm_provider = llm_provider
@@ -41,7 +40,7 @@ class ScreenWatcherService:
         from friday.llm.factory import create_llm_provider
         return create_llm_provider(settings)
 
-    def analyze_screen_text(self, screen_text: str, window_context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def analyze_screen_text(self, screen_text: str, window_context: dict[str, Any] | None = None) -> dict[str, Any]:
         """Classify intent from screen text via fast LLM call.
 
         Prompt:
@@ -91,7 +90,7 @@ class ScreenWatcherService:
                 return {"action": "offer_debug"}
             return {"action": "none"}
 
-    def check_and_notify(self) -> Optional[Dict[str, Any]]:
+    def check_and_notify(self) -> dict[str, Any] | None:
         """Perform one screen observation cycle and post notification if actionable."""
         try:
             ctx = get_active_window_context()

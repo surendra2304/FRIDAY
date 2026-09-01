@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Unified Intelligence Panel for FRIDAY Ecosystem Dashboard.
 
 Renders an integrated multi-subsystem intelligence view:
@@ -11,9 +10,12 @@ Renders an integrated multi-subsystem intelligence view:
 """
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from friday.ecosystem.intelligence_service import EcosystemIntelligenceService, ecosystem_intelligence
+from friday.ecosystem.intelligence_service import (
+    EcosystemIntelligenceService,
+    ecosystem_intelligence,
+)
 from friday.ecosystem.registry import EcosystemRegistry, ecosystem_registry
 
 
@@ -22,13 +24,13 @@ class UnifiedIntelligencePanel:
 
     def __init__(
         self,
-        intelligence_service: Optional[EcosystemIntelligenceService] = None,
-        registry: Optional[EcosystemRegistry] = None,
+        intelligence_service: EcosystemIntelligenceService | None = None,
+        registry: EcosystemRegistry | None = None,
     ) -> None:
         self.intelligence_service = intelligence_service or ecosystem_intelligence
         self.registry = registry or ecosystem_registry
 
-    def render_intelligence_data(self) -> Dict[str, Any]:
+    def render_intelligence_data(self) -> dict[str, Any]:
         """Assembles structured intelligence data for web/mobile UI views."""
         status = self.registry.get_ecosystem_status()
         subs = status.get("subsystems", {})

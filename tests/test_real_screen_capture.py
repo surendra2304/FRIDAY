@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Real hardware manual verification test for Windows Screen Capture.
 
 Test Type: HARDWARE / LIVE
@@ -7,13 +6,14 @@ Tests actual Windows GDI desktop capture and validates PNG encoding and metadata
 """
 
 import sys
+
 import pytest
 
 # Mark as hardware test (opt-in only via pytest -m hardware)
 pytestmark = [pytest.mark.hardware, pytest.mark.live]
 
-from friday.vision.windows_screen import WindowsScreenCaptureProvider
 from friday.tools.builtin.screen_snapshot import ScreenSnapshotTool
+from friday.vision.windows_screen import WindowsScreenCaptureProvider
 
 
 def test_hardware_windows_screen_capture():

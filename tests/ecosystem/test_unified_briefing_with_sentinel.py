@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """End-to-End Test: Master Daily Briefing with Sentinel Security Integration.
 
 Validates:

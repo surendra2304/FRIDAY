@@ -1,9 +1,16 @@
 """In-memory sliding window conversation buffer memory."""
 
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any
+
 from friday.core.logging import get_logger
-from friday.core.types import EmbeddingRecord, MemorySearchResult, Message, Role, SemanticSearchResult
+from friday.core.types import (
+    EmbeddingRecord,
+    MemorySearchResult,
+    Message,
+    Role,
+    SemanticSearchResult,
+)
 from friday.memory.base import BaseMemory
 
 logger = get_logger("memory.in_memory")
@@ -12,11 +19,11 @@ logger = get_logger("memory.in_memory")
 class InMemoryConversationMemory(BaseMemory):
     """Simple, fast in-memory conversation memory with sliding window eviction."""
 
-    def __init__(self, max_messages: int = 50, embedding_provider: Optional[Any] = None) -> None:
+    def __init__(self, max_messages: int = 50, embedding_provider: Any | None = None) -> None:
         self.max_messages = max(2, max_messages)
         self.embedding_provider = embedding_provider
-        self._messages: List[Message] = []
-        self._embeddings: List[EmbeddingRecord] = []
+        self._messages: list[Message] = []
+        self._embeddings: list[EmbeddingRecord] = []
 
     def add_message(self, message: Message) -> None:
         """Store a message and apply sliding window trimming if capacity is exceeded."""
@@ -28,7 +35,7 @@ class InMemoryConversationMemory(BaseMemory):
             self._messages = self._messages[excess:]
             logger.debug(f"Trimmed {excess} oldest message(s) from memory buffer.")
 
-    def get_messages(self) -> List[Message]:
+    def get_messages(self) -> list[Message]:
         """Return a copy of all current messages in buffer."""
         return list(self._messages)
 
@@ -40,9 +47,9 @@ class InMemoryConversationMemory(BaseMemory):
     def get_context_window(
         self,
         max_messages: int = 50,
-        max_turns: Optional[int] = None,
+        max_turns: int | None = None,
         max_tokens: int = 3000,
-    ) -> List[Message]:
+    ) -> list[Message]:
         """Retrieve recent slice of messages up to max_messages with turn and token limits."""
         if max_messages <= 0:
             return []
@@ -55,7 +62,7 @@ class InMemoryConversationMemory(BaseMemory):
         if max_tokens > 0 and messages:
             char_budget = max_tokens * 4
             running_chars = 0
-            trimmed_reversed: List[Message] = []
+            trimmed_reversed: list[Message] = []
             for msg in reversed(messages):
                 msg_len = len(msg.content or "") + 100
                 if running_chars + msg_len > char_budget and trimmed_reversed:
@@ -69,17 +76,17 @@ class InMemoryConversationMemory(BaseMemory):
     def search(
         self,
         query: str,
-        conversation_id: Optional[str] = None,
+        conversation_id: str | None = None,
         limit: int = 10,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-    ) -> List[MemorySearchResult]:
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+    ) -> list[MemorySearchResult]:
         """Search in-memory messages by substring matching."""
         if not query or not query.strip():
             return []
 
         q = query.strip().lower()
-        results: List[MemorySearchResult] = []
+        results: list[MemorySearchResult] = []
         for idx, msg in enumerate(self._messages):
             if q in msg.content.lower():
                 if start_time and msg.timestamp < start_time:
@@ -102,10 +109,10 @@ class InMemoryConversationMemory(BaseMemory):
     def add_embedding(self, record: EmbeddingRecord) -> None:
         """Store an embedding record in-memory."""
         if not hasattr(self, "_embeddings"):
-            self._embeddings: List[EmbeddingRecord] = []
+            self._embeddings = []
         self._embeddings.append(record)
 
-    def get_embeddings_for_conversation(self, conversation_id: str) -> List[EmbeddingRecord]:
+    def get_embeddings_for_conversation(self, conversation_id: str) -> list[EmbeddingRecord]:
         """Retrieve stored embedding records for conversation in-memory."""
         if not hasattr(self, "_embeddings"):
             self._embeddings = []
@@ -114,10 +121,10 @@ class InMemoryConversationMemory(BaseMemory):
     def search_semantic(
         self,
         query: str,
-        conversation_id: Optional[str] = None,
+        conversation_id: str | None = None,
         limit: int = 10,
         threshold: float = 0.0,
-    ) -> List[SemanticSearchResult]:
+    ) -> list[SemanticSearchResult]:
         """Perform semantic cosine similarity search in-memory."""
         if not hasattr(self, "_embeddings") or not self._embeddings or not hasattr(self, "embedding_provider") or not self.embedding_provider:
             return []
@@ -153,9 +160,9 @@ class InMemoryConversationMemory(BaseMemory):
     def search_hybrid(
         self,
         query: str,
-        conversation_id: Optional[str] = None,
+        conversation_id: str | None = None,
         limit: int = 10,
-    ) -> List[MemorySearchResult]:
+    ) -> list[MemorySearchResult]:
         """Search in-memory with semantic fallback to keyword search."""
         if hasattr(self, "embedding_provider") and self.embedding_provider:
             sem_res = self.search_semantic(query, conversation_id=conversation_id, limit=limit, threshold=0.3)
@@ -175,7 +182,7 @@ class InMemoryConversationMemory(BaseMemory):
         return self.search(query=query, conversation_id=conversation_id, limit=limit)
 
     @staticmethod
-    def _cosine_sim(u: List[float], v: List[float]) -> float:
+    def _cosine_sim(u: list[float], v: list[float]) -> float:
         import math
         if not u or not v or len(u) != len(v):
             return 0.0

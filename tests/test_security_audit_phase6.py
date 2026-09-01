@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive security audit and prompt-injection regression test suite for Multimodal Screen Perception.
 
 Validates the 10 critical security vectors:
@@ -15,20 +14,21 @@ Validates the 10 critical security vectors:
 """
 
 from unittest import mock
-import pytest
 
 from friday.auth.credential_pool import GeminiCredentialPool
 from friday.core.types import SafetyLevel
 from friday.memory.sqlite import SQLiteConversationMemory
-from friday.vision.actions import ActionType, ComputerActionProposal, ProposalBuilder
+from friday.tools.builtin.action_proposal import ProposeComputerActionTool
+from friday.vision.actions import ProposalBuilder
 from friday.vision.computer_control import ComputerActionExecutor, ExecutionStatus
 from friday.vision.gemini_vision import GeminiVisionProvider
 from friday.vision.mock_screen import MockScreenCaptureProvider
 from friday.vision.mock_vision import MockVisionProvider
-from friday.vision.screen_analyzer import ScreenAnalyzer, DEFAULT_ANALYSIS_PROMPT
+from friday.vision.screen_analyzer import ScreenAnalyzer
 from friday.vision.screen_context import ScreenContext
-from friday.vision.vision_memory import VisionMemoryManager, redact_sensitive_visual_text
-from friday.tools.builtin.action_proposal import ProposeComputerActionTool
+from friday.vision.vision_memory import (
+    VisionMemoryManager,
+)
 
 
 # 1 & 9. Malicious instructions / Prompt injection in screenshot

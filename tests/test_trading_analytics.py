@@ -1,7 +1,5 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for FRIDAY Advanced Trading Analytics & Portfolio Management."""
 
-import pytest
 
 from friday.integrations.external_analytics import ExternalAnalyticsProvider
 from friday.skills.registry import SkillRegistry
@@ -11,7 +9,6 @@ from friday.trading.portfolio_analytics import AccountSummary, PortfolioAnalytic
 from friday.trading.regime_detector import MarketRegimeDetector, MarketState
 from friday.trading.risk_dashboard import RiskManagementDashboard
 from friday.trading.strategy_coordinator import MultiStrategyCoordinator
-
 
 # =========================================================================
 # 1. Portfolio Analytics Engine Tests

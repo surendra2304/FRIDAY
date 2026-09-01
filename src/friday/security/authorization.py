@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Cryptographic, single-use, time-bounded Tool Authorization Capability system.
 
 Replaces weak boolean flags (e.g. `allow_sensitive=True`) with unforgeable,
@@ -12,14 +11,15 @@ import json
 import secrets
 import threading
 import time
-from typing import Any, Dict, Optional, Set, Tuple
 import uuid
+from typing import Any
 
 from pydantic import BaseModel, Field
+
 from friday.core.types import SafetyLevel
 
 
-def compute_arguments_hash(arguments: Dict[str, Any]) -> str:
+def compute_arguments_hash(arguments: dict[str, Any]) -> str:
     """Compute a deterministic SHA-256 hash of canonicalized JSON arguments."""
     try:
         canonical_json = json.dumps(arguments or {}, sort_keys=True, separators=(",", ":"), default=str)
@@ -36,8 +36,8 @@ class ToolAuthorizationCapability(BaseModel):
     tool_call_id: str = Field(default="", description="Associated LLM tool call ID")
     args_hash: str = Field(..., description="Deterministic SHA-256 hash of authorized arguments")
     safety_level: SafetyLevel = Field(..., description="Authorized safety classification level")
-    purpose: Optional[str] = Field(default=None, description="Declared purpose of tool execution")
-    affected_resource: Optional[str] = Field(default=None, description="Resource identifier authorized (e.g. path)")
+    purpose: str | None = Field(default=None, description="Declared purpose of tool execution")
+    affected_resource: str | None = Field(default=None, description="Resource identifier authorized (e.g. path)")
     created_at: float = Field(default_factory=time.time, description="Epoch timestamp of issuance")
     expires_at: float = Field(..., description="Epoch timestamp after which capability is invalid")
     is_used: bool = Field(default=False, description="Flag indicating if capability was already consumed")
@@ -51,10 +51,10 @@ class ToolAuthorizationCapability(BaseModel):
 class ToolAuthorizer:
     """Authority responsible for issuing and verifying cryptographic ToolAuthorizationCapabilities."""
 
-    def __init__(self, signing_key: Optional[bytes] = None, default_ttl_seconds: float = 60.0) -> None:
+    def __init__(self, signing_key: bytes | None = None, default_ttl_seconds: float = 60.0) -> None:
         self._signing_key: bytes = signing_key or secrets.token_bytes(32)
         self.default_ttl_seconds: float = default_ttl_seconds
-        self._consumed_capability_ids: Set[str] = set()
+        self._consumed_capability_ids: set[str] = set()
         self._lock: threading.Lock = threading.Lock()
 
     def _generate_signature(
@@ -67,20 +67,18 @@ class ToolAuthorizer:
         expires_at: float,
     ) -> str:
         """Compute HMAC-SHA256 signature for capability attributes."""
-        payload = f"{capability_id}:{tool_name}:{tool_call_id}:{args_hash}:{safety_level}:{expires_at:.4f}".encode(
-            "utf-8"
-        )
+        payload = f"{capability_id}:{tool_name}:{tool_call_id}:{args_hash}:{safety_level}:{expires_at:.4f}".encode()
         return hmac.new(self._signing_key, payload, hashlib.sha256).hexdigest()
 
     def issue_capability(
         self,
         tool_name: str,
-        arguments: Dict[str, Any],
+        arguments: dict[str, Any],
         safety_level: SafetyLevel,
         tool_call_id: str = "",
         purpose: str = "",
         affected_resource: str = "",
-        ttl_seconds: Optional[float] = None,
+        ttl_seconds: float | None = None,
     ) -> ToolAuthorizationCapability:
         """Issue a new signed, single-use authorization capability for an approved execution request."""
         ttl = ttl_seconds if ttl_seconds is not None else self.default_ttl_seconds
@@ -116,9 +114,9 @@ class ToolAuthorizer:
         self,
         capability: Any,
         tool_name: str,
-        arguments: Dict[str, Any],
+        arguments: dict[str, Any],
         tool_call_id: str = "",
-    ) -> Tuple[bool, str]:
+    ) -> tuple[bool, str]:
         """Verify the validity of an authorization capability and consume it atomically.
 
         Returns:
@@ -180,10 +178,10 @@ class ToolAuthorizer:
         self,
         skill_name: str,
         required_capabilities: list,
-        environment: Optional[str] = None,
-        blocked_capabilities: Optional[Set[str]] = None,
-        allowed_capabilities: Optional[Set[str]] = None,
-    ) -> Tuple[bool, str]:
+        environment: str | None = None,
+        blocked_capabilities: set[str] | None = None,
+        allowed_capabilities: set[str] | None = None,
+    ) -> tuple[bool, str]:
         """Verify if a Skill's declared required capabilities are permitted in the current environment."""
         import os
 
@@ -191,13 +189,13 @@ class ToolAuthorizer:
 
         # Parse blocked capabilities from environment variable if not explicitly passed
         env_blocked_str = os.getenv("FRIDAY_BLOCKED_CAPABILITIES", "")
-        effective_blocked: Set[str] = set(blocked_capabilities or set())
+        effective_blocked: set[str] = set(blocked_capabilities or set())
         if env_blocked_str:
             effective_blocked.update(c.strip() for c in env_blocked_str.split(",") if c.strip())
 
         # Parse permitted capabilities from environment variable if set
         env_permitted_str = os.getenv("FRIDAY_PERMITTED_CAPABILITIES", "")
-        effective_allowed: Optional[Set[str]] = allowed_capabilities
+        effective_allowed: set[str] | None = allowed_capabilities
         if effective_allowed is None and env_permitted_str:
             effective_allowed = set(c.strip() for c in env_permitted_str.split(",") if c.strip())
 

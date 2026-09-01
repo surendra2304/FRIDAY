@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Notification Queue for FRIDAY Proactive Background Monitoring Proactive System.
 
 Buffers proactive discoveries and alerts so FRIDAY can surface them during conversation turns.
@@ -8,7 +7,7 @@ import threading
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -25,14 +24,14 @@ class ProactiveNotification:
     severity: str = "info"       # 'info', 'warning', 'critical'
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     delivered: bool = False
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class NotificationManager:
     """Thread-safe queue managing proactive notifications."""
 
     def __init__(self) -> None:
-        self._queue: List[ProactiveNotification] = []
+        self._queue: list[ProactiveNotification] = []
         self._lock = threading.RLock()
 
     def post_notification(
@@ -40,7 +39,7 @@ class NotificationManager:
         message: str,
         category: str = "monitoring",
         severity: str = "info",
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> str:
         """Enqueue a new proactive notification."""
         notif_id = str(uuid.uuid4())
@@ -56,7 +55,7 @@ class NotificationManager:
         logger.info(f"Queued proactive notification [{category}/{severity}]: {message}")
         return notif_id
 
-    def fetch_pending_notifications(self, mark_delivered: bool = True) -> List[ProactiveNotification]:
+    def fetch_pending_notifications(self, mark_delivered: bool = True) -> list[ProactiveNotification]:
         """Retrieve all unread proactive notifications, optionally marking them delivered."""
         with self._lock:
             pending = [n for n in self._queue if not n.delivered]
@@ -65,7 +64,7 @@ class NotificationManager:
                     n.delivered = True
         return pending
 
-    def pop_notifications_summary(self) -> Optional[str]:
+    def pop_notifications_summary(self) -> str | None:
         """Fetch unread notifications and format as conversational lead-in."""
         pending = self.fetch_pending_notifications(mark_delivered=True)
         if not pending:

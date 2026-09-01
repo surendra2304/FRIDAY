@@ -1,14 +1,12 @@
-# -*- coding: utf-8 -*-
 """Multi-Modal User Interface for FRIDAY Ecosystem.
 
 Supports simultaneous interaction across Voice, Text Chat, Visual Dashboard,
 Email Summaries, Responsive Mobile Dashboard Views, and Voice-to-Text command previews.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -65,7 +63,7 @@ class MultiModalInterface:
             preview_text=preview_text,
         )
 
-    def render_mobile_dashboard_html(self, telemetry: Dict[str, Any]) -> str:
+    def render_mobile_dashboard_html(self, telemetry: dict[str, Any]) -> str:
         """Renders mobile-optimized, responsive HTML dashboard view."""
         bot = telemetry.get("trading_bot", {})
         forge = telemetry.get("forge", {})

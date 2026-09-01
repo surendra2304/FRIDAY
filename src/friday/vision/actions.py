@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Computer Action Proposal abstraction and safety classification models.
 
 Defines proposal structures for mouse clicks, movements, typing, key presses, and scrolling
@@ -6,11 +5,11 @@ without executing any operating system or hardware actions. Enforces strict safe
 where proposal != execution.
 """
 
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
-import uuid
+from typing import Any
 
 from friday.core.types import SafetyLevel
 
@@ -33,7 +32,7 @@ class ComputerActionProposal:
     """Read-only proposal for a computer action, isolated from OS execution."""
 
     action_type: ActionType
-    arguments: Dict[str, Any]
+    arguments: dict[str, Any]
     intent: str
     risk_level: SafetyLevel = SafetyLevel.SENSITIVE
     requires_confirmation: bool = True
@@ -41,7 +40,7 @@ class ComputerActionProposal:
     created_at: datetime = field(default_factory=datetime.utcnow)
     is_executed: bool = False
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize proposal to a structured dictionary."""
         return {
             "proposal_id": self.proposal_id,
@@ -109,7 +108,7 @@ class ProposalBuilder:
         )
 
     @staticmethod
-    def hotkey(keys: List[str], intent: str) -> ComputerActionProposal:
+    def hotkey(keys: list[str], intent: str) -> ComputerActionProposal:
         """Propose pressing a combination of keys (e.g. Ctrl+C, Alt+F4)."""
         keys_joined = "+".join(keys).lower()
         risk = SafetyLevel.DANGEROUS if any(k in keys_joined for k in ["alt+f4", "ctrl+w", "ctrl+alt+del", "win+r"]) else SafetyLevel.SENSITIVE
@@ -122,9 +121,9 @@ class ProposalBuilder:
         )
 
     @staticmethod
-    def scroll(delta_y: int, x: Optional[int] = None, y: Optional[int] = None, intent: str = "Scroll view") -> ComputerActionProposal:
+    def scroll(delta_y: int, x: int | None = None, y: int | None = None, intent: str = "Scroll view") -> ComputerActionProposal:
         """Propose scrolling the viewport."""
-        args: Dict[str, Any] = {"delta_y": delta_y}
+        args: dict[str, Any] = {"delta_y": delta_y}
         if x is not None and y is not None:
             args["x"] = x
             args["y"] = y

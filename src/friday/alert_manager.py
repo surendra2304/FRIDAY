@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Production Alert Manager for Multi-System Supervision.
 
 Handles alert prioritization (INFO, WARNING, ERROR, CRITICAL), multi-channel routing,
@@ -6,14 +5,13 @@ alert aggregation and correlation, escalation policies, acknowledgment lifecycle
 and automatic resolution detection.
 """
 
+import hashlib
+import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-import hashlib
-import json
-import os
-import threading
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role, TrustLevel
@@ -45,15 +43,15 @@ class Alert:
     severity: AlertSeverity
     status: AlertStatus = AlertStatus.PENDING
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    acknowledged_at: Optional[str] = None
-    acknowledged_by: Optional[str] = None
-    resolved_at: Optional[str] = None
-    resolution_note: Optional[str] = None
-    correlation_key: Optional[str] = None
+    acknowledged_at: str | None = None
+    acknowledged_by: str | None = None
+    resolved_at: str | None = None
+    resolution_note: str | None = None
+    correlation_key: str | None = None
     escalation_level: int = 0
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "title": self.title,
@@ -77,17 +75,17 @@ class ProductionAlertManager:
 
     def __init__(
         self,
-        memory: Optional[Any] = None,
-        notification_manager: Optional[Any] = None,
+        memory: Any | None = None,
+        notification_manager: Any | None = None,
         escalation_timeout_sec: float = 300.0,  # 5 minutes default
     ) -> None:
         self.memory = memory
         self.notification_manager = notification_manager
         self.escalation_timeout_sec = escalation_timeout_sec
-        self._alerts: Dict[str, Alert] = {}
-        self._correlated_events: Dict[str, List[str]] = {}
+        self._alerts: dict[str, Alert] = {}
+        self._correlated_events: dict[str, list[str]] = {}
         self._lock = threading.RLock()
-        self._channel_handlers: Dict[str, List[Callable[[Alert], None]]] = {
+        self._channel_handlers: dict[str, list[Callable[[Alert], None]]] = {
             "email": [],
             "sms": [],
             "voice": [],
@@ -106,8 +104,8 @@ class ProductionAlertManager:
         message: str,
         severity: AlertSeverity = AlertSeverity.INFO,
         category: str = "general",
-        metadata: Optional[Dict[str, Any]] = None,
-        correlation_key: Optional[str] = None,
+        metadata: dict[str, Any] | None = None,
+        correlation_key: str | None = None,
     ) -> Alert:
         """Creates, correlates, routes, and records a new production alert."""
         metadata = metadata or {}
@@ -193,9 +191,9 @@ class ProductionAlertManager:
             logger.info(f"[ALERT_MGR] Auto-resolved {count} alerts in category '{category}'")
         return count
 
-    def check_escalations(self) -> List[Alert]:
+    def check_escalations(self) -> list[Alert]:
         """Inspects pending critical/error alerts and escalates unacknowledged ones exceeding timeout."""
-        escalated: List[Alert] = []
+        escalated: list[Alert] = []
         now = datetime.now(timezone.utc)
 
         with self._lock:
@@ -216,7 +214,7 @@ class ProductionAlertManager:
 
         return escalated
 
-    def get_active_alerts(self, min_severity: Optional[AlertSeverity] = None) -> List[Alert]:
+    def get_active_alerts(self, min_severity: AlertSeverity | None = None) -> list[Alert]:
         """Returns all currently active (PENDING or ESCALATED) alerts."""
         severity_order = [AlertSeverity.INFO, AlertSeverity.WARNING, AlertSeverity.ERROR, AlertSeverity.CRITICAL]
         min_idx = severity_order.index(min_severity) if min_severity else 0
@@ -234,7 +232,7 @@ class ProductionAlertManager:
                 reverse=True,
             )
 
-    def get_alert_history(self, limit: int = 50) -> List[Alert]:
+    def get_alert_history(self, limit: int = 50) -> list[Alert]:
         """Returns the chronological history of all alerts."""
         with self._lock:
             all_alerts = list(self._alerts.values())

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Vision memory manager for storing and recalling derived visual context safely.
 
 Features:
@@ -10,7 +9,7 @@ Features:
 
 import hashlib
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role
@@ -47,14 +46,14 @@ class VisionMemoryManager:
 
     def __init__(self, memory: BaseMemory) -> None:
         self.memory = memory
-        self._last_stored_hash: Optional[str] = None
+        self._last_stored_hash: str | None = None
 
     def store_visual_observation(
         self,
         screen_context: ScreenContext,
         force: bool = False,
-        conversation_id: Optional[str] = None,
-    ) -> Optional[Message]:
+        conversation_id: str | None = None,
+    ) -> Message | None:
         """Record derived visual context to persistent conversation memory.
 
         Args:
@@ -104,8 +103,8 @@ class VisionMemoryManager:
         self,
         query: str,
         limit: int = 3,
-        conversation_id: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+        conversation_id: str | None = None,
+    ) -> list[dict[str, Any]]:
         """Search historical visual memories using memory search (FTS / Semantic)."""
         target_conv_id = conversation_id
         if hasattr(self.memory, "active_conversation_id") and not target_conv_id:

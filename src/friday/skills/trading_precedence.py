@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Trading Command Precedence and Safety Invariants.
 
 Defines immutable authority hierarchy for all trading operations:
@@ -14,7 +13,7 @@ Invariant Contract:
 """
 
 from enum import IntEnum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 class CommandPrecedence(IntEnum):
@@ -28,7 +27,7 @@ PRECEDENCE_SAFETY_GATES = CommandPrecedence.SAFETY_GATES
 PRECEDENCE_FRIDAY_COMMANDS = CommandPrecedence.FRIDAY_COMMANDS
 PRECEDENCE_AI_UNIVERSE_RECOMMENDATIONS = CommandPrecedence.AI_UNIVERSE_RECOMMENDATIONS
 
-COMMAND_PRECEDENCE_HIERARCHY: List[str] = [
+COMMAND_PRECEDENCE_HIERARCHY: list[str] = [
     "SAFETY_GATES",
     "FRIDAY_COMMANDS",
     "AI_UNIVERSE_RECOMMENDATIONS",
@@ -38,8 +37,8 @@ COMMAND_PRECEDENCE_HIERARCHY: List[str] = [
 def tag_trading_command(
     command_name: str,
     precedence_level: CommandPrecedence = CommandPrecedence.FRIDAY_COMMANDS,
-    metadata: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Tag an outbound trading command with its precedence level and audit metadata.
 
     Args:

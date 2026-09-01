@@ -1,11 +1,8 @@
-# -*- coding: utf-8 -*-
 """Unit tests for Skills System & Capability Gating Critical Limit & Failover Fixes."""
 
 from unittest import mock
-import pytest
 
-from friday.core.exceptions import LLMProviderError
-from friday.core.types import Message, Role, SafetyLevel
+from friday.core.types import Message, Role
 from friday.memory.in_memory import InMemoryConversationMemory
 from friday.memory.sqlite import SQLiteConversationMemory
 from friday.tools.builtin.open_application import OpenApplicationTool
@@ -74,6 +71,7 @@ def test_microsoft_store_in_allowlist():
 def test_tesseract_ocr_path_configuration():
     """Tesseract OCR path is explicitly set on pytesseract from Settings or Windows default."""
     import pytesseract
+
     from friday.core.config import Settings
     from friday.tools.builtin.screen_ocr import _configure_tesseract
 

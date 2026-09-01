@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Interactive Help & Capability Discovery Skill for FRIDAY.
 
 Assists the operator with natural language inquiries about available commands:
@@ -9,9 +8,8 @@ Assists the operator with natural language inquiries about available commands:
 5. Contextual help triggered when user confusion or ambiguous requests are detected
 """
 
-from typing import Any, Dict, List, Optional
-import re
 import threading
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.skills.base_skill import BaseSkill, SkillExecutionResult
@@ -47,7 +45,7 @@ class HelpSystemSkill(BaseSkill):
     def __init__(self) -> None:
         self._lock = threading.RLock()
 
-    def get_capabilities_roster(self) -> Dict[str, Any]:
+    def get_capabilities_roster(self) -> dict[str, Any]:
         """Returns structured capability roster spanning the full FRIDAY Universe and Laptop Control."""
         return {
             "laptop_control": {
@@ -100,15 +98,15 @@ class HelpSystemSkill(BaseSkill):
     def execute(
         self,
         user_request: str,
-        agent: Optional[Any] = None,
-        tool_registry: Optional[Any] = None,
-        llm_provider: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        agent: Any | None = None,
+        tool_registry: Any | None = None,
+        llm_provider: Any | None = None,
+        authorizer: Any | None = None,
         **kwargs: Any,
     ) -> SkillExecutionResult:
         """Executes interactive help and command guidance queries."""
         clean = user_request.strip().lower()
-        step_results: List[Dict[str, Any]] = []
+        step_results: list[dict[str, Any]] = []
 
         try:
             # 1. "What can you do?" / Global capabilities

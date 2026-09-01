@@ -1,7 +1,7 @@
-# -*- coding: utf-8 -*-
 """Proposal-only tool for suggesting desktop computer actions without execution."""
 
-from typing import Any, Optional
+from typing import Any
+
 from friday.core.types import SafetyLevel, ToolResult
 from friday.tools.base import BaseTool
 from friday.vision.actions import ActionType, ComputerActionProposal, ProposalBuilder
@@ -51,17 +51,17 @@ class ProposeComputerActionTool(BaseTool):
 
     def __init__(self) -> None:
         super().__init__()
-        self.last_proposal: Optional[ComputerActionProposal] = None
+        self.last_proposal: ComputerActionProposal | None = None
 
     def execute(
         self,
         action_type: str,
         intent: str,
-        x: Optional[int] = None,
-        y: Optional[int] = None,
-        text: Optional[str] = None,
-        key: Optional[str] = None,
-        delta_y: Optional[int] = None,
+        x: int | None = None,
+        y: int | None = None,
+        text: str | None = None,
+        key: str | None = None,
+        delta_y: int | None = None,
         **kwargs: Any,
     ) -> ToolResult:
         """Construct action proposal safely. Never invokes OS input synthesis."""

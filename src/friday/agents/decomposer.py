@@ -1,14 +1,13 @@
-# -*- coding: utf-8 -*-
 """Task Decomposer for FRIDAY Multi-Agent Specialist System.
 
 Breaks down complex goals into explicit, ordered subtasks formatted as JSON.
 """
 
-from dataclasses import dataclass, field
 import json
 import re
-from typing import Any, Dict, List, Optional
 import uuid
+from dataclasses import dataclass, field
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role
@@ -24,8 +23,8 @@ class DecomposedSubtask:
     title: str = ""
     description: str = ""
     suggested_role: str = "general"
-    dependencies: List[str] = field(default_factory=list)
-    context: Dict[str, Any] = field(default_factory=dict)
+    dependencies: list[str] = field(default_factory=list)
+    context: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -33,7 +32,7 @@ class DecompositionResult:
     """Outcome of breaking down a high-level goal."""
     goal: str
     is_complex: bool
-    subtasks: List[DecomposedSubtask] = field(default_factory=list)
+    subtasks: list[DecomposedSubtask] = field(default_factory=list)
     rationale: str = ""
 
 
@@ -43,7 +42,7 @@ class TaskDecomposer:
     def __init__(self, llm_provider: BaseLLMProvider) -> None:
         self.llm = llm_provider
 
-    def decompose(self, goal: str, context: Optional[Dict[str, Any]] = None) -> DecompositionResult:
+    def decompose(self, goal: str, context: dict[str, Any] | None = None) -> DecompositionResult:
         """Analyze a goal and decompose into subtasks if complex, or return single subtask."""
         clean_goal = (goal or "").strip()
         if not clean_goal:
@@ -89,7 +88,7 @@ class TaskDecomposer:
 
             is_complex = bool(data.get("is_complex", False))
             subtasks_raw = data.get("subtasks", [])
-            subtasks: List[DecomposedSubtask] = []
+            subtasks: list[DecomposedSubtask] = []
 
             for idx, item in enumerate(subtasks_raw):
                 subtasks.append(

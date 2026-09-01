@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Memory, Context Stress & Scalability Test Suite for Core Architecture & Types0.6.
 
 Validates:
@@ -11,21 +10,19 @@ Validates:
 7. Secure memory deletion / purge flows.
 """
 
-from datetime import datetime, timezone
-import os
-import tempfile
 import time
-import pytest
 
 from friday.agent.checkpoint import TaskCheckpointStore
 from friday.agent.planner import PlanStep, TaskPlan
 from friday.agent.state import TaskState
-from friday.core.types import Message, Role, SafetyLevel
+from friday.core.types import Message, Role
 from friday.memory.in_memory import InMemoryConversationMemory
 from friday.memory.sqlite import SQLiteConversationMemory
 from friday.memory.task_context import ActiveTaskContext
-from friday.vision.episodic_memory import EpisodicEnvironmentalMemoryManager, MemoryImportance
-
+from friday.vision.episodic_memory import (
+    EpisodicEnvironmentalMemoryManager,
+    MemoryImportance,
+)
 
 # --- 1. Long Conversation History Stress Test ---
 

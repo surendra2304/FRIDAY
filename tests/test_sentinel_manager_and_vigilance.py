@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for Sentinel Security Integration.
 
 Validates:
@@ -8,17 +7,15 @@ Validates:
 4. Trust boundary invariant: All data tagged TrustLevel.UNTRUSTED_EXTERNAL.
 """
 
-from datetime import datetime, timezone, timedelta
-import pytest
+from datetime import datetime, timedelta, timezone
 
 from friday.core.types import TrustLevel
-from friday.skills.sentinel_manager import (
-    SentinelManagerSkill,
-    SecurityFinding,
-    SentinelPendingAction,
-    SentinelSecurityTask,
-)
 from friday.operators.sentinel_vigilance_operator import SentinelVigilanceOperator
+from friday.skills.sentinel_manager import (
+    SecurityFinding,
+    SentinelManagerSkill,
+    SentinelPendingAction,
+)
 
 
 def test_sentinel_manager_api_methods():

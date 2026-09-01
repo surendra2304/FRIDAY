@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Onboarding Wizard for FRIDAY Operating System.
 
 Provides an interactive, voice-guided first-run onboarding experience:
@@ -13,13 +12,13 @@ Provides an interactive, voice-guided first-run onboarding experience:
 4. Persists onboarding state to disk with automatic session resumption
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import json
 import os
-from pathlib import Path
 import threading
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -40,13 +39,13 @@ class OnboardingStep:
 class OnboardingState:
     """Persistent state tracking onboarding progress."""
     current_step: str = OnboardingStep.CHECK_ENV
-    completed_steps: List[str] = field(default_factory=list)
-    api_keys_configured: Dict[str, bool] = field(default_factory=dict)
-    subsystems_configured: Dict[str, str] = field(default_factory=dict)
+    completed_steps: list[str] = field(default_factory=list)
+    api_keys_configured: dict[str, bool] = field(default_factory=dict)
+    subsystems_configured: dict[str, str] = field(default_factory=dict)
     biometric_samples_recorded: int = 0
     biometric_enrolled: bool = False
-    preferences: Dict[str, Any] = field(default_factory=dict)
-    optional_integrations: Dict[str, bool] = field(default_factory=dict)
+    preferences: dict[str, Any] = field(default_factory=dict)
+    optional_integrations: dict[str, bool] = field(default_factory=dict)
     is_fully_onboarded: bool = False
     last_updated: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
@@ -54,7 +53,7 @@ class OnboardingState:
 class OnboardingWizard:
     """Guides new users through complete FRIDAY OS provisioning with state persistence."""
 
-    def __init__(self, state_file_path: Optional[str] = None) -> None:
+    def __init__(self, state_file_path: str | None = None) -> None:
         self.state_file = Path(state_file_path or os.path.join("data", "onboarding_state.json"))
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
         self.state = OnboardingState()
@@ -96,7 +95,7 @@ class OnboardingWizard:
                 return True
             return not self.state.is_fully_onboarded
 
-    def get_current_prompt(self) -> Dict[str, Any]:
+    def get_current_prompt(self) -> dict[str, Any]:
         """Returns the voice and text prompt for the active onboarding step."""
         with self._lock:
             step = self.state.current_step
@@ -178,7 +177,7 @@ class OnboardingWizard:
                     "required_input": None,
                 }
 
-    def process_step_input(self, user_input: Dict[str, Any]) -> Dict[str, Any]:
+    def process_step_input(self, user_input: dict[str, Any]) -> dict[str, Any]:
         """Processes user input for the current step and advances state."""
         with self._lock:
             step = self.state.current_step

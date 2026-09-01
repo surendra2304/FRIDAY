@@ -10,19 +10,24 @@ E. End-to-end Live interactive session with live metric telemetry
 
 import asyncio
 import os
-import sys
 import time
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # Ensure local project environment is loaded
 load_dotenv(Path('.env'), override=True)
 
-from friday.core.config import get_settings
-from friday.core.logging import setup_logging, get_logger
-from friday.voice.audio_io import MicrophoneStream, SpeakerStream, compute_pcm_rms, get_audio_diagnostics
-from friday.voice.gemini_live_session import GeminiLiveVoiceSession, LiveSessionState
 from friday.agent import FridayAgent
+from friday.core.config import get_settings
+from friday.core.logging import get_logger, setup_logging
+from friday.voice.audio_io import (
+    MicrophoneStream,
+    SpeakerStream,
+    compute_pcm_rms,
+    get_audio_diagnostics,
+)
+from friday.voice.gemini_live_session import GeminiLiveVoiceSession
 
 logger = get_logger("diagnose_real_live_voice")
 
@@ -68,8 +73,7 @@ async def run_diagnostics():
             chunks += 1
             total_bytes += len(chunk)
             rms = compute_pcm_rms(chunk)
-            if rms > max_rms:
-                max_rms = rms
+            max_rms = max(max_rms, rms)
             if rms > 150.0:  # Voice activity threshold
                 non_silent += 1
         else:
@@ -163,8 +167,8 @@ async def run_diagnostics():
     print(f"  MICROPHONE HARDWARE CAPTURE: {'PASS' if mic_pass else 'FAIL'}")
     print(f"  LIVE TEXT-TO-SPEECH OUTPUT : {'PASS' if text_to_audio_pass else 'FAIL'}")
     print(f"  LIVE MODEL                 : {settings.voice_live_model}")
-    print(f"  AUDIO INPUT SAMPLE RATE    : 16000 Hz (16-bit Mono PCM)")
-    print(f"  AUDIO OUTPUT SAMPLE RATE   : 24000 Hz (16-bit Mono PCM)")
+    print("  AUDIO INPUT SAMPLE RATE    : 16000 Hz (16-bit Mono PCM)")
+    print("  AUDIO OUTPUT SAMPLE RATE   : 24000 Hz (16-bit Mono PCM)")
     print(f"  USER INTERRUPTIONS         : {live_session.user_interruptions}")
     print(f"  SERVER VAD INTERRUPTIONS   : {live_session.server_interruptions}")
     print(f"  SPEAKER ECHO INTERRUPTIONS : {live_session.speaker_playback_interruptions}")

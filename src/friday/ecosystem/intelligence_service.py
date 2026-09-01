@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Unified Ecosystem Intelligence Reporting Service for FRIDAY.
 
 Aggregates operational telemetry and intelligence across all four managed subsystems:
@@ -11,13 +10,13 @@ Generates Morning Briefings, Evening Wrap-Ups, and Weekly Strategic Reports with
 weighted composite health scoring, voice-ready summaries, and 90-day retention persistence.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
 import json
 import os
-from pathlib import Path
 import threading
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.ecosystem.registry import EcosystemRegistry, ecosystem_registry
@@ -33,7 +32,7 @@ class EcosystemReport:
     composite_health_score: float
     spoken_summary: str
     markdown_report: str
-    data_payload: Dict[str, Any]
+    data_payload: dict[str, Any]
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -42,15 +41,15 @@ class EcosystemIntelligenceService:
 
     def __init__(
         self,
-        registry: Optional[EcosystemRegistry] = None,
-        reports_dir: Optional[str] = None,
+        registry: EcosystemRegistry | None = None,
+        reports_dir: str | None = None,
     ) -> None:
         self.registry = registry or ecosystem_registry
         self.reports_dir = Path(reports_dir or os.path.join("reports", "ecosystem"))
         self.reports_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
 
-    def compute_composite_health_score(self, telemetry: Dict[str, Any]) -> float:
+    def compute_composite_health_score(self, telemetry: dict[str, Any]) -> float:
         """Calculates weighted composite health score (0-100).
 
         Weights: Trading Bot (30%), Nexus (25%), FORGE (25%), AI-Universe (20%).

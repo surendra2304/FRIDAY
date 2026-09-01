@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive unit test suite for Plan Checking: Hierarchical Task Planning & Dependency DAG.
 
 Tests:
@@ -22,20 +21,16 @@ import pytest
 from friday.agent.goal import (
     Goal,
     GoalRequestType,
-    GoalRiskLevel,
     GoalUnderstandingEngine,
-    SubGoal,
 )
 from friday.agent.planner import (
     GoalDecomposer,
     PlanStep,
     PlanValidationError,
-    StepStatus,
     TaskPlan,
 )
-from friday.core.types import SafetyLevel
+from friday.tools.builtin import CalculatorTool, SystemInfoTool, TimeDateTool
 from friday.tools.registry import ToolRegistry
-from friday.tools.builtin import SystemInfoTool, TimeDateTool, CalculatorTool
 
 
 @pytest.fixture

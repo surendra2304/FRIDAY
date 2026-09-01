@@ -1,9 +1,8 @@
-# -*- coding: utf-8 -*-
 """Built-in Network Diagnostic Skill for FRIDAY."""
 
 import platform
 import subprocess
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.skills.base_skill import BaseSkill, SkillExecutionResult
@@ -32,13 +31,13 @@ class NetworkDiagnosticSkill(BaseSkill):
     def execute(
         self,
         user_request: str,
-        agent: Optional[Any] = None,
-        tool_registry: Optional[Any] = None,
-        llm_provider: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        agent: Any | None = None,
+        tool_registry: Any | None = None,
+        llm_provider: Any | None = None,
+        authorizer: Any | None = None,
         **kwargs: Any,
     ) -> SkillExecutionResult:
-        step_results: List[Dict[str, Any]] = []
+        step_results: list[dict[str, Any]] = []
         is_windows = platform.system() == "Windows"
         ping_cmd = "ping -n 3 8.8.8.8" if is_windows else "ping -c 3 8.8.8.8"
 

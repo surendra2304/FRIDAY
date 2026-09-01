@@ -1,14 +1,12 @@
-# -*- coding: utf-8 -*-
 """Developer Tools for Autonomous Self-Coding Autonomous Self-Coding.
 
 Provides safe & sensitive tools for writing code files, running tests via pytest,
 and creating git branches.
 """
 
-from pathlib import Path
-import os
 import subprocess
-from typing import Any, Dict, Optional
+from pathlib import Path
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel, ToolResult
@@ -96,7 +94,7 @@ class RunTestsTool(BaseTool):
         "required": [],
     }
 
-    def execute(self, test_path: Optional[str] = None, extra_args: Optional[str] = None, **kwargs: Any) -> ToolResult:
+    def execute(self, test_path: str | None = None, extra_args: str | None = None, **kwargs: Any) -> ToolResult:
         cmd = ["pytest"]
         if test_path and test_path.strip():
             cmd.append(test_path.strip())
@@ -171,7 +169,7 @@ class CreateGitBranchTool(BaseTool):
         "required": ["branch_name"],
     }
 
-    def execute(self, branch_name: str = "", cwd: Optional[str] = None, **kwargs: Any) -> ToolResult:
+    def execute(self, branch_name: str = "", cwd: str | None = None, **kwargs: Any) -> ToolResult:
         clean_name = (branch_name or "").strip()
         if not clean_name:
             return ToolResult(
@@ -228,7 +226,7 @@ class ReadOwnCodebaseTool(BaseTool):
 
     def execute(
         self,
-        root_dir: Optional[str] = None,
+        root_dir: str | None = None,
         include_descriptions: bool = True,
         **kwargs: Any,
     ) -> ToolResult:

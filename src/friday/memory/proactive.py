@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Proactive Memory System for FRIDAY.
 
 Tracks operator commitments, deadlines, and unfinished interrupted workflows:
@@ -9,11 +8,9 @@ Tracks operator commitments, deadlines, and unfinished interrupted workflows:
 3. Natural deadline and date parsing from ongoing conversations.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
-import re
 import threading
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 
 from friday.core.logging import get_logger
 
@@ -47,8 +44,8 @@ class ProactiveMemory:
     """Manages proactive reminders for user commitments, deadlines, and unfinished tasks."""
 
     def __init__(self) -> None:
-        self.commitments: List[UserCommitment] = []
-        self.unfinished_tasks: List[UnfinishedTask] = []
+        self.commitments: list[UserCommitment] = []
+        self.unfinished_tasks: list[UnfinishedTask] = []
         self._lock = threading.RLock()
 
     def record_commitment(
@@ -72,7 +69,7 @@ class ProactiveMemory:
             logger.info(f"[PROACTIVE_MEMORY] Recorded user commitment for {target_date.isoformat()}: {topic}")
             return commitment
 
-    def extract_commitment_from_text(self, text: str) -> Optional[UserCommitment]:
+    def extract_commitment_from_text(self, text: str) -> UserCommitment | None:
         """Extracts commitments (e.g. 'I will review the strategy tomorrow')."""
         clean = text.lower()
         now = datetime.now(timezone.utc)
@@ -99,11 +96,11 @@ class ProactiveMemory:
 
         return None
 
-    def check_pending_commitments(self, current_time: Optional[datetime] = None) -> List[str]:
+    def check_pending_commitments(self, current_time: datetime | None = None) -> list[str]:
         """Returns proactive spoken prompts for commitments whose target date has arrived."""
         with self._lock:
             now = current_time or datetime.now(timezone.utc)
-            prompts: List[str] = []
+            prompts: list[str] = []
 
             for com in self.commitments:
                 if com.status == "PENDING" and now >= com.target_date:
@@ -136,10 +133,10 @@ class ProactiveMemory:
             logger.info(f"[PROACTIVE_MEMORY] Recorded unfinished {subsystem} task: {task_description}")
             return task
 
-    def check_unfinished_tasks(self) -> List[str]:
+    def check_unfinished_tasks(self) -> list[str]:
         """Returns proactive resumption prompts for interrupted tasks."""
         with self._lock:
-            prompts: List[str] = []
+            prompts: list[str] = []
             for t in self.unfinished_tasks:
                 if t.status == "INTERRUPTED":
                     t.status = "PROMPTED"

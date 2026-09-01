@@ -1,17 +1,17 @@
-# -*- coding: utf-8 -*-
 """Base Operator Abstraction for Persistent Background State Machines (Inspired by OpenJarvis).
 
 An Operator is a persistent background state machine that monitors system state over time
 and autonomously triggers actions, skill executions, or notifications based on event-driven triggers.
 """
 
-from abc import ABC, abstractmethod
+import threading
+import uuid
+from abc import ABC
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-import threading
-from typing import Any, Callable, Dict, List, Optional
-import uuid
+from typing import Any
 
 from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer
 from friday.core.logging import get_logger
@@ -37,13 +37,13 @@ class OperatorExecutionResult:
     operator_name: str
     success: bool
     output: Any
-    triggered_by: Optional[str] = None
-    event_data: Dict[str, Any] = field(default_factory=dict)
+    triggered_by: str | None = None
+    event_data: dict[str, Any] = field(default_factory=dict)
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    error: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    error: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "operator_id": self.operator_id,
             "operator_name": self.operator_name,
@@ -64,33 +64,33 @@ class BaseOperator(ABC):
         self,
         name: str,
         description: str = "",
-        operator_id: Optional[str] = None,
+        operator_id: str | None = None,
         safety_level: SafetyLevel = SafetyLevel.SAFE,
-        triggers: Optional[List[Any]] = None,
-        target_skill_name: Optional[str] = None,
-        target_action: Optional[Callable[[Dict[str, Any]], Any]] = None,
-        notification_category: Optional[str] = None,
-        authorizer: Optional[BaseAuthorizer] = None,
-        notification_manager: Optional[Any] = None,
-        skill_registry: Optional[Any] = None,
+        triggers: list[Any] | None = None,
+        target_skill_name: str | None = None,
+        target_action: Callable[[dict[str, Any]], Any] | None = None,
+        notification_category: str | None = None,
+        authorizer: BaseAuthorizer | None = None,
+        notification_manager: Any | None = None,
+        skill_registry: Any | None = None,
     ) -> None:
         self.operator_id = operator_id or f"op_{uuid.uuid4().hex[:10]}"
         self.name = name
         self.description = description
         self.safety_level = safety_level
-        self.triggers: List[Any] = list(triggers or [])
+        self.triggers: list[Any] = list(triggers or [])
         self.target_skill_name = target_skill_name
         self.target_action = target_action
         self.notification_category = notification_category or "operator_event"
         self.authorizer: BaseAuthorizer = authorizer or DefaultSecureAuthorizer()
         self.notification_manager = notification_manager
         self.skill_registry = skill_registry
-        self.downstream_operators: List["BaseOperator"] = []
+        self.downstream_operators: list[BaseOperator] = []
 
         self._state: OperatorState = OperatorState.INITIALIZED
         self._lock = threading.RLock()
-        self.last_event: Optional[Dict[str, Any]] = None
-        self.last_result: Optional[OperatorExecutionResult] = None
+        self.last_event: dict[str, Any] | None = None
+        self.last_result: OperatorExecutionResult | None = None
         self.run_count: int = 0
 
     @property
@@ -162,7 +162,7 @@ class BaseOperator(ABC):
         """Operator chaining pipeline syntax: op1 | op2."""
         return self.pipe_to(downstream_operator)
 
-    def evaluate_triggers(self) -> Optional[Dict[str, Any]]:
+    def evaluate_triggers(self) -> dict[str, Any] | None:
         """Check all registered triggers. Returns event data if any trigger fired."""
         with self._lock:
             if self._state != OperatorState.RUNNING:
@@ -176,7 +176,7 @@ class BaseOperator(ABC):
                     return event
         return None
 
-    def handle_event(self, event_data: Dict[str, Any]) -> OperatorExecutionResult:
+    def handle_event(self, event_data: dict[str, Any]) -> OperatorExecutionResult:
         """Process a detected event with safety checks, action execution, and chaining."""
         with self._lock:
             self._state = OperatorState.TRIGGERED
@@ -281,6 +281,6 @@ class BaseOperator(ABC):
 
             return res
 
-    def execute_action(self, event_data: Dict[str, Any]) -> Any:
+    def execute_action(self, event_data: dict[str, Any]) -> Any:
         """Default action handler to be overridden by subclasses if target_action is not passed."""
         return f"Processed event: {event_data.get('event_type', 'generic')}"

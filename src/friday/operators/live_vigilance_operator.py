@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Live Vigilance Operator for FRIDAY.
 
 Persistent operator executing high-frequency (10-second) vigilance polling over real capital
@@ -6,14 +5,12 @@ trading operations on Binance Futures, detecting critical risk breaches, drawdow
 reconciliation desync, and single position anomalies.
 """
 
-from datetime import datetime, timezone
-import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.alert_manager import AlertSeverity, ProductionAlertManager
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role, SafetyLevel, TrustLevel
-from friday.operators.base_operator import BaseOperator, OperatorExecutionResult, OperatorState
+from friday.operators.base_operator import BaseOperator
 from friday.operators.triggers import IntervalTrigger
 from friday.trading.incident_manager import LiveIncidentManager
 from friday.trading.live_operations import LiveOperationsCenter
@@ -34,12 +31,12 @@ class LiveVigilanceOperator(BaseOperator):
 
     def __init__(
         self,
-        live_ops: Optional[LiveOperationsCenter] = None,
-        alert_manager: Optional[ProductionAlertManager] = None,
-        incident_manager: Optional[LiveIncidentManager] = None,
+        live_ops: LiveOperationsCenter | None = None,
+        alert_manager: ProductionAlertManager | None = None,
+        incident_manager: LiveIncidentManager | None = None,
         poll_interval_sec: float = 10.0,
-        memory: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        memory: Any | None = None,
+        authorizer: Any | None = None,
     ) -> None:
         trigger = IntervalTrigger(interval_seconds=poll_interval_sec, name="live_vigilance_poll_interval")
         super().__init__(
@@ -55,10 +52,7 @@ class LiveVigilanceOperator(BaseOperator):
         self._incident_manager = incident_manager
         self.poll_interval_sec = poll_interval_sec
         self.memory = memory
-        self._unreachable_since: Optional[float] = None
-        self._last_alerted_streak: int = 0
-        self.memory = memory
-        self._unreachable_since: Optional[float] = None
+        self._unreachable_since: float | None = None
         self._last_alerted_streak: int = 0
 
     @property
@@ -79,14 +73,14 @@ class LiveVigilanceOperator(BaseOperator):
             self._incident_manager = LiveIncidentManager()
         return self._incident_manager
 
-    def tick(self) -> List[Dict[str, Any]]:
+    def tick(self) -> list[dict[str, Any]]:
         """Executes a single 10-second vigilance monitoring cycle."""
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
 
         try:
             state = self.live_ops.poll_live_state()
             self._unreachable_since = None
-        except Exception as e:
+        except Exception:
             # Bot unreachable tracking
             import time
             now_ts = time.time()

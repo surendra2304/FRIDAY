@@ -1,17 +1,14 @@
-# -*- coding: utf-8 -*-
 """Unit tests for System Resource Management and Proactive Alerting."""
 
-import pytest
 from unittest.mock import MagicMock, patch
 
+from friday.core.types import SafetyLevel
+from friday.observability.notifications import NotificationManager
 from friday.tools.builtin.system_monitor import (
     GetSystemResourcesTool,
     KillProcessTool,
-    get_current_system_resources,
 )
 from friday.workflows.scheduler import WorkflowScheduler
-from friday.observability.notifications import NotificationManager
-from friday.core.types import SafetyLevel
 
 
 def test_get_system_resources_tool_mocked():

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Ecosystem Command Router for FRIDAY.
 
 Routes high-level natural language intents to appropriate subsystem managers:
@@ -16,7 +15,7 @@ Routes high-level natural language intents to appropriate subsystem managers:
 """
 
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.ecosystem.cross_orchestrator import CrossSystemOrchestrator
@@ -48,7 +47,7 @@ class SubsystemRoute(Enum):
 class RouteResult(dict):
     """Result object supporting both dict access (res['route']) and tuple unpacking (route, ctx = res)."""
 
-    def __init__(self, route: SubsystemRoute, data: Dict[str, Any]):
+    def __init__(self, route: SubsystemRoute, data: dict[str, Any]):
         super().__init__(route=route.value, route_enum=route, **data)
         self.route = route
         self.data = data
@@ -68,13 +67,13 @@ class EcosystemCommandRouter:
 
     def __init__(
         self,
-        cross_orchestrator: Optional[CrossSystemOrchestrator] = None,
-        status_skill: Optional[EcosystemStatusSkill] = None,
-        forge_manager: Optional[ForgeManagerSkill] = None,
-        nexus_manager: Optional[NexusManagerSkill] = None,
-        sentinel_manager: Optional[SentinelManagerSkill] = None,
-        intelx_manager: Optional[IntelXManagerSkill] = None,
-        futuris_manager: Optional[FuturisManagerSkill] = None,
+        cross_orchestrator: CrossSystemOrchestrator | None = None,
+        status_skill: EcosystemStatusSkill | None = None,
+        forge_manager: ForgeManagerSkill | None = None,
+        nexus_manager: NexusManagerSkill | None = None,
+        sentinel_manager: SentinelManagerSkill | None = None,
+        intelx_manager: IntelXManagerSkill | None = None,
+        futuris_manager: FuturisManagerSkill | None = None,
     ) -> None:
         self.cross_orch = cross_orchestrator or CrossSystemOrchestrator()
         self.status_skill = status_skill or EcosystemStatusSkill()

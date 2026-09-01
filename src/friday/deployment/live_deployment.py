@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Live Deployment Manager & Production Readiness Gates for FRIDAY.
 
 Validates pre-flight deployment gates (security audit, risk budget, latency limits,
@@ -7,7 +6,7 @@ safety invariants), defines live capital allocations, and generates compliance d
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.security.production_security import ProductionSecurityManager
@@ -32,10 +31,10 @@ class DeploymentReadinessReport:
     overall_status: str  # READY_FOR_LIVE, BLOCKED
     passed_gates_count: int
     total_gates_count: int
-    gates: List[DeploymentGate]
+    gates: list[DeploymentGate]
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "overall_status": self.overall_status,
             "passed_gates_count": self.passed_gates_count,
@@ -50,7 +49,7 @@ class LiveDeploymentManager:
 
     def __init__(
         self,
-        security_manager: Optional[ProductionSecurityManager] = None,
+        security_manager: ProductionSecurityManager | None = None,
     ) -> None:
         self.security_manager = security_manager or ProductionSecurityManager()
 
@@ -113,8 +112,8 @@ class LiveDeploymentManager:
         self,
         total_equity_usdt: float = 25000.0,
         risk_budget_pct: float = 2.0,
-        strategy_split: Optional[Dict[str, float]] = None,
-    ) -> Dict[str, Any]:
+        strategy_split: dict[str, float] | None = None,
+    ) -> dict[str, Any]:
         """Calculates live capital allocation and position limits."""
         split = strategy_split or {
             "BTC_Supertrend_Momentum": 0.45,

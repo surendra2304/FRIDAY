@@ -1,19 +1,15 @@
-# -*- coding: utf-8 -*-
 """Unit tests for Proactive Background Monitoring Proactive FRIDAY: Scheduler, Background Monitor, Notification Manager, and Safety Gating."""
 
-import os
 import time
-import pytest
 
-from friday.core.types import SafetyLevel, AuthorizationDecision
-from friday.core.auth import DefaultSecureAuthorizer
-from friday.workflows.scheduler import WorkflowScheduler, ScheduledJob
-from friday.observability.notifications import NotificationManager
-from friday.observability.monitor import BackgroundMonitorService
 from friday.agent.agent import FridayAgent
-from friday.memory.in_memory import InMemoryConversationMemory
+from friday.core.auth import DefaultSecureAuthorizer
+from friday.core.types import Message, Role, SafetyLevel
 from friday.llm.base import BaseLLMProvider
-from friday.core.types import Message, Role
+from friday.memory.in_memory import InMemoryConversationMemory
+from friday.observability.monitor import BackgroundMonitorService
+from friday.observability.notifications import NotificationManager
+from friday.workflows.scheduler import WorkflowScheduler
 
 
 class DummyLLM(BaseLLMProvider):

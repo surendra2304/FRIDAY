@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Background Execution & LongRunningTaskManager Upgrade Test Suite.
 
 Test Type: UNIT / INTEGRATION / SIMULATION
@@ -12,32 +11,28 @@ Validates:
 6. Deadline and timeout enforcement: Exceeded budgets or wall-clock deadlines transition state to TIMED_OUT.
 """
 
-from datetime import datetime, timedelta, timezone
 import pathlib
 import time
-from typing import Dict, List, Optional
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 # Explicit test type markers
 pytestmark = [pytest.mark.unit, pytest.mark.integration]
 
 from friday.agent.agent import FridayAgent
-from friday.agent.checkpoint import TaskCheckpointStore
-from friday.agent.planner import PlanStep, StepStatus, TaskPlan
-from friday.agent.state import TaskState
-from friday.core.auth import AutoApproveAuthorizer, AutoDenyAuthorizer, DefaultSecureAuthorizer, SafetyLevel
+from friday.core.auth import (
+    SafetyLevel,
+)
 from friday.core.config import Settings
-from friday.core.types import Message, Role, ToolResult
+from friday.core.types import ToolResult
 from friday.llm.mock_provider import MockLLMProvider
 from friday.memory.in_memory import InMemoryConversationMemory
 from friday.tasks.manager import (
     LongRunningTaskManager,
     TaskBudget,
     TaskLifecycleStatus,
-    TaskPersistenceStore,
-    TaskProgressReport,
     TaskScope,
-    TaskSpec,
 )
 from friday.tools.base import BaseTool
 from friday.tools.registry import ToolRegistry
@@ -51,7 +46,7 @@ class MonitoredWorkTool(BaseTool):
 
     def __init__(self):
         super().__init__()
-        self.executed_items: List[str] = []
+        self.executed_items: list[str] = []
 
     def execute(self, item: str = "", **kwargs):
         time.sleep(0.04)

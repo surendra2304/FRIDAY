@@ -1,9 +1,10 @@
 import sys
 from pathlib import Path
+
 import pytest
 
 try:
-    import pandas  # Initialize pandas C-extensions before test monkeypatching
+    pass  # Initialize pandas C-extensions before test monkeypatching
 except Exception:
     pass
 
@@ -12,15 +13,18 @@ SRC_PATH = Path(__file__).resolve().parent.parent / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
+import os
+from unittest.mock import patch
+
+from friday.auth.request_accounting import (
+    BudgetLimits,
+    request_accountant,
+)
 from friday.core.config import Settings
 from friday.llm.mock_provider import MockLLMProvider
 from friday.memory.in_memory import InMemoryConversationMemory
 from friday.tools.builtin.system_info import SystemInfoTool
 from friday.tools.registry import ToolRegistry
-from friday.auth.request_accounting import RequestAccountant, BudgetLimits, request_accountant
-from friday.auth.credential_pool import credential_pool
-import os
-from unittest.mock import patch
 
 
 @pytest.fixture(autouse=True)

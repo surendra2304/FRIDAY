@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Web research tools: DuckDuckGo search and clean webpage text extraction.
 
 Fetched web content is UNTRUSTED external data. The voice pipeline's
@@ -6,8 +5,8 @@ injection guard and the text chain's TOOL-message sanitization both
 scrub these results before they reach any model context.
 """
 
-from typing import Any
 import warnings
+from typing import Any
 
 import httpx
 

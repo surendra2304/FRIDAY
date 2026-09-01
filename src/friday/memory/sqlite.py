@@ -1,22 +1,30 @@
 """SQLite-backed conversation memory with ACID persistence and conversation isolation."""
 
 import base64
+import hashlib
 import json
 import math
+import os
 import re
 import sqlite3
 import threading
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-import os
-import hashlib
-from friday.core.logging import get_logger
-from friday.core.types import EmbeddingRecord, MemorySearchResult, Message, Role, SemanticSearchResult, ToolCall, TrustLevel
-from friday.memory.base import BaseMemory
-from friday.core.config import get_settings
+from typing import Any
 
+from friday.core.config import get_settings
+from friday.core.logging import get_logger
+from friday.core.types import (
+    EmbeddingRecord,
+    MemorySearchResult,
+    Message,
+    Role,
+    SemanticSearchResult,
+    ToolCall,
+    TrustLevel,
+)
+from friday.memory.base import BaseMemory
 from friday.memory.policies import should_embed_message, should_retrieve_memory
 
 logger = get_logger("memory.sqlite")
@@ -28,7 +36,7 @@ SECRET_REDACT_PATTERNS = [
 ]
 
 
-def filter_secrets(text: Optional[str]) -> Optional[str]:
+def filter_secrets(text: str | None) -> str | None:
     """Sanitize secret API keys or credentials from text before persistence."""
     if not text or not isinstance(text, str):
         return text
@@ -42,9 +50,9 @@ class SQLiteConversationMemory(BaseMemory):
     def __init__(
         self,
         db_path: str = "data/friday.db",
-        conversation_id: Optional[str] = None,
+        conversation_id: str | None = None,
         max_messages: int = 50,
-        embedding_provider: Optional[Any] = None,
+        embedding_provider: Any | None = None,
     ) -> None:
         self.db_path = db_path
         self.max_messages = max(2, max_messages)
@@ -250,21 +258,20 @@ class SQLiteConversationMemory(BaseMemory):
 
     def _get_or_create_default_conversation(self) -> str:
         """Find the latest active conversation or create a new default one."""
-        with self._lock:
-            with self._get_connection() as conn:
-                row = conn.execute(
-                    "SELECT id FROM conversations ORDER BY updated_at DESC LIMIT 1"
-                ).fetchone()
-                if row:
-                    return str(row["id"])
+        with self._lock, self._get_connection() as conn:
+            row = conn.execute(
+                "SELECT id FROM conversations ORDER BY updated_at DESC LIMIT 1"
+            ).fetchone()
+            if row:
+                return str(row["id"])
 
         # Create default conversation
         return self.create_conversation(title="Default Conversation")
 
     def create_conversation(
         self,
-        title: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        title: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> str:
         """Create a new conversation session and return its ID."""
         conv_id = str(uuid.uuid4())
@@ -286,7 +293,7 @@ class SQLiteConversationMemory(BaseMemory):
         self._active_conversation_id = conv_id
         return conv_id
 
-    def list_conversations(self, limit: int = 50) -> List[Dict[str, Any]]:
+    def list_conversations(self, limit: int = 50) -> list[dict[str, Any]]:
         """List stored conversations ordered by most recent update."""
         with self._lock:
             with self._get_connection() as conn:
@@ -319,7 +326,7 @@ class SQLiteConversationMemory(BaseMemory):
                     })
                 return result
 
-    def get_conversation(self, conversation_id: str) -> Optional[Dict[str, Any]]:
+    def get_conversation(self, conversation_id: str) -> dict[str, Any] | None:
         """Retrieve details of a specific conversation session."""
         with self._lock:
             with self._get_connection() as conn:
@@ -353,27 +360,25 @@ class SQLiteConversationMemory(BaseMemory):
     def rename_conversation(self, conversation_id: str, new_title: str) -> bool:
         """Rename an existing conversation."""
         now = datetime.now(timezone.utc).isoformat()
-        with self._lock:
-            with self._get_connection() as conn:
-                cursor = conn.execute(
-                    "UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?",
-                    (new_title, now, conversation_id),
-                )
-                conn.commit()
-                renamed = cursor.rowcount > 0
+        with self._lock, self._get_connection() as conn:
+            cursor = conn.execute(
+                "UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?",
+                (new_title, now, conversation_id),
+            )
+            conn.commit()
+            renamed = cursor.rowcount > 0
         if renamed:
             logger.info(f"Renamed conversation '{conversation_id}' to '{new_title}'")
         return renamed
 
     def load_conversation(self, conversation_id: str) -> None:
         """Set the active conversation ID after validating existence."""
-        with self._lock:
-            with self._get_connection() as conn:
-                row = conn.execute(
-                    "SELECT id FROM conversations WHERE id = ?", (conversation_id,)
-                ).fetchone()
-                if not row:
-                    raise ValueError(f"Conversation '{conversation_id}' does not exist.")
+        with self._lock, self._get_connection() as conn:
+            row = conn.execute(
+                "SELECT id FROM conversations WHERE id = ?", (conversation_id,)
+            ).fetchone()
+            if not row:
+                raise ValueError(f"Conversation '{conversation_id}' does not exist.")
         self._active_conversation_id = conversation_id
         logger.info(f"Loaded active conversation session: '{conversation_id}'")
 
@@ -393,7 +398,7 @@ class SQLiteConversationMemory(BaseMemory):
     def add_message(
         self,
         message: Message,
-        conversation_id: Optional[str] = None,
+        conversation_id: str | None = None,
         auto_embed: bool = True,
     ) -> None:
         """Persist a message into the conversation store within a transaction."""
@@ -549,7 +554,7 @@ class SQLiteConversationMemory(BaseMemory):
             metadata=msg_meta,
         )
 
-    def get_messages(self, conversation_id: Optional[str] = None) -> List[Message]:
+    def get_messages(self, conversation_id: str | None = None) -> list[Message]:
         """Retrieve all stored messages for the conversation in chronological order."""
         conv_id = conversation_id or self._active_conversation_id
         with self._lock:
@@ -568,10 +573,10 @@ class SQLiteConversationMemory(BaseMemory):
     def get_context_window(
         self,
         max_messages: int = 50,
-        conversation_id: Optional[str] = None,
-        max_turns: Optional[int] = None,
+        conversation_id: str | None = None,
+        max_turns: int | None = None,
         max_tokens: int = 3000,
-    ) -> List[Message]:
+    ) -> list[Message]:
         """Retrieve recent slice of messages for active context window.
         
         Enforces a hard limit of recent conversation turns (e.g. last 5 turns)
@@ -609,7 +614,7 @@ class SQLiteConversationMemory(BaseMemory):
         if max_tokens > 0 and messages:
             char_budget = max_tokens * 4
             running_chars = 0
-            trimmed_reversed: List[Message] = []
+            trimmed_reversed: list[Message] = []
             for msg in reversed(messages):
                 msg_len = len(msg.content or "") + 100  # include structure overhead
                 if running_chars + msg_len > char_budget and trimmed_reversed:
@@ -620,7 +625,7 @@ class SQLiteConversationMemory(BaseMemory):
 
         return messages
 
-    def clear(self, conversation_id: Optional[str] = None, confirm: bool = False) -> None:
+    def clear(self, conversation_id: str | None = None, confirm: bool = False) -> None:
         """Clear all messages from the conversation. Requires confirmation."""
         if not confirm:
             raise ValueError("Clear memory requires confirm=True")
@@ -670,11 +675,11 @@ class SQLiteConversationMemory(BaseMemory):
     def search(
         self,
         query: str,
-        conversation_id: Optional[str] = None,
+        conversation_id: str | None = None,
         limit: int = 10,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-    ) -> List[MemorySearchResult]:
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+    ) -> list[MemorySearchResult]:
         """Search historical conversation messages using FTS5 with safety limits."""
         if not query or not query.strip():
             return []
@@ -688,10 +693,9 @@ class SQLiteConversationMemory(BaseMemory):
         
         fts_query = self._format_fts_query(clean_query)
         
-        with self._lock:
-            with self._get_connection() as conn:
-                try:
-                    sql = """
+        with self._lock, self._get_connection() as conn:
+            try:
+                sql = """
                         SELECT m.id, m.conversation_id, c.title AS conversation_title,
                                m.role, m.content, m.created_at,
                                bm25(messages_fts) AS rank_score
@@ -700,82 +704,80 @@ class SQLiteConversationMemory(BaseMemory):
                         JOIN conversations c ON m.conversation_id = c.id
                         WHERE messages_fts MATCH ?
                     """
-                    params: List[Any] = [fts_query]
-                    if conversation_id:
-                        sql += " AND m.conversation_id = ?"
-                        params.append(conversation_id)
-                    if start_iso:
-                        sql += " AND m.created_at >= ?"
-                        params.append(start_iso)
-                    if end_iso:
-                        sql += " AND m.created_at <= ?"
-                        params.append(end_iso)
-                    sql += " ORDER BY rank_score ASC LIMIT ?"
-                    params.append(limit)
-                    rows = conn.execute(sql, tuple(params)).fetchall()
-                except sqlite3.OperationalError as e:
-                    logger.warning(f"FTS5 query failed: {e}. Falling back to LIKE search.")
-                    # fallback to LIKE (omitted for brevity)
-                    rows = []
-                results: List[MemorySearchResult] = []
-                for r in rows:
-                    try:
-                        ts = datetime.fromisoformat(r["created_at"])
-                    except Exception:
-                        ts = datetime.now(timezone.utc)
-                    results.append(MemorySearchResult(
-                        conversation_id=r["conversation_id"],
-                        conversation_title=r["conversation_title"] or "Untitled",
-                        message_id=r["id"],
-                        role=Role(r["role"]),
-                        content=r["content"],
-                        timestamp=ts,
-                        score=float(r["rank_score"]),
-                    ))
-                return results
+                params: list[Any] = [fts_query]
+                if conversation_id:
+                    sql += " AND m.conversation_id = ?"
+                    params.append(conversation_id)
+                if start_iso:
+                    sql += " AND m.created_at >= ?"
+                    params.append(start_iso)
+                if end_iso:
+                    sql += " AND m.created_at <= ?"
+                    params.append(end_iso)
+                sql += " ORDER BY rank_score ASC LIMIT ?"
+                params.append(limit)
+                rows = conn.execute(sql, tuple(params)).fetchall()
+            except sqlite3.OperationalError as e:
+                logger.warning(f"FTS5 query failed: {e}. Falling back to LIKE search.")
+                # fallback to LIKE (omitted for brevity)
+                rows = []
+            results: list[MemorySearchResult] = []
+            for r in rows:
+                try:
+                    ts = datetime.fromisoformat(r["created_at"])
+                except Exception:
+                    ts = datetime.now(timezone.utc)
+                results.append(MemorySearchResult(
+                    conversation_id=r["conversation_id"],
+                    conversation_title=r["conversation_title"] or "Untitled",
+                    message_id=r["id"],
+                    role=Role(r["role"]),
+                    content=r["content"],
+                    timestamp=ts,
+                    score=float(r["rank_score"]),
+                ))
+            return results
 
     def add_embedding(self, record: EmbeddingRecord) -> None:
         """Store a semantic embedding vector record in SQLite."""
-        with self._lock:
-            with self._get_connection() as conn:
-                blob_str = json.dumps(record.embedding)
-                meta_str = json.dumps(record.metadata) if record.metadata else None
-                conn.execute(
-                    """
+        with self._lock, self._get_connection() as conn:
+            blob_str = json.dumps(record.embedding)
+            meta_str = json.dumps(record.metadata) if record.metadata else None
+            conn.execute(
+                """
                     INSERT OR REPLACE INTO embeddings (
                         id, conversation_id, message_id, source_text,
                         embedding_blob, model, dimension, created_at, metadata
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (
-                        record.id,
-                        record.conversation_id,
-                        record.message_id,
-                        record.source_text,
-                        blob_str,
-                        record.model,
-                        record.dimension,
-                        record.created_at.isoformat(),
-                        meta_str,
-                    ),
-                )
-                conn.commit()
+                (
+                    record.id,
+                    record.conversation_id,
+                    record.message_id,
+                    record.source_text,
+                    blob_str,
+                    record.model,
+                    record.dimension,
+                    record.created_at.isoformat(),
+                    meta_str,
+                ),
+            )
+            conn.commit()
 
-    def get_embeddings_for_conversation(self, conversation_id: str) -> List[EmbeddingRecord]:
+    def get_embeddings_for_conversation(self, conversation_id: str) -> list[EmbeddingRecord]:
         """Retrieve all stored embedding records for a given conversation."""
-        with self._lock:
-            with self._get_connection() as conn:
-                rows = conn.execute(
-                    """
+        with self._lock, self._get_connection() as conn:
+            rows = conn.execute(
+                """
                     SELECT id, conversation_id, message_id, source_text,
                            embedding_blob, model, dimension, created_at, metadata
                     FROM embeddings WHERE conversation_id = ?
                     ORDER BY created_at ASC
                     """,
-                    (conversation_id,),
-                ).fetchall()
+                (conversation_id,),
+            ).fetchall()
 
-        records: List[EmbeddingRecord] = []
+        records: list[EmbeddingRecord] = []
         for r in rows:
             try:
                 vec = json.loads(r["embedding_blob"]) if isinstance(r["embedding_blob"], str) else json.loads(r["embedding_blob"].decode("utf-8"))
@@ -800,10 +802,10 @@ class SQLiteConversationMemory(BaseMemory):
     def search_semantic(
         self,
         query: str,
-        conversation_id: Optional[str] = None,
+        conversation_id: str | None = None,
         limit: int = 10,
         threshold: float = 0.0,
-    ) -> List[SemanticSearchResult]:
+    ) -> list[SemanticSearchResult]:
         """Perform cosine similarity search across stored embedding vectors."""
         if not self.embedding_provider:
             return []
@@ -814,28 +816,27 @@ class SQLiteConversationMemory(BaseMemory):
             logger.warning(f"Failed to generate query embedding: {e}")
             return []
 
-        with self._lock:
-            with self._get_connection() as conn:
-                if conversation_id:
-                    cursor = conn.execute(
-                        """
+        with self._lock, self._get_connection() as conn:
+            if conversation_id:
+                cursor = conn.execute(
+                    """
                         SELECT id, conversation_id, message_id, source_text,
                                embedding_blob, model, dimension, created_at, metadata
                         FROM embeddings WHERE conversation_id = ?
                         """,
-                        (conversation_id,),
-                    )
-                else:
-                    cursor = conn.execute(
-                        """
+                    (conversation_id,),
+                )
+            else:
+                cursor = conn.execute(
+                    """
                         SELECT id, conversation_id, message_id, source_text,
                                embedding_blob, model, dimension, created_at, metadata
                         FROM embeddings
                         """
-                    )
-                rows = cursor.fetchall()
+                )
+            rows = cursor.fetchall()
 
-        scored: List[SemanticSearchResult] = []
+        scored: list[SemanticSearchResult] = []
         for r in rows:
             dim = int(r["dimension"])
             if dim != len(query_vector):
@@ -875,9 +876,9 @@ class SQLiteConversationMemory(BaseMemory):
     def search_hybrid(
         self,
         query: str,
-        conversation_id: Optional[str] = None,
+        conversation_id: str | None = None,
         limit: int = 10,
-    ) -> List[MemorySearchResult]:
+    ) -> list[MemorySearchResult]:
         """Perform hybrid search combining FTS5 lexical matching and semantic vector similarity using RRF."""
         # 1. Gather lexical results from FTS5
         lexical_results = self.search(query=query, conversation_id=conversation_id, limit=limit * 2)
@@ -888,7 +889,7 @@ class SQLiteConversationMemory(BaseMemory):
             return lexical_results[:limit]
 
         # 3. Gather semantic results if embedding provider is available
-        semantic_results: List[SemanticSearchResult] = []
+        semantic_results: list[SemanticSearchResult] = []
         if self.embedding_provider:
             try:
                 semantic_results = self.search_semantic(
@@ -920,8 +921,8 @@ class SQLiteConversationMemory(BaseMemory):
 
         # 3. Reciprocal Rank Fusion (RRF)
         k = 60.0
-        rrf_scores: Dict[str, float] = {}
-        merged_items: Dict[str, MemorySearchResult] = {}
+        rrf_scores: dict[str, float] = {}
+        merged_items: dict[str, MemorySearchResult] = {}
 
         # Score semantic items (weight = 1.0)
         for rank, sr in enumerate(semantic_results, 1):
@@ -955,7 +956,7 @@ class SQLiteConversationMemory(BaseMemory):
         return final_results
 
     @staticmethod
-    def _cosine_similarity(u: List[float], v: List[float]) -> float:
+    def _cosine_similarity(u: list[float], v: list[float]) -> float:
         """Compute cosine similarity between two float vectors."""
         if not u or not v or len(u) != len(v):
             return 0.0
@@ -985,7 +986,7 @@ class SQLiteConversationMemory(BaseMemory):
         active_tokens = content_tokens if content_tokens else tokens
         return " OR ".join(f'"{t}"*' for t in active_tokens)
 
-    def retain_conversations(self, retention_days: Optional[int] = None) -> None:
+    def retain_conversations(self, retention_days: int | None = None) -> None:
         """Purge conversations older than retention period (default from settings)."""
         days = retention_days or getattr(self.settings, 'memory_retention_days', None)
         if not days:
@@ -1008,13 +1009,12 @@ class SQLiteConversationMemory(BaseMemory):
             return 0
 
         cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
-        with self._lock:
-            with self._get_connection() as conn:
-                cursor = conn.execute(
-                    "DELETE FROM messages WHERE created_at < ?", (cutoff,)
-                )
-                conn.commit()
-                deleted = cursor.rowcount
+        with self._lock, self._get_connection() as conn:
+            cursor = conn.execute(
+                "DELETE FROM messages WHERE created_at < ?", (cutoff,)
+            )
+            conn.commit()
+            deleted = cursor.rowcount
         if deleted > 0:
             logger.info(f"Pruned {deleted} expired message(s) older than {retention_days} days (cutoff: {cutoff}).")
         return deleted
@@ -1031,13 +1031,12 @@ class SQLiteConversationMemory(BaseMemory):
         target = Path(backup_path).resolve()
         target.parent.mkdir(parents=True, exist_ok=True)
 
-        with self._lock:
-            with self._get_connection() as src_conn:
-                dest_conn = sqlite3.connect(str(target))
-                try:
-                    src_conn.backup(dest_conn)
-                finally:
-                    dest_conn.close()
+        with self._lock, self._get_connection() as src_conn:
+            dest_conn = sqlite3.connect(str(target))
+            try:
+                src_conn.backup(dest_conn)
+            finally:
+                dest_conn.close()
 
         logger.info(f"Created local database backup at '{target}'")
         return str(target)
@@ -1080,7 +1079,7 @@ class SQLiteConversationMemory(BaseMemory):
         logger.info('Backup verification succeeded')
         return True
 
-    def export_conversation_to_dict(self, conversation_id: str) -> Dict[str, Any]:
+    def export_conversation_to_dict(self, conversation_id: str) -> dict[str, Any]:
         """Export a full conversation record including metadata and messages to a dictionary."""
         conv_meta = self.get_conversation(conversation_id)
         if not conv_meta:
@@ -1105,31 +1104,13 @@ class SQLiteConversationMemory(BaseMemory):
             ],
         }
 
-    def add_memory_node(
-        self,
-        content: str,
-        memory_type: str = "episodic",
-        conversation_id: Optional[str] = None,
-        source: str = "user",
-        importance: float = 0.5,
-        confidence: float = 1.0,
-        privacy: str = "private",
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> str:
-        """Store a structured memory node (working, episodic, semantic, task)."""
-        valid_types = {"working", "episodic", "semantic", "task"}
-        if memory_type not in valid_types:
-            raise ValueError(f"Invalid memory_type '{memory_type}'. Must be one of {valid_types}")
-        
-        return node_id
-
     @property
-    def vector_store(self) -> Optional[Any]:
+    def vector_store(self) -> Any | None:
         """Lazy loader for ChromaVectorStore to prevent blocking startup."""
         if self._vector_store is None:
             try:
-                from friday.memory.vector_store import ChromaVectorStore
                 from friday.memory.embeddings.factory import create_embedding_provider
+                from friday.memory.vector_store import ChromaVectorStore
                 provider = self.embedding_provider or create_embedding_provider(self.settings)
                 if provider is not None:
                     chroma_dir = os.path.join(os.path.dirname(self.db_path) if self.db_path != ":memory:" else "data", "chroma")
@@ -1142,7 +1123,7 @@ class SQLiteConversationMemory(BaseMemory):
                 logger.debug(f"ChromaVectorStore initialization skipped or deferred: {e}")
         return self._vector_store
 
-    def _index_node_in_vector_store_bg(self, node_id: str, content: str, memory_type: str, metadata: Dict[str, Any]) -> None:
+    def _index_node_in_vector_store_bg(self, node_id: str, content: str, memory_type: str, metadata: dict[str, Any]) -> None:
         """Background thread target to index memory node into ChromaDB."""
         try:
             vs = self.vector_store
@@ -1163,8 +1144,8 @@ class SQLiteConversationMemory(BaseMemory):
         confidence: float = 1.0,
         privacy: str = "internal",
         source: str = "conversation",
-        conversation_id: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        conversation_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> str:
         """Add a structured memory node (working, episodic, semantic, task)."""
         valid_types = {"working", "episodic", "semantic", "task"}
@@ -1178,30 +1159,29 @@ class SQLiteConversationMemory(BaseMemory):
         meta_dict = metadata or {}
         meta_str = json.dumps(meta_dict)
 
-        with self._lock:
-            with self._get_connection() as conn:
-                conn.execute(
-                    """
+        with self._lock, self._get_connection() as conn:
+            conn.execute(
+                """
                     INSERT INTO memory_nodes (
                         id, conversation_id, memory_type, content, source,
                         importance, confidence, privacy, recency, created_at, metadata
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (
-                        node_id,
-                        conv_id,
-                        memory_type,
-                        clean_content,
-                        source,
-                        max(0.0, min(1.0, float(importance))),
-                        max(0.0, min(1.0, float(confidence))),
-                        privacy,
-                        now,
-                        now,
-                        meta_str,
-                    ),
-                )
-                conn.commit()
+                (
+                    node_id,
+                    conv_id,
+                    memory_type,
+                    clean_content,
+                    source,
+                    max(0.0, min(1.0, float(importance))),
+                    max(0.0, min(1.0, float(confidence))),
+                    privacy,
+                    now,
+                    now,
+                    meta_str,
+                ),
+            )
+            conn.commit()
 
         # Background vector indexing in non-blocking thread for semantic and episodic memories
         if memory_type in ("semantic", "episodic") and clean_content:
@@ -1216,26 +1196,25 @@ class SQLiteConversationMemory(BaseMemory):
 
     def get_memory_nodes(
         self,
-        memory_type: Optional[str] = None,
-        conversation_id: Optional[str] = None,
+        memory_type: str | None = None,
+        conversation_id: str | None = None,
         limit: int = 50,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Retrieve stored memory nodes ordered by recency."""
         conv_id = conversation_id or self.active_conversation_id
-        with self._lock:
-            with self._get_connection() as conn:
-                sql = "SELECT * FROM memory_nodes WHERE 1=1"
-                params: List[Any] = []
-                if conversation_id:
-                    sql += " AND conversation_id = ?"
-                    params.append(conv_id)
-                if memory_type:
-                    sql += " AND memory_type = ?"
-                    params.append(memory_type)
-                sql += " ORDER BY recency DESC LIMIT ?"
-                params.append(limit)
+        with self._lock, self._get_connection() as conn:
+            sql = "SELECT * FROM memory_nodes WHERE 1=1"
+            params: list[Any] = []
+            if conversation_id:
+                sql += " AND conversation_id = ?"
+                params.append(conv_id)
+            if memory_type:
+                sql += " AND memory_type = ?"
+                params.append(memory_type)
+            sql += " ORDER BY recency DESC LIMIT ?"
+            params.append(limit)
 
-                rows = conn.execute(sql, params).fetchall()
+            rows = conn.execute(sql, params).fetchall()
 
         results = []
         for r in rows:
@@ -1257,15 +1236,15 @@ class SQLiteConversationMemory(BaseMemory):
     def search_bounded_memories(
         self,
         query: str,
-        memory_type: Optional[str] = None,
+        memory_type: str | None = None,
         top_k: int = 5,
         min_importance: float = 0.0,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Bounded retrieval using semantic vector similarity (ChromaDB) and FTS5 ranking to fetch top-K relevant memories."""
         if not query or not query.strip():
             return []
 
-        results_by_id: Dict[str, Dict[str, Any]] = {}
+        results_by_id: dict[str, dict[str, Any]] = {}
 
         # 1. Semantic Vector Search via ChromaDB
         vs = self.vector_store
@@ -1309,9 +1288,8 @@ class SQLiteConversationMemory(BaseMemory):
 
         # 2. Keyword Search via SQLite FTS5 (Complement / Fallback)
         fts_query = self._format_fts_query(query.strip())
-        with self._lock:
-            with self._get_connection() as conn:
-                sql = """
+        with self._lock, self._get_connection() as conn:
+            sql = """
                     SELECT n.id, n.conversation_id, n.memory_type, n.content,
                            n.source, n.importance, n.confidence, n.privacy,
                            n.recency, n.created_at, n.metadata,
@@ -1321,18 +1299,18 @@ class SQLiteConversationMemory(BaseMemory):
                     WHERE memory_nodes_fts MATCH ?
                       AND n.importance >= ?
                 """
-                params: List[Any] = [fts_query, min_importance]
-                if memory_type:
-                    sql += " AND n.memory_type = ?"
-                    params.append(memory_type)
-                sql += " ORDER BY rank_score ASC, n.importance DESC LIMIT ?"
-                params.append(top_k)
+            params: list[Any] = [fts_query, min_importance]
+            if memory_type:
+                sql += " AND n.memory_type = ?"
+                params.append(memory_type)
+            sql += " ORDER BY rank_score ASC, n.importance DESC LIMIT ?"
+            params.append(top_k)
 
-                try:
-                    rows = conn.execute(sql, params).fetchall()
-                except Exception as e:
-                    logger.debug(f"FTS5 memory node search failed: {e}")
-                    rows = []
+            try:
+                rows = conn.execute(sql, params).fetchall()
+            except Exception as e:
+                logger.debug(f"FTS5 memory node search failed: {e}")
+                rows = []
 
         for r in rows:
             if r["id"] not in results_by_id:
@@ -1362,22 +1340,20 @@ class SQLiteConversationMemory(BaseMemory):
 
     def delete_memory_node(self, node_id: str) -> bool:
         """User-controlled explicit deletion of a specific memory node."""
-        with self._lock:
-            with self._get_connection() as conn:
-                cursor = conn.execute("DELETE FROM memory_nodes WHERE id = ?", (node_id,))
-                conn.commit()
-                deleted = cursor.rowcount > 0
+        with self._lock, self._get_connection() as conn:
+            cursor = conn.execute("DELETE FROM memory_nodes WHERE id = ?", (node_id,))
+            conn.commit()
+            deleted = cursor.rowcount > 0
         if deleted:
             logger.info(f"User deleted memory node '{node_id}'")
         return deleted
 
-    def export_all_memories(self, target_path: Optional[str] = None) -> Dict[str, Any]:
+    def export_all_memories(self, target_path: str | None = None) -> dict[str, Any]:
         """Export all conversations, messages, and memory nodes to a structured dictionary or JSON file."""
-        with self._lock:
-            with self._get_connection() as conn:
-                conv_rows = conn.execute("SELECT * FROM conversations").fetchall()
-                msg_rows = conn.execute("SELECT * FROM messages").fetchall()
-                node_rows = conn.execute("SELECT * FROM memory_nodes").fetchall()
+        with self._lock, self._get_connection() as conn:
+            conv_rows = conn.execute("SELECT * FROM conversations").fetchall()
+            msg_rows = conn.execute("SELECT * FROM messages").fetchall()
+            node_rows = conn.execute("SELECT * FROM memory_nodes").fetchall()
 
         export_data = {
             "exported_at": datetime.now(timezone.utc).isoformat(),
@@ -1409,9 +1385,9 @@ class SQLiteConversationMemory(BaseMemory):
         success: bool,
         latency_ms: float,
         token_usage: int = 0,
-        failure_mode: Optional[str] = None,
-        response_content: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        failure_mode: str | None = None,
+        response_content: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> str:
         """Record an experiment trial in the experiments table."""
         exp_id = str(uuid.uuid4())
@@ -1451,7 +1427,7 @@ class SQLiteConversationMemory(BaseMemory):
                 conn.close()
         return exp_id
 
-    def get_provider_performance_stats(self, task_type: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_provider_performance_stats(self, task_type: str | None = None) -> list[dict[str, Any]]:
         """Calculate historical latency and success rates per provider for dynamic routing."""
         with self._lock:
             conn = self._get_connection()
@@ -1464,7 +1440,7 @@ class SQLiteConversationMemory(BaseMemory):
                            COUNT(*) as trial_count
                     FROM experiments
                 """
-                params: List[Any] = []
+                params: list[Any] = []
                 if task_type:
                     sql += " WHERE task_type = ?"
                     params.append(task_type)
@@ -1488,15 +1464,15 @@ class SQLiteConversationMemory(BaseMemory):
     def log_execution_trace(
         self,
         goal: str,
-        tools_used: Optional[List[str]] = None,
-        models_used: Optional[List[str]] = None,
-        provider: Optional[str] = None,
+        tools_used: list[str] | None = None,
+        models_used: list[str] | None = None,
+        provider: str | None = None,
         latency_ms: float = 0.0,
         success: bool = True,
-        task_type: Optional[str] = None,
-        error_message: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        trace_id: Optional[str] = None,
+        task_type: str | None = None,
+        error_message: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        trace_id: str | None = None,
     ) -> str:
         """Persist an execution trace for trace-based learning and routing optimization."""
         tid = trace_id or f"tr_{uuid.uuid4().hex[:12]}"
@@ -1538,17 +1514,17 @@ class SQLiteConversationMemory(BaseMemory):
     def get_execution_traces(
         self,
         limit: int = 100,
-        task_type: Optional[str] = None,
-        provider: Optional[str] = None,
-        success_only: Optional[bool] = None,
-        goal_query: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+        task_type: str | None = None,
+        provider: str | None = None,
+        success_only: bool | None = None,
+        goal_query: str | None = None,
+    ) -> list[dict[str, Any]]:
         """Retrieve execution traces matching filter criteria."""
         with self._lock:
             conn = self._get_connection()
             try:
                 sql = "SELECT * FROM execution_traces WHERE 1=1"
-                params: List[Any] = []
+                params: list[Any] = []
                 if task_type:
                     sql += " AND task_type = ?"
                     params.append(task_type)
@@ -1585,7 +1561,7 @@ class SQLiteConversationMemory(BaseMemory):
             })
         return traces
 
-    def get_trace_stats(self) -> Dict[str, Any]:
+    def get_trace_stats(self) -> dict[str, Any]:
         """Aggregate statistical summary across execution traces."""
         with self._lock:
             conn = self._get_connection()

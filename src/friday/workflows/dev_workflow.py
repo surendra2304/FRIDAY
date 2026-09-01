@@ -1,17 +1,17 @@
-# -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
 import os
 import re
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from friday.agents.base_agent import AgentTask
     from friday.agents.specialists.developer_agent import DeveloperAgent
 from friday.core.logging import get_logger
-from friday.core.types import SafetyLevel
-from friday.tools.builtin.dev_tools import CreateGitBranchTool, RunTestsTool, WriteCodeFileTool
-from friday.tools.builtin.git_tools import GitCommitTool, GitPushTool, GitStatusTool
+from friday.tools.builtin.dev_tools import (
+    CreateGitBranchTool,
+    RunTestsTool,
+)
+from friday.tools.builtin.git_tools import GitCommitTool, GitPushTool
 from friday.tools.builtin.github_tools import ListGitHubIssuesTool
 from friday.tools.registry import ToolRegistry
 
@@ -23,9 +23,9 @@ class AutonomousDevWorkflow:
 
     def __init__(
         self,
-        developer_agent: Optional[DeveloperAgent] = None,
-        tool_registry: Optional[ToolRegistry] = None,
-        repo_name: Optional[str] = None,
+        developer_agent: DeveloperAgent | None = None,
+        tool_registry: ToolRegistry | None = None,
+        repo_name: str | None = None,
     ) -> None:
         self.developer_agent = developer_agent
         self.tool_registry = tool_registry or ToolRegistry()
@@ -38,7 +38,7 @@ class AutonomousDevWorkflow:
         pattern = r"\b(?:fix|resolve|implement|address)\s+issue\s*#?(?P<issue_id>\d+)\b"
         return bool(re.search(pattern, user_prompt, re.IGNORECASE))
 
-    def extract_issue_number(self, user_prompt: str) -> Optional[int]:
+    def extract_issue_number(self, user_prompt: str) -> int | None:
         """Extract target issue ID number from user instruction."""
         pattern = r"\b(?:fix|resolve|implement|address)\s+issue\s*#?(?P<issue_id>\d+)\b"
         match = re.search(pattern, user_prompt, re.IGNORECASE)
@@ -49,9 +49,9 @@ class AutonomousDevWorkflow:
     async def execute_issue_fix(
         self,
         user_prompt: str,
-        repo_name: Optional[str] = None,
+        repo_name: str | None = None,
         branch_prefix: str = "fix/issue-",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Orchestrate autonomous resolution of a specified issue."""
         target_repo = repo_name or self.repo_name
         issue_id = self.extract_issue_number(user_prompt)
@@ -62,7 +62,7 @@ class AutonomousDevWorkflow:
                 "steps_taken": [],
             }
 
-        steps: List[str] = []
+        steps: list[str] = []
         logger.info(f"Initiating autonomous fix for Issue #{issue_id} in repo '{target_repo}'")
 
         # Step 1: Create and checkout git branch

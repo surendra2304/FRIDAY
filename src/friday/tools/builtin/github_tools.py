@@ -1,8 +1,7 @@
-# -*- coding: utf-8 -*-
 """GitHub API automation tools using PyGithub for Git & GitHub Automation."""
 
-from typing import Any, Dict, Optional
 import os
+from typing import Any
 
 from friday.core.config import get_settings
 from friday.core.logging import get_logger
@@ -12,9 +11,9 @@ from friday.tools.base import BaseTool
 logger = get_logger("tools.github_tools")
 
 
-def _get_github_client(token: Optional[str] = None):
+def _get_github_client(token: str | None = None):
     """Lazily construct PyGithub client."""
-    from github import Github, Auth
+    from github import Auth, Github
 
     tok = token or getattr(get_settings(), "github_token", None) or os.getenv("FRIDAY_GITHUB_TOKEN") or os.getenv("GITHUB_TOKEN")
     if not tok:
@@ -87,7 +86,7 @@ class ListGitHubIssuesTool(BaseTool):
             logger.warning(f"Failed to list GitHub issues: {e}")
             return ToolResult(
                 name=self.name,
-                content=f"Failed to list GitHub issues for '{repo_name}': {str(e)}",
+                content=f"Failed to list GitHub issues for '{repo_name}': {e!s}",
                 is_error=True,
                 safety_level=self.safety_level,
             )
@@ -125,7 +124,7 @@ class CreateGitHubIssueTool(BaseTool):
         self,
         repo_name: str,
         title: str,
-        body: Optional[str] = "",
+        body: str | None = "",
         **kwargs: Any,
     ) -> ToolResult:
         try:
@@ -144,7 +143,7 @@ class CreateGitHubIssueTool(BaseTool):
             logger.warning(f"Failed to create GitHub issue: {e}")
             return ToolResult(
                 name=self.name,
-                content=f"Failed to create issue on '{repo_name}': {str(e)}",
+                content=f"Failed to create issue on '{repo_name}': {e!s}",
                 is_error=True,
                 safety_level=self.safety_level,
             )

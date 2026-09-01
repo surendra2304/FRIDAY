@@ -1,9 +1,7 @@
-# -*- coding: utf-8 -*-
 """Unit tests for AI Universe Integration: AI Universe Integration API, Mock Client, and Orchestration."""
 
-import pytest
-from friday.integrations.universe_api import WorldConfig, UniverseAgentConfig
 from friday.integrations.mock_universe import MockUniverseClient
+from friday.integrations.universe_api import UniverseAgentConfig, WorldConfig
 from friday.integrations.universe_orchestrator import UniverseOrchestrator
 from friday.memory.sqlite import SQLiteConversationMemory
 

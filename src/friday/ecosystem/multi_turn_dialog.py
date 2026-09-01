@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Multi-Turn Dialog Manager with Biometric Security and Error Recovery.
 
 Provides conversational depth for FRIDAY:
@@ -8,10 +7,10 @@ Provides conversational depth for FRIDAY:
 - Query caching with 30-second TTL
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
 import threading
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -23,8 +22,8 @@ class DialogTurnResult:
     """Outcome of a multi-turn dialogue step."""
     needs_clarification: bool
     prompt: str
-    options: List[str] = field(default_factory=list)
-    pending_action: Optional[str] = None
+    options: list[str] = field(default_factory=list)
+    pending_action: str | None = None
     session_id: str = "dialog_turn_01"
 
 
@@ -43,15 +42,15 @@ class MultiTurnDialogManager:
     """Manages clarifying questions, biometric safety confirmations, and error recovery."""
 
     def __init__(self) -> None:
-        self._pending_clarifications: Dict[str, Dict[str, Any]] = {}
-        self._cached_queries: Dict[str, Dict[str, Any]] = {}
+        self._pending_clarifications: dict[str, dict[str, Any]] = {}
+        self._cached_queries: dict[str, dict[str, Any]] = {}
         self._lock = threading.RLock()
 
     # =========================================================================
     # 1. Ambiguity Clarification
     # =========================================================================
 
-    def evaluate_ambiguity(self, command: str) -> Optional[DialogTurnResult]:
+    def evaluate_ambiguity(self, command: str) -> DialogTurnResult | None:
         """Detects ambiguous commands and generates clarifying questions."""
         clean = command.strip().lower()
 
@@ -82,8 +81,8 @@ class MultiTurnDialogManager:
     def request_biometric_confirmation(
         self,
         action_name: str,
-        payload: Optional[Dict[str, Any]] = None,
-        spoken_phrase: Optional[str] = None,
+        payload: dict[str, Any] | None = None,
+        spoken_phrase: str | None = None,
     ) -> BiometricConfirmationResult:
         """Verifies voice biometric authorization for sensitive operations."""
         payload = payload or {}
@@ -134,7 +133,7 @@ class MultiTurnDialogManager:
     # 4. 30-Second TTL Query Cache
     # =========================================================================
 
-    def get_cached_response(self, query_key: str) -> Optional[Any]:
+    def get_cached_response(self, query_key: str) -> Any | None:
         """Retrieves cached response if within 30-second TTL."""
         with self._lock:
             now = datetime.now(timezone.utc)

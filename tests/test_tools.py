@@ -1,16 +1,15 @@
 """Tests for tool system, argument validation, and safety enforcement."""
 
 from typing import Any
-import pytest
-from friday.core.exceptions import ToolError
+
 from friday.core.types import SafetyLevel, ToolResult
 from friday.tools.base import BaseTool
 from friday.tools.builtin import (
+    CalculatorTool,
+    FileListingTool,
+    FileReaderTool,
     SystemInfoTool,
     TimeDateTool,
-    CalculatorTool,
-    FileReaderTool,
-    FileListingTool,
 )
 from friday.tools.registry import ToolRegistry
 

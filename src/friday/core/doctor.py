@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Safe Diagnostics and System Health Doctor for FRIDAY.
 
 Audits and reports sanitized health information for:
@@ -28,17 +27,17 @@ Invariants:
 - Generates both machine-readable JSON/Dict structures and human-readable CLI tables.
 """
 
+import os
+import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-import os
 from pathlib import Path
-import sqlite3
-from typing import Any, Dict, Optional
+from typing import Any
 
 from friday.core.config import Settings, get_settings
 from friday.core.logging import get_logger
-from friday.security.scrubber import redact_secrets, recursive_sanitize
+from friday.security.scrubber import recursive_sanitize, redact_secrets
 
 logger = get_logger("core.doctor")
 
@@ -60,10 +59,10 @@ class ComponentHealth:
     name: str
     status: DiagnosticStatus
     message: str
-    details: Dict[str, Any] = field(default_factory=dict)
-    remediation: Optional[str] = None
+    details: dict[str, Any] = field(default_factory=dict)
+    remediation: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "status": self.status.value,
@@ -77,10 +76,10 @@ class ComponentHealth:
 class DoctorReport:
     """Comprehensive system-wide diagnostic report."""
     overall_status: DiagnosticStatus
-    components: Dict[str, ComponentHealth]
+    components: dict[str, ComponentHealth]
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "overall_status": self.overall_status.value,
             "timestamp": self.timestamp.isoformat(),
@@ -121,7 +120,7 @@ class DoctorReport:
 class FridayDoctor:
     """Diagnoses and audits the operational health of all FRIDAY subsystems."""
 
-    def __init__(self, settings: Optional[Settings] = None) -> None:
+    def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
 
     def diagnose_configuration(self) -> ComponentHealth:
@@ -253,7 +252,10 @@ class FridayDoctor:
     def diagnose_voice_subsystem(self) -> ComponentHealth:
         """Audit microphone, speaker, and voice hardware availability."""
         try:
-            from friday.voice.audio_io import check_device_availability, get_audio_diagnostics
+            from friday.voice.audio_io import (
+                check_device_availability,
+                get_audio_diagnostics,
+            )
             mic_ok, mic_err = check_device_availability("input")
             spk_ok, spk_err = check_device_availability("output")
             info = get_audio_diagnostics()
@@ -428,9 +430,7 @@ class FridayDoctor:
         statuses = [c.status for c in components.values()]
         if DiagnosticStatus.ERROR in statuses:
             overall = DiagnosticStatus.ERROR
-        elif DiagnosticStatus.COOLDOWN in statuses or DiagnosticStatus.DEGRADED in statuses:
-            overall = DiagnosticStatus.DEGRADED
-        elif DiagnosticStatus.UNAVAILABLE in statuses:
+        elif DiagnosticStatus.COOLDOWN in statuses or DiagnosticStatus.DEGRADED in statuses or DiagnosticStatus.UNAVAILABLE in statuses:
             overall = DiagnosticStatus.DEGRADED
         elif all(s in (DiagnosticStatus.AVAILABLE, DiagnosticStatus.CONFIGURED) for s in statuses):
             overall = DiagnosticStatus.AVAILABLE

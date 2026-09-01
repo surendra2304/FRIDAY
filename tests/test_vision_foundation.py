@@ -1,14 +1,16 @@
-# -*- coding: utf-8 -*-
 """Deterministic unit tests for Multimodal Screen Perception.1 Vision Foundation."""
 
 from unittest import mock
+
 import pytest
 
-from friday.vision.base import BaseVisionProvider, VisionAnalysisResult
+from friday.auth.credential_pool import FailureCategory, GeminiCredentialPool
+from friday.vision.base import VisionAnalysisResult
+from friday.vision.gemini_vision import (
+    GeminiVisionProvider,
+    validate_image_data,
+)
 from friday.vision.mock_vision import MockVisionProvider
-from friday.vision.gemini_vision import GeminiVisionProvider, validate_image_data, SUPPORTED_MIME_TYPES
-from friday.auth.credential_pool import GeminiCredentialPool, FailureCategory
-
 
 # Sample synthetic image payloads with valid magic byte headers
 SAMPLE_PNG_HEADER = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00"

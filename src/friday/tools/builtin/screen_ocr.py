@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Local screen OCR tools: read text directly from the screen without a cloud call.
 
 Uses pytesseract (Tesseract OCR engine) over a local screen capture, so
@@ -7,7 +6,7 @@ the tools degrade gracefully with an install hint. Requires the Tesseract
 engine: https://github.com/UB-Mannheim/tesseract/wiki
 """
 
-from typing import Any, List, Optional, Tuple
+from typing import Any
 
 from friday.core.config import get_settings
 from friday.core.logging import get_logger
@@ -17,7 +16,7 @@ from friday.tools.base import BaseTool
 logger = get_logger("tools.screen_ocr")
 
 
-def _capture_screen(region: Optional[Tuple[int, int, int, int]] = None):
+def _capture_screen(region: tuple[int, int, int, int] | None = None):
     """Capture the screen (or a region) as a PIL image via mss-style Win32 capture."""
     from PIL import ImageGrab
 
@@ -29,6 +28,7 @@ def _capture_screen(region: Optional[Tuple[int, int, int, int]] = None):
 def _configure_tesseract() -> None:
     """Explicitly configure pytesseract's tesseract_cmd from settings or Windows default."""
     import os
+
     import pytesseract
 
     settings = get_settings()
@@ -40,13 +40,13 @@ def _configure_tesseract() -> None:
         pytesseract.pytesseract.tesseract_cmd = cmd
 
 
-def _run_ocr(image) -> List[Tuple[str, Tuple[int, int, int, int]]]:
+def _run_ocr(image) -> list[tuple[str, tuple[int, int, int, int]]]:
     """Run Tesseract OCR; return [(text, bounding_box)] for words/confident chunks."""
     import pytesseract
 
     _configure_tesseract()
     data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
-    results: List[Tuple[str, Tuple[int, int, int, int]]] = []
+    results: list[tuple[str, tuple[int, int, int, int]]] = []
     n = len(data.get("text", []))
     for i in range(n):
         word = (data["text"][i] or "").strip()
@@ -110,7 +110,7 @@ class ReadScreenTextTool(BaseTool):
             return ToolResult(name=self.name, content="No readable text found on screen.",
                               is_error=False, safety_level=self.safety_level)
         # Reconstruct lines by grouping words on the same top coordinate
-        lines: List[Tuple[int, List[str]]] = []
+        lines: list[tuple[int, list[str]]] = []
         for word, (l, t, r, b) in words:
             if lines and abs(lines[-1][0] - t) <= 6:
                 lines[-1][1].append(word)
@@ -269,7 +269,7 @@ class ReadActiveWindowTextTool(BaseTool):
             return ToolResult(name=self.name, content="No readable text found in the active window.",
                               is_error=False, safety_level=self.safety_level)
 
-        lines: List[Tuple[int, List[str]]] = []
+        lines: list[tuple[int, list[str]]] = []
         for word, (l, t, r, b) in words:
             if lines and abs(lines[-1][0] - t) <= 6:
                 lines[-1][1].append(word)

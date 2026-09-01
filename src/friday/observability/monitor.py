@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Background Monitoring Service for FRIDAY Proactive Background Monitoring Proactive System.
 
 Executes continuous bounded checks (e.g. web page diffing, file modifications) and alerts NotificationManager.
@@ -6,7 +5,8 @@ Executes continuous bounded checks (e.g. web page diffing, file modifications) a
 
 import hashlib
 import threading
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel
@@ -26,7 +26,7 @@ class BackgroundMonitorService:
     ) -> None:
         self.scheduler = scheduler
         self.notifications = notifications
-        self._monitored_targets: Dict[str, Any] = {}
+        self._monitored_targets: dict[str, Any] = {}
         self._lock = threading.RLock()
 
     def monitor_webpage_change(

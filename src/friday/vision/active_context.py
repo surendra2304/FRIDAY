@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Active Window Tracker for Full-Duplex Voice Engine3: Active Screen Awareness.
 
 Uses pywinauto (UI Automation / Win32) to extract the title, process name,
@@ -6,16 +5,15 @@ and active URL (for web browsers) of the window currently in foreground focus.
 Runs lightweight and synchronously on local CPU with zero perceivable latency.
 """
 
-from typing import Any, Dict, Optional
-import os
 import sys
+from typing import Any
 
 from friday.core.logging import get_logger
 
 logger = get_logger("vision.active_context")
 
 
-def get_active_window_context() -> Dict[str, Any]:
+def get_active_window_context() -> dict[str, Any]:
     """Retrieve title, process name, and active browser URL of the foreground window.
 
     Returns:
@@ -34,10 +32,10 @@ def get_active_window_context() -> Dict[str, Any]:
         }
 
     try:
-        from pywinauto import Desktop
+        import psutil
         import win32gui
         import win32process
-        import psutil
+        from pywinauto import Desktop
 
         hwnd = win32gui.GetForegroundWindow()
         if not hwnd:

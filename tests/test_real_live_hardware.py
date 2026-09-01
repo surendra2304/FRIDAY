@@ -11,17 +11,16 @@ Run this manually with your real FRIDAY_GEMINI_API_KEY exported in your environm
 """
 
 import pytest
+
 pytestmark = pytest.mark.hardware
 
 import asyncio
 import os
 import sys
 
-from pydantic import ValidationError
-
-from friday.core.config import get_settings
-from friday.core.logging import setup_logging, get_logger
 from friday.agent import FridayAgent
+from friday.core.config import get_settings
+from friday.core.logging import get_logger, setup_logging
 from friday.voice.gemini_live_session import GeminiLiveVoiceSession
 
 logger = get_logger("test_live_hardware")

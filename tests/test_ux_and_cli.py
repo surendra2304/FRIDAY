@@ -1,18 +1,22 @@
 """Deterministic tests for CLI UX, Provider Preflight, and Quota-Aware Runtime."""
 
 import logging
-from datetime import datetime, timedelta
-from pathlib import Path
 from unittest import mock
+
 import pytest
 
-from friday.auth.credential_pool import GeminiCredentialPool, FailureCategory, COOLDOWN_DURATIONS
-from friday.cli.main import BANNER, print_status, render_friday_banner, FRIDAY_LOGO_LINES
-from friday.core.config import Settings
+from friday.auth.credential_pool import (
+    FailureCategory,
+    GeminiCredentialPool,
+)
+from friday.cli.main import (
+    FRIDAY_LOGO_LINES,
+    render_friday_banner,
+)
 from friday.core.logging import setup_logging
 from friday.core.types import Message, Role
 from friday.memory.embeddings.gemini import GeminiEmbeddingProvider
-from friday.memory.policies import should_retrieve_memory, should_embed_message
+from friday.memory.policies import should_embed_message, should_retrieve_memory
 
 
 # -----------------------------------------------------------------------------
@@ -180,8 +184,9 @@ def test_trivial_turns_skip_memory_retrieval_and_embedding():
 # -----------------------------------------------------------------------------
 def test_cli_voice_mode_flag_triggers_live_session(monkeypatch):
     """Verify that --voice flag launches the real GeminiLiveVoiceSession."""
-    from friday.cli.main import main
     import sys
+
+    from friday.cli.main import main
 
     monkeypatch.setattr(sys, "argv", ["friday", "--voice"])
 
@@ -205,8 +210,9 @@ def test_cli_voice_mode_flag_triggers_live_session(monkeypatch):
 
 def test_cli_text_mode_override_suppresses_voice_mode(monkeypatch):
     """Verify that --text flag suppresses voice mode even if voice_enabled setting is True."""
-    from friday.cli.main import main
     import sys
+
+    from friday.cli.main import main
 
     monkeypatch.setattr(sys, "argv", ["friday", "--text"])
     monkeypatch.setenv("FRIDAY_VOICE_ENABLED", "true")

@@ -1,16 +1,15 @@
-# -*- coding: utf-8 -*-
 """Human Policy Interface for FRIDAY Ecosystem Governance.
 
 Enables the human operator to declare, store, version, and enforce natural-language
 governance policies (e.g. position caps, daily loss thresholds, mandatory approval mandates).
 """
 
+import re
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-import re
-import threading
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -44,7 +43,7 @@ class HumanPolicyInterface:
     """Manages human-defined policies with versioning, enforcement, and conflict detection."""
 
     def __init__(self) -> None:
-        self._policies: Dict[str, PolicyRule] = {}
+        self._policies: dict[str, PolicyRule] = {}
         self._version_counter: int = 1
         self._lock = threading.RLock()
         self._init_defaults()
@@ -151,15 +150,15 @@ class HumanPolicyInterface:
             logger.info(f"[POLICY_INTERFACE] Added custom policy: {rule.name}")
             return rule
 
-    def get_active_policies(self) -> List[PolicyRule]:
+    def get_active_policies(self) -> list[PolicyRule]:
         """Returns all currently active policy rules."""
         with self._lock:
             return [p for p in self._policies.values() if p.active]
 
-    def detect_conflicts(self) -> List[str]:
+    def detect_conflicts(self) -> list[str]:
         """Scans active policies for conflicting rules."""
         with self._lock:
-            conflicts: List[str] = []
+            conflicts: list[str] = []
             pos_rules = [p for p in self._policies.values() if p.active and p.category == PolicyCategory.POSITION_SIZING]
             if len(pos_rules) > 1:
                 vals = [p.parameter_value for p in pos_rules]

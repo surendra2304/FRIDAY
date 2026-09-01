@@ -1,14 +1,13 @@
 """Tests for FridayAgent integration with persistent SQLite memory."""
 
 import sqlite3
-from typing import Any, Dict, List, Optional
-import pytest
+from typing import Any
+
 from friday.agent.agent import FridayAgent
 from friday.core.config import Settings
 from friday.core.types import Message, Role, ToolCall
 from friday.llm.mock_provider import MockLLMProvider
 from friday.memory.in_memory import InMemoryConversationMemory
-from friday.memory.sqlite import SQLiteConversationMemory
 
 
 def test_agent_with_in_memory_backend(mock_settings, mock_llm_provider):
@@ -101,7 +100,7 @@ def test_agent_tool_call_and_result_persistence(tmp_path):
     )
 
     # Custom responder that triggers a calculator tool call
-    def mock_tool_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_tool_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         # If tool result is in context, synthesize final answer
         if any(m.role == Role.TOOL for m in messages):
             return Message(role=Role.ASSISTANT, content="The calculation result is 2500.")
@@ -185,7 +184,7 @@ def test_agent_context_window_sliding(tmp_path):
     )
 
     passed_context_sizes = []
-    def recording_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def recording_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         # Exclude system message
         non_system = [m for m in messages if m.role != Role.SYSTEM]
         passed_context_sizes.append(len(non_system))

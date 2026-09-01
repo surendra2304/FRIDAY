@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Structured UI element and visual region models for Evidence-Based Verification.2.
 
 Provides normalized bounding boxes, typed UI element categories, confidence scores,
@@ -7,7 +6,7 @@ and structured parsing for fine-grained desktop screen understanding.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 
 class ElementType(str, Enum):
@@ -48,7 +47,7 @@ class BoundingBox:
     ymax: int = 1000
     xmax: int = 1000
 
-    def to_dict(self) -> Dict[str, int]:
+    def to_dict(self) -> dict[str, int]:
         return {
             "ymin": self.ymin,
             "xmin": self.xmin,
@@ -56,7 +55,7 @@ class BoundingBox:
             "xmax": self.xmax,
         }
 
-    def to_pixel_coordinates(self, screen_width: int, screen_height: int) -> Tuple[int, int, int, int]:
+    def to_pixel_coordinates(self, screen_width: int, screen_height: int) -> tuple[int, int, int, int]:
         """Convert normalized [0, 1000] coordinates to absolute pixel coordinates [x1, y1, x2, y2]."""
         x1 = int((self.xmin / 1000.0) * screen_width)
         y1 = int((self.ymin / 1000.0) * screen_height)
@@ -64,13 +63,13 @@ class BoundingBox:
         y2 = int((self.ymax / 1000.0) * screen_height)
         return (x1, y1, x2, y2)
 
-    def get_center_pixel(self, screen_width: int, screen_height: int) -> Tuple[int, int]:
+    def get_center_pixel(self, screen_width: int, screen_height: int) -> tuple[int, int]:
         """Compute pixel center (x, y) for clicking or hovering."""
         x1, y1, x2, y2 = self.to_pixel_coordinates(screen_width, screen_height)
         return ((x1 + x2) // 2, (y1 + y2) // 2)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "BoundingBox":
+    def from_dict(cls, data: dict[str, Any]) -> "BoundingBox":
         if not isinstance(data, dict):
             return cls()
         return cls(
@@ -90,10 +89,10 @@ class UIElement:
     bounding_box: BoundingBox
     confidence: float = 1.0
     is_interactive: bool = True
-    attributes: Dict[str, Any] = field(default_factory=dict)
-    observed_text: Optional[str] = None
+    attributes: dict[str, Any] = field(default_factory=dict)
+    observed_text: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "element_id": self.element_id,
             "element_type": self.element_type.value,
@@ -106,7 +105,7 @@ class UIElement:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "UIElement":
+    def from_dict(cls, data: dict[str, Any]) -> "UIElement":
         etype_str = str(data.get("element_type", "UNKNOWN")).upper()
         try:
             etype = ElementType(etype_str)

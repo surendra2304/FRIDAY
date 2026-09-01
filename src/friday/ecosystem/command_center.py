@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Ecosystem Command Center for FRIDAY.
 
 Provides unified 3-system visibility (Trading Bot, AI-Universe, FRIDAY OS),
@@ -6,11 +5,11 @@ ecosystem state governance (FULL_AUTONOMY, SUPERVISED_AUTONOMY, SHADOW_MODE, DEG
 biometric-verified autonomy adjustments, and autonomous decision auditing.
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-import threading
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.security.production_security import ProductionSecurityManager
@@ -39,7 +38,7 @@ class EcosystemDecision:
     """Audit record of an autonomous decision executed in the ecosystem."""
     decision_id: str
     action_type: str  # AUTONOMY_CHANGE, PARAMETER_OVERLAY, REBALANCE, HALT
-    details: Dict[str, Any]
+    details: dict[str, Any]
     operator_id: str
     signature: str
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -50,12 +49,12 @@ class EcosystemCommandCenter:
 
     def __init__(
         self,
-        security_manager: Optional[ProductionSecurityManager] = None,
+        security_manager: ProductionSecurityManager | None = None,
     ) -> None:
         self._security_manager = security_manager
         self._ecosystem_state = EcosystemState.SUPERVISED_AUTONOMY
         self._autonomy_level = AutonomyLevel.LEVEL_2_SUPERVISED
-        self._decisions: List[EcosystemDecision] = []
+        self._decisions: list[EcosystemDecision] = []
         self._lock = threading.RLock()
         self._init_defaults()
 
@@ -84,7 +83,7 @@ class EcosystemCommandCenter:
             ),
         ]
 
-    def get_ecosystem_status(self) -> Dict[str, Any]:
+    def get_ecosystem_status(self) -> dict[str, Any]:
         """Aggregates real-time telemetry across all 3 systems."""
         with self._lock:
             return {
@@ -128,9 +127,9 @@ class EcosystemCommandCenter:
         self,
         new_level: int,
         speaker_id: str = "operator_surendra",
-        voice_embedding: Optional[List[float]] = None,
+        voice_embedding: list[float] | None = None,
         verbal_confirmation: str = "",
-    ) -> Tuple[bool, str, Optional[str]]:
+    ) -> tuple[bool, str, str | None]:
         """Sets autonomy level with biometric verification and verbal phrase check."""
         with self._lock:
             if voice_embedding:
@@ -182,7 +181,7 @@ class EcosystemCommandCenter:
             logger.info(f"[COMMAND_CENTER] {msg}")
             return True, msg, signed["signature"]
 
-    def get_recent_decisions(self) -> List[EcosystemDecision]:
+    def get_recent_decisions(self) -> list[EcosystemDecision]:
         """Returns the autonomous decision log."""
         with self._lock:
             return list(self._decisions)

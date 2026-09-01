@@ -1,5 +1,4 @@
-from typing import Any, Dict, List, Optional
-import os
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel, ToolResult
@@ -8,7 +7,7 @@ from friday.tools.base import BaseTool
 logger = get_logger("tools.system_monitor")
 
 
-def get_current_system_resources() -> Dict[str, Any]:
+def get_current_system_resources() -> dict[str, Any]:
     """Retrieve real-time CPU, RAM, and top memory-consuming processes using psutil."""
     try:
         import psutil
@@ -76,7 +75,7 @@ class GetSystemResourcesTool(BaseTool):
         "required": [],
     }
 
-    def execute(self, process_name: Optional[str] = None, **kwargs: Any) -> ToolResult:
+    def execute(self, process_name: str | None = None, **kwargs: Any) -> ToolResult:
         res = get_current_system_resources()
         if "error" in res and not res.get("top_processes"):
             return ToolResult(

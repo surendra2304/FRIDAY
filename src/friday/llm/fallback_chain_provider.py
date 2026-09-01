@@ -7,7 +7,7 @@ raises `LLMProviderError`. Only `LLMProviderError` triggers failover — any
 other exception is a programming bug and propagates immediately.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.exceptions import LLMProviderError
 from friday.core.logging import get_logger
@@ -20,7 +20,7 @@ logger = get_logger("llm.chain")
 _BLOCKED_TOOL_OUTPUT = "[TOOL OUTPUT REMOVED BY PROMPT-INJECTION GUARD]"
 
 
-def sanitize_messages_for_providers(messages: List[Message]) -> List[Message]:
+def sanitize_messages_for_providers(messages: list[Message]) -> list[Message]:
     """Defense-in-depth: sanitize untrusted TOOL-role content before any LLM call.
 
     Tool outputs (screen OCR, web fetches, external commands) are the primary
@@ -29,13 +29,17 @@ def sanitize_messages_for_providers(messages: List[Message]) -> List[Message]:
     markers. Trusted roles (SYSTEM/USER/ASSISTANT) pass through untouched, and
     guard failures never break the request path.
     """
-    sanitized: List[Message] = []
+    sanitized: list[Message] = []
     for m in messages:
         if m.role != Role.TOOL or not m.content:
             sanitized.append(m)
             continue
         try:
-            from friday.security.prompt_injection import InjectionRisk, SourceType, guard_content
+            from friday.security.prompt_injection import (
+                InjectionRisk,
+                SourceType,
+                guard_content,
+            )
 
             result = guard_content(SourceType.TOOL_OUTPUT, m.content)
             if result.risk == InjectionRisk.BLOCKED:
@@ -57,7 +61,7 @@ def sanitize_messages_for_providers(messages: List[Message]) -> List[Message]:
 class FallbackChainLLMProvider(BaseLLMProvider):
     """Sequential cross-provider failover wrapper over multiple LLM providers."""
 
-    def __init__(self, providers: List[BaseLLMProvider]):
+    def __init__(self, providers: list[BaseLLMProvider]):
         if not providers:
             raise LLMProviderError("FallbackChainLLMProvider requires at least one provider")
         first = providers[0]
@@ -66,7 +70,7 @@ class FallbackChainLLMProvider(BaseLLMProvider):
             temperature=first.temperature,
             max_tokens=first.max_tokens,
         )
-        self.providers: List[BaseLLMProvider] = list(providers)
+        self.providers: list[BaseLLMProvider] = list(providers)
 
     @property
     def provider_name(self) -> str:
@@ -74,12 +78,12 @@ class FallbackChainLLMProvider(BaseLLMProvider):
 
     def generate(
         self,
-        messages: List[Message],
-        tools: Optional[List[Dict[str, Any]]] = None,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None = None,
     ) -> Message:
         """Try each provider in order; on LLMProviderError, fail over to the next."""
         messages = sanitize_messages_for_providers(messages)
-        failures: List[str] = []
+        failures: list[str] = []
 
         for provider in self.providers:
             try:

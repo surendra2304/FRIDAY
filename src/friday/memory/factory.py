@@ -1,6 +1,6 @@
 """Factory for instantiating memory backends based on Settings."""
 
-from typing import Optional
+
 from friday.core.config import Settings
 from friday.core.logging import get_logger
 from friday.memory.base import BaseMemory
@@ -13,7 +13,7 @@ logger = get_logger("memory.factory")
 
 def create_memory(
     settings: Settings,
-    conversation_id: Optional[str] = None,
+    conversation_id: str | None = None,
 ) -> BaseMemory:
     """Instantiate and return the configured memory backend with optional embedding provider."""
     embedding_provider = create_embedding_provider(settings)

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Deterministic unit test suite for Computer Action Execution.2 Structured Task Planning & Goal Decomposition.
 
 Validates:
@@ -17,7 +16,6 @@ Validates:
 7. Preservation of Multimodal Screen Perception security boundaries (Proposal != Execution, hard blocks).
 """
 
-from unittest import mock
 import pytest
 
 from friday.agent.agent import FridayAgent
@@ -28,9 +26,8 @@ from friday.agent.planner import (
     StepStatus,
     TaskPlan,
 )
-from friday.agent.state import TaskState
 from friday.core.config import Settings
-from friday.core.types import Message, Role, SafetyLevel, ToolResult
+from friday.core.types import SafetyLevel, ToolResult
 from friday.llm.mock_provider import MockLLMProvider
 from friday.memory.in_memory import InMemoryConversationMemory
 from friday.tools.base import BaseTool

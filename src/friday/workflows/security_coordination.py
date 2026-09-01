@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Security Coordination Workflow for FRIDAY.
 
 Coordinates automated, cross-system security operations between Nexus, Forge,
@@ -9,14 +8,19 @@ Trading Bot, and Sentinel:
 4. VULNERABILITY_MONITORING: New CVE discovered -> audit Nexus & Trading Bot stack -> remediation guidance.
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import TrustLevel
-from friday.ecosystem.asset_registry import AssetRegistry, SecurableAsset, AssetType, asset_registry
+from friday.ecosystem.asset_registry import (
+    AssetRegistry,
+    AssetType,
+    SecurableAsset,
+    asset_registry,
+)
 from friday.skills.sentinel_manager import SentinelManagerSkill
 
 logger = get_logger("workflows.security_coordination")
@@ -29,8 +33,8 @@ class SecurityCoordinationEvent:
     workflow_type: str  # NEW_ASSET_DETECTED, INCIDENT_RESPONSE, DEPLOYMENT_SECURITY_GATE, VULNERABILITY_MONITORING
     target: str
     status: str  # IN_PROGRESS, PASSED, WARNED, BLOCKED, FAILED
-    details: Dict[str, Any]
-    findings: List[Dict[str, Any]] = field(default_factory=list)
+    details: dict[str, Any]
+    findings: list[dict[str, Any]] = field(default_factory=list)
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -39,12 +43,12 @@ class SecurityCoordinationWorkflow:
 
     def __init__(
         self,
-        sentinel_skill: Optional[SentinelManagerSkill] = None,
-        registry: Optional[AssetRegistry] = None,
+        sentinel_skill: SentinelManagerSkill | None = None,
+        registry: AssetRegistry | None = None,
     ) -> None:
         self.sentinel = sentinel_skill or SentinelManagerSkill()
         self.registry = registry or asset_registry
-        self.event_history: List[SecurityCoordinationEvent] = []
+        self.event_history: list[SecurityCoordinationEvent] = []
         self._lock = threading.RLock()
 
     def handle_new_asset_detected(
@@ -53,7 +57,7 @@ class SecurityCoordinationWorkflow:
         target: str,
         subsystem: str = "nexus",
         asset_type: AssetType = AssetType.DOMAIN,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Automatically registers new asset in AssetRegistry and runs Sentinel passive_recon."""
         asset_id = f"asset-{subsystem}-{target.replace('.', '-').replace(':', '-').replace('/', '-')}"
         asset = SecurableAsset(
@@ -134,7 +138,7 @@ class SecurityCoordinationWorkflow:
         incident_id: str,
         target: str,
         anomaly_type: str = "traffic_spike_or_error_anomaly",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Correlates a Nexus website security anomaly with a targeted Sentinel endpoint scan."""
         # 1. Trigger targeted Sentinel scan
         scan_res = self.sentinel.submit_security_task(target=target, mode="api_security")
@@ -175,8 +179,8 @@ class SecurityCoordinationWorkflow:
         self,
         build_task_id: str,
         service_target: str,
-        artifacts: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+        artifacts: list[str] | None = None,
+    ) -> dict[str, Any]:
         """Audits Forge build output via Sentinel API security scan before deployment."""
         scan_res = self.sentinel.submit_security_task(target=service_target, mode="api_security")
         task_id = scan_res.get("task_id", "")
@@ -253,7 +257,7 @@ class SecurityCoordinationWorkflow:
         cve_id: str,
         affected_package: str,
         severity: str = "HIGH",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Audits all known ecosystem assets for exposure to newly discovered CVE."""
         all_assets = self.registry.get_all_assets()
         exposed_assets = []

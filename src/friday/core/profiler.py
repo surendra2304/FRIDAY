@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """First-principles Performance Profiling & Resource Measurement Suite for FRIDAY.
 
 Measures:
@@ -10,14 +9,15 @@ Measures:
 6. Statistical distribution: Median (p50), p95, Peak, and Min/Max.
 """
 
-from dataclasses import dataclass
 import ctypes
-from ctypes import wintypes
 import os
 import sys
 import time
 import tracemalloc
-from typing import Any, Callable, Dict, List
+from collections.abc import Callable
+from ctypes import wintypes
+from dataclasses import dataclass
+from typing import Any
 
 
 # Win32 Process Memory Structure
@@ -60,7 +60,7 @@ class ResourceSnapshot:
     cpu_time_s: float
     cpu_percent_normalized: float = 0.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "process_rss_mb": round(self.process_rss_mb, 2),
             "process_vms_mb": round(self.process_vms_mb, 2),
@@ -75,7 +75,7 @@ class BenchmarkResult:
     """Statistical summary of benchmark iterations with justified engineering targets."""
     scenario_name: str
     sample_count: int
-    latencies_ms: List[float]
+    latencies_ms: list[float]
     median_latency_ms: float
     p95_latency_ms: float
     peak_latency_ms: float
@@ -87,7 +87,7 @@ class BenchmarkResult:
     target_description: str
     target_met: bool
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "scenario": self.scenario_name,
             "samples": self.sample_count,
@@ -193,7 +193,7 @@ class FirstPrinciplesProfiler:
         for _ in range(warmup_iterations):
             target_fn()
 
-        latencies_ms: List[float] = []
+        latencies_ms: list[float] = []
         peak_rss = 0.0
         peak_heap = 0.0
         total_cpu_deltas = 0.0

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Cascade Failure Detector and Auto-Isolation Operator for FRIDAY Ecosystem.
 
 Supervises multi-system dependency chains:
@@ -7,10 +6,10 @@ Supervises multi-system dependency chains:
 3. Recovery detection: auto-reconnects and verifies data freshness once healthy
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel
@@ -27,7 +26,7 @@ class IsolationRecord:
     reason: str
     fallback_mode: str
     isolated_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    reconnected_at: Optional[str] = None
+    reconnected_at: str | None = None
 
 
 class CascadeFailureDetector(BaseOperator):
@@ -48,8 +47,8 @@ class CascadeFailureDetector(BaseOperator):
             triggers=[trigger],
             notification_category="cascade_protection",
         )
-        self.isolated_subsystems: Dict[str, IsolationRecord] = {}
-        self.cached_fallbacks: Dict[str, Dict[str, Any]] = {
+        self.isolated_subsystems: dict[str, IsolationRecord] = {}
+        self.cached_fallbacks: dict[str, dict[str, Any]] = {
             "ai_universe": {"status": "CACHED_FALLBACK", "default_model": "rule_based_advisory"},
             "trading_bot": {"status": "CACHED_FALLBACK", "last_equity": 10450.0},
         }
@@ -57,11 +56,11 @@ class CascadeFailureDetector(BaseOperator):
 
     def evaluate_dependency_health(
         self,
-        subsystem_telemetry: Dict[str, Dict[str, Any]],
-    ) -> List[Dict[str, Any]]:
+        subsystem_telemetry: dict[str, dict[str, Any]],
+    ) -> list[dict[str, Any]]:
         """Evaluates health across dependency chains and triggers automated isolation."""
         with self._lock:
-            events: List[Dict[str, Any]] = []
+            events: list[dict[str, Any]] = []
             now_iso = datetime.now(timezone.utc).isoformat()
 
             # 1. Check Root Failure (e.g. AI-Universe Down)
@@ -100,7 +99,7 @@ class CascadeFailureDetector(BaseOperator):
             logger.warning(f"[CASCADE_DETECTOR] 🛡️ Isolated subsystem '{subsystem}': {reason}")
             return record
 
-    def reconnect_subsystem(self, subsystem: str, data_freshness_sec: float = 0.0) -> Dict[str, Any]:
+    def reconnect_subsystem(self, subsystem: str, data_freshness_sec: float = 0.0) -> dict[str, Any]:
         """Verifies data freshness and restores live queries to a recovered subsystem."""
         with self._lock:
             now_iso = datetime.now(timezone.utc).isoformat()
@@ -116,7 +115,7 @@ class CascadeFailureDetector(BaseOperator):
                 "timestamp": now_iso,
             }
 
-    def tick(self) -> List[Dict[str, Any]]:
+    def tick(self) -> list[dict[str, Any]]:
         """Periodic watchdog tick."""
         with self._lock:
             # Default health map for testing

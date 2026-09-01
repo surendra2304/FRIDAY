@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Deterministic unit test suite for Computer Action Execution.1 Reasoning State Foundation & Task State Machine.
 
 Validates:
@@ -14,11 +13,14 @@ Validates:
 10. State serialization to dict contains audit trail with zero secrets.
 """
 
-from unittest import mock
 import pytest
 
 from friday.agent.agent import FridayAgent
-from friday.agent.state import TaskState, ReasoningStateMachine, InvalidStateTransitionError, StateTransitionRecord
+from friday.agent.state import (
+    InvalidStateTransitionError,
+    ReasoningStateMachine,
+    TaskState,
+)
 from friday.core.config import Settings
 from friday.core.types import Message, Role, SafetyLevel, ToolCall, ToolResult
 from friday.llm.mock_provider import MockLLMProvider
@@ -200,7 +202,6 @@ def test_agent_process_message_failure_state():
 # 10. Provider Independence: State machine module imports with zero Gemini dependencies
 def test_state_machine_zero_provider_dependency():
     """Verify state.py has no dependency on google.genai or external cloud SDKs."""
-    import sys
     import friday.agent.state as state_mod
 
     # Inspect module globals and ensure clean stdlib/core typing only

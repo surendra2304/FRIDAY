@@ -1,16 +1,13 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Production Monitoring & Alerting for FRIDAY.
 
 Supervises real-time system performance, resource utilization, trading-specific risk metrics,
 and multi-channel priority alert dispatching (Voice, SMS, Email, Dashboard).
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import os
-import threading
-import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -32,8 +29,8 @@ class MonitoringSnapshot:
     """Complete multi-tier monitoring state."""
     system_status: str  # HEALTHY, DEGRADED, CRITICAL
     resources: ResourceMetrics
-    trading_risk: Dict[str, Any]
-    dependencies: Dict[str, str]
+    trading_risk: dict[str, Any]
+    dependencies: dict[str, str]
     unacknowledged_alerts_count: int
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
@@ -43,14 +40,14 @@ class ComprehensiveProductionMonitor:
 
     def __init__(
         self,
-        alert_manager: Optional[Any] = None,
-        risk_dashboard: Optional[Any] = None,
-        bot_operator: Optional[Any] = None,
+        alert_manager: Any | None = None,
+        risk_dashboard: Any | None = None,
+        bot_operator: Any | None = None,
     ) -> None:
         self._alert_manager = alert_manager
         self._risk_dashboard = risk_dashboard
         self._bot_operator = bot_operator
-        self._snapshots: List[MonitoringSnapshot] = []
+        self._snapshots: list[MonitoringSnapshot] = []
         self._lock = threading.RLock()
 
     @property

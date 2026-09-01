@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Vision-Powered Screen Sharing Mode for FRIDAY Operating System.
 
 Provides visual diagnostics for charts, error logs, and web interfaces:
@@ -8,10 +7,9 @@ Provides visual diagnostics for charts, error logs, and web interfaces:
 3. Auto-termination after 5 minutes of idle time
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
 import threading
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 
 from friday.core.logging import get_logger
 
@@ -23,7 +21,7 @@ class VisionAnalysisResult:
     """Outcome of a multi-modal screen frame diagnostic."""
     session_id: str
     user_query: str
-    detected_elements: List[str]
+    detected_elements: list[str]
     diagnosis: str
     spoken_answer: str
     confidence: float = 0.94
@@ -36,8 +34,8 @@ class ScreenSharingSession:
     def __init__(self, idle_timeout_minutes: int = 5) -> None:
         self.idle_timeout = timedelta(minutes=idle_timeout_minutes)
         self.is_active = False
-        self.session_id: Optional[str] = None
-        self.last_activity: Optional[datetime] = None
+        self.session_id: str | None = None
+        self.last_activity: datetime | None = None
         self._lock = threading.RLock()
 
     def start_session(self) -> str:
@@ -59,7 +57,7 @@ class ScreenSharingSession:
             self.session_id = None
             self.last_activity = None
 
-    def check_idle_timeout(self, current_time: Optional[datetime] = None) -> bool:
+    def check_idle_timeout(self, current_time: datetime | None = None) -> bool:
         """Auto-terminates session if idle for > 5 minutes."""
         with self._lock:
             if not self.is_active or not self.last_activity:
@@ -75,8 +73,8 @@ class ScreenSharingSession:
         self,
         frame_summary_description: str,
         user_query: str,
-        current_time: Optional[datetime] = None,
-    ) -> Optional[VisionAnalysisResult]:
+        current_time: datetime | None = None,
+    ) -> VisionAnalysisResult | None:
         """Performs multi-modal visual diagnosis combining screen context and question."""
         with self._lock:
             now = current_time or datetime.now(timezone.utc)

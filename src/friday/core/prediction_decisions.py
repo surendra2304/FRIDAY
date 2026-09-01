@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Prediction-Informed Decision Engine for FRIDAY.
 
 Consults relevant Futuris probabilistic forecasts before making ecosystem decisions:
@@ -10,10 +9,10 @@ Consults relevant Futuris probabilistic forecasts before making ecosystem decisi
 - All forecast artifacts carry TrustLevel.UNTRUSTED_EXTERNAL.
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import TrustLevel
@@ -30,7 +29,7 @@ class DecisionContext:
     forecast_id: str
     target_metric: str
     point_estimate: float
-    confidence_interval: List[float]
+    confidence_interval: list[float]
     rationale: str
     trust_level: str = TrustLevel.UNTRUSTED_EXTERNAL.value
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -39,11 +38,11 @@ class DecisionContext:
 class PredictionInformedDecisionEngine:
     """Provides predictive decision support across all ecosystem operations."""
 
-    def __init__(self, futuris_skill: Optional[FuturisManagerSkill] = None) -> None:
+    def __init__(self, futuris_skill: FuturisManagerSkill | None = None) -> None:
         self.futuris = futuris_skill or FuturisManagerSkill()
         self._lock = threading.RLock()
 
-    def evaluate_forge_task_submission(self, task_spec: Dict[str, Any]) -> DecisionContext:
+    def evaluate_forge_task_submission(self, task_spec: dict[str, Any]) -> DecisionContext:
         """Evaluates compiler capacity forecast before submitting a Forge build task."""
         target = "Forge Cluster CPU & Memory Capacity"
         fc = self.futuris.request_forecast(target=target, horizon="2 hours", confidence_level=0.90)
@@ -74,7 +73,7 @@ class PredictionInformedDecisionEngine:
             rationale=rat,
         )
 
-    def enrich_trading_advisory_context(self, market_state: Dict[str, Any]) -> DecisionContext:
+    def enrich_trading_advisory_context(self, market_state: dict[str, Any]) -> DecisionContext:
         """Injects volatility forecast into trading advisory context (advisory only)."""
         target = "Crypto Market Volatility Index"
         fc = self.futuris.request_forecast(target=target, horizon="24 hours", confidence_level=0.90)
@@ -97,7 +96,7 @@ class PredictionInformedDecisionEngine:
             rationale=rat,
         )
 
-    def evaluate_nexus_campaign_timing(self, campaign_spec: Dict[str, Any]) -> DecisionContext:
+    def evaluate_nexus_campaign_timing(self, campaign_spec: dict[str, Any]) -> DecisionContext:
         """Evaluates website visitor traffic forecast to recommend optimal campaign launch timing."""
         target = "Nexus Website Visitor Traffic"
         fc = self.futuris.request_forecast(target=target, horizon="48 hours", confidence_level=0.90)

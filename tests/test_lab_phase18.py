@@ -1,15 +1,18 @@
-# -*- coding: utf-8 -*-
 """Unit tests for FRIDAY Lab FRIDAY Lab: Experiments, SQLite Metrics, CLI runner, and Dynamic Routing."""
 
-import pytest
-from friday.lab.experiment import ExperimentRunner, ExperimentTask, TrialResult, run_standard_lab_suite
-from friday.llm.base import BaseLLMProvider
-from friday.core.types import Message, Role
-from friday.memory.sqlite import SQLiteConversationMemory
 from friday.agents.base_agent import BaseAgent
+from friday.agents.decomposer import DecomposedSubtask
 from friday.agents.registry import AgentRegistry
 from friday.agents.router import AgentRouter
-from friday.agents.decomposer import DecomposedSubtask
+from friday.core.types import Message, Role
+from friday.lab.experiment import (
+    ExperimentRunner,
+    ExperimentTask,
+    TrialResult,
+    run_standard_lab_suite,
+)
+from friday.llm.base import BaseLLMProvider
+from friday.memory.sqlite import SQLiteConversationMemory
 
 
 class MockFastLLM(BaseLLMProvider):

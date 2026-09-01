@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """AI Universe LLM Provider (AI Universe Integration Fallback Integration).
 
 Provides ultimate fallback in FRIDAY's reasoning chain by routing user prompts
@@ -7,9 +6,8 @@ experience outages or rate limits.
 """
 
 import asyncio
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from friday.core.config import get_settings
 from friday.core.exceptions import LLMProviderError
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role, TrustLevel
@@ -25,8 +23,8 @@ class AIUniverseLLMProvider(BaseLLMProvider):
 
     def __init__(
         self,
-        base_url: Optional[str] = None,
-        api_key: Optional[str] = None,
+        base_url: str | None = None,
+        api_key: str | None = None,
         min_confidence: float = 0.70,
         mode: str = "auto",
         temperature: float = 0.7,
@@ -50,7 +48,7 @@ class AIUniverseLLMProvider(BaseLLMProvider):
     def provider_name(self) -> str:
         return "ai_universe"
 
-    def _extract_user_query(self, messages: List[Message]) -> str:
+    def _extract_user_query(self, messages: list[Message]) -> str:
         """Extract the most relevant user query or instruction from conversation messages."""
         for msg in reversed(messages):
             if msg.role == Role.USER and msg.content and msg.content.strip():
@@ -63,8 +61,8 @@ class AIUniverseLLMProvider(BaseLLMProvider):
 
     def generate(
         self,
-        messages: List[Message],
-        tools: Optional[List[Dict[str, Any]]] = None,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None = None,
         **kwargs: Any,
     ) -> Message:
         """Generate response by querying AI Universe consensus."""
@@ -74,11 +72,11 @@ class AIUniverseLLMProvider(BaseLLMProvider):
         try:
             try:
                 loop = asyncio.get_running_loop()
-                resp: AIUniverseResponse = loop.run_until_complete(
+                resp = loop.run_until_complete(
                     self.client.ask(query, mode=self.mode)
                 )
             except RuntimeError:
-                resp: AIUniverseResponse = asyncio.run(
+                resp = asyncio.run(
                     self.client.ask(query, mode=self.mode)
                 )
         except Exception as ex:

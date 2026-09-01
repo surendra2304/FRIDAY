@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Persistent Research Library for FRIDAY Operating System.
 
 Provides persistent storage, semantic/keyword indexing, cross-referencing,
@@ -9,13 +8,12 @@ and confidence-weighted retention decay for completed IntelX research runs:
 - Cross-reference detection comparing new research against historical archives
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
-import json
 import os
 import re
 import threading
-from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import TrustLevel
@@ -29,8 +27,8 @@ class ArchivedFinding:
     finding_id: str
     claim: str
     confidence: float
-    citations: List[str] = field(default_factory=list)
-    evidence_spans: List[str] = field(default_factory=list)
+    citations: list[str] = field(default_factory=list)
+    evidence_spans: list[str] = field(default_factory=list)
     is_disputed: bool = False
 
 
@@ -42,21 +40,21 @@ class ResearchArchiveEntry:
     topic: str
     domain: str
     depth: str
-    findings: List[ArchivedFinding]
+    findings: list[ArchivedFinding]
     contradictions_count: int
     created_at: str
-    tags: List[str] = field(default_factory=list)
-    markdown_report: Optional[str] = None
+    tags: list[str] = field(default_factory=list)
+    markdown_report: str | None = None
     trust_level: str = TrustLevel.UNTRUSTED_EXTERNAL.value
 
 
 class ResearchLibrary:
     """Persistent storage, indexing, search, and decay engine for IntelX research."""
 
-    def __init__(self, storage_file: Optional[str] = None) -> None:
+    def __init__(self, storage_file: str | None = None) -> None:
         self.storage_file = storage_file or os.path.join("data", "research_library.json")
         self._lock = threading.RLock()
-        self._entries: Dict[str, ResearchArchiveEntry] = {}
+        self._entries: dict[str, ResearchArchiveEntry] = {}
         self._init_defaults()
 
     def _init_defaults(self) -> None:
@@ -98,10 +96,10 @@ class ResearchLibrary:
         topic: str,
         domain: str,
         depth: str,
-        findings: List[Dict[str, Any]],
+        findings: list[dict[str, Any]],
         contradictions_count: int = 0,
-        markdown_report: Optional[str] = None,
-        tags: Optional[List[str]] = None,
+        markdown_report: str | None = None,
+        tags: list[str] | None = None,
     ) -> ResearchArchiveEntry:
         """Stores a completed IntelX research run into the persistent library."""
         with self._lock:
@@ -146,10 +144,10 @@ class ResearchLibrary:
     def search(
         self,
         query: str,
-        domain: Optional[str] = None,
+        domain: str | None = None,
         max_age_days: int = 180,
         limit: int = 5,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Searches archived research by topic, keyword tags, or domain."""
         with self._lock:
             tokens = [t.lower() for t in re.findall(r"\w+", query or "")]
@@ -207,8 +205,8 @@ class ResearchLibrary:
     def find_cross_references(
         self,
         topic: str,
-        current_findings: Optional[List[Dict[str, Any]]] = None,
-    ) -> List[Dict[str, Any]]:
+        current_findings: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
         """Identifies historical research related to the current query topic."""
         with self._lock:
             matches = self.search(query=topic, limit=3)
@@ -228,11 +226,11 @@ class ResearchLibrary:
                 })
             return cross_refs
 
-    def apply_retention_decay(self, base_retention_days: int = 90) -> Dict[str, Any]:
+    def apply_retention_decay(self, base_retention_days: int = 90) -> dict[str, Any]:
         """Applies confidence-weighted decay to purge expired ungrounded research."""
         with self._lock:
             now = datetime.now(timezone.utc)
-            purged: List[str] = []
+            purged: list[str] = []
 
             for eid, entry in list(self._entries.items()):
                 try:

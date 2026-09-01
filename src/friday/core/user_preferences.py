@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """User Preferences & Adaptive Learning Subsystem for FRIDAY.
 
 Manages personalized configuration across Voice, Reporting, and Trading domains.
@@ -6,10 +5,10 @@ Adapts preference weights over time based on interaction patterns.
 Invariant: User preferences never override hardcoded safety gates or risk limits.
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -28,13 +27,13 @@ class VoicePreferences:
 class ReportPreferences:
     detail_level: str = "normal"  # brief, normal, detailed
     briefing_frequency: str = "daily_morning_evening"
-    preferred_metrics: List[str] = field(default_factory=lambda: ["equity_usdt", "daily_pnl", "test_coverage"])
+    preferred_metrics: list[str] = field(default_factory=lambda: ["equity_usdt", "daily_pnl", "test_coverage"])
 
 
 @dataclass
 class TradingPreferences:
     risk_tolerance: str = "MODERATE"  # CONSERVATIVE, MODERATE, AGGRESSIVE
-    preferred_strategies: List[str] = field(default_factory=lambda: ["Supertrend", "VolumeBreakout"])
+    preferred_strategies: list[str] = field(default_factory=lambda: ["Supertrend", "VolumeBreakout"])
     max_daily_drawdown_limit_pct: float = 5.0  # Cannot override safety gate limit of 5.0%
 
 
@@ -45,7 +44,7 @@ class UserPreferenceManager:
         self.voice = VoicePreferences()
         self.reports = ReportPreferences()
         self.trading = TradingPreferences()
-        self._interaction_history: List[Dict[str, Any]] = []
+        self._interaction_history: list[dict[str, Any]] = []
         self._lock = threading.RLock()
 
     def update_voice_preferences(self, **kwargs: Any) -> None:
@@ -76,7 +75,7 @@ class UserPreferenceManager:
                     setattr(self.trading, k, v)
             logger.info("[USER_PREFERENCES] Updated trading preferences with safety gate compliance.")
 
-    def record_interaction_and_learn(self, query: str, context: Dict[str, Any]) -> None:
+    def record_interaction_and_learn(self, query: str, context: dict[str, Any]) -> None:
         """Learns usage patterns to tune reporting and recommendation weights."""
         with self._lock:
             self._interaction_history.append({

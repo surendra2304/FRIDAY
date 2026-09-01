@@ -1,12 +1,11 @@
-# -*- coding: utf-8 -*-
 """Trace Analyzer for FRIDAY Trace-Based Learning (Inspired by OpenJarvis).
 
 Analyzes execution traces to discover tool efficiency patterns, evaluate provider reliability,
 identify failing providers, and guide dynamic routing optimization.
 """
 
-from typing import Any, Dict, List, Optional, Set
 import re
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -16,15 +15,15 @@ logger = get_logger("learning.trace_analyzer")
 class TraceAnalyzer:
     """Analyzes execution traces to optimize agent, tool, and provider routing."""
 
-    def __init__(self, memory: Optional[Any] = None) -> None:
+    def __init__(self, memory: Any | None = None) -> None:
         self.memory = memory
 
-    def _get_memory(self) -> Optional[Any]:
+    def _get_memory(self) -> Any | None:
         if self.memory is not None:
             return self.memory
         try:
-            from friday.memory.sqlite import SQLiteConversationMemory
             from friday.core.config import get_settings
+            from friday.memory.sqlite import SQLiteConversationMemory
             settings = get_settings()
             self.memory = SQLiteConversationMemory(db_path=settings.sqlite_db_path)
             return self.memory
@@ -34,16 +33,16 @@ class TraceAnalyzer:
 
     def get_tool_success_rates(
         self,
-        goal_query: Optional[str] = None,
-        task_type: Optional[str] = None,
-    ) -> Dict[str, Dict[str, Any]]:
+        goal_query: str | None = None,
+        task_type: str | None = None,
+    ) -> dict[str, dict[str, Any]]:
         """Calculate empirical success rate and latency for each tool."""
         mem = self._get_memory()
         if mem is None or not hasattr(mem, "get_execution_traces"):
             return {}
 
         traces = mem.get_execution_traces(limit=500, goal_query=goal_query, task_type=task_type)
-        stats: Dict[str, Dict[str, Any]] = {}
+        stats: dict[str, dict[str, Any]] = {}
 
         for tr in traces:
             tools = tr.get("tools_used", [])
@@ -60,7 +59,7 @@ class TraceAnalyzer:
                     stats[tool]["failures"] += 1
                 stats[tool]["latencies"].append(lat)
 
-        result: Dict[str, Dict[str, Any]] = {}
+        result: dict[str, dict[str, Any]] = {}
         for tool, d in stats.items():
             tot = d["total"]
             succ = d["successes"]
@@ -74,14 +73,14 @@ class TraceAnalyzer:
             }
         return result
 
-    def get_provider_stats(self) -> Dict[str, Dict[str, Any]]:
+    def get_provider_stats(self) -> dict[str, dict[str, Any]]:
         """Aggregate performance and failure metrics per provider."""
         mem = self._get_memory()
         if mem is None or not hasattr(mem, "get_execution_traces"):
             return {}
 
         traces = mem.get_execution_traces(limit=500)
-        stats: Dict[str, Dict[str, Any]] = {}
+        stats: dict[str, dict[str, Any]] = {}
 
         for tr in traces:
             prov = tr.get("provider", "default")
@@ -97,7 +96,7 @@ class TraceAnalyzer:
                 stats[prov]["failures"] += 1
             stats[prov]["latencies"].append(lat)
 
-        result: Dict[str, Dict[str, Any]] = {}
+        result: dict[str, dict[str, Any]] = {}
         for prov, d in stats.items():
             tot = d["total"]
             succ = d["successes"]
@@ -113,10 +112,10 @@ class TraceAnalyzer:
             }
         return result
 
-    def get_failing_providers(self, failure_threshold: float = 0.50, min_trials: int = 2) -> Set[str]:
+    def get_failing_providers(self, failure_threshold: float = 0.50, min_trials: int = 2) -> set[str]:
         """Identify unreliable providers exceeding failure threshold (e.g. 90% failure rate)."""
         prov_stats = self.get_provider_stats()
-        failing: Set[str] = set()
+        failing: set[str] = set()
 
         for prov, s in prov_stats.items():
             if s["total"] >= min_trials and s["failure_rate"] >= failure_threshold:
@@ -126,9 +125,9 @@ class TraceAnalyzer:
     def get_optimal_tool_and_provider(
         self,
         goal: str,
-        available_tools: Optional[List[str]] = None,
+        available_tools: list[str] | None = None,
         max_latency_ms: float = 2000.0,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Find high-performing tool and provider combinations historically successful in < 2s."""
         mem = self._get_memory()
         if mem is None or not hasattr(mem, "get_execution_traces"):
@@ -173,7 +172,7 @@ class TraceAnalyzer:
             "fast_path": lat <= max_latency_ms,
         }
 
-    def filter_and_rank_fallback_providers(self, candidate_providers: List[str]) -> List[str]:
+    def filter_and_rank_fallback_providers(self, candidate_providers: list[str]) -> list[str]:
         """Reorder fallback provider chain: high-success/low-latency first, de-prioritize high-failure providers to the bottom."""
         prov_stats = self.get_provider_stats()
         failing_providers = self.get_failing_providers(failure_threshold=0.50, min_trials=2)

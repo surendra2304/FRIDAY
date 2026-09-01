@@ -1,10 +1,10 @@
 """Unit tests for SQLiteConversationMemory persistent storage."""
 
-import os
 import sqlite3
 import threading
-from datetime import datetime, timezone
+
 import pytest
+
 from friday.core.config import Settings
 from friday.core.types import Message, Role, ToolCall
 from friday.memory.sqlite import SQLiteConversationMemory

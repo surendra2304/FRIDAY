@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive unit test suite for Evidence-Based Verification.8: Perception-Driven Safe Action Preparation.
 
 Tests:
@@ -11,16 +10,14 @@ Tests:
 7. Execution verification and safe failure handling.
 """
 
-import pytest
 
 from friday.core.types import SafetyLevel
 from friday.vision.action_preparer import (
-    ActionPreparationResult,
     GroundedElementTarget,
     GroundingStatus,
     PerceptionActionPreparer,
 )
-from friday.vision.actions import ActionType, ComputerActionProposal
+from friday.vision.actions import ActionType
 from friday.vision.screen_context import ScreenContext
 from friday.vision.ui_elements import BoundingBox, ElementType, UIElement
 

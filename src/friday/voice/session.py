@@ -6,8 +6,8 @@ instance to the provider's ``run_session`` method.
 """
 
 
-from .base import VoiceProvider
 from ..agent.agent import FridayAgent
+from .base import VoiceProvider
 
 
 class VoiceSession:

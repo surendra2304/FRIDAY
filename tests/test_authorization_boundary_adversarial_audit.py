@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Adversarial Security & Authorization Boundary Audit Suite for FRIDAY.
 
 Proves:
@@ -17,42 +16,29 @@ Proves:
 10. TaskExecutionEngine enforces BaseAuthorizer decisions and never executes unauthorized plan steps.
 """
 
-import os
-import json
-import time
-import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 import pytest
 
+from friday.agent.executor import TaskExecutionEngine
+from friday.agent.planner import PlanStep, StepStatus, TaskPlan
 from friday.core.auth import (
     AutoApproveAuthorizer,
-    BaseAuthorizer,
     DefaultSecureAuthorizer,
 )
 from friday.core.exceptions import SecurityError
 from friday.core.types import (
-    AuthorizationDecision,
-    AuthorizationRequest,
     SafetyLevel,
     ToolResult,
 )
 from friday.security.authorization import (
-    ToolAuthorizationCapability,
     ToolAuthorizer,
-    compute_arguments_hash,
-    tool_authorizer,
 )
 from friday.tools.base import BaseTool
-from friday.tools.registry import ToolRegistry
-from friday.tools.builtin.execute_computer_action import ExecuteComputerActionTool
-from friday.tools.builtin.action_proposal import ProposeComputerActionTool
 from friday.tools.orchestrator import DataFlowResolver
-from friday.vision.actions import ActionType, ComputerActionProposal, ProposalBuilder
+from friday.tools.registry import ToolRegistry
+from friday.vision.actions import ActionType, ComputerActionProposal
 from friday.vision.computer_control import ComputerActionExecutor, ExecutionStatus
-from friday.agent.executor import TaskExecutionEngine
-from friday.agent.planner import PlanStep, StepStatus, TaskPlan
-
 
 # ---------------------------------------------------------------------------
 # Test Fixture: Dummy Sensitive Tool

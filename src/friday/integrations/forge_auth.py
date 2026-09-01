@@ -1,17 +1,16 @@
-# -*- coding: utf-8 -*-
 """FORGE Authentication & Secure REST Client for FRIDAY.
 
 Provides cryptographic request signing (HMAC-SHA256), token-bucket rate limiting
 (10 req/min), schema validation, and timeout management for FORGE communications.
 """
 
-from datetime import datetime, timezone
 import hashlib
 import hmac
 import json
-import time
 import threading
-from typing import Any, Dict, List, Optional, Tuple
+import time
+from datetime import datetime, timezone
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -28,7 +27,7 @@ class ForgeAuthClient:
     def __init__(
         self,
         api_url: str = "http://localhost:8000",
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         rate_limit_per_min: int = 10,
         default_timeout_sec: float = 30.0,
     ) -> None:
@@ -65,8 +64,8 @@ class ForgeAuthClient:
         self,
         method: str,
         path: str,
-        payload: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, str]:
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, str]:
         """Generates HMAC-SHA256 signature headers for request integrity and authentication."""
         timestamp = datetime.now(timezone.utc).isoformat()
         body_str = json.dumps(payload, sort_keys=True) if payload else ""
@@ -86,7 +85,7 @@ class ForgeAuthClient:
             "Authorization": f"Bearer {self.api_key}",
         }
 
-    def validate_build_response(self, response_data: Dict[str, Any]) -> bool:
+    def validate_build_response(self, response_data: dict[str, Any]) -> bool:
         """Validates schema for task creation (/api/v1/forge/build)."""
         required_fields = ["task_id", "status"]
         for field in required_fields:
@@ -95,7 +94,7 @@ class ForgeAuthClient:
                 return False
         return True
 
-    def validate_task_status_response(self, response_data: Dict[str, Any]) -> bool:
+    def validate_task_status_response(self, response_data: dict[str, Any]) -> bool:
         """Validates schema for task status (/api/v1/forge/tasks/{id})."""
         required_fields = ["task_id", "status", "progress_pct", "artifacts"]
         for field in required_fields:

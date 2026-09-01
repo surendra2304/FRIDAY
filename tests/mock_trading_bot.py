@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Mock Trading Bot Server for Testing and Validation.
 
 Simulates the external Algorithmic Trading Bot on Binance Futures Testnet,
@@ -6,12 +5,11 @@ providing /api/status, /api/advisory/recent, /api/advisory/state, and /api/panic
 Supports scenarios: 'mixed', 'all_rejected', 'all_applied', 'ai_universe_down', 'empty', 'unreachable'.
 """
 
-from dataclasses import dataclass, field
 import json
-from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
-from typing import Any, Dict, List, Optional
 import urllib.parse
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Any
 
 
 class MockTradingBotState:
@@ -20,9 +18,9 @@ class MockTradingBotState:
     def __init__(self, scenario: str = "mixed") -> None:
         self.scenario = scenario
         self.panic_activated = False
-        self.panic_history: List[Dict[str, Any]] = []
+        self.panic_history: list[dict[str, Any]] = []
 
-    def get_status_payload(self) -> Dict[str, Any]:
+    def get_status_payload(self) -> dict[str, Any]:
         return {
             "status": "PANIC" if self.panic_activated else "ACTIVE",
             "trading_mode": "TESTNET",
@@ -39,7 +37,7 @@ class MockTradingBotState:
             ] if self.scenario != "empty" else []
         }
 
-    def get_advisory_recent_payload(self, limit: int = 10) -> Dict[str, Any]:
+    def get_advisory_recent_payload(self, limit: int = 10) -> dict[str, Any]:
         if self.scenario == "empty":
             return {"advisories": []}
 
@@ -128,7 +126,7 @@ class MockTradingBotState:
             ][:limit]
         }
 
-    def get_advisory_state_payload(self) -> Dict[str, Any]:
+    def get_advisory_state_payload(self) -> dict[str, Any]:
         if self.scenario == "ai_universe_down":
             return {
                 "ai_universe_enabled": True,
@@ -167,7 +165,7 @@ class MockTradingBotState:
             "last_consult_time": "2026-08-27T10:30:00Z",
         }
 
-    def get_ab_status_payload(self) -> Dict[str, Any]:
+    def get_ab_status_payload(self) -> dict[str, Any]:
         if self.scenario == "ab_no_test":
             return {"status": "NO_ACTIVE_TEST", "message": "No active A/B experiment running"}
 
@@ -303,7 +301,7 @@ class MockTradingBotState:
             },
         }
 
-    def get_testnet_advisory_status_payload(self) -> Dict[str, Any]:
+    def get_testnet_advisory_status_payload(self) -> dict[str, Any]:
         if self.scenario == "testnet_ai_down":
             return {
                 "enabled": True,
@@ -362,7 +360,7 @@ class MockTradingBotState:
             ],
         }
 
-    def get_testnet_advisory_log_payload(self, limit: int = 10) -> Dict[str, Any]:
+    def get_testnet_advisory_log_payload(self, limit: int = 10) -> dict[str, Any]:
         return {
             "advisories": [
                 {
@@ -398,7 +396,7 @@ class MockTradingBotState:
             ][:limit]
         }
 
-    def get_testnet_paper_compare_payload(self) -> Dict[str, Any]:
+    def get_testnet_paper_compare_payload(self) -> dict[str, Any]:
         return {
             "paper_trading": {
                 "total_return_pct": 4.20,
@@ -416,7 +414,7 @@ class MockTradingBotState:
             },
         }
 
-    def handle_panic(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def handle_panic(self, payload: dict[str, Any]) -> dict[str, Any]:
         release = payload.get("release", False)
         self.panic_activated = not release
         self.panic_history.append(payload)
@@ -516,8 +514,8 @@ class MockTradingBotServer:
     def __init__(self, port: int = 8999, scenario: str = "mixed") -> None:
         self.port = port
         self.state = MockTradingBotState(scenario=scenario)
-        self.server: Optional[HTTPServer] = None
-        self.thread: Optional[threading.Thread] = None
+        self.server: HTTPServer | None = None
+        self.thread: threading.Thread | None = None
 
     def start(self) -> str:
         MockTradingBotHandler.state = self.state

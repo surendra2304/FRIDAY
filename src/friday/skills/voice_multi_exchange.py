@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Voice Multi-Exchange Portfolio Supervision Skill for FRIDAY.
 
 Provides natural language voice queries for multi-exchange portfolio supervision across Binance, Bybit, and OKX:
@@ -13,7 +12,7 @@ Provides natural language voice queries for multi-exchange portfolio supervision
 """
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.skills.base_skill import BaseSkill, SkillExecutionResult
@@ -51,7 +50,7 @@ class VoiceMultiExchangeSkill(BaseSkill):
 
     def __init__(
         self,
-        exchange_manager: Optional[ExchangeIncidentManager] = None,
+        exchange_manager: ExchangeIncidentManager | None = None,
     ) -> None:
         self._exchange_manager = exchange_manager
 
@@ -64,15 +63,15 @@ class VoiceMultiExchangeSkill(BaseSkill):
     def execute(
         self,
         user_request: str,
-        agent: Optional[Any] = None,
-        tool_registry: Optional[Any] = None,
-        llm_provider: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        agent: Any | None = None,
+        tool_registry: Any | None = None,
+        llm_provider: Any | None = None,
+        authorizer: Any | None = None,
         **kwargs: Any,
     ) -> SkillExecutionResult:
         """Dispatches multi-exchange voice queries."""
         clean = user_request.strip().lower()
-        step_results: List[Dict[str, Any]] = []
+        step_results: list[dict[str, Any]] = []
 
         try:
             # 1. "Portfolio overview"

@@ -6,8 +6,8 @@ The schema intentionally avoids logging any sensitive data.
 """
 
 import enum
-from dataclasses import dataclass, asdict
-from typing import Optional, Dict, Any
+from dataclasses import asdict, dataclass
+from typing import Any
 
 
 class EventType(str, enum.Enum):
@@ -66,11 +66,11 @@ SENSITIVE_FIELDS = {
 }
 
 
-def sanitize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
+def sanitize_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     """Remove any keys that are considered sensitive and truncate large strings.
     The function is defensive – it never raises.
     """
-    sanitized: Dict[str, Any] = {}
+    sanitized: dict[str, Any] = {}
     for k, v in metadata.items():
         if k.lower() in SENSITIVE_FIELDS:
             continue
@@ -85,15 +85,15 @@ def sanitize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
 class Event:
     event_type: EventType
     timestamp: str
-    task_id: Optional[str] = None
-    execution_id: Optional[str] = None
-    component: Optional[str] = None
-    state: Optional[str] = None
-    duration_ms: Optional[int] = None
-    result: Optional[Dict[str, Any]] = None
-    error_category: Optional[ErrorCategory] = None
+    task_id: str | None = None
+    execution_id: str | None = None
+    component: str | None = None
+    state: str | None = None
+    duration_ms: int | None = None
+    result: dict[str, Any] | None = None
+    error_category: ErrorCategory | None = None
 
-    def to_json(self) -> Dict[str, Any]:
+    def to_json(self) -> dict[str, Any]:
         data = asdict(self)
         data["event_type"] = self.event_type.value
         if self.error_category:

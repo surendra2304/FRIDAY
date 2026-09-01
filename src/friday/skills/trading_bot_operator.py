@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Stratex Trading Bot Operator Skill for FRIDAY.
 
 Interfaces autonomously with the external Stratex 24/7 Algorithmic Trading Platform on Binance Futures Testnet
@@ -18,13 +17,12 @@ Critical Contract:
   FRIDAY acts as the SUPERVISOR monitoring bot metrics and AI advisory activity.
 """
 
-from dataclasses import dataclass, field
 import json
 import os
-import re
-from typing import Any, Dict, List, Optional
-import urllib.request
 import urllib.error
+import urllib.request
+from dataclasses import dataclass, field
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import AuthorizationDecision, AuthorizationRequest, SafetyLevel
@@ -52,8 +50,8 @@ class BotStatus:
     today_pnl: float
     profit_factor: float
     win_rate_pct: float
-    open_positions: List[Dict[str, Any]] = field(default_factory=list)
-    raw: Dict[str, Any] = field(default_factory=dict)
+    open_positions: list[dict[str, Any]] = field(default_factory=list)
+    raw: dict[str, Any] = field(default_factory=dict)
 
 
 class TradingBotOperator(BaseSkill):
@@ -80,12 +78,12 @@ class TradingBotOperator(BaseSkill):
         r"\b(?:stratex|trading\s+bot|bot)\s+(?:signals?|recent\s+signals?|recent\s+trades?)\b",
     ]
 
-    def __init__(self, base_url: Optional[str] = None, api_key: Optional[str] = None, timeout: float = 15.0) -> None:
+    def __init__(self, base_url: str | None = None, api_key: str | None = None, timeout: float = 15.0) -> None:
         self.base_url = (base_url or os.getenv("STRATEX_URL") or os.getenv("TRADING_BOT_URL") or DEFAULT_BOT_URL).rstrip("/")
         self.api_key = (api_key or os.getenv("STRATEX_API_KEY") or os.getenv("BOT_API_KEY") or os.getenv("TRADING_BOT_API_KEY") or "").strip()
         self.timeout = timeout
 
-    def _http_get(self, endpoint: str) -> Dict[str, Any]:
+    def _http_get(self, endpoint: str) -> dict[str, Any]:
         """Perform HTTP GET request to Trading Bot."""
         url = f"{self.base_url}{endpoint}"
         headers = {
@@ -107,7 +105,7 @@ class TradingBotOperator(BaseSkill):
             logger.error(f"[TRADING_BOT] Error on GET {url}: {e}")
             raise RuntimeError(f"Failed to connect to Trading Bot at {url}: {e}") from e
 
-    def _http_post(self, endpoint: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _http_post(self, endpoint: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         """Perform HTTP POST request to Trading Bot with X-BOT-API-KEY security header."""
         url = f"{self.base_url}{endpoint}"
         data = json.dumps(payload or {}).encode("utf-8")
@@ -167,35 +165,35 @@ class TradingBotOperator(BaseSkill):
             raw=raw
         )
 
-    def get_recent_signals(self) -> Dict[str, Any]:
+    def get_recent_signals(self) -> dict[str, Any]:
         """Calls /api/recent-actions to fetch recent decision logs."""
         return self._http_get("/api/recent-actions")
 
-    def get_advisory_recent(self, limit: int = 10) -> Dict[str, Any]:
+    def get_advisory_recent(self, limit: int = 10) -> dict[str, Any]:
         """Calls /api/advisory/recent?limit=N to retrieve recent AI-Universe recommendations."""
         return self._http_get(f"/api/advisory/recent?limit={max(1, limit)}")
 
-    def get_advisory_state(self) -> Dict[str, Any]:
+    def get_advisory_state(self) -> dict[str, Any]:
         """Calls /api/advisory/state to inspect the active AI parameter overlay."""
         return self._http_get("/api/advisory/state")
 
-    def get_ab_status(self) -> Dict[str, Any]:
+    def get_ab_status(self) -> dict[str, Any]:
         """Calls /api/ab/status to retrieve live A/B experiment progress, arms, and statistical metrics."""
         return self._http_get("/api/ab/status")
 
-    def get_testnet_advisory_status(self) -> Dict[str, Any]:
+    def get_testnet_advisory_status(self) -> dict[str, Any]:
         """Calls /api/testnet/advisory/status to retrieve testnet advisory mode, health, and active overlays."""
         return self._http_get("/api/testnet/advisory/status")
 
-    def get_testnet_advisory_log(self, limit: int = 10) -> Dict[str, Any]:
+    def get_testnet_advisory_log(self, limit: int = 10) -> dict[str, Any]:
         """Calls /api/testnet/advisory/log to retrieve recent testnet advisory decisions."""
         return self._http_get(f"/api/testnet/advisory/log?limit={limit}")
 
-    def get_testnet_paper_comparison(self) -> Dict[str, Any]:
+    def get_testnet_paper_comparison(self) -> dict[str, Any]:
         """Calls /api/testnet/paper/compare to retrieve side-by-side testnet vs paper trading execution metrics."""
         return self._http_get("/api/testnet/paper/compare")
 
-    def toggle_testnet_advisory(self, enabled: bool = True, mode: str = "SHADOW") -> Dict[str, Any]:
+    def toggle_testnet_advisory(self, enabled: bool = True, mode: str = "SHADOW") -> dict[str, Any]:
         """Calls POST /api/testnet/advisory/toggle to enable/disable testnet advisory or switch mode."""
         payload = {
             "enabled": bool(enabled),
@@ -204,7 +202,7 @@ class TradingBotOperator(BaseSkill):
         }
         return self._http_post("/api/testnet/advisory/toggle", payload)
 
-    def rollback_testnet_parameters(self) -> Dict[str, Any]:
+    def rollback_testnet_parameters(self) -> dict[str, Any]:
         """Calls POST /api/testnet/advisory/rollback to revert all testnet parameters to default baseline."""
         payload = {
             "action": "ROLLBACK",
@@ -252,21 +250,21 @@ class TradingBotOperator(BaseSkill):
             logger.warning(f"[TRADING_BOT] Failed to compose advisory summary: {e}")
             return f"AI-Universe Advisory telemetry currently unavailable: {e}"
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """Calls /api/status to retrieve live trading bot metrics dict."""
         return self._http_get("/api/status")
 
-    def trigger_panic(self, authorizer: Optional[Any] = None) -> Dict[str, Any]:
+    def trigger_panic(self, authorizer: Any | None = None) -> dict[str, Any]:
         """Calls POST /api/panic to activate the safety kill-switch (blocks new orders)."""
         logger.warning("[TRADING_BOT] Triggering EMERGENCY PANIC KILL-SWITCH via Bot REST API")
         tag = tag_trading_command("trigger_panic", CommandPrecedence.FRIDAY_COMMANDS)
         return self._http_post("/api/panic", {"release": False, "_precedence": tag})
 
-    def panic(self) -> Dict[str, Any]:
+    def panic(self) -> dict[str, Any]:
         """Alias for trigger_panic(); invokes trading bot's authoritative kill-switch API."""
         return self.trigger_panic()
 
-    def release_panic(self) -> Dict[str, Any]:
+    def release_panic(self) -> dict[str, Any]:
         """Calls POST /api/panic with {'release': True} to resume trading operations."""
         logger.info("[TRADING_BOT] Releasing panic kill-switch via Bot REST API")
         tag = tag_trading_command("release_panic", CommandPrecedence.FRIDAY_COMMANDS)
@@ -275,15 +273,15 @@ class TradingBotOperator(BaseSkill):
     def execute(
         self,
         user_request: str,
-        agent: Optional[Any] = None,
-        tool_registry: Optional[Any] = None,
-        llm_provider: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        agent: Any | None = None,
+        tool_registry: Any | None = None,
+        llm_provider: Any | None = None,
+        authorizer: Any | None = None,
         **kwargs: Any,
     ) -> SkillExecutionResult:
         """Executes trading bot queries, supervisor inspections, and safety actions."""
         clean_req = user_request.strip().lower()
-        step_results: List[Dict[str, Any]] = []
+        step_results: list[dict[str, Any]] = []
 
         try:
             # Precedence validation check

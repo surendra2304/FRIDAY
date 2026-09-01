@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for FRIDAY's Unified Error Taxonomy & Exception Hierarchy.
 
 Test Type: UNIT / SECURITY / INTEGRATION
@@ -45,7 +44,6 @@ from friday.core.exceptions import (
     VisionProviderError,
     VoiceError,
 )
-
 
 # ============================================================================
 # 1. ErrorCode & Hierarchy Verification for all 15 Classes

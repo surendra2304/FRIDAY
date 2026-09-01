@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Standalone interactive Gemini Live voice diagnostic.
 
 Debugs the Gemini Live connection end-to-end WITHOUT running the full
@@ -31,14 +30,13 @@ import sys
 import time
 import traceback
 from pathlib import Path
-from typing import Optional
 
 # Allow running directly from a source checkout without installation
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from friday.auth.credential_pool import credential_pool  # noqa: E402
-from friday.voice.audio_io import MicrophoneStream, SpeakerStream  # noqa: E402
-from friday.voice.gemini_live_session import GeminiLiveVoiceSession  # noqa: E402
+from friday.auth.credential_pool import credential_pool
+from friday.voice.audio_io import MicrophoneStream, SpeakerStream
+from friday.voice.gemini_live_session import GeminiLiveVoiceSession
 
 DEFAULT_MODEL = "gemini-3.1-flash-live-preview"
 SAMPLE_RATE_IN = 16000
@@ -80,7 +78,7 @@ def _is_session_drop(exc: BaseException) -> bool:
 
 def _chain_matches(exc: BaseException, markers: tuple) -> bool:
     """Walk the exception chain (cause/context) looking for any marker."""
-    current: Optional[BaseException] = exc
+    current: BaseException | None = exc
     depth = 0
     while current is not None and depth < 10:
         text = str(current).lower()
@@ -135,7 +133,7 @@ def print_raw_error(exc: BaseException) -> None:
     print("[FAIL] Gemini Live session failed. RAW error chain (outermost -> root cause):")
     print("=" * 70)
     depth = 0
-    current: Optional[BaseException] = exc
+    current: BaseException | None = exc
     while current is not None and depth < 10:
         prefix = "  " * depth + ("ROOT CAUSE: " if depth else "EXCEPTION: ")
         print(f"{prefix}{type(current).__module__}.{type(current).__name__}: {current}")
@@ -235,7 +233,7 @@ def main() -> None:
     print("FRIDAY — Interactive Gemini Live Voice Diagnostic (no agent)")
     print("=" * 70)
     print(f"Model:        {args.model}")
-    print(f"Mode:         indefinite session (Ctrl+C to exit)")
+    print("Mode:         indefinite session (Ctrl+C to exit)")
     print(f"Key rotation: up to {MAX_KEY_ROTATIONS} attempts on 1008/'denied access'/'not supported'/quota")
 
     verify_audio_devices()

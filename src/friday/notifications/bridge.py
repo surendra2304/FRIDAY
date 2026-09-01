@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Notification Bridge for Web and Mobile Push Infrastructure.
 
 Provides dual Web Push (VAPID/Service Worker) and Mobile Push (Firebase Cloud Messaging):
@@ -8,10 +7,10 @@ Provides dual Web Push (VAPID/Service Worker) and Mobile Push (Firebase Cloud Me
 4. Smart urgency routing (CRITICAL bypasses quiet hours, HIGH respects, MEDIUM held for morning)
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -24,7 +23,7 @@ class ActionButton:
     action_id: str
     title: str
     action_type: str  # API_CALL, DEEP_LINK, CONFIRM_VOICE
-    payload: Dict[str, Any] = field(default_factory=dict)
+    payload: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -35,7 +34,7 @@ class PushNotificationPayload:
     body: str
     subsystem: str
     urgency: str  # CRITICAL, HIGH, MEDIUM, LOW
-    actions: List[ActionButton]
+    actions: list[ActionButton]
     deep_link: str
     group_key: str
     is_web_push: bool
@@ -47,7 +46,7 @@ class NotificationBridge:
     """Manages VAPID Web Push and FCM Mobile push dispatches with rich action buttons."""
 
     def __init__(self) -> None:
-        self.dispatched_pushes: List[PushNotificationPayload] = []
+        self.dispatched_pushes: list[PushNotificationPayload] = []
         self._lock = threading.RLock()
 
     def create_trading_alert_push(
@@ -97,7 +96,7 @@ class NotificationBridge:
         body: str,
         subsystem: str,
         urgency: str,
-        actions: List[ActionButton],
+        actions: list[ActionButton],
         deep_link: str,
         group_key: str,
     ) -> PushNotificationPayload:

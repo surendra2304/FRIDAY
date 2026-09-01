@@ -1,10 +1,10 @@
 """Unit and integration tests for persistent conversation management."""
 
 import pytest
+
 from friday.agent.agent import FridayAgent
 from friday.core.config import Settings
 from friday.llm.mock_provider import MockLLMProvider
-from friday.memory.sqlite import SQLiteConversationMemory
 
 
 def test_create_and_list_conversations(tmp_path):

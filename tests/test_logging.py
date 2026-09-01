@@ -1,7 +1,13 @@
 """Tests for logging and secret sanitization."""
 
 import logging
-from friday.core.logging import SecretMaskingFilter, SanitizedFormatter, get_logger, setup_logging
+
+from friday.core.logging import (
+    SanitizedFormatter,
+    SecretMaskingFilter,
+    get_logger,
+    setup_logging,
+)
 
 
 def test_secret_masking_filter_direct_secret():
@@ -64,7 +70,7 @@ def test_sanitized_formatter_filters_exception_tracebacks():
     # Simulate an exception containing a secret in its traceback details
     try:
         raise ValueError(f"Connection failed with credentials: {secret}")
-    except Exception as e:
+    except Exception:
         import sys
         record = logging.LogRecord(
             name="test",

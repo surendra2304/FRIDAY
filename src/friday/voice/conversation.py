@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Conversational Voice Interface with Interruption and Emotion Adaptation.
 
 Enhances conversational depth:
@@ -8,10 +7,10 @@ Enhances conversational depth:
 4. Emotion/stress tone detection: adapts response style to concise bullets under stress
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import threading
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -35,7 +34,7 @@ class ConversationalVoiceInterface:
     """Manages multi-turn conversation threads, confidence repair, interruptions, and tone adaptation."""
 
     def __init__(self) -> None:
-        self.conversation_thread: List[Dict[str, Any]] = []
+        self.conversation_thread: list[dict[str, Any]] = []
         self._is_speaking = False
         self._lock = threading.RLock()
 

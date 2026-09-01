@@ -1,11 +1,11 @@
-# -*- coding: utf-8 -*-
 """Comprehensive End-to-End Production Supervision & Emergency Procedures Test Suite."""
 
 from unittest.mock import MagicMock
+
 import pytest
 
 from friday.alert_manager import AlertSeverity, AlertStatus, ProductionAlertManager
-from friday.core.types import AuthorizationDecision, AuthorizationResponse, TrustLevel
+from friday.core.types import AuthorizationDecision, AuthorizationResponse
 from friday.emergency_procedures import EmergencyProcedureManager
 from friday.memory.in_memory import InMemoryConversationMemory
 from friday.production_dashboard import ProductionDashboard

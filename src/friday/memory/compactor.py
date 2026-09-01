@@ -1,10 +1,8 @@
-# -*- coding: utf-8 -*-
 """Memory Compactor for FRIDAY Memory Knowledge Base Memory 2.0.
 
 Summarizes old episodic memories into concise semantic knowledge facts using LLM reasoning.
 """
 
-from typing import Dict, List, Optional
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role
 from friday.llm.base import BaseLLMProvider
@@ -28,9 +26,9 @@ class MemoryCompactor:
 
     def compact_episodic_memories(
         self,
-        conversation_id: Optional[str] = None,
+        conversation_id: str | None = None,
         force: bool = False,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Check episodic memory count; if above threshold or forced, compact into semantic nodes."""
         episodic_nodes = self.memory.get_memory_nodes(
             memory_type="episodic",

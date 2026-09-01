@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Friday Gemini Credential Pool
 
 This module provides a thread-safe `GeminiCredentialPool` that manages a primary Gemini API key and up to four fallback keys.
@@ -10,11 +9,12 @@ The implementation deliberately avoids logging or exposing raw API keys.
 import enum
 import json
 import os
-from pathlib import Path
 import threading
+from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Sequence
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Optional
 
 
 class FailureCategory(str, enum.Enum):
@@ -37,7 +37,7 @@ class FailureCategory(str, enum.Enum):
 
 
 # Cooldown durations per failure category
-COOLDOWN_DURATIONS: Dict[FailureCategory, float] = {
+COOLDOWN_DURATIONS: dict[FailureCategory, float] = {
     FailureCategory.RATE_LIMIT: 30.0,         # Short rate-limit cooldown
     FailureCategory.QUOTA_EXHAUSTED: 3600.0,   # Quota exhausted: 1 hour (or until daily reset)
     FailureCategory.AUTH_FAILED: 86400.0,      # Invalid key: 24h cooldown
@@ -62,31 +62,39 @@ class Credential:
     project_label: str = "PRIMARY"
     is_primary: bool = False
     failure_count: int = 0
-    last_failed_at: Optional[datetime] = None
-    cooldown_until: Optional[datetime] = None
+    consecutive_failures: int = 0
+    last_failed_at: datetime | None = None
+    cooldown_until: datetime | None = None
     last_failure_category: FailureCategory = FailureCategory.HEALTHY
-    last_success_at: Optional[datetime] = None
+    last_success_at: datetime | None = None
+
 
     def is_healthy(self, max_failures: int, default_cooldown: int = 60) -> bool:
         """Return True if the credential can be used."""
-        now = datetime.utcnow()
-        if self.cooldown_until and now < self.cooldown_until:
-            return False
+        now = datetime.now(timezone.utc)
+        if self.cooldown_until:
+            # Normalize naive / aware comparison if needed
+            cd = self.cooldown_until if self.cooldown_until.tzinfo else self.cooldown_until.replace(tzinfo=timezone.utc)
+            if now < cd:
+                return False
         if self.failure_count >= max_failures:
             # If cooldown expired, allow retry
-            if self.cooldown_until and now >= self.cooldown_until:
-                return True
+            if self.cooldown_until:
+                cd = self.cooldown_until if self.cooldown_until.tzinfo else self.cooldown_until.replace(tzinfo=timezone.utc)
+                if now >= cd:
+                    return True
             return False
         return True
 
-    def to_safe_dict(self) -> Dict[str, Any]:
+    def to_safe_dict(self) -> dict[str, Any]:
         """Return safe state dictionary containing no secret keys."""
-        now = datetime.utcnow()
-        is_in_cooldown = bool(self.cooldown_until and now < self.cooldown_until)
+        now = datetime.now(timezone.utc)
+        cd = (self.cooldown_until if self.cooldown_until.tzinfo else self.cooldown_until.replace(tzinfo=timezone.utc)) if self.cooldown_until else None
+        is_in_cooldown = bool(cd and now < cd)
         return {
             "project_label": self.project_label,
             "is_primary": self.is_primary,
-            "is_healthy": not is_in_cooldown and (self.failure_count == 0 or (self.cooldown_until and now >= self.cooldown_until)),
+            "is_healthy": not is_in_cooldown and (self.failure_count == 0 or (cd and now >= cd)),
             "status": "COOLDOWN" if is_in_cooldown else ("HEALTHY" if self.failure_count == 0 else "DEGRADED"),
             "failure_category": self.last_failure_category.value,
             "failure_count": self.failure_count,
@@ -94,6 +102,10 @@ class Credential:
             "last_failed_at": self.last_failed_at.isoformat() if self.last_failed_at else None,
             "last_success_at": self.last_success_at.isoformat() if self.last_success_at else None,
         }
+
+
+# Backwards compatibility alias
+KeyHealth = Credential
 
 
 class GeminiCredentialPool:
@@ -124,16 +136,16 @@ class GeminiCredentialPool:
         self,
         max_failures: int = 1,
         cooldown_seconds: int = 60,
-        keys: Optional[Sequence[str]] = None,
-        state_file: Optional[Path] = None,
+        keys: Sequence[str] | None = None,
+        state_file: Path | None = None,
     ) -> None:
         if not hasattr(self, "lock"):
             self.lock = threading.Lock()
         self.max_failures = max_failures
         self.cooldown_seconds = cooldown_seconds
         self.state_file = state_file or Path("data/gemini_pool_state.json")
-        self.credentials: List[Credential] = []
-        self._session_active_key: Optional[str] = None
+        self.credentials: list[Credential] = []
+        self._session_active_key: str | None = None
         self._preflight_done: bool = False
 
         if keys is not None:
@@ -169,6 +181,7 @@ class GeminiCredentialPool:
         if not primary and not any(fallbacks):
             try:
                 from dotenv import dotenv_values
+
                 from friday.core.config import resolve_env_file
                 env_p = resolve_env_file()
                 if env_p and env_p.is_file():
@@ -222,7 +235,7 @@ class GeminiCredentialPool:
         except Exception:
             pass
 
-    def _write_persisted_state_snapshot(self, snapshot: Dict[str, Any]) -> None:
+    def _write_persisted_state_snapshot(self, snapshot: dict[str, Any]) -> None:
         """Atomic write of non-sensitive health metadata to disk outside lock."""
         if not self.state_file:
             return
@@ -290,7 +303,7 @@ class GeminiCredentialPool:
         with self.lock:
             return self._get_active_label_unlocked()
 
-    def preflight_check(self, model: str = "gemini-1.5-flash-latest", force_probe: bool = False) -> Dict[str, Any]:
+    def preflight_check(self, model: str = "gemini-1.5-flash-latest", force_probe: bool = False) -> dict[str, Any]:
         """Perform a one-time quota-conscious startup preflight check without deadlock.
         
         Checks persisted health first. Only performs a live probe if no healthy
@@ -365,7 +378,7 @@ class GeminiCredentialPool:
             return FailureCategory.CIRCUIT_BLOCK
         return FailureCategory.UNKNOWN
 
-    def mark_key_unhealthy(self, key: str, error: Optional[Exception] = None) -> None:
+    def mark_key_unhealthy(self, key: str, error: Exception | None = None) -> None:
         """Explicitly mark a credential unhealthy, applying the classified cooldown.
 
         Public convenience alias over `report_failure` used by diagnostics and
@@ -375,7 +388,7 @@ class GeminiCredentialPool:
         """
         self.report_failure(key, error=error)
 
-    def report_failure(self, key: str, error: Optional[Exception] = None) -> None:
+    def report_failure(self, key: str, error: Exception | None = None) -> None:
         """Record a failure for the credential, applying category-specific cooldown (thread-safe)."""
         snapshot = None
         with self.lock:
@@ -447,18 +460,18 @@ class GeminiCredentialPool:
         if snapshot:
             self._write_persisted_state_snapshot(snapshot)
 
-    def get_diagnostics(self) -> List[Dict[str, Any]]:
+    def get_diagnostics(self) -> list[dict[str, Any]]:
         """Return non-sensitive status report for all credentials in pool (thread-safe)."""
         with self.lock:
             return [cred.to_safe_dict() for cred in self.credentials]
 
-    def _find_by_key(self, key: str) -> Optional[Credential]:
+    def _find_by_key(self, key: str) -> Credential | None:
         for cred in self.credentials:
             if cred.api_key == key:
                 return cred
         return None
 
-    def _find_by_label(self, label: str) -> Optional[Credential]:
+    def _find_by_label(self, label: str) -> Credential | None:
         for cred in self.credentials:
             if cred.project_label.upper() == label.upper():
                 return cred
@@ -485,7 +498,7 @@ class OpenAICompatibleCredentialPool(GeminiCredentialPool):
         self,
         env_key_names: Sequence[str],
         state_file_name: str,
-        env_fallback_fmts: Optional[Sequence[str]] = None,
+        env_fallback_fmts: Sequence[str] | None = None,
         **kwargs: Any,
     ) -> None:
         self.env_key_names = env_key_names
@@ -513,15 +526,15 @@ mistral_credential_pool = OpenAICompatibleCredentialPool(
 )
 
 __all__ = [
+    "COOLDOWN_DURATIONS",
     "Credential",
     "FailureCategory",
     "GeminiCredentialPool",
     "OpenAICompatibleCredentialPool",
     "credential_pool",
     "groq_credential_pool",
-    "openrouter_credential_pool",
     "mistral_credential_pool",
-    "COOLDOWN_DURATIONS",
+    "openrouter_credential_pool",
 ]
 
 

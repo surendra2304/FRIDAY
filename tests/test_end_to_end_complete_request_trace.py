@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """End-to-End Request Pipeline Trace Test Suite.
 
 Proves that one complete FRIDAY request traverses the full architectural call graph:
@@ -13,14 +12,11 @@ Proves that one complete FRIDAY request traverses the full architectural call gr
 9. Final Response Delivery & Telemetry Metadata
 """
 
-from unittest import mock
-import pytest
 
 from friday.agent.agent import FridayAgent
 from friday.agent.cognitive import CognitivePhase
 from friday.agent.state import TaskState
 from friday.core.auth import DefaultSecureAuthorizer
-from friday.core.config import Settings
 from friday.core.types import Message, Role, ToolCall
 from friday.llm.mock_provider import MockLLMProvider
 from friday.memory.in_memory import InMemoryConversationMemory

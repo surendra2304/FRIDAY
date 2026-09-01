@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Genuine Real-World Acceptance Test Architecture for FRIDAY.
 
 Replaces all placeholder and hardcoded success values with genuine integration adapters:
@@ -21,25 +20,30 @@ Honest Outcome Classifications:
 - NOT_TESTED: Skipped due to prior blocker.
 """
 
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+
 import pytest
 
 from friday.agent.checkpoint import TaskCheckpointStore
-from friday.agent.executor import StepExecutionResult, TaskExecutionEngine
+from friday.agent.executor import StepExecutionResult
 from friday.agent.planner import PlanStep, StepStatus, TaskPlan
-from friday.agent.recovery import AutonomousRecoveryManager, FailureAnalyzer, FailureType, RecoveryStrategy
+from friday.agent.recovery import (
+    AutonomousRecoveryManager,
+    FailureAnalyzer,
+)
 from friday.agent.safety_gate import AutonomousSafetyGate, TaskRiskLevel
 from friday.agent.state import TaskState
-from friday.agent.verification import StepVerifier, VerificationResult, VerificationStatus
+from friday.agent.verification import (
+    StepVerifier,
+    VerificationStatus,
+)
 from friday.core.config import get_settings
-from friday.core.types import Message, Role, SafetyLevel, ToolCall, ToolResult
+from friday.core.types import ToolResult
 from friday.tools.builtin.calculator import CalculatorTool
-from friday.tools.builtin.time_date import TimeDateTool
 from friday.tools.registry import ToolRegistry
 from friday.vision.action_preparer import GroundingStatus, PerceptionActionPreparer
 from friday.vision.actions import ActionType, ComputerActionProposal
@@ -48,7 +52,7 @@ from friday.vision.mock_screen import MockScreenCaptureProvider
 from friday.vision.screen_context import ScreenContext
 from friday.vision.ui_elements import BoundingBox, ElementType, UIElement
 from friday.vision.windows_screen import WindowsScreenCaptureProvider
-from friday.voice.audio_io import check_device_availability, MicrophoneStream
+from friday.voice.audio_io import MicrophoneStream, check_device_availability
 
 
 class OutcomeClassification(str, Enum):
@@ -87,7 +91,7 @@ class GenuineAcceptanceRunner:
     """Orchestrates genuine integration evaluations across all FRIDAY subsystems."""
 
     def __init__(self) -> None:
-        self.results: List[AcceptanceMatrixEntry] = []
+        self.results: list[AcceptanceMatrixEntry] = []
         self.settings = get_settings()
 
     def record(
@@ -513,7 +517,7 @@ class GenuineAcceptanceRunner:
             )
         return self.results[-1]
 
-    def run_all(self) -> List[AcceptanceMatrixEntry]:
+    def run_all(self) -> list[AcceptanceMatrixEntry]:
         self.results.clear()
         self.evaluate_microphone_capture()
         self.evaluate_gemini_live_voice_readiness()
@@ -546,7 +550,7 @@ class GenuineAcceptanceRunner:
             "## Classification Counts",
             "",
         ])
-        counts: Dict[str, int] = {}
+        counts: dict[str, int] = {}
         for r in self.results:
             c_name = r.actual_classification.value
             counts[c_name] = counts.get(c_name, 0) + 1

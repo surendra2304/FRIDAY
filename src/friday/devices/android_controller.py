@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
 """Android Device Controller stub for FRIDAY (Inspired by OpenJarvis).
 
 Provides the standard device interface for remote or connected Android phones/tablets.
 """
 
-from typing import Any, Optional
+from typing import Any
 
 from friday.core.device_controller import BaseDeviceController
 from friday.core.logging import get_logger
@@ -17,7 +16,7 @@ class AndroidDeviceController(BaseDeviceController):
 
     device_type: str = "android"
 
-    def __init__(self, adb_device_id: Optional[str] = None) -> None:
+    def __init__(self, adb_device_id: str | None = None) -> None:
         self.adb_device_id = adb_device_id
         # TODO: Implement Android device automation using ADB (Android Debug Bridge)
 
@@ -36,7 +35,7 @@ class AndroidDeviceController(BaseDeviceController):
         # TODO: Implement Android device automation using ADB (Android Debug Bridge)
         raise NotImplementedError("Android device controller via ADB is not yet implemented.")
 
-    def screenshot(self) -> Optional[Any]:
+    def screenshot(self) -> Any | None:
         """Capture Android framebuffer using 'adb exec-out screencap -p'."""
         # TODO: Implement Android device automation using ADB (Android Debug Bridge)
         raise NotImplementedError("Android device controller via ADB is not yet implemented.")

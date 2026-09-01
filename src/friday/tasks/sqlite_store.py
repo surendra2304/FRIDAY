@@ -1,10 +1,10 @@
-import sqlite3
 import json
-from pathlib import Path
-from typing import List, Optional
+import sqlite3
 from datetime import datetime
+from pathlib import Path
 
 from friday.core.config import get_settings
+
 from .models import Task, TaskRunLog
 
 DB_PATH = Path(get_settings().memory_db_path)
@@ -68,7 +68,7 @@ def _task_from_row(row: sqlite3.Row) -> Task:
         last_run=datetime.fromisoformat(row["last_run"]) if row["last_run"] else None,
     )
 
-def get_all_tasks() -> List[Task]:
+def get_all_tasks() -> list[Task]:
     conn = _get_connection()
     cur = conn.cursor()
     cur.execute('SELECT * FROM tasks')
@@ -76,7 +76,7 @@ def get_all_tasks() -> List[Task]:
     conn.close()
     return [_task_from_row(r) for r in rows]
 
-def get_task(task_id: str) -> Optional[Task]:
+def get_task(task_id: str) -> Task | None:
     conn = _get_connection()
     cur = conn.cursor()
     cur.execute('SELECT * FROM tasks WHERE id = ?', (task_id,))
@@ -136,13 +136,13 @@ def log_task_run(log: TaskRunLog) -> None:
     conn.commit()
     conn.close()
 
-def get_task_history(task_id: str) -> List[TaskRunLog]:
+def get_task_history(task_id: str) -> list[TaskRunLog]:
     conn = _get_connection()
     cur = conn.cursor()
     cur.execute('SELECT * FROM task_run_log WHERE task_id = ? ORDER BY run_time DESC', (task_id,))
     rows = cur.fetchall()
     conn.close()
-    logs: List[TaskRunLog] = []
+    logs: list[TaskRunLog] = []
     for r in rows:
         logs.append(TaskRunLog(
             id=r["id"],

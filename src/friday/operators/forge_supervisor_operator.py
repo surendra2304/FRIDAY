@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """FORGE Task Supervision Operator for FRIDAY.
 
 Supervises all active FORGE software engineering tasks every 60 seconds:
@@ -14,13 +13,14 @@ Supervises all active FORGE software engineering tasks every 60 seconds:
 """
 
 from datetime import datetime, timezone
-import threading
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from friday.alert_manager import AlertSeverity, ProductionAlertManager
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role, SafetyLevel, TrustLevel
-from friday.operators.base_operator import BaseOperator, OperatorExecutionResult, OperatorState
+from friday.operators.base_operator import (
+    BaseOperator,
+)
 from friday.operators.triggers import IntervalTrigger
 from friday.skills.forge_manager import ForgeManagerSkill
 
@@ -40,11 +40,11 @@ class ForgeSupervisorOperator(BaseOperator):
 
     def __init__(
         self,
-        forge_manager: Optional[ForgeManagerSkill] = None,
-        alert_manager: Optional[ProductionAlertManager] = None,
+        forge_manager: ForgeManagerSkill | None = None,
+        alert_manager: ProductionAlertManager | None = None,
         poll_interval_sec: float = 60.0,
-        memory: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        memory: Any | None = None,
+        authorizer: Any | None = None,
     ) -> None:
         trigger = IntervalTrigger(interval_seconds=poll_interval_sec, name="forge_supervisor_poll_interval")
         super().__init__(
@@ -59,7 +59,7 @@ class ForgeSupervisorOperator(BaseOperator):
         self._alert_manager = alert_manager
         self.poll_interval_sec = poll_interval_sec
         self.memory = memory
-        self._notified_events: Set[str] = set()
+        self._notified_events: set[str] = set()
         self._consecutive_unreachable_ticks: int = 0
 
     @property
@@ -74,9 +74,9 @@ class ForgeSupervisorOperator(BaseOperator):
             self._alert_manager = ProductionAlertManager()
         return self._alert_manager
 
-    def tick(self) -> List[Dict[str, Any]]:
+    def tick(self) -> list[dict[str, Any]]:
         """Executes 60-second supervision cycle over active FORGE tasks."""
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
 
         try:
             health = self.forge_manager.get_forge_health()

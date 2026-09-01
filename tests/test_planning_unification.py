@@ -1,15 +1,20 @@
-# -*- coding: utf-8 -*-
 """Verification tests for FRIDAY's Unified Planning Architecture & Dependency-Aware Scheduling."""
 
 import threading
 import time
-import pytest
-from typing import List
 
+import pytest
+
+from friday.agent.executor import TaskExecutionEngine
 from friday.agent.goal import Goal, GoalRequestType, GoalRiskLevel, SubGoal
-from friday.agent.planner import GoalDecomposer, PlanStep, PlanValidationError, StepStatus, TaskPlan
-from friday.agent.executor import TaskExecutionEngine, StepExecutionResult
-from friday.agent.state import ReasoningStateMachine, TaskState
+from friday.agent.planner import (
+    GoalDecomposer,
+    PlanStep,
+    PlanValidationError,
+    StepStatus,
+    TaskPlan,
+)
+from friday.agent.state import TaskState
 from friday.core.auth import AutoApproveAuthorizer
 from friday.core.types import SafetyLevel, ToolResult
 from friday.tools.base import BaseTool
@@ -32,8 +37,7 @@ class ConcurrentSafeReadTool(BaseTool):
         t_id = threading.get_ident()
         with self._lock:
             self.active_threads.add(t_id)
-            if len(self.active_threads) > self.max_concurrency:
-                self.max_concurrency = len(self.active_threads)
+            self.max_concurrency = max(self.max_concurrency, len(self.active_threads))
 
         time.sleep(0.2)  # Simulate I/O
 
@@ -63,8 +67,7 @@ class SensitiveWriteTool(BaseTool):
     def execute(self, data: str = "", **kwargs) -> ToolResult:
         with self._lock:
             self.active_count += 1
-            if self.active_count > self.max_concurrency:
-                self.max_concurrency = self.active_count
+            self.max_concurrency = max(self.max_concurrency, self.active_count)
 
         time.sleep(0.1)
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Simulated End-to-End Multimodal & Autonomous Task Validation Suite.
 
 Test Type: SIMULATION / ACCEPTANCE
@@ -14,29 +13,25 @@ Validates:
 8. Sanitized Task State Checkpointing with 0 secret or binary screenshot leakage.
 """
 
-from datetime import datetime, timezone
 import json
+
 import pytest
 
 # Mark test type explicitly
 pytestmark = [pytest.mark.simulation, pytest.mark.acceptance]
 
-from friday.agent.checkpoint import InterruptionReason, TaskCheckpoint, TaskCheckpointStore
+from friday.agent.checkpoint import TaskCheckpointStore
 from friday.agent.executor import StepStatus, TaskExecutionEngine
-from friday.agent.goal import Goal, GoalRequestType, GoalRiskLevel, GoalUnderstandingEngine
-from friday.agent.planner import GoalDecomposer, PlanStep, TaskPlan
-from friday.agent.recovery import AutonomousRecoveryManager, FailureDiagnosis, FailureType, RecoveryStrategy
-from friday.agent.safety_gate import AutonomousSafetyGate, TaskRiskLevel
+from friday.agent.goal import GoalRiskLevel, GoalUnderstandingEngine
+from friday.agent.planner import PlanStep, TaskPlan
 from friday.agent.state import TaskState
-from friday.agent.verification import StepVerifier, VerificationResult, VerificationStatus
-from friday.core.auth import AutoApproveAuthorizer, AutoDenyAuthorizer, DefaultSecureAuthorizer
+from friday.core.auth import (
+    AutoApproveAuthorizer,
+)
 from friday.core.types import SafetyLevel, ToolResult
-from friday.llm.mock_provider import MockLLMProvider
-from friday.memory.task_context import ActiveTaskContext
 from friday.tools.base import BaseTool
 from friday.tools.registry import ToolRegistry
-from friday.vision.action_preparer import GroundedElementTarget, PerceptionActionPreparer
-from friday.vision.actions import ActionType, ComputerActionProposal
+from friday.vision.action_preparer import PerceptionActionPreparer
 from friday.vision.screen_context import ScreenContext
 from friday.vision.ui_elements import BoundingBox, ElementType, UIElement
 

@@ -1,7 +1,8 @@
 """Base Tool interface with safety classification, schema generation, and argument validation."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
+
 from friday.core.types import SafetyLevel, ToolResult
 
 
@@ -15,18 +16,18 @@ class BaseTool(ABC):
     risk_level: str = "SAFE"  # Options: SAFE, SENSITIVE, DANGEROUS
     auth_requirement: str = "NONE"  # NONE, USER, ADMIN
     timeout: int = 30  # seconds, per‑tool execution timeout
-    retry_policy: Dict[str, Any] = {"max_attempts": 3, "backoff": 1}
+    retry_policy: dict[str, Any] = {"max_attempts": 3, "backoff": 1}
     idempotency: bool = False
-    side_effects: List[str] = []
+    side_effects: list[str] = []
     verification_method: Any = None  # Callable[[Any], bool] – optional custom verification
 
-    parameters: Dict[str, Any] = {
+    parameters: dict[str, Any] = {
         "type": "object",
         "properties": {},
         "required": [],
     }
 
-    def to_openai_schema(self) -> Dict[str, Any]:
+    def to_openai_schema(self) -> dict[str, Any]:
         """Convert tool definition into OpenAI function calling format."""
         return {
             "type": "function",
@@ -37,7 +38,7 @@ class BaseTool(ABC):
             },
         }
 
-    def validate_arguments(self, arguments: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
+    def validate_arguments(self, arguments: dict[str, Any]) -> tuple[bool, str | None]:
         """Validate passed arguments against the tool's parameter schema.
 
         Returns:
@@ -87,4 +88,3 @@ class BaseTool(ABC):
     @abstractmethod
     def execute(self, **kwargs: Any) -> ToolResult:
         """Execute the tool with the given arguments and return a ToolResult."""
-        pass

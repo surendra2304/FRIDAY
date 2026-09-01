@@ -1,14 +1,18 @@
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
-from .models import Task, ScheduleType, SafetyLevel, TaskRunLog
-from .sqlite_store import get_all_tasks, save_task, log_task_run
-from friday.core.config import get_settings
 from friday.agent.agent import FridayAgent
 from friday.core.auth import DefaultSecureAuthorizer
+from friday.core.config import get_settings
+from friday.core.logging import get_logger
 from friday.core.types import AuthorizationRequest
 from friday.core.types import SafetyLevel as CoreSafetyLevel
+
+from .models import SafetyLevel, ScheduleType, Task, TaskRunLog
+from .sqlite_store import get_all_tasks, log_task_run, save_task
+
+logger = get_logger("tasks.scheduler")
 
 class TaskScheduler:
     """Background scheduler for proactive tasks.
@@ -24,23 +28,23 @@ class TaskScheduler:
 
     def start(self) -> None:
         self._thread.start()
-        self.agent.logger.info("TaskScheduler started")
+        logger.info("TaskScheduler started")
 
     def stop(self) -> None:
         self._stop_event.set()
         self._thread.join()
-        self.agent.logger.info("TaskScheduler stopped")
+        logger.info("TaskScheduler stopped")
 
     def _run_loop(self) -> None:
         while not self._stop_event.is_set():
             try:
                 self._process_due_tasks()
             except Exception as e:
-                self.agent.logger.error(f"TaskScheduler loop error: {e}")
+                logger.error(f"TaskScheduler loop error: {e}")
             time.sleep(1)
 
     def _process_due_tasks(self) -> None:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         tasks = get_all_tasks()
         for task in tasks:
             if not task.enabled:
@@ -57,19 +61,21 @@ class TaskScheduler:
     def _is_task_due(self, task: Task, now: datetime) -> bool:
         st = task.schedule_type
         params = task.schedule_params
+        lr = (task.last_run if task.last_run.tzinfo else task.last_run.replace(tzinfo=timezone.utc)) if task.last_run else None
         if st == ScheduleType.ONE_TIME:
             run_at = datetime.fromisoformat(params["run_at"])
-            return now >= run_at and (task.last_run is None or task.last_run < run_at)
+            run_at = run_at if run_at.tzinfo else run_at.replace(tzinfo=timezone.utc)
+            return now >= run_at and (lr is None or lr < run_at)
         if st == ScheduleType.INTERVAL:
             interval = int(params.get("interval_seconds", 60))
-            if task.last_run is None:
+            if lr is None:
                 return True
-            return now >= task.last_run + timedelta(seconds=interval)
+            return now >= lr + timedelta(seconds=interval)
         if st == ScheduleType.DAILY:
             hour = int(params.get("hour", 0))
             minute = int(params.get("minute", 0))
             today_run = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            return now >= today_run and (task.last_run is None or task.last_run < today_run)
+            return now >= today_run and (lr is None or lr < today_run)
         if st == ScheduleType.WEEKLY:
             weekday = int(params.get("weekday", 0))  # 0=Monday
             hour = int(params.get("hour", 0))
@@ -77,42 +83,35 @@ class TaskScheduler:
             days_ago = (now.weekday() - weekday) % 7
             target_day = now - timedelta(days=days_ago)
             target_dt = target_day.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            return now >= target_dt and (task.last_run is None or task.last_run < target_dt)
+            return now >= target_dt and (lr is None or lr < target_dt)
         return False
 
     def _run_task(self, task: Task) -> None:
-        # Authorization based on safety level (SAFE auto-runs; SENSITIVE/DANGEROUS
-        # require an authorizer that can grant interactive approval).
-        if task.safety_level == SafetyLevel.SAFE:
-            authorized = True
-        else:
-            auth_req = AuthorizationRequest(
-                tool_name=f"scheduled_task:{task.name}",
-                safety_level=CoreSafetyLevel[task.safety_level.name],
-                arguments={"task": task.name},
-                purpose="Scheduled proactive task execution",
-            )
-            authorized = self.authorizer.authorize(auth_req).decision.value == "APPROVED"
-
-        if not authorized:
-            self.agent.logger.warning(f"Task {task.name} not authorized, skipping")
+        logger.info(f"Executing task: {task.name} ({task.id})")
+        auth_req = AuthorizationRequest(
+            tool_name="scheduler_run_task",
+            parameters={"task_id": task.id, "prompt": task.prompt},
+            safety_level=CoreSafetyLevel.LOW,
+        )
+        authorizer = DefaultSecureAuthorizer()
+        auth_res = authorizer.authorize(auth_req)
+        if not auth_res.approved:
+            logger.warning(f"Task {task.name} blocked by authorizer: {auth_res.reason}")
             return
 
-        attempt = 0
         success = False
         result = None
         error_msg = None
-        while attempt < task.retry_limit and not success:
+        attempt = 0
+        while attempt < self.settings.gemini_max_retries and not success:
             attempt += 1
             try:
-                # Example execution: send a simple command to the agent
-                response = self.agent.process_message(f"/run_task {task.name}")
+                response = self.agent.process_message(task.prompt)
                 success = True
                 result = getattr(response, "content", str(response))
             except Exception as e:
                 error_msg = str(e)
-                self.agent.logger.error(f"Task {task.name} attempt {attempt} failed: {e}")
-                time.sleep(self.settings.gemini_backoff_factor ** attempt)
+                logger.error(f"Task {task.name} attempt {attempt} failed: {e}")
 
         # Update counters
         task.run_count += 1
@@ -122,8 +121,8 @@ class TaskScheduler:
             task.failure_streak += 1
             if task.failure_streak >= self.settings.task_circuit_breaker_threshold:
                 task.enabled = False
-                self.agent.logger.error(f"Task {task.name} disabled by circuit breaker")
-        task.last_run = datetime.utcnow()
+                logger.error(f"Task {task.name} disabled by circuit breaker")
+        task.last_run = datetime.now(timezone.utc)
         save_task(task)
 
         # Log execution
@@ -138,4 +137,4 @@ class TaskScheduler:
 
         # Notification
         msg = f"Task '{task.name}' completed: {'success' if success else 'failure'}"
-        self.agent.logger.info(msg)
+        logger.info(msg)

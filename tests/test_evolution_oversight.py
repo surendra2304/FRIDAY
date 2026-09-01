@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for FRIDAY Strategy Evolution Oversight & Approval Workflow."""
 
 import pytest
@@ -10,7 +9,10 @@ from friday.security.production_security import ProductionSecurityManager
 from friday.skills.evolution_approval import EvolutionApprovalSkill
 from friday.skills.registry import SkillRegistry
 from friday.trading.evolution_history import EvolutionHistoryTracker
-from friday.trading.strategy_portfolio import StrategyLifecycleState, StrategyPortfolioManager
+from friday.trading.strategy_portfolio import (
+    StrategyLifecycleState,
+    StrategyPortfolioManager,
+)
 
 
 @pytest.fixture

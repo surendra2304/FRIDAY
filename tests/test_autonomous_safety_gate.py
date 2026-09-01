@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive adversarial unit test suite for Goal Understanding0 Autonomous Safety & Authorization Gate.
 
 Tests:
@@ -13,9 +12,11 @@ Tests:
 
 import pytest
 
-from friday.agent.planner import PlanStep, StepStatus
+from friday.agent.planner import PlanStep
 from friday.agent.safety_gate import AutonomousSafetyGate, TaskRiskLevel
-from friday.core.auth import AutoApproveAuthorizer, AutoDenyAuthorizer, DefaultSecureAuthorizer
+from friday.core.auth import (
+    DefaultSecureAuthorizer,
+)
 from friday.core.types import SafetyLevel, ToolResult
 from friday.tools.base import BaseTool
 from friday.tools.registry import ToolRegistry

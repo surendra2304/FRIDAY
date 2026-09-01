@@ -1,20 +1,15 @@
 import json
-from typing import Any, Dict, List, Optional
-import pytest
 from unittest.mock import MagicMock
 
 from friday.vision.base import BaseVisionProvider, VisionAnalysisResult
 from friday.vision.mock_screen import MockScreenCaptureProvider, create_synthetic_png
-from friday.vision.pipeline import MonitorInfo, PerceptionPipeline, PerceptionResult
-from friday.vision.screen_base import ScreenSnapshot
-from friday.vision.screen_context import ScreenContext
-from friday.vision.ui_elements import BoundingBox, ElementType, UIElement
+from friday.vision.pipeline import PerceptionPipeline
 
 
 class CountingVisionProvider(BaseVisionProvider):
     """Vision provider that counts how many times analyze_image is actually called."""
 
-    def __init__(self, structured_response: Optional[dict] = None):
+    def __init__(self, structured_response: dict | None = None):
         self.call_count = 0
         self.response_data = structured_response or {
             "summary": "Mock desktop screen",

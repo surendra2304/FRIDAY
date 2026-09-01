@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Morning Intelligence Briefing Workflow for FRIDAY.
 
 Synthesizes deep market intelligence into the morning briefing:
@@ -9,9 +8,8 @@ Synthesizes deep market intelligence into the morning briefing:
 - Produces conversational spoken briefings and detailed Markdown reports
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
 
 from friday.core.logging import get_logger
 from friday.trading.intelligence_engine import IntelligenceEngine
@@ -41,7 +39,7 @@ class MorningIntelligenceBriefingWorkflow:
 
     def __init__(
         self,
-        intelligence_engine: Optional[IntelligenceEngine] = None,
+        intelligence_engine: IntelligenceEngine | None = None,
     ) -> None:
         self._intel_engine = intelligence_engine
 

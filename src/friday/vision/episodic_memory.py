@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Episodic Environmental Memory for storing, indexing, and recalling structured observations safely.
 
 Features:
@@ -10,12 +9,12 @@ Features:
 - Strict zero-persistence policy for credentials, passwords, tokens, raw screenshots, and private CoT.
 """
 
+import hashlib
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-import hashlib
-import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role
@@ -64,15 +63,15 @@ class EpisodicEnvironmentalFact:
     fact_summary: str
     confidence: float
     importance: MemoryImportance
-    source_application: Optional[str] = None
-    window_title: Optional[str] = None
-    task_id: Optional[str] = None
+    source_application: str | None = None
+    window_title: str | None = None
+    task_id: str | None = None
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     is_active: bool = True
-    superseded_by: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    superseded_by: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "fact_id": self.fact_id,
             "category": self.category,
@@ -89,7 +88,7 @@ class EpisodicEnvironmentalFact:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "EpisodicEnvironmentalFact":
+    def from_dict(cls, data: dict[str, Any]) -> "EpisodicEnvironmentalFact":
         imp_str = str(data.get("importance", "MEDIUM")).upper()
         try:
             imp = MemoryImportance(imp_str)
@@ -121,8 +120,8 @@ class EpisodicEnvironmentalMemoryManager:
     def __init__(self, memory: BaseMemory, max_facts_cache: int = 500) -> None:
         self.memory = memory
         self.max_facts_cache = max_facts_cache
-        self._facts: Dict[str, EpisodicEnvironmentalFact] = {}
-        self._hash_index: Dict[str, str] = {}  # sha256 -> fact_id
+        self._facts: dict[str, EpisodicEnvironmentalFact] = {}
+        self._hash_index: dict[str, str] = {}  # sha256 -> fact_id
         self._fact_counter: int = 0
 
     def record_derived_fact(
@@ -131,11 +130,11 @@ class EpisodicEnvironmentalMemoryManager:
         fact_summary: str,
         confidence: float = 0.9,
         importance: MemoryImportance = MemoryImportance.MEDIUM,
-        source_application: Optional[str] = None,
-        window_title: Optional[str] = None,
-        task_id: Optional[str] = None,
-        conversation_id: Optional[str] = None,
-    ) -> Optional[EpisodicEnvironmentalFact]:
+        source_application: str | None = None,
+        window_title: str | None = None,
+        task_id: str | None = None,
+        conversation_id: str | None = None,
+    ) -> EpisodicEnvironmentalFact | None:
         """Record a sanitized derived observation/fact to episodic memory."""
         if not fact_summary or not fact_summary.strip():
             return None
@@ -188,9 +187,9 @@ class EpisodicEnvironmentalMemoryManager:
     def record_screen_observation(
         self,
         screen_context: ScreenContext,
-        task_id: Optional[str] = None,
-        conversation_id: Optional[str] = None,
-    ) -> Optional[EpisodicEnvironmentalFact]:
+        task_id: str | None = None,
+        conversation_id: str | None = None,
+    ) -> EpisodicEnvironmentalFact | None:
         """Convert a ScreenContext snapshot into a high-level episodic fact."""
         if screen_context.is_error or not screen_context.summary:
             return None
@@ -210,8 +209,8 @@ class EpisodicEnvironmentalMemoryManager:
     def record_environmental_change(
         self,
         change: EnvironmentalChange,
-        conversation_id: Optional[str] = None,
-    ) -> Optional[EpisodicEnvironmentalFact]:
+        conversation_id: str | None = None,
+    ) -> EpisodicEnvironmentalFact | None:
         """Record a meaningful environmental state transition to episodic memory."""
         if not change.is_meaningful or change.change_type == EnvironmentalChangeType.INSIGNIFICANT_NOISE:
             return None
@@ -231,7 +230,7 @@ class EpisodicEnvironmentalMemoryManager:
         old_fact_id: str,
         new_fact_summary: str,
         reason: str = "Corrected observation",
-    ) -> Optional[EpisodicEnvironmentalFact]:
+    ) -> EpisodicEnvironmentalFact | None:
         """Correct an obsolete or incorrect environmental fact."""
         if old_fact_id not in self._facts:
             return None
@@ -270,17 +269,17 @@ class EpisodicEnvironmentalMemoryManager:
     def query_facts(
         self,
         query: str,
-        category: Optional[str] = None,
-        task_id: Optional[str] = None,
+        category: str | None = None,
+        task_id: str | None = None,
         min_confidence: float = 0.5,
         limit: int = 5,
-        conversation_id: Optional[str] = None,
+        conversation_id: str | None = None,
         include_fallback: bool = False,
-    ) -> List[EpisodicEnvironmentalFact]:
+    ) -> list[EpisodicEnvironmentalFact]:
         """Retrieve relevant active episodic facts matching query and filters."""
         # 1. Local in-memory active facts search
         clean_q = query.lower().strip()
-        matched: List[EpisodicEnvironmentalFact] = []
+        matched: list[EpisodicEnvironmentalFact] = []
 
         for fact in self._facts.values():
             if not fact.is_active or fact.confidence < min_confidence:
@@ -313,7 +312,7 @@ class EpisodicEnvironmentalMemoryManager:
         try:
             target_conv = conversation_id or getattr(self.memory, "active_conversation_id", None)
             search_results = self.memory.search(query=query, conversation_id=target_conv, limit=limit)
-            fallback_facts: List[EpisodicEnvironmentalFact] = []
+            fallback_facts: list[EpisodicEnvironmentalFact] = []
             for r in search_results:
                 if "episodic" in str(getattr(r, "role", "")).lower() or getattr(r, "role", None) == Role.TOOL:
                     fallback_facts.append(

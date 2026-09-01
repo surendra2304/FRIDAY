@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for FRIDAY Doctor & Diagnostics Subsystem.
 
 Test Type: UNIT / SECURITY / HARDWARE_SIMULATION
@@ -14,22 +13,21 @@ Validates:
 7. Zero secret leakage across machine-readable JSON and human-readable CLI views.
 """
 
-from datetime import datetime, timezone
 import pathlib
-import pytest
+from datetime import datetime
 from unittest import mock
+
+import pytest
 
 # Explicit test markers
 pytestmark = [pytest.mark.unit, pytest.mark.security]
 
 from friday.core.config import Settings
 from friday.core.doctor import (
-    ComponentHealth,
     DiagnosticStatus,
     DoctorReport,
     FridayDoctor,
 )
-
 
 # ============================================================================
 # 1. Full Diagnostics & Status Aggregation

@@ -1,8 +1,8 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Production Security, Voice Operations & Live Deployment Readiness Test Suite."""
 
 import json
 import math
+
 import pytest
 
 from friday.deployment.live_deployment import LiveDeploymentManager
@@ -10,7 +10,6 @@ from friday.monitoring.production_monitor import ComprehensiveProductionMonitor
 from friday.optimization.performance import PerformanceOptimizer
 from friday.security.production_security import ProductionSecurityManager
 from friday.voice.operations_center import VoiceOperationsCenter
-
 
 # =========================================================================
 # 1. Production Security Hardening Tests

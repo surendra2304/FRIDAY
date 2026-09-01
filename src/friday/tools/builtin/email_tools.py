@@ -1,15 +1,14 @@
-# -*- coding: utf-8 -*-
 """Email Tools for drafting and sending emails via SMTP.
 
 Provides tools for sending emails with SENSITIVE authorization gating using
 Python's built-in smtplib and email.mime packages.
 """
 
-from typing import Any, Dict, Optional
-import email.mime.text
 import email.mime.multipart
-import smtplib
+import email.mime.text
 import os
+import smtplib
+from typing import Any
 
 from friday.core.config import get_settings
 from friday.core.logging import get_logger
@@ -25,10 +24,10 @@ def _send_smtp_email(
     to_address: str,
     subject: str,
     body: str,
-    from_address: Optional[str] = None,
-    app_password: Optional[str] = None,
-    smtp_host: Optional[str] = None,
-    smtp_port: Optional[int] = None,
+    from_address: str | None = None,
+    app_password: str | None = None,
+    smtp_host: str | None = None,
+    smtp_port: int | None = None,
 ) -> tuple[bool, str]:
     """Connect to SMTP server and send MIME text email."""
     settings = get_settings()
@@ -63,7 +62,7 @@ def _send_smtp_email(
         return False, f"Could not connect to SMTP server '{host}:{port}': {e}"
     except Exception as e:
         logger.error(f"Failed to send email: {e}")
-        return False, f"Failed to send email to {to_address}: {str(e)}"
+        return False, f"Failed to send email to {to_address}: {e!s}"
 
 
 class SendEmailTool(BaseTool):

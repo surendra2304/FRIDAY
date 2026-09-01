@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Voice Operations Center for FRIDAY Live Deployment.
 
 Provides:
@@ -8,10 +7,9 @@ Provides:
 4. Voice Error Handling, Speech Feedback, and Visual Escalation.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.security.production_security import ProductionSecurityManager
@@ -35,11 +33,11 @@ class VoiceOperationsCenter:
 
     def __init__(
         self,
-        security_manager: Optional[ProductionSecurityManager] = None,
-        bot_operator: Optional[Any] = None,
-        risk_dashboard: Optional[Any] = None,
-        regime_detector: Optional[Any] = None,
-        emergency_manager: Optional[Any] = None,
+        security_manager: ProductionSecurityManager | None = None,
+        bot_operator: Any | None = None,
+        risk_dashboard: Any | None = None,
+        regime_detector: Any | None = None,
+        emergency_manager: Any | None = None,
     ) -> None:
         self.security_manager = security_manager or ProductionSecurityManager()
         self._bot_operator = bot_operator
@@ -83,8 +81,8 @@ class VoiceOperationsCenter:
         self,
         speaker_id: str,
         command_text: str,
-        voice_embedding: Optional[List[float]] = None,
-        confirmation_phrase: Optional[str] = None,
+        voice_embedding: list[float] | None = None,
+        confirmation_phrase: str | None = None,
     ) -> VoiceAuthResult:
         """Determines required safety tier and verifies biometrics & confirmation phrases."""
         clean = command_text.strip().lower()
@@ -176,9 +174,9 @@ class VoiceOperationsCenter:
         self,
         speaker_id: str,
         command_text: str,
-        voice_embedding: Optional[List[float]] = None,
-        confirmation_phrase: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        voice_embedding: list[float] | None = None,
+        confirmation_phrase: str | None = None,
+    ) -> dict[str, Any]:
         """Authenticates and executes high-level voice trading operations commands."""
         auth = self.authenticate_voice_command(
             speaker_id=speaker_id,
@@ -257,7 +255,9 @@ class VoiceOperationsCenter:
 
             # 5. "Generate performance report"
             if any(k in clean for k in ["performance report", "generate report"]):
-                from friday.integrations.external_analytics import ExternalAnalyticsProvider
+                from friday.integrations.external_analytics import (
+                    ExternalAnalyticsProvider,
+                )
                 provider = ExternalAnalyticsProvider(risk_dashboard=self.risk_dashboard, regime_detector=self.regime_detector)
                 report_md = provider.generate_custom_report()
                 return {
@@ -291,12 +291,12 @@ class VoiceOperationsCenter:
             f"No critical alerts are currently pending."
         )
 
-    def format_voice_error(self, error: Exception, context: str) -> Dict[str, Any]:
+    def format_voice_error(self, error: Exception, context: str) -> dict[str, Any]:
         """Provides human-friendly voice error feedback and visual escalation hints."""
         logger.error(f"[VOICE_OPS] Error processing '{context}': {error}", exc_info=True)
         return {
             "success": False,
-            "spoken_response": f"I encountered an error executing '{context}': {str(error)}. Would you like me to display detailed diagnostics on your screen?",
+            "spoken_response": f"I encountered an error executing '{context}': {error!s}. Would you like me to display detailed diagnostics on your screen?",
             "error_detail": str(error),
             "visual_escalation_required": True,
         }

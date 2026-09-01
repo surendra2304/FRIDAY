@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """End-to-End Test: Master Emergency Halt Sequence Across All 5 Subsystems + FRIDAY.
 
 Validates:

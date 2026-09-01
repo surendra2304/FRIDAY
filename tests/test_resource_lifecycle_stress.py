@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Complete Resource Lifecycle, Thread Leak, and File Descriptor Stress Test Suite.
 
 Verifies:
@@ -10,18 +9,13 @@ Verifies:
 """
 
 import gc
-import os
 import threading
 import time
-import pytest
 
 from friday.agent.agent import FridayAgent
-from friday.core.config import get_settings, Settings
-from friday.core.types import Message, Role, SafetyLevel
+from friday.core.types import Message, Role
 from friday.llm.mock_provider import MockLLMProvider
-from friday.memory.in_memory import InMemoryConversationMemory
 from friday.memory.sqlite import SQLiteConversationMemory
-from friday.tools.base import BaseTool
 from friday.tools.registry import ToolRegistry
 
 

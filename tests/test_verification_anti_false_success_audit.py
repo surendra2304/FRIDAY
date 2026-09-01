@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Real-World Verification and Anti-False-Success Audit Tests.
 
 Verifies:
@@ -10,12 +9,9 @@ Verifies:
 6. Real success with verified evidence passes completely.
 """
 
-from datetime import datetime
-import os
-import pytest
 
-from friday.agent.planner import PlanStep, StepStatus, TaskPlan
-from friday.agent.verification import SelfCorrectionPolicy, StepVerifier, VerificationResult, VerificationStatus
+from friday.agent.planner import PlanStep
+from friday.agent.verification import StepVerifier, VerificationStatus
 
 
 class TestRealWorldVerificationAndAntiFalseSuccess:
@@ -136,7 +132,7 @@ class TestRealWorldVerificationAndAntiFalseSuccess:
             description="Write real file",
             tool_name="write_file",
             parameters={"path": str(real_file)},
-            postconditions=[f"file_exists:{str(real_file)}", f"file_contains:{str(real_file)}:Hello FRIDAY Verification"],
+            postconditions=[f"file_exists:{real_file!s}", f"file_contains:{real_file!s}:Hello FRIDAY Verification"],
             evidence_source="filesystem",
         )
 

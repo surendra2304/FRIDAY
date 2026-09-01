@@ -2,7 +2,8 @@
 
 import ast
 import operator
-from typing import Any, Dict
+from typing import Any
+
 from friday.core.types import SafetyLevel, ToolResult
 from friday.tools.base import BaseTool
 
@@ -13,7 +14,7 @@ class CalculatorTool(BaseTool):
     name = "calculator"
     description = "Perform simple mathematical calculations safely. Supports +, -, *, /, ** (exponentiation), and parentheses."
     safety_level = SafetyLevel.SAFE
-    parameters: Dict[str, Any] = {
+    parameters: dict[str, Any] = {
         "type": "object",
         "properties": {
             "expression": {
@@ -113,7 +114,7 @@ class CalculatorTool(BaseTool):
         except Exception as e:
             return ToolResult(
                 name=self.name,
-                content=f"Error: Invalid expression or unsupported syntax. Details: {str(e)}",
+                content=f"Error: Invalid expression or unsupported syntax. Details: {e!s}",
                 is_error=True,
                 safety_level=self.safety_level,
             )

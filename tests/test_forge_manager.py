@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for FRIDAY FORGE Task Manager & Deep Integration."""
 
 import pytest

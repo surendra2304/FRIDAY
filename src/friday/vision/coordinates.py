@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Canonical Windows Multi-Monitor & DPI-Aware Coordinate Transformation Engine.
 
 Provides:
@@ -10,9 +9,9 @@ Provides:
 6. Revalidation & Fresh Perception enforcement for sensitive actions.
 """
 
-from dataclasses import dataclass
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel
@@ -46,7 +45,7 @@ class DisplayMonitor:
         """Check if virtual desktop coordinate (vx, vy) lies within this monitor."""
         return (self.x <= vx < self.x + self.width) and (self.y <= vy < self.y + self.height)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "monitor_id": self.monitor_id,
             "index": self.index,
@@ -65,8 +64,8 @@ class DisplayMonitor:
 class CoordinateTransform:
     """Canonical transformation layer between Normalized, Physical, Logical, and Virtual coordinates."""
 
-    def __init__(self, monitors: Optional[List[DisplayMonitor]] = None) -> None:
-        self.monitors: List[DisplayMonitor] = monitors or [
+    def __init__(self, monitors: list[DisplayMonitor] | None = None) -> None:
+        self.monitors: list[DisplayMonitor] = monitors or [
             DisplayMonitor(
                 monitor_id="primary",
                 index=0,
@@ -79,7 +78,7 @@ class CoordinateTransform:
             )
         ]
 
-    def get_monitor(self, monitor_id: Optional[str] = None) -> DisplayMonitor:
+    def get_monitor(self, monitor_id: str | None = None) -> DisplayMonitor:
         """Get specified monitor by ID or index, defaulting to primary monitor."""
         if monitor_id:
             for mon in self.monitors:
@@ -94,8 +93,8 @@ class CoordinateTransform:
         self,
         norm_x: float,
         norm_y: float,
-        monitor_id: Optional[str] = None,
-    ) -> Tuple[int, int]:
+        monitor_id: str | None = None,
+    ) -> tuple[int, int]:
         """Convert normalized [0..1000] coordinates to monitor-local physical pixels."""
         mon = self.get_monitor(monitor_id)
         clamped_x = max(0.0, min(1000.0, float(norm_x)))
@@ -108,8 +107,8 @@ class CoordinateTransform:
         self,
         norm_x: float,
         norm_y: float,
-        monitor_id: Optional[str] = None,
-    ) -> Tuple[int, int]:
+        monitor_id: str | None = None,
+    ) -> tuple[int, int]:
         """Convert normalized [0..1000] coordinates to absolute Windows virtual desktop coordinates."""
         mon = self.get_monitor(monitor_id)
         local_px, local_py = self.normalized_to_physical(norm_x, norm_y, monitor_id=mon.monitor_id)
@@ -121,8 +120,8 @@ class CoordinateTransform:
         self,
         phys_x: int,
         phys_y: int,
-        monitor_id: Optional[str] = None,
-    ) -> Tuple[int, int]:
+        monitor_id: str | None = None,
+    ) -> tuple[int, int]:
         """Convert physical pixels to logical DIPs using monitor's DPI scaling."""
         mon = self.get_monitor(monitor_id)
         scale = max(0.25, mon.dpi_scale)
@@ -134,8 +133,8 @@ class CoordinateTransform:
         self,
         log_x: int,
         log_y: int,
-        monitor_id: Optional[str] = None,
-    ) -> Tuple[int, int]:
+        monitor_id: str | None = None,
+    ) -> tuple[int, int]:
         """Convert logical DIPs to physical pixels using monitor's DPI scaling."""
         mon = self.get_monitor(monitor_id)
         scale = max(0.25, mon.dpi_scale)
@@ -147,7 +146,7 @@ class CoordinateTransform:
         self,
         virt_x: int,
         virt_y: int,
-    ) -> Tuple[Optional[DisplayMonitor], int, int]:
+    ) -> tuple[DisplayMonitor | None, int, int]:
         """Find the monitor containing virtual coordinate (virt_x, virt_y) and return monitor-local pixels."""
         for mon in self.monitors:
             if mon.contains_virtual_point(virt_x, virt_y):
@@ -163,7 +162,7 @@ class CoordinateTransform:
         monitor_id: str,
         rel_x: int,
         rel_y: int,
-    ) -> Tuple[int, int]:
+    ) -> tuple[int, int]:
         """Convert monitor-local pixel coordinate to virtual desktop coordinate."""
         mon = self.get_monitor(monitor_id)
         return mon.x + rel_x, mon.y + rel_y
@@ -172,7 +171,7 @@ class CoordinateTransform:
         """Check if virtual desktop coordinate is within the bounds of any active monitor."""
         return any(mon.contains_virtual_point(virt_x, virt_y) for mon in self.monitors)
 
-    def get_virtual_desktop_bounds(self) -> Tuple[int, int, int, int]:
+    def get_virtual_desktop_bounds(self) -> tuple[int, int, int, int]:
         """Return bounding box of entire virtual desktop (min_x, min_y, max_x, max_y)."""
         if not self.monitors:
             return 0, 0, 1920, 1080
@@ -182,7 +181,7 @@ class CoordinateTransform:
         max_y = max(mon.y + mon.height for mon in self.monitors)
         return min_x, min_y, max_x, max_y
 
-    def detect_topology_change(self, new_displays: List[Dict[str, Any]]) -> bool:
+    def detect_topology_change(self, new_displays: list[dict[str, Any]]) -> bool:
         """Check if display count, resolution, DPI, or position changed (e.g. monitor disconnect/plug)."""
         if len(new_displays) != len(self.monitors):
             return True
@@ -216,8 +215,8 @@ class StaleCoordinateGuard:
         observation_time: float,
         last_action_time: float,
         safety_level: SafetyLevel = SafetyLevel.SAFE,
-        current_time: Optional[float] = None,
-    ) -> Tuple[bool, Optional[str]]:
+        current_time: float | None = None,
+    ) -> tuple[bool, str | None]:
         """Verify whether an observation is sufficiently fresh to execute an action."""
         now = current_time or time.time()
         age = now - observation_time
@@ -239,9 +238,9 @@ class StaleCoordinateGuard:
     def validate_element_not_moved(
         self,
         original_box: BoundingBox,
-        current_box: Optional[BoundingBox],
+        current_box: BoundingBox | None,
         movement_tolerance_normalized: float = 10.0,
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """Verify that target UI element has not shifted on screen."""
         if current_box is None:
             return False, "Target UI element is no longer visible on screen."

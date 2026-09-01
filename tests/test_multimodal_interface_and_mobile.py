@@ -1,7 +1,7 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for FRIDAY Multi-Modal Interface & Mobile Companion."""
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from friday.notifications.bridge import NotificationBridge

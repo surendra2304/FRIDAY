@@ -1,20 +1,20 @@
-# -*- coding: utf-8 -*-
 """Workflow Scheduler for FRIDAY Proactive Background Monitoring Proactive System.
 
 Executes periodic (interval/cron-like) and condition-based background workflows.
 """
 
 import os
-import time
 import threading
+import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
-from friday.core.logging import get_logger
-from friday.core.types import SafetyLevel, AuthorizationRequest, AuthorizationDecision
 from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer
+from friday.core.logging import get_logger
+from friday.core.types import AuthorizationDecision, AuthorizationRequest, SafetyLevel
 
 logger = get_logger("workflows.scheduler")
 
@@ -26,13 +26,13 @@ class ScheduledJob:
     job_id: str
     name: str
     action_fn: Callable[[], Any]
-    interval_seconds: Optional[float] = None
-    file_watch_path: Optional[str] = None
+    interval_seconds: float | None = None
+    file_watch_path: str | None = None
     safety_level: SafetyLevel = SafetyLevel.SAFE
-    last_run: Optional[datetime] = None
-    last_file_mtime: Optional[float] = None
+    last_run: datetime | None = None
+    last_file_mtime: float | None = None
     is_active: bool = True
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class WorkflowScheduler:
@@ -40,10 +40,10 @@ class WorkflowScheduler:
 
     def __init__(
         self,
-        authorizer: Optional[BaseAuthorizer] = None,
+        authorizer: BaseAuthorizer | None = None,
         tick_interval: float = 1.0,
-        notification_manager: Optional[Any] = None,
-        operator_manager: Optional[Any] = None,
+        notification_manager: Any | None = None,
+        operator_manager: Any | None = None,
     ) -> None:
         self.authorizer: BaseAuthorizer = authorizer or DefaultSecureAuthorizer()
         self.tick_interval = tick_interval
@@ -57,31 +57,32 @@ class WorkflowScheduler:
             except Exception:
                 self.operator_manager = None
 
-        self._jobs: Dict[str, ScheduledJob] = {}
+        self._jobs: dict[str, ScheduledJob] = {}
         self._lock = threading.RLock()
         self._stop_event = threading.Event()
-        self._worker_thread: Optional[threading.Thread] = None
+        self._worker_thread: threading.Thread | None = None
 
         # Tracking for high CPU sustained spikes (System Resource Management)
-        self._high_cpu_start_time: Optional[float] = None
+        self._high_cpu_start_time: float | None = None
         self._last_alerted_cpu_time: float = 0.0
 
         # Screen Watcher Service (Proactive Screen Reading)
-        self._screen_watcher: Optional[Any] = None
+        self._screen_watcher: Any | None = None
         self._last_screen_watcher_time: float = 0.0
 
         # Morning Briefing Tracker (Calendar & Morning Briefings)
-        self._last_briefing_date: Optional[str] = None
+        self._last_briefing_date: str | None = None
 
-    def check_morning_briefing_proactive(self) -> Optional[Dict[str, Any]]:
+    def check_morning_briefing_proactive(self) -> dict[str, Any] | None:
         """Trigger proactive morning briefing at 8:00 AM."""
         now = datetime.now().astimezone()
         today_str = now.strftime("%Y-%m-%d")
         # Trigger between 8:00 AM and 8:30 AM once per day
         if now.hour == 8 and self._last_briefing_date != today_str:
             try:
-                from friday.workflows.briefing_workflow import MorningBriefingWorkflow
                 import asyncio
+
+                from friday.workflows.briefing_workflow import MorningBriefingWorkflow
                 workflow = MorningBriefingWorkflow()
                 try:
                     loop = asyncio.get_running_loop()
@@ -104,7 +105,7 @@ class WorkflowScheduler:
                 return None
         return None
 
-    def check_screen_watcher_proactive(self) -> Optional[Dict[str, Any]]:
+    def check_screen_watcher_proactive(self) -> dict[str, Any] | None:
         """Check active screen text proactively via fast LLM and queue notifications."""
         from friday.core.config import get_settings
         settings = get_settings()
@@ -129,7 +130,7 @@ class WorkflowScheduler:
             logger.debug(f"Proactive screen watcher check error: {e}")
             return None
 
-    def check_system_resources_proactive(self, cpu_threshold: float = 90.0, sustained_seconds: float = 120.0) -> Optional[Dict[str, Any]]:
+    def check_system_resources_proactive(self, cpu_threshold: float = 90.0, sustained_seconds: float = 120.0) -> dict[str, Any] | None:
         """Check for sustained high CPU utilization and queue proactive alerts."""
         try:
             from friday.tools.builtin.system_monitor import get_current_system_resources
@@ -166,7 +167,7 @@ class WorkflowScheduler:
         interval_seconds: float,
         action_fn: Callable[[], Any],
         safety_level: SafetyLevel = SafetyLevel.SAFE,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> str:
         """Register a time-based recurring job (e.g., every N seconds/minutes)."""
         job_id = str(uuid.uuid4())
@@ -189,7 +190,7 @@ class WorkflowScheduler:
         file_path: str,
         action_fn: Callable[[], Any],
         safety_level: SafetyLevel = SafetyLevel.SAFE,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> str:
         """Register a condition-based job triggered when a file is modified."""
         job_id = str(uuid.uuid4())
@@ -216,7 +217,7 @@ class WorkflowScheduler:
                 return True
         return False
 
-    def list_jobs(self) -> List[ScheduledJob]:
+    def list_jobs(self) -> list[ScheduledJob]:
         """Return list of all registered jobs."""
         with self._lock:
             return list(self._jobs.values())
@@ -236,7 +237,7 @@ class WorkflowScheduler:
             return self.operator_manager.unregister_operator(operator_id)
         return False
 
-    def list_operators(self) -> List[Any]:
+    def list_operators(self) -> list[Any]:
         """Return list of all registered persistent operators."""
         if self.operator_manager:
             return self.operator_manager.list_operators()

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Windows OS Settings Control tools.
 
 Provides voice & agent tools to control Windows OS settings via PowerShell & registry edits:
@@ -7,9 +6,8 @@ Provides voice & agent tools to control Windows OS settings via PowerShell & reg
 - toggle_wifi: Turns Wi-Fi interface on/off via netsh interface (SENSITIVE)
 """
 
-from typing import Any, Dict, Optional
 import subprocess
-import sys
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel, ToolResult
@@ -166,7 +164,7 @@ class ToggleWifiTool(BaseTool):
         "required": ["state"],
     }
 
-    def execute(self, state: bool, interface_name: Optional[str] = None, **kwargs: Any) -> ToolResult:
+    def execute(self, state: bool, interface_name: str | None = None, **kwargs: Any) -> ToolResult:
         admin_state = "enabled" if state else "disabled"
         iface = (interface_name or "Wi-Fi").strip()
 

@@ -5,10 +5,10 @@ ipconfig, netstat, ping, systeminfo, tasklist, tree, type, ver, vol, where, whoa
 and python (temporarily for self-upgrade).
 """
 
-import subprocess
-import shlex
 import logging
-from typing import Dict, Any
+import shlex
+import subprocess
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ ALLOWED_COMMANDS = {
 }
 
 
-def execute_command(command: str) -> Dict[str, Any]:
+def execute_command(command: str) -> dict[str, Any]:
     """Execute a safe terminal command and return its output."""
     try:
         cmd_parts = shlex.split(command)
@@ -35,13 +35,17 @@ def execute_command(command: str) -> Dict[str, Any]:
             shell=False,
             capture_output=True,
             text=True,
-            check=True
+            timeout=30.0,
+            check=False
         )
         return {
-            "stdout": result.stdout,
-            "stderr": result.stderr,
+            "stdout": result.stdout[:100000],
+            "stderr": result.stderr[:100000],
             "returncode": result.returncode
         }
+    except subprocess.TimeoutExpired:
+        logger.warning(f"Command timed out after 30s: {command}")
+        return {"error": "Command execution timed out after 30 seconds."}
     except Exception as e:
-        logger.error(f"Command failed: {e}")
+        logger.error(f"Command execution error: {e}")
         return {"error": str(e)}

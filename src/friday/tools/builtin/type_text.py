@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Type Text tool: type a literal string into the currently focused window.
 
 Uses pywinauto.keyboard with FULL literal escaping — every pywinauto special
@@ -7,7 +6,7 @@ special keys, or key sequences can be injected through this tool, which is
 what makes plain text typing SAFE by construction.
 """
 
-from typing import Any, Tuple
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel, ToolResult
@@ -67,7 +66,7 @@ def _focus_window(title_substring: str) -> bool:
         return False
 
 
-def _auto_focus_top_window() -> Tuple[bool, str]:
+def _auto_focus_top_window() -> tuple[bool, str]:
     """Find the most recently opened top-level window (excluding the terminal) and focus it.
 
     Returns (focused: bool, window_title: str).

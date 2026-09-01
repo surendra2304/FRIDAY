@@ -1,14 +1,13 @@
-# -*- coding: utf-8 -*-
 """Natural Language Command Router for FRIDAY Ecosystem.
 
 Performs intent classification, entity extraction (project types, trading terms, time references),
 and multi-intent decomposition across FORGE, Trading Bot, AI-Universe, and Status skills.
 """
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
-import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -29,11 +28,11 @@ class NLIntent(str, Enum):
 @dataclass
 class ExtractedEntities:
     """Entities extracted from user command."""
-    project_type: Optional[str] = None  # website, CLI tool, API service, dashboard, script
-    trading_terms: List[str] = field(default_factory=list)  # positions, p&l, risk, equity, leverage
-    time_reference: Optional[str] = None  # today, this week, last month, overnight
-    target_asset: Optional[str] = None  # btc, eth, sol
-    custom_description: Optional[str] = None
+    project_type: str | None = None  # website, CLI tool, API service, dashboard, script
+    trading_terms: list[str] = field(default_factory=list)  # positions, p&l, risk, equity, leverage
+    time_reference: str | None = None  # today, this week, last month, overnight
+    target_asset: str | None = None  # btc, eth, sol
+    custom_description: str | None = None
 
 
 @dataclass
@@ -41,9 +40,9 @@ class ParsedCommand:
     """Structured representation of a parsed natural language command."""
     raw_command: str
     primary_intent: NLIntent
-    target_subsystems: List[str]  # forge, trading_bot, ai_universe, ecosystem_status
+    target_subsystems: list[str]  # forge, trading_bot, ai_universe, ecosystem_status
     entities: ExtractedEntities
-    sub_commands: List[Dict[str, Any]] = field(default_factory=list)
+    sub_commands: list[dict[str, Any]] = field(default_factory=list)
     confidence: float = 1.0
 
 

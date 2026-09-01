@@ -1,9 +1,7 @@
-# -*- coding: utf-8 -*-
 """Universe Orchestrator linking FRIDAY Agent loop to Universe API SDK (AI Universe Integration)."""
 
-import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.agents.decomposer import TaskDecomposer
 from friday.core.logging import get_logger
@@ -24,9 +22,9 @@ class UniverseOrchestrator:
 
     def __init__(
         self,
-        universe_api: Optional[BaseUniverseAPI] = None,
-        memory: Optional[Any] = None,
-        decomposer: Optional[TaskDecomposer] = None,
+        universe_api: BaseUniverseAPI | None = None,
+        memory: Any | None = None,
+        decomposer: TaskDecomposer | None = None,
     ) -> None:
         self.api: BaseUniverseAPI = universe_api or MockUniverseClient()
         self.memory = memory
@@ -46,9 +44,9 @@ class UniverseOrchestrator:
     def execute_universe_goal(
         self,
         goal: str,
-        agent_count: Optional[int] = None,
-        steps: Optional[int] = None,
-    ) -> Dict[str, Any]:
+        agent_count: int | None = None,
+        steps: int | None = None,
+    ) -> dict[str, Any]:
         """Decompose request, control Universe API, record trial metrics, and return structured synthesis."""
         logger.info(f"Orchestrating Universe goal: {goal}")
 
@@ -72,7 +70,7 @@ class UniverseOrchestrator:
         world_state: WorldState = self.api.create_world(world_cfg)
 
         # 4. Spawn Agents
-        created_agents: List[Dict[str, Any]] = []
+        created_agents: list[dict[str, Any]] = []
         for i in range(count):
             cfg = UniverseAgentConfig(
                 name=f"Agent_{i+1}",

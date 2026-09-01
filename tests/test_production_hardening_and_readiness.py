@@ -1,15 +1,18 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for FRIDAY Final Production Hardening & Operational Readiness."""
 
 import os
 import shutil
 import tempfile
 import time
+
 import pytest
 
 from friday.core.backup_recovery import BackupRecoveryManager
 from friday.diagnostics.doctor_enhanced import FridayDoctorEnhanced
-from friday.optimization.production_optimizer import LazySubsystemConnector, ProductionOptimizer
+from friday.optimization.production_optimizer import (
+    LazySubsystemConnector,
+    ProductionOptimizer,
+)
 from friday.security.production_hardening import (
     BiometricSecurityEngine,
     CredentialScrubber,

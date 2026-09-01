@@ -1,26 +1,19 @@
-# -*- coding: utf-8 -*-
 """Comprehensive test suite for the OpenJarvis-inspired Skills System and Capability Gating."""
 
-import os
-from typing import Any, Dict, List, Optional
-import pytest
+from typing import Any
 
 from friday.agent.agent import FridayAgent
 from friday.agent.state import TaskState
 from friday.agents.registry import AgentRegistry
 from friday.agents.router import AgentRouter
-from friday.core.auth import DefaultSecureAuthorizer, BaseAuthorizer
 from friday.core.config import Settings
-from friday.core.types import Message, Role, SafetyLevel
-from friday.llm.mock_provider import MockLLMProvider
+from friday.core.types import SafetyLevel
 from friday.security.authorization import ToolAuthorizer
 from friday.skills.base_skill import BaseSkill, SkillExecutionResult
 from friday.skills.builtins.network_diagnostic import NetworkDiagnosticSkill
 from friday.skills.builtins.system_health_audit import SystemHealthAuditSkill
-from friday.skills.builtins.file_search_and_read import FileSearchAndReadSkill
 from friday.skills.registry import SkillRegistry
 from friday.tools.base import BaseTool
-from friday.tools.registry import ToolRegistry
 
 
 class DummyEchoTool(BaseTool):

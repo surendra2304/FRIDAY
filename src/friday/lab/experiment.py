@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """FRIDAY Lab Experimentation Framework for FRIDAY Lab.
 
 Runs multi-provider A/B benchmarking across defined tasks, records performance metrics
@@ -8,7 +7,6 @@ Runs multi-provider A/B benchmarking across defined tasks, records performance m
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
 
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role
@@ -25,8 +23,8 @@ class ExperimentTask:
     task_id: str
     task_type: str  # e.g., 'coding', 'reasoning', 'system_control', 'summarization'
     prompt: str
-    expected_keywords: List[str] = field(default_factory=list)
-    verifier_prompt: Optional[str] = None
+    expected_keywords: list[str] = field(default_factory=list)
+    verifier_prompt: str | None = None
 
 
 @dataclass
@@ -43,7 +41,7 @@ class TrialResult:
     accuracy: float
     success: bool
     token_usage: int
-    failure_mode: Optional[str] = None
+    failure_mode: str | None = None
 
 
 class ExperimentRunner:
@@ -51,9 +49,9 @@ class ExperimentRunner:
 
     def __init__(
         self,
-        providers: List[BaseLLMProvider],
-        memory: Optional[SQLiteConversationMemory] = None,
-        verifier_llm: Optional[BaseLLMProvider] = None,
+        providers: list[BaseLLMProvider],
+        memory: SQLiteConversationMemory | None = None,
+        verifier_llm: BaseLLMProvider | None = None,
     ) -> None:
         self.providers = providers
         self.memory = memory
@@ -136,9 +134,9 @@ class ExperimentRunner:
 
         return result
 
-    def run_benchmark(self, tasks: List[ExperimentTask]) -> List[TrialResult]:
+    def run_benchmark(self, tasks: list[ExperimentTask]) -> list[TrialResult]:
         """Run all tasks simultaneously across all registered providers."""
-        results: List[TrialResult] = []
+        results: list[TrialResult] = []
         with ThreadPoolExecutor(max_workers=max(4, len(self.providers) * len(tasks))) as executor:
             futures = []
             for task in tasks:
@@ -151,13 +149,13 @@ class ExperimentRunner:
         return results
 
 
-def run_standard_lab_suite(memory: Optional[SQLiteConversationMemory] = None) -> List[TrialResult]:
+def run_standard_lab_suite(memory: SQLiteConversationMemory | None = None) -> list[TrialResult]:
     """Predefined standard test suite across system intelligence tasks."""
-    from friday.llm.factory import create_llm_provider
     from friday.core.config import get_settings
+    from friday.llm.factory import create_llm_provider
 
     settings = get_settings()
-    providers: List[BaseLLMProvider] = []
+    providers: list[BaseLLMProvider] = []
 
     # Initialize all active cloud providers for comparison
     for prov_name, model_key in [

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive tests for Gemini Vision Credential Pool Failover architecture.
 
 Validates:
@@ -12,10 +11,14 @@ Validates:
 """
 
 from unittest import mock
-import pytest
+
 from google.genai import errors as genai_errors
 
-from friday.auth.credential_pool import Credential, FailureCategory, GeminiCredentialPool
+from friday.auth.credential_pool import (
+    Credential,
+    FailureCategory,
+    GeminiCredentialPool,
+)
 from friday.vision.gemini_vision import GeminiVisionProvider
 
 SAMPLE_PNG_HEADER = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00"

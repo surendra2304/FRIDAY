@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive unit test suite for Evidence-Based Verification.4: Local Text & Perceptual Region Pre-Filtering (Quota Saver).
 
 Tests:
@@ -11,11 +10,9 @@ Tests:
 7. Offline operation and provider independence (100% testable without cloud vision calls).
 """
 
-from datetime import datetime, timezone
-import pytest
 
 from friday.memory.task_context import ActiveTaskContext
-from friday.vision.mock_screen import MockScreenCaptureProvider, create_synthetic_png
+from friday.vision.mock_screen import create_synthetic_png
 from friday.vision.region_filter import (
     LocalRegionPreFilter,
     ROIAnalysisResult,
@@ -23,7 +20,6 @@ from friday.vision.region_filter import (
     VisualDeltaTaskContextFeeder,
     crop_image_region,
     decode_png_to_rgba,
-    encode_rgba_to_png,
     estimate_local_text_density,
 )
 from friday.vision.temporal import EnvironmentalChange, EnvironmentalChangeType

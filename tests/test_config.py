@@ -2,6 +2,7 @@
 
 import os
 from unittest import mock
+
 from friday.core.config import Settings, get_settings
 
 

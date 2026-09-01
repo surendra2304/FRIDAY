@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Voice biometrics (speaker recognition) for FRIDAY.
 
 Enrolls the owner's voice into a 256-dimensional embedding (resemblyzer)
@@ -14,7 +13,7 @@ secret. Toggled by FRIDAY_VOICE_BIOMETRICS_ENABLED (default false).
 import asyncio
 import time
 from pathlib import Path
-from typing import Optional, Any
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -53,7 +52,7 @@ class VoiceProfileManager:
         self.profile_path = Path(profile_path)
         self.threshold = threshold
         self._encoder = None
-        self._profile: Optional[np.ndarray] = None
+        self._profile: Any = None
 
     # -- internals -----------------------------------------------------------
 
@@ -69,7 +68,7 @@ class VoiceProfileManager:
             wav = np.pad(wav, (0, 16000 - len(wav)))
         return self._ensure_encoder().embed_utterance(wav)
 
-    def _load_profile(self) -> Optional[Any]:
+    def _load_profile(self) -> Any | None:
         if self._profile is not None:
             return self._profile
         try:
@@ -161,7 +160,7 @@ class VoiceProfileManager:
             logger.warning(f"Speaker verification error (allowing): {e}")
             return True
 
-    def similarity(self, audio_chunk: bytes) -> Optional[float]:
+    def similarity(self, audio_chunk: bytes) -> float | None:
         """Cosine similarity against the profile, or None if not enrolled."""
         profile = self._load_profile()
         if profile is None:

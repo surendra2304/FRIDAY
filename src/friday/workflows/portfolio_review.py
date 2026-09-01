@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Weekly Portfolio Review Workflow for FRIDAY Multi-Exchange Operations.
 
 Executes comprehensive weekly portfolio reviews:
@@ -10,9 +9,9 @@ Executes comprehensive weekly portfolio reviews:
 - Delivers spoken audio briefing and structured Markdown report
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.trading.exchange_incidents import ExchangeIncidentManager
@@ -29,10 +28,10 @@ class WeeklyReviewSnapshot:
     weekly_return_pct: float
     rolling_30d_sharpe: float
     max_weekly_drawdown_pct: float
-    venue_breakdown: Dict[str, Dict[str, Any]]
-    strategy_breakdown: Dict[str, Dict[str, Any]]
-    correlation_matrix: Dict[str, Dict[str, float]]
-    rebalance_actions: List[str]
+    venue_breakdown: dict[str, dict[str, Any]]
+    strategy_breakdown: dict[str, dict[str, Any]]
+    correlation_matrix: dict[str, dict[str, float]]
+    rebalance_actions: list[str]
     next_week_risk_budget_usdt: float
     spoken_briefing: str
     markdown_report: str
@@ -43,7 +42,7 @@ class WeeklyPortfolioReviewWorkflow:
 
     def __init__(
         self,
-        exchange_manager: Optional[ExchangeIncidentManager] = None,
+        exchange_manager: ExchangeIncidentManager | None = None,
     ) -> None:
         self._exchange_manager = exchange_manager
 

@@ -1,13 +1,11 @@
-# -*- coding: utf-8 -*-
 """Deterministic unit tests for Credential Pool immediate 429 quota exhaustion failover chain and cooldown."""
 
 from datetime import datetime, timedelta
 from unittest import mock
-import pytest
+
 from google.genai import types
 
-from friday.auth.credential_pool import GeminiCredentialPool, FailureCategory
-from friday.core.exceptions import LLMProviderError
+from friday.auth.credential_pool import FailureCategory, GeminiCredentialPool
 from friday.core.types import Message, Role
 from friday.llm.gemini_provider import GeminiLLMProvider
 

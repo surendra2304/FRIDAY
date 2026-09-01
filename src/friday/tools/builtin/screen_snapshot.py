@@ -1,9 +1,9 @@
-# -*- coding: utf-8 -*-
 """Safe built-in tool for capturing a desktop screen snapshot without OS actions or raw image logging."""
 
 from __future__ import annotations
 
-from typing import Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
 from friday.core.config import get_settings
 from friday.core.types import SafetyLevel, ToolResult
 from friday.tools.base import BaseTool
@@ -35,17 +35,17 @@ class ScreenSnapshotTool(BaseTool):
 
     def __init__(
         self,
-        capture_provider: Optional[BaseScreenCaptureProvider] = None,
-        vision_provider: Optional[Any] = None,
-        provider: Optional[BaseScreenCaptureProvider] = None,
+        capture_provider: BaseScreenCaptureProvider | None = None,
+        vision_provider: Any | None = None,
+        provider: BaseScreenCaptureProvider | None = None,
     ) -> None:
         super().__init__()
         self._capture_provider = capture_provider or provider
         self._vision_provider = vision_provider
-        self.last_snapshot: Optional[ScreenSnapshot] = None
-        self.last_context: Optional[Any] = None
+        self.last_snapshot: ScreenSnapshot | None = None
+        self.last_context: Any | None = None
 
-    def execute(self, display: str = "primary", query: Optional[str] = None, **kwargs: Any) -> ToolResult:
+    def execute(self, display: str = "primary", query: str | None = None, **kwargs: Any) -> ToolResult:
         """Execute screen capture and optional multimodal vision analysis."""
         try:
             # 1. If query is provided or vision_provider is explicitly injected, perform multimodal analysis
@@ -80,8 +80,8 @@ class ScreenSnapshotTool(BaseTool):
                 )
 
             # 2. Otherwise perform fast safe capture and return metadata summary
-            from friday.vision.windows_screen import WindowsScreenCaptureProvider
             from friday.vision.mock_screen import MockScreenCaptureProvider
+            from friday.vision.windows_screen import WindowsScreenCaptureProvider
 
             provider = self._capture_provider
             if provider is None:

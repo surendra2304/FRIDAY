@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Master Voice Ecosystem Command Skill for FRIDAY.
 
 Provides the comprehensive conversational and command interface for the entire autonomous ecosystem:
@@ -15,7 +14,7 @@ Provides the comprehensive conversational and command interface for the entire a
 """
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.ecosystem.command_center import EcosystemCommandCenter
@@ -59,10 +58,10 @@ class MasterVoiceSkill(BaseSkill):
 
     def __init__(
         self,
-        command_center: Optional[EcosystemCommandCenter] = None,
-        policy_interface: Optional[HumanPolicyInterface] = None,
-        master_voice: Optional[MasterVoiceInterface] = None,
-        dashboard_renderer: Optional[ExecutiveDashboardRenderer] = None,
+        command_center: EcosystemCommandCenter | None = None,
+        policy_interface: HumanPolicyInterface | None = None,
+        master_voice: MasterVoiceInterface | None = None,
+        dashboard_renderer: ExecutiveDashboardRenderer | None = None,
     ) -> None:
         self._command_center = command_center
         self._policy_interface = policy_interface
@@ -99,10 +98,10 @@ class MasterVoiceSkill(BaseSkill):
     def execute(
         self,
         user_request: str,
-        agent: Optional[Any] = None,
-        tool_registry: Optional[Any] = None,
-        llm_provider: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        agent: Any | None = None,
+        tool_registry: Any | None = None,
+        llm_provider: Any | None = None,
+        authorizer: Any | None = None,
         **kwargs: Any,
     ) -> SkillExecutionResult:
         """Dispatches voice commands for complete ecosystem supervision."""
@@ -110,7 +109,7 @@ class MasterVoiceSkill(BaseSkill):
         speaker_id = kwargs.get("speaker_id", "operator_surendra")
         voice_embedding = kwargs.get("voice_embedding")
         verbal_confirmation = kwargs.get("verbal_confirmation", "")
-        step_results: List[Dict[str, Any]] = []
+        step_results: list[dict[str, Any]] = []
 
         try:
             # 1. "How is everything doing?"

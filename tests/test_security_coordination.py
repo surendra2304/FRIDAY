@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for Nexus-Sentinel Security Coordination & Asset Registry.
 
 Validates:
@@ -15,13 +14,12 @@ Validates:
    - "When was my website last scanned?"
 """
 
-import pytest
 
 from friday.core.types import TrustLevel
-from friday.ecosystem.asset_registry import AssetRegistry, SecurableAsset, AssetType
-from friday.skills.sentinel_manager import SentinelManagerSkill, SecurityFinding
-from friday.workflows.security_coordination import SecurityCoordinationWorkflow
+from friday.ecosystem.asset_registry import AssetRegistry, AssetType
+from friday.skills.sentinel_manager import SecurityFinding, SentinelManagerSkill
 from friday.ui.security_panel import SecurityPostureDashboard
+from friday.workflows.security_coordination import SecurityCoordinationWorkflow
 
 
 def test_asset_registry_and_posture_score():

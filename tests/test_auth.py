@@ -1,23 +1,26 @@
 """Tests for the tool authorization and confirmation system."""
 
-from typing import Any, Dict, List, Optional
-import pytest
+from typing import Any
+
 from friday.agent.agent import FridayAgent
-from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer, AutoApproveAuthorizer, AutoDenyAuthorizer
+from friday.core.auth import (
+    BaseAuthorizer,
+    DefaultSecureAuthorizer,
+)
 from friday.core.config import Settings
 from friday.core.types import (
     AuthorizationDecision,
     AuthorizationRequest,
     AuthorizationResponse,
-    SafetyLevel,
-    ToolResult,
-    Role,
     Message,
+    Role,
+    SafetyLevel,
     ToolCall,
+    ToolResult,
 )
+from friday.llm.mock_provider import MockLLMProvider
 from friday.tools.base import BaseTool
 from friday.tools.registry import ToolRegistry
-from friday.llm.mock_provider import MockLLMProvider
 
 
 class MockDangerousTool(BaseTool):
@@ -70,7 +73,7 @@ class CustomTestAuthorizer(BaseAuthorizer):
         super().__init__()
         self.decision = decision
         self.reason = reason
-        self.requested: List[AuthorizationRequest] = []
+        self.requested: list[AuthorizationRequest] = []
 
     def authorize(self, request: AuthorizationRequest) -> AuthorizationResponse:
         self.requested.append(request)
@@ -100,7 +103,7 @@ def test_sensitive_approved_execution():
     reg.register(tool)
     
     call_count = 0
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -142,7 +145,7 @@ def test_sensitive_denied_execution():
     reg.register(tool)
     
     call_count = 0
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -180,7 +183,7 @@ def test_dangerous_approved_execution():
     reg.register(tool)
     
     call_count = 0
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -218,7 +221,7 @@ def test_dangerous_denied_execution():
     reg.register(tool)
     
     call_count = 0
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -253,7 +256,7 @@ def test_cancelled_confirmation():
     reg.register(tool)
     
     call_count = 0
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -288,7 +291,7 @@ def test_invalid_authorization_response():
     reg.register(tool)
     
     call_count = 0
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -323,7 +326,7 @@ def test_validation_happens_before_authorization():
     reg.register(tool)
     
     call_count = 0
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -373,7 +376,7 @@ def test_execution_after_authorization_only():
     reg.register(tool)
     
     call_count = 0
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:

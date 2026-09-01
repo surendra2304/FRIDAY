@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """FORGE Deliverable Review Workflow for FRIDAY.
 
 Automatically reviews, summarizes, and evaluates completed FORGE deliverables:
@@ -10,7 +9,6 @@ Automatically reviews, summarizes, and evaluates completed FORGE deliverables:
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
 
 from friday.core.logging import get_logger
 from friday.skills.forge_manager import ForgeManagerSkill
@@ -36,7 +34,7 @@ class ForgeReviewWorkflow:
 
     def __init__(
         self,
-        forge_manager: Optional[ForgeManagerSkill] = None,
+        forge_manager: ForgeManagerSkill | None = None,
     ) -> None:
         self._forge_manager = forge_manager
 

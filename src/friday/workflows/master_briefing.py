@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Master Daily Briefing Workflow for FRIDAY.
 
 Synthesizes high-level morning strategic briefings and evening performance wrap-ups
@@ -13,10 +12,9 @@ across all 8 subsystems in the unified ecosystem:
 8. FRIDAY Multimodal OS Health & Memory Consolidation
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import threading
-from typing import Any, Dict, List, Optional
 
 from friday.core.logging import get_logger
 from friday.core.types import TrustLevel
@@ -32,7 +30,7 @@ class MasterBriefingSnapshot:
     briefing_type: str  # MORNING, EVENING
     spoken_summary: str
     markdown_report: str
-    subsystems_included: List[str]
+    subsystems_included: list[str]
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     trust_level: str = TrustLevel.UNTRUSTED_EXTERNAL.value
 
@@ -40,9 +38,9 @@ class MasterBriefingSnapshot:
 class MasterDailyBriefingWorkflow:
     """Orchestrates morning strategic debriefs and evening performance wrap-ups."""
 
-    def __init__(self, registry: Optional[EcosystemRegistry] = None) -> None:
+    def __init__(self, registry: EcosystemRegistry | None = None) -> None:
         self.registry = registry or EcosystemRegistry()
-        self._history: List[MasterBriefingSnapshot] = []
+        self._history: list[MasterBriefingSnapshot] = []
         self._lock = threading.RLock()
 
     def generate_morning_briefing(self) -> MasterBriefingSnapshot:
@@ -129,10 +127,10 @@ class MasterDailyBriefingWorkflow:
             subs = status.get("subsystems", {})
 
             spoken = (
-                f"Good evening, Operator. Here is your evening wrap-up: "
-                f"All 8 subsystems executed nominally today. Daily trading PnL was +$245.50 USDT. "
-                f"Nexus conversion held at 4.2%. Sentinel verified zero critical exploits. "
-                f"Futuris calibrated predictions with 89.2% accuracy. Memory consolidation scheduled for 03:00 UTC."
+                "Good evening, Operator. Here is your evening wrap-up: "
+                "All 8 subsystems executed nominally today. Daily trading PnL was +$245.50 USDT. "
+                "Nexus conversion held at 4.2%. Sentinel verified zero critical exploits. "
+                "Futuris calibrated predictions with 89.2% accuracy. Memory consolidation scheduled for 03:00 UTC."
             )
 
             lines = [

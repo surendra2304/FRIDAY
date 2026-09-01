@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Hardware Integration Test Suite — Win32 Computer-Control Execution Path.
 
 Proves the actual execution path from ComputerActionProposal → WindowsNativeInputDriver
@@ -25,13 +24,13 @@ Tests:
 """
 
 import json
-import sys
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Tuple
 
 import pytest
 
+from friday.security.authorization import tool_authorizer
+from friday.tools.builtin.execute_computer_action import ExecuteComputerActionTool
 from friday.vision.actions import ActionType, ProposalBuilder
 from friday.vision.computer_control import (
     ComputerActionExecutor,
@@ -42,9 +41,6 @@ from friday.vision.windows_input_driver import (
     WindowsNativeInputDriver,
     check_desktop_interactivity,
 )
-from friday.tools.builtin.execute_computer_action import ExecuteComputerActionTool
-from friday.security.authorization import tool_authorizer
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -147,7 +143,7 @@ class TestSandboxedIsolation:
             f"Sandbox mode must never invoke the OS driver. call_log={driver.call_log}"
         )
         assert result.verification_details == {"simulated": True}
-        print(f"\n[SIMULATED] Sandboxed execution confirmed: driver.call_log is empty, simulated=True")
+        print("\n[SIMULATED] Sandboxed execution confirmed: driver.call_log is empty, simulated=True")
 
 
 # ---------------------------------------------------------------------------

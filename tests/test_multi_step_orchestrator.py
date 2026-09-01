@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive unit test suite for Execution Planning: Intelligent Multi-Step Execution Orchestrator.
 
 Tests:
@@ -16,31 +15,33 @@ Tests:
 
 import time
 from unittest import mock
+
 import pytest
 
 from friday.agent.executor import (
     ExecutionProgress,
-    StepExecutionResult,
     TaskExecutionEngine,
-    TaskExecutionResult,
 )
 from friday.agent.planner import (
-    GoalDecomposer,
     PlanStep,
     StepStatus,
     TaskPlan,
 )
-from friday.agent.state import ReasoningStateMachine, TaskState
-from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer
+from friday.agent.state import TaskState
+from friday.core.auth import DefaultSecureAuthorizer
 from friday.core.types import (
     AuthorizationDecision,
-    AuthorizationRequest,
     AuthorizationResponse,
     SafetyLevel,
     ToolResult,
 )
 from friday.tools.base import BaseTool
-from friday.tools.builtin import CalculatorTool, SystemInfoTool, TimeDateTool, ScreenSnapshotTool
+from friday.tools.builtin import (
+    CalculatorTool,
+    ScreenSnapshotTool,
+    SystemInfoTool,
+    TimeDateTool,
+)
 from friday.tools.registry import ToolRegistry
 
 

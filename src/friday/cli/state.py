@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class StateEnum(str, Enum):
     LISTENING = "LISTENING"
     THINKING = "THINKING"

@@ -1,13 +1,13 @@
-# -*- coding: utf-8 -*-
 """Tests for FRIDAY Device Control Abstractions (Inspired by OpenJarvis)."""
 
-import pytest
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from friday.core.device_controller import BaseDeviceController
-from friday.devices.windows_controller import WindowsDeviceController
-from friday.devices.android_controller import AndroidDeviceController
 from friday.devices import get_device_controller
+from friday.devices.android_controller import AndroidDeviceController
+from friday.devices.windows_controller import WindowsDeviceController
 
 
 def test_base_device_controller_inheritance():

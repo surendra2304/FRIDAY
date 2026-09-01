@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Real hardware manual verification test for Gemini Multimodal Vision.
 
 Test Type: HARDWARE / LIVE
@@ -6,18 +5,14 @@ Test Type: HARDWARE / LIVE
 Sends synthetic test image bytes to the official Google Gemini multimodal API using GeminiVisionProvider.
 """
 
-import sys
-import os
 import pytest
-from pathlib import Path
 
 # Mark as hardware test (opt-in only via pytest -m hardware)
 pytestmark = [pytest.mark.hardware, pytest.mark.live]
 
-from friday.core.config import get_settings
-from friday.core.logging import setup_logging, get_logger
-from friday.vision.gemini_vision import GeminiVisionProvider
 from friday.auth.credential_pool import credential_pool
+from friday.core.config import get_settings
+from friday.vision.gemini_vision import GeminiVisionProvider
 from friday.vision.mock_screen import create_synthetic_png
 
 

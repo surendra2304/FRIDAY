@@ -1,7 +1,5 @@
-# -*- coding: utf-8 -*-
 """Research Specialist Agent for Autonomous Web Research and Synthesis."""
 
-from typing import Any, Dict, List, Optional
 
 from friday.agents.base_agent import BaseAgent
 from friday.llm.base import BaseLLMProvider
@@ -15,10 +13,10 @@ class ResearchAgent(BaseAgent):
         self,
         agent_id: str = "research_agent_01",
         role: str = "researcher",
-        instructions: Optional[str] = None,
-        llm_provider: Optional[BaseLLMProvider] = None,
-        tool_registry: Optional[ToolRegistry] = None,
-        allowed_tools: Optional[List[str]] = None,
+        instructions: str | None = None,
+        llm_provider: BaseLLMProvider | None = None,
+        tool_registry: ToolRegistry | None = None,
+        allowed_tools: list[str] | None = None,
         max_iterations: int = 8,
     ) -> None:
         default_instructions = (

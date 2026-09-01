@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Performance Benchmark Suite for FRIDAY.
 
 Measures from scratch with rigorous methodology:
@@ -13,23 +12,18 @@ Measures from scratch with rigorous methodology:
 9. Statistical calculation of Median (p50) and p95 latencies and peak resource deltas.
 """
 
-import gc
 import os
 import statistics
 import time
 import tracemalloc
-from typing import Any, Dict, List, Tuple
-import pytest
 
 from friday.agent.agent import FridayAgent
-from friday.agent.planner import PlanStep, StepStatus, TaskPlan
 from friday.agent.executor import TaskExecutionEngine
-from friday.core.config import get_settings
+from friday.agent.planner import PlanStep, TaskPlan
 from friday.core.types import Message, Role, SafetyLevel
 from friday.llm.mock_provider import MockLLMProvider
-from friday.memory.in_memory import InMemoryConversationMemory
 from friday.memory.sqlite import SQLiteConversationMemory
-from friday.tools.builtin import CalculatorTool, SystemInfoTool, TimeDateTool
+from friday.tools.builtin import CalculatorTool, SystemInfoTool
 from friday.tools.registry import ToolRegistry
 from friday.vision.mock_screen import MockScreenCaptureProvider
 from friday.vision.mock_vision import MockVisionProvider
@@ -47,7 +41,7 @@ def measure_rss_bytes() -> int:
         return 0
 
 
-def calculate_latency_stats(latencies_ms: List[float]) -> Dict[str, float]:
+def calculate_latency_stats(latencies_ms: list[float]) -> dict[str, float]:
     """Calculate mean, median (p50), and p95 latencies in milliseconds."""
     if not latencies_ms:
         return {"mean": 0.0, "median": 0.0, "p95": 0.0, "min": 0.0, "max": 0.0}

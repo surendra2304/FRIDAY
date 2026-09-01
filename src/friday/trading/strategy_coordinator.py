@@ -1,14 +1,11 @@
-# -*- coding: utf-8 -*-
 """Multi-Strategy Coordinator for FRIDAY Trading.
 
 Manages multi-strategy capital allocation, dynamic strategy rotation based on
 market regimes, and directional conflict resolution between competing strategies.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-import math
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.trading.portfolio_analytics import PortfolioAnalyticsEngine
@@ -31,7 +28,7 @@ class StrategyAllocation:
 class ConflictResolution:
     """Resolution of directional disagreements between multiple strategies."""
     symbol: str
-    strategy_votes: Dict[str, str]  # e.g., {"BTC_Trend": "LONG", "BTC_MeanRev": "SHORT"}
+    strategy_votes: dict[str, str]  # e.g., {"BTC_Trend": "LONG", "BTC_MeanRev": "SHORT"}
     resolved_action: str  # LONG, SHORT, NEUTRAL / FLAT
     resolution_rationale: str
     confidence: float
@@ -42,17 +39,17 @@ class MultiStrategyCoordinator:
 
     def __init__(
         self,
-        analytics_engine: Optional[PortfolioAnalyticsEngine] = None,
-        regime_detector: Optional[MarketRegimeDetector] = None,
+        analytics_engine: PortfolioAnalyticsEngine | None = None,
+        regime_detector: MarketRegimeDetector | None = None,
     ) -> None:
         self.analytics_engine = analytics_engine or PortfolioAnalyticsEngine()
         self.regime_detector = regime_detector or MarketRegimeDetector()
 
     def optimize_allocations(
         self,
-        current_regime: Optional[MarketState] = None,
-        strategy_metrics: Optional[Dict[str, Dict[str, Any]]] = None,
-    ) -> List[StrategyAllocation]:
+        current_regime: MarketState | None = None,
+        strategy_metrics: dict[str, dict[str, Any]] | None = None,
+    ) -> list[StrategyAllocation]:
         """Calculates optimal strategy weights based on current market regime and performance."""
         regime = current_regime or self.regime_detector.detect_regime().primary_regime
         metrics = strategy_metrics or {
@@ -61,7 +58,7 @@ class MultiStrategyCoordinator:
             "Volatility_Breakout": {"sharpe": 1.85, "win_rate": 62.0, "current_weight": 0.30},
         }
 
-        allocations: List[StrategyAllocation] = []
+        allocations: list[StrategyAllocation] = []
 
         if regime in (MarketState.TRENDING_BULL_STRONG, MarketState.BREAKOUT):
             # Overweight trend and breakout strategies
@@ -156,8 +153,8 @@ class MultiStrategyCoordinator:
     def resolve_strategy_conflict(
         self,
         symbol: str,
-        strategy_signals: Dict[str, str],
-        current_regime: Optional[MarketState] = None,
+        strategy_signals: dict[str, str],
+        current_regime: MarketState | None = None,
     ) -> ConflictResolution:
         """Resolves contradictory directional signals between competing strategies."""
         regime = current_regime or self.regime_detector.detect_regime().primary_regime

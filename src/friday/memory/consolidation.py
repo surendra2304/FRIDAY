@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Memory Consolidation Engine for FRIDAY Operating System.
 
 Implements biological-inspired memory consolidation:
@@ -9,13 +8,13 @@ Implements biological-inspired memory consolidation:
 5. Archival of raw historical events into cold storage preserving active memory compactness
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
 import json
 import os
-from pathlib import Path
 import threading
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 from friday.core.logging import get_logger
 
@@ -28,7 +27,7 @@ class EpisodicEvent:
     event_id: str
     subsystem: str  # trading_bot, nexus, forge, ai_universe, ecosystem
     action: str
-    details: Dict[str, Any]
+    details: dict[str, Any]
     emotional_weight: float = 1.0  # 1.0 = normal, 2.0 = panic/stress, 1.5 = high priority
     access_count: int = 1
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -51,19 +50,19 @@ class SemanticMemory:
 class MemoryConsolidationEngine:
     """Orchestrates episodic-to-semantic compression, decay, and cold storage archiving."""
 
-    def __init__(self, cold_storage_dir: Optional[str] = None) -> None:
+    def __init__(self, cold_storage_dir: str | None = None) -> None:
         self.cold_storage_dir = Path(cold_storage_dir or os.path.join("memory", "cold_storage"))
         self.cold_storage_dir.mkdir(parents=True, exist_ok=True)
-        self.episodic_memory: List[EpisodicEvent] = []
-        self.semantic_memory: Dict[str, SemanticMemory] = {}
+        self.episodic_memory: list[EpisodicEvent] = []
+        self.semantic_memory: dict[str, SemanticMemory] = {}
         self._lock = threading.RLock()
-        self._last_consolidation_time: Optional[datetime] = None
+        self._last_consolidation_time: datetime | None = None
 
     def record_event(
         self,
         subsystem: str,
         action: str,
-        details: Optional[Dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
         emotional_weight: float = 1.0,
     ) -> EpisodicEvent:
         """Records an episodic event into active short-term memory."""
@@ -113,19 +112,19 @@ class MemoryConsolidationEngine:
                 logger.info(f"[CONSOLIDATION] Applied 30-day half-life decay to {decayed_count} stale memories.")
             return decayed_count
 
-    def compress_episodic_to_semantic(self) -> List[SemanticMemory]:
+    def compress_episodic_to_semantic(self) -> list[SemanticMemory]:
         """Compresses granular episodic events into generalized semantic concepts."""
         with self._lock:
             if not self.episodic_memory:
                 return list(self.semantic_memory.values())
 
             # Group events by subsystem & intent pattern
-            grouped: Dict[Tuple[str, str], List[EpisodicEvent]] = {}
+            grouped: dict[Tuple[str, str], list[EpisodicEvent]] = {}
             for ev in self.episodic_memory:
                 pair = (ev.subsystem, ev.action)
                 grouped.setdefault(pair, []).append(ev)
 
-            new_semantics: List[SemanticMemory] = []
+            new_semantics: list[SemanticMemory] = []
             now = datetime.now(timezone.utc)
 
             for (subsystem, action), events in grouped.items():
@@ -166,7 +165,7 @@ class MemoryConsolidationEngine:
             logger.info(f"[CONSOLIDATION] Synthesized {len(new_semantics)} semantic memories.")
             return new_semantics
 
-    def _archive_to_cold_storage(self, events: List[EpisodicEvent]) -> str:
+    def _archive_to_cold_storage(self, events: list[EpisodicEvent]) -> str:
         """Persists compressed episodic events to cold storage files."""
         month_key = datetime.now(timezone.utc).strftime("%Y-%m")
         cold_file = self.cold_storage_dir / f"episodic_{month_key}.json"
@@ -197,7 +196,7 @@ class MemoryConsolidationEngine:
 
         return str(cold_file)
 
-    def run_nightly_consolidation(self) -> Dict[str, Any]:
+    def run_nightly_consolidation(self) -> dict[str, Any]:
         """Executes full nightly memory consolidation routine (scheduled at 03:00)."""
         with self._lock:
             now = datetime.now(timezone.utc)

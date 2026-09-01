@@ -1,16 +1,19 @@
-# -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
-import os
 import re
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from friday.agents.specialists.self_dev_agent import SelfDevAgent
 from friday.core.config import get_settings
 from friday.core.logging import get_logger
-from friday.core.types import Message, Role, SafetyLevel
-from friday.tools.builtin.dev_tools import ReadOwnCodebaseTool, RunTestsTool, WriteCodeFileTool
+from friday.core.types import Message, Role
+from friday.tools.builtin.dev_tools import (
+    ReadOwnCodebaseTool,
+    RunTestsTool,
+    WriteCodeFileTool,
+)
 from friday.tools.builtin.git_tools import GitCommitTool, GitPushTool
 from friday.tools.registry import ToolRegistry
 
@@ -22,9 +25,9 @@ class SelfImprovementWorkflow:
 
     def __init__(
         self,
-        self_dev_agent: Optional[SelfDevAgent] = None,
-        tool_registry: Optional[ToolRegistry] = None,
-        authorizer_callback: Optional[Callable[[str, Dict[str, Any]], bool]] = None,
+        self_dev_agent: SelfDevAgent | None = None,
+        tool_registry: ToolRegistry | None = None,
+        authorizer_callback: Callable[[str, dict[str, Any]], bool] | None = None,
     ) -> None:
         self.self_dev_agent = self_dev_agent
         self.tool_registry = tool_registry or ToolRegistry()
@@ -80,12 +83,12 @@ class SelfImprovementWorkflow:
         self,
         user_prompt: str,
         user_authorized: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Execute the complete recursive self-improvement lifecycle with explicit safety checks."""
         feature_desc = self.extract_feature_intent(user_prompt)
         target_filename = self.sanitize_filename(feature_desc)
         target_filepath = f"src/friday/tools/builtin/{target_filename}"
-        steps: List[str] = []
+        steps: list[str] = []
 
         logger.info(f"Self-Improvement Workflow initiated: '{feature_desc}' -> '{target_filepath}'")
 

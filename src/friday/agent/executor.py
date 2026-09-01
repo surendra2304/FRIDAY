@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Multi-Step Task Execution Engine, Progress Tracker & Self-Correction for FRIDAY.
 
 Consumes validated TaskPlan objects and executes plan steps in dependency order:
@@ -12,18 +11,23 @@ Consumes validated TaskPlan objects and executes plan steps in dependency order:
 - Provider independence: Zero cloud lock-in, fully operable offline.
 """
 
+import time
+import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import time
-from typing import Any, Callable, Dict, List, Optional, Set
-import uuid
+from typing import Any
 
 from friday.agent.planner import PlanStep, StepStatus, TaskPlan
-from friday.agent.state import ReasoningStateMachine, TaskState
-from friday.agent.verification import StepVerifier, VerificationResult, VerificationStatus
 from friday.agent.recovery import (
     AutonomousRecoveryManager,
     FailureAnalyzer,
+)
+from friday.agent.state import ReasoningStateMachine, TaskState
+from friday.agent.verification import (
+    StepVerifier,
+    VerificationResult,
+    VerificationStatus,
 )
 from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer
 from friday.core.logging import get_logger
@@ -50,7 +54,7 @@ class ExecutionProgress:
     failed_steps: int = 0
     skipped_steps: int = 0
     pending_steps: int = 0
-    in_progress_step_id: Optional[str] = None
+    in_progress_step_id: str | None = None
     elapsed_seconds: float = 0.0
     is_done: bool = False
     success: bool = False
@@ -63,7 +67,7 @@ class ExecutionProgress:
         resolved = self.completed_steps + self.failed_steps + self.skipped_steps
         return round((resolved / self.total_steps) * 100.0, 2)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize progress metrics to audit dictionary."""
         return {
             "plan_id": self.plan_id,
@@ -87,15 +91,15 @@ class StepExecutionResult:
 
     step_id: str
     status: StepStatus
-    result: Optional[Any] = None
-    error: Optional[str] = None
-    verification: Optional[VerificationResult] = None
+    result: Any | None = None
+    error: str | None = None
+    verification: VerificationResult | None = None
     retries_used: int = 0
     start_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    end_time: Optional[datetime] = None
+    end_time: datetime | None = None
     duration_seconds: float = 0.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "step_id": self.step_id,
             "status": self.status.value,
@@ -117,12 +121,12 @@ class TaskExecutionResult:
     goal: str
     success: bool
     state: TaskState
-    step_results: Dict[str, StepExecutionResult] = field(default_factory=dict)
-    plan_verification: Optional[VerificationResult] = None
+    step_results: dict[str, StepExecutionResult] = field(default_factory=dict)
+    plan_verification: VerificationResult | None = None
     duration_seconds: float = 0.0
-    error: Optional[str] = None
+    error: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "plan_id": self.plan_id,
             "goal": self.goal,
@@ -141,13 +145,13 @@ class TaskExecutionEngine:
     def __init__(
         self,
         tool_registry: ToolRegistry,
-        authorizer: Optional[BaseAuthorizer] = None,
+        authorizer: BaseAuthorizer | None = None,
         max_step_limit: int = 50,
         max_self_corrections_per_step: int = 3,
         step_timeout_seconds: float = 60.0,
-        on_step_progress: Optional[Callable[[ExecutionProgress], None]] = None,
-        custom_corrector: Optional[Callable[[PlanStep, VerificationResult], Optional[PlanStep]]] = None,
-        tool_fallbacks: Optional[Dict[str, str]] = None,
+        on_step_progress: Callable[[ExecutionProgress], None] | None = None,
+        custom_corrector: Callable[[PlanStep, VerificationResult], PlanStep | None] | None = None,
+        tool_fallbacks: dict[str, str] | None = None,
         allow_concurrent_safe_steps: bool = True,
     ) -> None:
         import threading
@@ -175,9 +179,9 @@ class TaskExecutionEngine:
     def execute_plan(
         self,
         plan: TaskPlan,
-        state_machine: Optional[ReasoningStateMachine] = None,
-        task_context: Optional[Any] = None,
-        cancellation_token: Optional[Any] = None,
+        state_machine: ReasoningStateMachine | None = None,
+        task_context: Any | None = None,
+        cancellation_token: Any | None = None,
     ) -> TaskExecutionResult:
         """Execute a TaskPlan in validated dependency DAG order with wave scheduling, safe concurrency, and self-correction."""
         from friday.security.scrubber import redact_secrets
@@ -221,7 +225,7 @@ class TaskExecutionEngine:
         elif sm.current_state == TaskState.PAUSED:
             sm.resume(reason="Resuming paused plan execution")
 
-        step_results: Dict[str, StepExecutionResult] = {}
+        step_results: dict[str, StepExecutionResult] = {}
         for s in plan.steps:
             if s.status in (StepStatus.COMPLETED, StepStatus.SUCCEEDED) and s.result is not None:
                 step_results[s.step_id] = StepExecutionResult(
@@ -237,7 +241,7 @@ class TaskExecutionEngine:
         )
         total_steps = len(plan.steps)
         executed_count = 0
-        executed_action_fingerprints: Set[str] = set()
+        executed_action_fingerprints: set[str] = set()
 
         # Compute topological waves for dependency-aware scheduling
         schedule_waves = plan.compute_topological_schedule()
@@ -263,7 +267,7 @@ class TaskExecutionEngine:
                 break
 
             # 1. Evaluate steps in wave for limit exceedance and prerequisites
-            ready_steps: List[PlanStep] = []
+            ready_steps: list[PlanStep] = []
             for step in wave:
                 executed_count += 1
                 if executed_count > self.max_step_limit:
@@ -457,12 +461,12 @@ class TaskExecutionEngine:
     def _execute_step_with_recovery(
         self,
         step: PlanStep,
-        step_results: Dict[str, Any],
+        step_results: dict[str, Any],
         state_machine: ReasoningStateMachine,
         recovery_mgr: AutonomousRecoveryManager,
-        task_context: Optional[Any],
+        task_context: Any | None,
         cancel_event: Any,
-        executed_action_fingerprints: Set[str],
+        executed_action_fingerprints: set[str],
     ) -> StepExecutionResult:
         """Execute a step with idempotency checks, formal verification, and autonomous recovery."""
         current_step_target = step
@@ -548,9 +552,9 @@ class TaskExecutionEngine:
     def _execute_step(
         self,
         step: PlanStep,
-        step_results: Optional[Dict[str, Any]] = None,
-        state_machine: Optional[ReasoningStateMachine] = None,
-        cancel_event: Optional[Any] = None,
+        step_results: dict[str, Any] | None = None,
+        state_machine: ReasoningStateMachine | None = None,
+        cancel_event: Any | None = None,
     ) -> StepExecutionResult:
         """Execute a single PlanStep using the ToolRegistry and BaseAuthorizer with state barrier."""
         step_start_time = datetime.now(timezone.utc)
@@ -654,7 +658,7 @@ class TaskExecutionEngine:
             )
 
         # 3. Direct Tool Execution via ToolRegistry (uses ToolRegistry's shared worker pool and timeout)
-        exec_kwargs: Dict[str, Any] = {
+        exec_kwargs: dict[str, Any] = {
             "name": step.tool_name,
             "arguments": resolved_params,
             "tool_call_id": call_id,
@@ -700,8 +704,8 @@ class TaskExecutionEngine:
     def _notify_progress(
         self,
         plan: TaskPlan,
-        step_results: Dict[str, StepExecutionResult],
-        in_progress_id: Optional[str],
+        step_results: dict[str, StepExecutionResult],
+        in_progress_id: str | None,
         elapsed_seconds: float,
         is_done: bool = False,
         success: bool = False,

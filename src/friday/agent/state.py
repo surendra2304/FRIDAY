@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Reasoning State Machine and Lifecycle Management for FRIDAY Tasks and Requests.
 
 Defines the explicit task states and validated state transitions:
@@ -8,11 +7,12 @@ Defines the explicit task states and validated state transitions:
 Completely provider-independent and zero-trust safe.
 """
 
+import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
-import uuid
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -33,7 +33,7 @@ class TaskState(str, Enum):
 
 
 # Valid deterministic transitions from each state
-VALID_TRANSITIONS: Dict[TaskState, List[TaskState]] = {
+VALID_TRANSITIONS: dict[TaskState, list[TaskState]] = {
     TaskState.NOT_STARTED: [TaskState.UNDERSTANDING, TaskState.PLANNING, TaskState.CANCELLED, TaskState.FAILED],
     TaskState.UNDERSTANDING: [TaskState.PLANNING, TaskState.CANCELLED, TaskState.FAILED],
     TaskState.PLANNING: [TaskState.EXECUTING, TaskState.PAUSED, TaskState.VERIFYING, TaskState.CANCELLED, TaskState.FAILED],
@@ -48,7 +48,6 @@ VALID_TRANSITIONS: Dict[TaskState, List[TaskState]] = {
 
 class InvalidStateTransitionError(ValueError):
     """Raised when an illegal state transition is attempted."""
-    pass
 
 
 @dataclass
@@ -57,9 +56,9 @@ class StateTransitionRecord:
     from_state: TaskState
     to_state: TaskState
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    reason: Optional[str] = None
+    reason: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         from friday.security.scrubber import recursive_sanitize, redact_secrets
         return recursive_sanitize({
             "from_state": self.from_state.value,
@@ -74,16 +73,16 @@ class ReasoningStateMachine:
 
     def __init__(
         self,
-        task_id: Optional[str] = None,
-        on_transition: Optional[Callable[[TaskState, TaskState, Optional[str]], None]] = None,
+        task_id: str | None = None,
+        on_transition: Callable[[TaskState, TaskState, str | None], None] | None = None,
         initial_state: TaskState = TaskState.NOT_STARTED,
     ) -> None:
         self.task_id: str = task_id or str(uuid.uuid4())
         self._current_state: TaskState = initial_state
-        self._history: List[StateTransitionRecord] = []
+        self._history: list[StateTransitionRecord] = []
         self._on_transition = on_transition
-        self._failure_reason: Optional[str] = None
-        self._failure_metadata: Dict[str, Any] = {}
+        self._failure_reason: str | None = None
+        self._failure_metadata: dict[str, Any] = {}
 
     @property
     def current_state(self) -> TaskState:
@@ -101,21 +100,21 @@ class ReasoningStateMachine:
         return self._current_state == TaskState.EXECUTING
 
     @property
-    def history(self) -> List[StateTransitionRecord]:
+    def history(self) -> list[StateTransitionRecord]:
         """Return the transition audit trail."""
         return list(self._history)
 
     @property
-    def failure_reason(self) -> Optional[str]:
+    def failure_reason(self) -> str | None:
         """Return the safe failure reason if failed."""
         return self._failure_reason
 
     @property
-    def failure_metadata(self) -> Dict[str, Any]:
+    def failure_metadata(self) -> dict[str, Any]:
         """Return failure metadata."""
         return dict(self._failure_metadata)
 
-    def transition_to(self, new_state: TaskState, reason: Optional[str] = None) -> TaskState:
+    def transition_to(self, new_state: TaskState, reason: str | None = None) -> TaskState:
         """Validate and execute a state transition."""
         from friday.security.scrubber import redact_secrets
 
@@ -155,16 +154,16 @@ class ReasoningStateMachine:
         """Transition task to CANCELLED state."""
         return self.transition_to(TaskState.CANCELLED, reason=reason)
 
-    def fail(self, reason: str, metadata: Optional[Dict[str, Any]] = None) -> TaskState:
+    def fail(self, reason: str, metadata: dict[str, Any] | None = None) -> TaskState:
         """Transition task directly to FAILED with sanitized error metadata."""
-        from friday.security.scrubber import redact_secrets, recursive_sanitize
+        from friday.security.scrubber import recursive_sanitize, redact_secrets
 
         safe_reason = redact_secrets(reason) if reason else None
         self._failure_reason = safe_reason
         self._failure_metadata = recursive_sanitize(metadata or {})
         return self.transition_to(TaskState.FAILED, reason=safe_reason)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize current state and audit trail to dictionary with recursive sanitization."""
         from friday.security.scrubber import recursive_sanitize
 

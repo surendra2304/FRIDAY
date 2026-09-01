@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Sentinel Vigilance Operator for FRIDAY.
 
 Supervises autonomous security posture and vulnerability intelligence on a 60-second polling cycle:
@@ -11,10 +10,10 @@ Supervises autonomous security posture and vulnerability intelligence on a 60-se
 - FRIDAY never executes security tools itself; all security actions go through Sentinel.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
 import threading
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel, TrustLevel
@@ -28,12 +27,12 @@ logger = get_logger("operators.sentinel_vigilance")
 @dataclass
 class SentinelVigilanceState:
     """Internal state tracking known findings, task phases, pending approvals, and connectivity."""
-    last_poll_time: Optional[datetime] = None
-    last_successful_poll: Optional[datetime] = None
-    unreachable_since: Optional[datetime] = None
-    known_finding_ids: List[str] = field(default_factory=list)
-    known_completed_task_ids: List[str] = field(default_factory=list)
-    pending_approvals_since: Optional[datetime] = None
+    last_poll_time: datetime | None = None
+    last_successful_poll: datetime | None = None
+    unreachable_since: datetime | None = None
+    known_finding_ids: list[str] = field(default_factory=list)
+    known_completed_task_ids: list[str] = field(default_factory=list)
+    pending_approvals_since: datetime | None = None
     last_known_critical_count: int = 0
     last_known_high_count: int = 0
     uptime_ratio_pct: float = 100.0
@@ -46,7 +45,7 @@ class SentinelVigilanceOperator(BaseOperator):
 
     def __init__(
         self,
-        skill: Optional[SentinelManagerSkill] = None,
+        skill: SentinelManagerSkill | None = None,
         poll_interval_sec: float = 60.0,
     ) -> None:
         trigger = IntervalTrigger(interval_seconds=poll_interval_sec, name="sentinel_vigilance_poll_interval")
@@ -62,10 +61,10 @@ class SentinelVigilanceOperator(BaseOperator):
         self.vigilance_state = SentinelVigilanceState()
         self._lock = threading.RLock()
 
-    def run_cycle(self) -> List[Dict[str, Any]]:
+    def run_cycle(self) -> list[dict[str, Any]]:
         """Executes a single 60s supervisory evaluation cycle across Sentinel security state."""
         now = datetime.now(timezone.utc)
-        alerts: List[Dict[str, Any]] = []
+        alerts: list[dict[str, Any]] = []
 
         with self._lock:
             self.vigilance_state.last_poll_time = now

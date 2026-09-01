@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Global unified repository-wide Secret Scrubber.
 
 Identifies, redacts, and masks all configured credentials, system credentials,
@@ -10,8 +9,7 @@ exception creation, or serialization.
 import os
 import re
 import threading
-from typing import Any, Optional, Set
-
+from typing import Any
 
 # Comprehensive regex patterns for common credential formats
 SECRET_REGEX_PATTERNS = [
@@ -44,11 +42,11 @@ class SecretScrubber:
     """Thread-safe scrubber managing dynamic credential registration and text redaction."""
 
     def __init__(self) -> None:
-        self._exact_secrets: Set[str] = set()
+        self._exact_secrets: set[str] = set()
         self._lock = threading.Lock()
         self._registered_env_keys = False
 
-    def register_secret(self, secret: Optional[str]) -> None:
+    def register_secret(self, secret: str | None) -> None:
         """Register an exact sensitive credential string to be masked."""
         if not secret or not isinstance(secret, str):
             return

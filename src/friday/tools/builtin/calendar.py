@@ -1,13 +1,13 @@
-# -*- coding: utf-8 -*-
 """Calendar and schedule management tools using .ics format.
 
 Provides tools to fetch, parse, and list upcoming events for today using icalendar
 and recurring-ical-events libraries.
 """
 
-from typing import Any, Dict, List, Optional
-from datetime import datetime, date, time, timezone
 import os
+from datetime import date, datetime, time
+from typing import Any
+
 import httpx
 
 from friday.core.config import get_settings
@@ -20,7 +20,7 @@ logger = get_logger("tools.calendar")
 _FETCH_TIMEOUT = 10.0
 
 
-def _parse_ics_content(ics_text: str, target_date: Optional[date] = None) -> List[Dict[str, Any]]:
+def _parse_ics_content(ics_text: str, target_date: date | None = None) -> list[dict[str, Any]]:
     """Parse raw iCalendar text and return list of meetings occurring on target_date."""
     import icalendar
     import recurring_ical_events
@@ -88,7 +88,7 @@ class GetTodaysEventsTool(BaseTool):
         "required": [],
     }
 
-    def execute(self, calendar_url: Optional[str] = None, **kwargs: Any) -> ToolResult:
+    def execute(self, calendar_url: str | None = None, **kwargs: Any) -> ToolResult:
         settings = get_settings()
         url = calendar_url or getattr(settings, "calendar_ics_url", None) or os.getenv("FRIDAY_CALENDAR_ICS_URL")
 
@@ -124,7 +124,7 @@ class GetTodaysEventsTool(BaseTool):
                 logger.warning(f"Failed to fetch calendar from '{target_url}': {e}")
                 return ToolResult(
                     name=self.name,
-                    content=f"Failed to fetch calendar feed: {str(e)}",
+                    content=f"Failed to fetch calendar feed: {e!s}",
                     is_error=True,
                     safety_level=self.safety_level,
                 )
@@ -135,7 +135,7 @@ class GetTodaysEventsTool(BaseTool):
             logger.error(f"Failed to parse calendar .ics: {e}")
             return ToolResult(
                 name=self.name,
-                content=f"Failed to parse calendar events: {str(e)}",
+                content=f"Failed to parse calendar events: {e!s}",
                 is_error=True,
                 safety_level=self.safety_level,
             )

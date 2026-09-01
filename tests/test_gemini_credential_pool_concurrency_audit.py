@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Deterministic High-Concurrency Audit and Regression Suite for Gemini Credential Pool and Provider.
 
 Verifies:
@@ -11,12 +10,12 @@ Verifies:
 7. Explicit refusal to rotate keys for non-availability reasons.
 """
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta
 from unittest import mock
+
 import pytest
 from google.genai import types
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Windows native desktop screen capture provider using Win32 GDI API and fallback PowerShell capture.
 
 Provides direct ctypes Win32 GDI BitBlt capture with automatic PowerShell .NET fallback
@@ -7,12 +6,12 @@ for headless/service or restricted window station environments. Pure Python with
 
 import base64
 import ctypes
-from ctypes import wintypes
-from datetime import datetime
 import struct
 import subprocess
-from typing import Any, Dict, List, Optional
 import zlib
+from ctypes import wintypes
+from datetime import datetime, timezone
+from typing import Any
 
 import numpy as np
 
@@ -85,9 +84,9 @@ class WindowsScreenCaptureProvider(BaseScreenCaptureProvider):
             wintypes.UINT,
         ]
 
-    def list_displays(self) -> List[Dict[str, Any]]:
+    def list_displays(self) -> list[dict[str, Any]]:
         """Enumerate display monitors on Windows."""
-        displays: List[Dict[str, Any]] = []
+        displays: list[dict[str, Any]] = []
 
         primary_w = self._user32.GetSystemMetrics(SM_CXSCREEN)
         primary_h = self._user32.GetSystemMetrics(SM_CYSCREEN)
@@ -153,7 +152,7 @@ class WindowsScreenCaptureProvider(BaseScreenCaptureProvider):
 
         return bytes(png)
 
-    def _capture_via_powershell(self, display: str = "primary") -> Optional[ScreenSnapshot]:
+    def _capture_via_powershell(self, display: str = "primary") -> ScreenSnapshot | None:
         """Capture screenshot via Windows PowerShell .NET as a reliable fallback."""
         try:
             ps_script = (
@@ -187,7 +186,7 @@ class WindowsScreenCaptureProvider(BaseScreenCaptureProvider):
                         width=w,
                         height=h,
                         display_id=display,
-                        captured_at=datetime.utcnow(),
+                        captured_at=datetime.now(timezone.utc),
                         is_error=False,
                     )
         except Exception as e:
@@ -264,7 +263,7 @@ class WindowsScreenCaptureProvider(BaseScreenCaptureProvider):
                 width=width,
                 height=height,
                 display_id=display,
-                captured_at=datetime.utcnow(),
+                captured_at=datetime.now(timezone.utc),
                 is_error=False,
             )
 

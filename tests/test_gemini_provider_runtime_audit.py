@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive runtime audit tests for GeminiLLMProvider.
 
 Verifies:
@@ -15,15 +14,15 @@ Verifies:
 6. Absolute zero API key exposure in error masking and logs.
 """
 
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-import threading
-import time
 from unittest import mock
-import pytest
 
+import pytest
 from google.genai import types as genai_types
-from friday.auth.credential_pool import GeminiCredentialPool, FailureCategory
+
+from friday.auth.credential_pool import FailureCategory, GeminiCredentialPool
 from friday.core.exceptions import LLMProviderError
 from friday.core.types import Message, Role
 from friday.llm.gemini_provider import GeminiLLMProvider

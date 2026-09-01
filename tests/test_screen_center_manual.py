@@ -1,6 +1,6 @@
-import sys
 from friday.agent.agent import FridayAgent
 from friday.core.config import Settings
+
 
 def test_screen_center_manual():
     settings = Settings()

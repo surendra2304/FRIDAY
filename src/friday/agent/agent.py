@@ -1,21 +1,37 @@
+import os
 import random
 import re
-import os
 import subprocess
 import time
 import warnings
+from collections.abc import Callable
+from typing import Any
 from urllib.parse import quote_plus
-from typing import Any, Callable, Dict, List, Optional
 
 # Suppress noisy upstream COM threading and GenAI AFC warnings
 warnings.filterwarnings("ignore", message=".*Revert to STA COM threading mode.*", category=UserWarning)
 warnings.filterwarnings("ignore", message=".*automatic function calling.*", category=UserWarning)
 warnings.filterwarnings("ignore", message=".*Direct use of automatic function calling.*", category=UserWarning)
+import uuid
+from datetime import datetime
+
+from friday.agent.checkpoint import TaskCheckpoint, TaskCheckpointStore
+from friday.agent.cognitive import CognitiveIntelligenceEngine, CognitivePhase
+from friday.agent.executor import (
+    ExecutionProgress,
+    TaskExecutionEngine,
+    TaskExecutionResult,
+)
+from friday.agent.planner import GoalDecomposer, TaskPlan
 from friday.agent.prompts import build_system_message
+from friday.agent.state import ReasoningStateMachine, TaskState
+from friday.agents.base_agent import AgentTask, BaseAgent
+from friday.agents.decomposer import TaskDecomposer
+from friday.agents.registry import AgentRegistry
+from friday.agents.router import AgentRouter
 from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer
 from friday.core.config import Settings, get_settings
 from friday.core.logging import get_logger
-from datetime import datetime
 from friday.core.types import (
     AgentResponse,
     AuthorizationDecision,
@@ -33,78 +49,68 @@ from friday.llm.factory import create_llm_provider
 from friday.memory.base import BaseMemory
 from friday.memory.factory import create_memory
 from friday.memory.policies import should_retrieve_memory
+from friday.memory.task_context import ActiveTaskContext
+from friday.observability.notifications import NotificationManager
+from friday.routing.capability_router import CapabilityRouter
 from friday.tools.builtin import (
-    SystemInfoTool,
-    TimeDateTool,
+    AIUniverseTool,
     CalculatorTool,
-    FileReaderTool,
-    FileListingTool,
-    MemorySearchTool,
-    ScreenSnapshotTool,
-    ProposeComputerActionTool,
-    OpenApplicationTool,
-    TypeTextTool,
     CloseApplicationTool,
-    ManageVolumeTool,
-    SystemPowerControlTool,
-    ManageWindowsTool,
-    WebSearchTool,
-    FetchWebpageTool,
-    FileOperationsTool,
-    ExecuteCommandTool,
-    ReadScreenTextTool,
-    FindOnScreenTool,
-    GetActiveAppContextTool,
-    ReadActiveWindowTextTool,
-    GitStatusTool,
-    GitCommitTool,
-    GitPushTool,
-    ListGitHubIssuesTool,
-    CreateGitHubIssueTool,
-    GetSystemResourcesTool,
-    KillProcessTool,
-    LaunchApplicationTool,
-    SystemControlTool,
-    HealthCheckTool,
-    WriteCodeFileTool,
-    RunTestsTool,
-    CreateGitBranchTool,
     ControlLightTool,
     ControlPlugTool,
+    CreateGitBranchTool,
+    CreateGitHubIssueTool,
+    ExecuteCommandTool,
     FetchWebpageContentTool,
-    SynthesizeInformationTool,
-    ToggleDarkModeTool,
-    ToggleBluetoothTool,
-    ToggleWifiTool,
-    GetTodaysEventsTool,
-    SendEmailTool,
-    ReadOwnCodebaseTool,
-    AIUniverseTool,
+    FetchWebpageTool,
+    FileListingTool,
+    FileOperationsTool,
+    FileReaderTool,
+    FindOnScreenTool,
+    GetActiveAppContextTool,
     GetAIUniverseStatusTool,
+    GetSystemResourcesTool,
+    GetTodaysEventsTool,
+    GitCommitTool,
+    GitPushTool,
+    GitStatusTool,
+    HealthCheckTool,
+    KillProcessTool,
+    LaunchApplicationTool,
+    ListGitHubIssuesTool,
+    ManageVolumeTool,
+    ManageWindowsTool,
+    MemorySearchTool,
+    OpenApplicationTool,
+    ProposeComputerActionTool,
+    ReadActiveWindowTextTool,
+    ReadOwnCodebaseTool,
+    ReadScreenTextTool,
+    RunTestsTool,
     ScreenPredictionTool,
+    ScreenSnapshotTool,
+    SendEmailTool,
+    SynthesizeInformationTool,
+    SystemControlTool,
+    SystemInfoTool,
+    SystemPowerControlTool,
+    TimeDateTool,
+    ToggleBluetoothTool,
+    ToggleDarkModeTool,
+    ToggleWifiTool,
+    TypeTextTool,
+    WebSearchTool,
+    WriteCodeFileTool,
 )
-from friday.agent.state import TaskState, ReasoningStateMachine
-from friday.agent.planner import TaskPlan, GoalDecomposer
-from friday.agent.executor import TaskExecutionEngine, TaskExecutionResult, ExecutionProgress
-from friday.agents.base_agent import AgentTask, BaseAgent
-from friday.agents.decomposer import TaskDecomposer
-from friday.agents.registry import AgentRegistry
-from friday.agents.router import AgentRouter
-from friday.observability.notifications import NotificationManager
-from friday.agent.checkpoint import TaskCheckpoint, TaskCheckpointStore
-from friday.agent.cognitive import CognitiveIntelligenceEngine, CognitivePhase
-from friday.routing.capability_router import CapabilityRouter
+from friday.tools.registry import ToolRegistry
 from friday.vision.actions import ActionType
-from friday.vision.detector import DeterministicActionDetector
-from friday.vision.intent_detector import IntentDetector, ActionIntent
 from friday.vision.computer_control import ComputerActionExecutor
+from friday.vision.detector import DeterministicActionDetector
+from friday.vision.intent_detector import ActionIntent, IntentDetector
 from friday.vision.windows_input_driver import (
     WindowsNativeInputDriver,
     check_desktop_interactivity,
 )
-from friday.memory.task_context import ActiveTaskContext
-from friday.tools.registry import ToolRegistry
-import uuid
 
 logger = get_logger("agent.core")
 
@@ -127,16 +133,16 @@ class FridayAgent:
 
     def __init__(
         self,
-        settings: Optional[Settings] = None,
-        llm_provider: Optional[BaseLLMProvider] = None,
-        memory: Optional[BaseMemory] = None,
-        tool_registry: Optional[ToolRegistry] = None,
+        settings: Settings | None = None,
+        llm_provider: BaseLLMProvider | None = None,
+        memory: BaseMemory | None = None,
+        tool_registry: ToolRegistry | None = None,
         max_tool_iterations: int = 5,
-        tool_callback: Optional[Callable[[ToolCall, ToolResult], None]] = None,
-        authorizer: Optional[BaseAuthorizer] = None,
+        tool_callback: Callable[[ToolCall, ToolResult], None] | None = None,
+        authorizer: BaseAuthorizer | None = None,
         tool_timeout: float = 30.0,
-        conversation_id: Optional[str] = None,
-        skill_registry: Optional[Any] = None,
+        conversation_id: str | None = None,
+        skill_registry: Any | None = None,
     ) -> None:
         self.settings = settings or get_settings()
         self._ui_provider = None
@@ -150,19 +156,19 @@ class FridayAgent:
         self.system_message = build_system_message(self.settings)
         self._processed_tool_ids: set = set()
         self.state_machine: ReasoningStateMachine = ReasoningStateMachine()
-        self._current_plan: Optional[TaskPlan] = None
-        self.task_context: Optional[ActiveTaskContext] = None
+        self._current_plan: TaskPlan | None = None
+        self.task_context: ActiveTaskContext | None = None
         self.checkpoint_store: TaskCheckpointStore = TaskCheckpointStore()
         self.cognitive_engine: CognitiveIntelligenceEngine = CognitiveIntelligenceEngine(
             llm_provider=self.llm,
             authorizer=self.authorizer,
         )
         self.capability_router: CapabilityRouter = CapabilityRouter()
-        self._agent_registry: Optional[AgentRegistry] = None
-        self._task_decomposer: Optional[TaskDecomposer] = None
-        self._agent_router: Optional[AgentRouter] = None
+        self._agent_registry: AgentRegistry | None = None
+        self._task_decomposer: TaskDecomposer | None = None
+        self._agent_router: AgentRouter | None = None
         self.notifications: NotificationManager = NotificationManager()
-        self._skill_registry: Optional[Any] = skill_registry
+        self._skill_registry: Any | None = skill_registry
 
         if self.settings.memory_retention_days:
             self.prune_memory(self.settings.memory_retention_days)
@@ -193,6 +199,7 @@ class FridayAgent:
         """Lazy-loaded specialist agent registry."""
         if getattr(self, "_agent_registry", None) is None:
             self._agent_registry = self._init_default_agent_registry()
+        assert self._agent_registry is not None
         return self._agent_registry
 
     @property
@@ -200,6 +207,7 @@ class FridayAgent:
         """Lazy-loaded task decomposer."""
         if getattr(self, "_task_decomposer", None) is None:
             self._task_decomposer = TaskDecomposer(llm_provider=self.llm)
+        assert self._task_decomposer is not None
         return self._task_decomposer
 
     @property
@@ -207,6 +215,7 @@ class FridayAgent:
         """Lazy-loaded agent router."""
         if getattr(self, "_agent_router", None) is None:
             self._agent_router = AgentRouter(registry=self.agent_registry)
+        assert self._agent_router is not None
         return self._agent_router
 
     @property
@@ -225,7 +234,7 @@ class FridayAgent:
         self._skill_registry = value
 
     @property
-    def conversation_id(self) -> Optional[str]:
+    def conversation_id(self) -> str | None:
         """Return the active conversation identifier if supported by the memory backend."""
         if hasattr(self.memory, "active_conversation_id"):
             return self.memory.active_conversation_id
@@ -235,21 +244,21 @@ class FridayAgent:
         """Switch the active conversation session."""
         self.memory.load_conversation(conversation_id)
 
-    def create_new_conversation(self, title: Optional[str] = None) -> Optional[str]:
+    def create_new_conversation(self, title: str | None = None) -> str | None:
         """Create and activate a new conversation session."""
         return self.memory.create_conversation(title=title)
 
-    def list_conversations(self, limit: int = 50) -> List[Dict[str, Any]]:
+    def list_conversations(self, limit: int = 50) -> list[dict[str, Any]]:
         """List available conversation sessions."""
         return self.memory.list_conversations(limit=limit)
 
-    def get_current_conversation(self) -> Optional[Dict[str, Any]]:
+    def get_current_conversation(self) -> dict[str, Any] | None:
         """Retrieve metadata for the current active conversation."""
         if self.conversation_id:
             return self.memory.get_conversation(self.conversation_id)
         return None
 
-    def rename_conversation(self, new_title: str, conversation_id: Optional[str] = None) -> bool:
+    def rename_conversation(self, new_title: str, conversation_id: str | None = None) -> bool:
         """Rename an existing conversation."""
         target_id = conversation_id or self.conversation_id
         if target_id:
@@ -263,6 +272,10 @@ class FridayAgent:
     def purge_all_memory(self, confirm: bool = True) -> int:
         """Permanently delete all stored conversations and messages."""
         return self.memory.purge_all(confirm=confirm)
+
+    def clear_all_conversations(self, confirm: bool = True) -> int:
+        """Permanently delete all stored conversations and messages."""
+        return self.purge_all_memory(confirm=confirm)
 
     # Minimum fuzzy-match score an enumerated UI element must reach before FRIDAY
     # clicks it via UI Automation (element match confidence, independent of the
@@ -287,7 +300,7 @@ class FridayAgent:
         "Hello {user_name}. I'm ready when you are.",
     )
 
-    def _greeting_fast_path(self, clean_input: str) -> Optional[AgentResponse]:
+    def _greeting_fast_path(self, clean_input: str) -> AgentResponse | None:
         """Return a direct conversational greeting response, or None if not a greeting."""
         if not self._GREETING_PATTERN.match(clean_input):
             return None
@@ -479,8 +492,8 @@ class FridayAgent:
 
     def _adjust_volume(
         self,
-        delta: Optional[int] = None,
-        set_to: Optional[int] = None,
+        delta: int | None = None,
+        set_to: int | None = None,
     ) -> str:
         """Raise/lower or absolutely set master volume via pycaw; returns spoken result."""
         from friday.tools.builtin.os_control import _get_endpoint_volume
@@ -603,7 +616,7 @@ class FridayAgent:
             pass
         return "This laptop is running " + ", ".join(bits) + "."
 
-    def _direct_desktop_action_fast_path(self, clean_input: str, start_time: float) -> Optional[AgentResponse]:
+    def _direct_desktop_action_fast_path(self, clean_input: str, start_time: float) -> AgentResponse | None:
         """Execute common laptop-control commands deterministically.
 
         This avoids routing simple desktop actions through a general model,
@@ -1120,7 +1133,7 @@ class FridayAgent:
 
         return None
 
-    def classify_instant_command(self, text: str) -> Optional[str]:
+    def classify_instant_command(self, text: str) -> str | None:
         """Return an instant-command key when this utterance must be executed
         locally (deterministically) instead of being answered by the voice model.
 
@@ -1196,7 +1209,7 @@ class FridayAgent:
             pass
         return None
 
-    def _execute_semantic_ui_action(self, intent_result, user_input: str) -> Optional[AgentResponse]:
+    def _execute_semantic_ui_action(self, intent_result, user_input: str) -> AgentResponse | None:
         """Execute a high-confidence semantic UI action via the pywinauto provider.
 
         Returns an AgentResponse when the action was handled here (bypassing
@@ -1265,7 +1278,7 @@ class FridayAgent:
         """Clear messages from the active conversation."""
         self.memory.clear(conversation_id=self.conversation_id, confirm=confirm)
 
-    def prune_memory(self, retention_days: Optional[int] = None) -> int:
+    def prune_memory(self, retention_days: int | None = None) -> int:
         """Prune messages older than the retention threshold."""
         days = retention_days or self.settings.memory_retention_days
         if days:
@@ -1276,7 +1289,7 @@ class FridayAgent:
         """Create an online hot backup of the persistent database to the target destination path."""
         return self.memory.backup(backup_path)
 
-    def export_conversation(self, conversation_id: Optional[str] = None) -> Dict[str, Any]:
+    def export_conversation(self, conversation_id: str | None = None) -> dict[str, Any]:
         """Export full conversation metadata and messages to a dictionary."""
         target_id = conversation_id or self.conversation_id
         if not target_id:
@@ -1286,11 +1299,11 @@ class FridayAgent:
     def search_memory(
         self,
         query: str,
-        conversation_id: Optional[str] = None,
+        conversation_id: str | None = None,
         limit: int = 10,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-    ) -> List[MemorySearchResult]:
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+    ) -> list[MemorySearchResult]:
         """Search historical conversation messages."""
         return self.memory.search(
             query=query,
@@ -1425,7 +1438,7 @@ class FridayAgent:
 
     async def _execute_via_specialist_agents(self, goal: str, decomposition) -> str:
         """Orchestrate execution across multiple specialist agents and return synthesized outcome."""
-        subtask_summaries: List[str] = []
+        subtask_summaries: list[str] = []
         for idx, subtask in enumerate(decomposition.subtasks):
             decision = self.agent_router.route_subtask(subtask)
             agent = decision.selected_agent
@@ -1447,7 +1460,7 @@ class FridayAgent:
         )
         return synthesized
 
-    def _execute_single_tool_call_internal(self, tc: ToolCall, timeout: Optional[float] = None) -> ToolResult:
+    def _execute_single_tool_call_internal(self, tc: ToolCall, timeout: float | None = None) -> ToolResult:
         """Internal helper handling validation, authorization, and execution of a single tool call."""
         # Replay prevention within turn
         if tc.id in self._processed_tool_ids:
@@ -1531,7 +1544,7 @@ class FridayAgent:
             safety_level=tool.safety_level,
         )
 
-    def _execute_single_tool_call(self, tc: ToolCall, timeout: Optional[float] = None) -> ToolResult:
+    def _execute_single_tool_call(self, tc: ToolCall, timeout: float | None = None) -> ToolResult:
         """Validate, authorize, and execute a single tool call request with duration logging."""
         tool_start = time.perf_counter()
         result = self._execute_single_tool_call_internal(tc, timeout=timeout)
@@ -1548,7 +1561,7 @@ class FridayAgent:
         """Execute a single tool call through ToolRegistry's shared worker pool and timeout mechanism."""
         return self._execute_single_tool_call(tc, timeout=timeout)
 
-    def _retrieve_relevant_memories(self, query: str) -> List[MemorySearchResult]:
+    def _retrieve_relevant_memories(self, query: str) -> list[MemorySearchResult]:
         """Controlled retrieval of relevant historical context based on settings."""
         if not getattr(self.settings, "enable_auto_recall", True):
             return []
@@ -1565,7 +1578,7 @@ class FridayAgent:
         threshold = getattr(self.settings, "recall_similarity_threshold", 0.6)
         max_chars = getattr(self.settings, "max_recall_chars", 1000)
 
-        results: List[MemorySearchResult] = []
+        results: list[MemorySearchResult] = []
         try:
             if mode == "semantic":
                 sem_res = self.memory.search_semantic(clean_query, limit=limit, threshold=threshold)
@@ -1589,7 +1602,7 @@ class FridayAgent:
             logger.warning(f"Auto memory recall failed: {e}")
             return []
 
-        filtered: List[MemorySearchResult] = []
+        filtered: list[MemorySearchResult] = []
         total_chars = 0
         for r in results:
             if r.content.strip().lower() == clean_query.lower():
@@ -1607,11 +1620,11 @@ class FridayAgent:
         return self.state_machine.current_state
 
     @property
-    def current_plan(self) -> Optional[TaskPlan]:
+    def current_plan(self) -> TaskPlan | None:
         """Return the active TaskPlan if one exists."""
         return self._current_plan
 
-    def create_plan(self, goal: str, steps: Optional[List[Dict[str, Any]]] = None) -> TaskPlan:
+    def create_plan(self, goal: str, steps: list[dict[str, Any]] | None = None) -> TaskPlan:
         """Create and validate a structured TaskPlan for a given user goal."""
         if steps:
             plan = GoalDecomposer.create_multi_step_plan(goal=goal, step_definitions=steps)
@@ -1625,10 +1638,10 @@ class FridayAgent:
 
     def execute_plan(
         self,
-        plan: Optional[TaskPlan] = None,
-        on_step_progress: Optional[Callable[[ExecutionProgress], None]] = None,
-        step_timeout_seconds: Optional[float] = None,
-        cancellation_token: Optional[Any] = None,
+        plan: TaskPlan | None = None,
+        on_step_progress: Callable[[ExecutionProgress], None] | None = None,
+        step_timeout_seconds: float | None = None,
+        cancellation_token: Any | None = None,
     ) -> TaskExecutionResult:
         """Execute a structured TaskPlan using the TaskExecutionEngine."""
         target_plan = plan or self._current_plan
@@ -1661,7 +1674,7 @@ class FridayAgent:
 
         return res
 
-    def pause_current_task(self, reason: str = "Interrupted by user") -> Optional[TaskCheckpoint]:
+    def pause_current_task(self, reason: str = "Interrupted by user") -> TaskCheckpoint | None:
         """Pause active task, capture snapshot checkpoint, and transition state to PAUSED."""
         if not self._current_plan or self.state_machine.current_state != TaskState.EXECUTING:
             logger.warning("No active executing task to pause.")
@@ -1681,7 +1694,7 @@ class FridayAgent:
         )
         return chk
 
-    def resume_task(self, task_id: Optional[str] = None) -> TaskExecutionResult:
+    def resume_task(self, task_id: str | None = None) -> TaskExecutionResult:
         """Resume execution of a paused task from its last valid checkpoint."""
         target_id = task_id or (self._current_plan.plan_id if self._current_plan else None)
         if not target_id:
@@ -2271,7 +2284,7 @@ class FridayAgent:
             except Exception as e:
                 logger.warning(f"[MULTI-AGENT] Multi-agent orchestration fallback to single agent loop: {e}")
 
-        working_context: List[Message] = [base_sys_msg] + self.memory.get_context_window(
+        working_context: list[Message] = [base_sys_msg] + self.memory.get_context_window(
             max_messages=self.settings.memory_max_messages,
             max_turns=5,
             max_tokens=3000,
@@ -2280,8 +2293,8 @@ class FridayAgent:
         # 5. Retrieve registered tool schemas
         tool_schemas = self.tools.get_schemas() if self.tools.list_tools() else None
 
-        all_tool_calls: List[ToolCall] = []
-        all_tool_results: List[ToolResult] = []
+        all_tool_calls: list[ToolCall] = []
+        all_tool_results: list[ToolResult] = []
         final_content = ""
         iterations = 0
         tool_error_retries = 0
@@ -2383,7 +2396,7 @@ class FridayAgent:
                     all_safe = False
                     break
 
-            batch_results: List[ToolResult] = []
+            batch_results: list[ToolResult] = []
             batch_start = time.perf_counter()
             tool_timeout = self.tool_timeout
 
@@ -2591,11 +2604,11 @@ class FridayAgent:
             },
         )
 
-    def get_history(self) -> List[Message]:
+    def get_history(self) -> list[Message]:
         """Retrieve stored conversation messages."""
         return self.memory.get_messages()
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """Return diagnostic status information about the agent."""
         # Get safe LLM active project label if available
         active_project = "PRIMARY"

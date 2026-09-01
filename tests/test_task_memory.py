@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Deterministic unit test suite for Computer Action Execution.5 Active Working Task Memory & Context Isolation.
 
 Validates:
@@ -14,19 +13,15 @@ Validates:
 10. Provider independence: Operates 100% offline with MockLLMProvider and zero external SDK dependencies.
 """
 
-from typing import Dict, List, Optional
-import pytest
 
 from friday.agent.agent import FridayAgent
-from friday.agent.executor import TaskExecutionEngine
-from friday.agent.planner import GoalDecomposer, PlanStep, StepStatus, TaskPlan
 from friday.agent.state import TaskState
 from friday.agent.verification import VerificationResult, VerificationStatus
 from friday.core.config import Settings
-from friday.core.types import Message, Role, SafetyLevel, ToolResult
+from friday.core.types import Role
 from friday.llm.mock_provider import MockLLMProvider
 from friday.memory.in_memory import InMemoryConversationMemory
-from friday.memory.task_context import ActiveTaskContext, TaskObservation
+from friday.memory.task_context import ActiveTaskContext
 from friday.tools.builtin.system_info import SystemInfoTool
 from friday.tools.registry import ToolRegistry
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for Predictive Briefings and Ecosystem Forecast Dashboard.
 
 Validates:
@@ -20,7 +19,6 @@ Validates:
    - Tagged TrustLevel.UNTRUSTED_EXTERNAL
 """
 
-import pytest
 
 from friday.core.types import TrustLevel
 from friday.skills.futuris_manager import FuturisManagerSkill

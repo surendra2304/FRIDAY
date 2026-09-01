@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Security Posture Dashboard Panel for FRIDAY.
 
 Renders an executive visual security dashboard:
@@ -11,7 +10,7 @@ Renders an executive visual security dashboard:
 """
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.types import TrustLevel
 from friday.ecosystem.asset_registry import AssetRegistry, asset_registry
@@ -23,13 +22,13 @@ class SecurityPostureDashboard:
 
     def __init__(
         self,
-        registry: Optional[AssetRegistry] = None,
-        sentinel_skill: Optional[SentinelManagerSkill] = None,
+        registry: AssetRegistry | None = None,
+        sentinel_skill: SentinelManagerSkill | None = None,
     ) -> None:
         self.registry = registry or asset_registry
         self.sentinel = sentinel_skill or SentinelManagerSkill()
 
-    def render_panel_data(self) -> Dict[str, Any]:
+    def render_panel_data(self) -> dict[str, Any]:
         """Assembles structured data for security panel rendering."""
         score_data = self.registry.calculate_security_posture_score()
         assets = self.registry.get_all_assets()

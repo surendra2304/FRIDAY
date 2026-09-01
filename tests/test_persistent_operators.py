@@ -1,31 +1,31 @@
-# -*- coding: utf-8 -*-
 """Comprehensive unit test suite for Persistent Operators and Event-Driven Triggers."""
 
 import os
 import time
-from typing import Any, Dict, List, Optional
-import pytest
+from typing import Any
 
 from friday.core.auth import DefaultSecureAuthorizer
 from friday.core.types import SafetyLevel
 from friday.observability.notifications import NotificationManager
-from friday.operators.base_operator import BaseOperator, OperatorExecutionResult, OperatorState
+from friday.operators.base_operator import (
+    BaseOperator,
+    OperatorState,
+)
 from friday.operators.manager import OperatorManager
 from friday.operators.triggers import (
-    BaseTrigger,
     ConditionTrigger,
     FileSystemTrigger,
     IntervalTrigger,
     ProcessTrigger,
 )
-from friday.skills.registry import SkillRegistry
 from friday.skills.builtins.network_diagnostic import NetworkDiagnosticSkill
+from friday.skills.registry import SkillRegistry
 from friday.workflows.scheduler import WorkflowScheduler
 
 
 class SimpleTestOperator(BaseOperator):
     """Concrete test operator."""
-    def execute_action(self, event_data: Dict[str, Any]) -> Any:
+    def execute_action(self, event_data: dict[str, Any]) -> Any:
         return f"Handled: {event_data.get('event_type')}"
 
 

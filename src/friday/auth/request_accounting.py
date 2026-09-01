@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Gemini Request Accounting, Token Tracking, and Multi-Level Budget Enforcement.
 
 Features:
@@ -11,11 +10,11 @@ Features:
 5. Ensures credential failover is used solely for legitimate configured redundancy.
 """
 
+import threading
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-import threading
-from typing import Any, Dict, List, Optional, Tuple
-import uuid
+from typing import Any, Optional
 
 from friday.core.logging import get_logger
 
@@ -24,10 +23,10 @@ logger = get_logger("auth.accounting")
 
 class BudgetExceededError(RuntimeError):
     """Raised when a task, session, hourly, or daily budget limit is exceeded."""
-    pass
 
 
 from enum import Enum
+
 
 class CircuitBreakerState(str, Enum):
     CLOSED = "CLOSED"
@@ -43,17 +42,17 @@ class RequestRecord:
     credential_label: str  # e.g., "PRIMARY", "FALLBACK 1" (NO RAW KEYS)
     model: str
     purpose: str
-    task_id: Optional[str] = None
-    session_id: Optional[str] = None
+    task_id: str | None = None
+    session_id: str | None = None
     is_cache_hit: bool = False
     retries_count: int = 0
     fallbacks_count: int = 0
     estimated_input_tokens: int = 0
     estimated_output_tokens: int = 0
-    failure_category: Optional[str] = None
+    failure_category: str | None = None
     latency_ms: float = 0.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "request_id": self.request_id,
             "timestamp": self.timestamp.isoformat(),
@@ -97,14 +96,14 @@ class RequestAccountant:
                     cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, limits: Optional[BudgetLimits] = None) -> None:
+    def __init__(self, limits: BudgetLimits | None = None) -> None:
         if not hasattr(self, "_initialized"):
             self.lock = threading.Lock()
             self.limits = limits or BudgetLimits()
-            self.records: List[RequestRecord] = []
+            self.records: list[RequestRecord] = []
             self.consecutive_failures = 0
             self.circuit_state = CircuitBreakerState.CLOSED
-            self.circuit_cooldown_until: Optional[datetime] = None
+            self.circuit_cooldown_until: datetime | None = None
             self._initialized = True
 
     def reset(self) -> None:
@@ -117,10 +116,10 @@ class RequestAccountant:
 
     def can_make_request(
         self,
-        task_id: Optional[str] = None,
-        session_id: Optional[str] = None,
+        task_id: str | None = None,
+        session_id: str | None = None,
         purpose: str = "reasoning",
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """Check whether a new request is permitted under active budget limits."""
         with self.lock:
             now = datetime.now(timezone.utc)
@@ -206,14 +205,14 @@ class RequestAccountant:
         credential_label: str,
         model: str,
         purpose: str,
-        task_id: Optional[str] = None,
-        session_id: Optional[str] = None,
+        task_id: str | None = None,
+        session_id: str | None = None,
         is_cache_hit: bool = False,
         retries_count: int = 0,
         fallbacks_count: int = 0,
         estimated_input_tokens: int = 0,
         estimated_output_tokens: int = 0,
-        failure_category: Optional[str] = None,
+        failure_category: str | None = None,
         latency_ms: float = 0.0,
     ) -> RequestRecord:
         """Record an accounting entry and update circuit breaker state."""
@@ -268,7 +267,7 @@ class RequestAccountant:
 
             return rec
 
-    def get_summary(self) -> Dict[str, Any]:
+    def get_summary(self) -> dict[str, Any]:
         """Return structured request accounting summary without secrets."""
         with self.lock:
             total_reqs = len(self.records)
@@ -277,9 +276,9 @@ class RequestAccountant:
             total_in_tokens = sum(r.estimated_input_tokens for r in self.records)
             total_out_tokens = sum(r.estimated_output_tokens for r in self.records)
 
-            by_model: Dict[str, int] = {}
-            by_label: Dict[str, int] = {}
-            by_purpose: Dict[str, int] = {}
+            by_model: dict[str, int] = {}
+            by_label: dict[str, int] = {}
+            by_purpose: dict[str, int] = {}
 
             for r in self.records:
                 by_model[r.model] = by_model.get(r.model, 0) + 1

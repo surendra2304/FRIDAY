@@ -3,8 +3,6 @@
 from types import SimpleNamespace
 from unittest import mock
 
-import pytest
-
 from friday.core.config import Settings
 from friday.core.types import SafetyLevel
 
@@ -419,8 +417,15 @@ def test_all_futuristic_tools_registered_but_not_live_declared():
 
 
 def test_new_tools_are_safe_level():
-    from friday.tools.builtin.file_and_command import ExecuteCommandTool, FileOperationsTool
-    from friday.tools.builtin.os_control import ManageVolumeTool, ManageWindowsTool, SystemPowerControlTool
+    from friday.tools.builtin.file_and_command import (
+        ExecuteCommandTool,
+        FileOperationsTool,
+    )
+    from friday.tools.builtin.os_control import (
+        ManageVolumeTool,
+        ManageWindowsTool,
+        SystemPowerControlTool,
+    )
     from friday.tools.builtin.screen_ocr import FindOnScreenTool, ReadScreenTextTool
     from friday.tools.builtin.web_tools import FetchWebpageTool, WebSearchTool
 
@@ -467,7 +472,7 @@ def test_system_control_tool():
 
 
 def test_health_monitor_tool(tmp_path):
-    from friday.tools.builtin.health_monitor import SystemHealthMonitor, HealthCheckTool
+    from friday.tools.builtin.health_monitor import HealthCheckTool, SystemHealthMonitor
     monitor = SystemHealthMonitor(log_dir=tmp_path)
     tool = HealthCheckTool(monitor=monitor)
 
@@ -477,7 +482,10 @@ def test_health_monitor_tool(tmp_path):
 
 
 def test_screen_prediction_tool():
-    from friday.vision.screen_prediction import ScreenPredictionEngine, ScreenPredictionTool
+    from friday.vision.screen_prediction import (
+        ScreenPredictionEngine,
+        ScreenPredictionTool,
+    )
     engine = ScreenPredictionEngine()
     tool = ScreenPredictionTool(engine=engine)
 

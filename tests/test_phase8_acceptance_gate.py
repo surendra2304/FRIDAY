@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive End-to-End Acceptance & Security Gate for Evidence-Based Verification Multimodal Perception.
 
 Verifies:
@@ -12,54 +11,36 @@ Verifies:
 8. Quota & Cost Protection: Perceptual hashing and caching suppress redundant Gemini calls.
 """
 
-from unittest import mock
-import pytest
 
-from friday.core.types import SafetyLevel
 from friday.memory.in_memory import InMemoryConversationMemory
-from friday.memory.task_context import ActiveTaskContext
 from friday.vision.action_preparer import (
-    ActionPreparationResult,
     GroundedElementTarget,
     GroundingStatus,
     PerceptionActionPreparer,
 )
 from friday.vision.actions import (
-    ActionType,
-    ComputerActionProposal,
     ProposalBuilder,
-)
-from friday.vision.computer_control import (
-    ActionExecutionResult,
-    ComputerActionExecutor,
-    ExecutionStatus,
 )
 from friday.vision.active_perception import (
     ActivePerceptionEngine,
-    ObservationDecision,
     ObservationNecessity,
 )
 from friday.vision.cache_manager import PerceptionCacheManager
+from friday.vision.computer_control import (
+    ComputerActionExecutor,
+    ExecutionStatus,
+)
 from friday.vision.episodic_memory import (
-    EpisodicEnvironmentalFact,
     EpisodicEnvironmentalMemoryManager,
     MemoryImportance,
 )
-from friday.vision.mock_screen import MockScreenCaptureProvider, create_synthetic_png
+from friday.vision.mock_screen import MockScreenCaptureProvider
 from friday.vision.mock_vision import MockVisionProvider
-from friday.vision.screen_analyzer import ScreenAnalyzer
 from friday.vision.screen_context import ScreenContext
 from friday.vision.temporal import (
-    EnvironmentalChange,
-    EnvironmentalChangeType,
     TemporalEnvironmentTracker,
 )
 from friday.vision.ui_elements import BoundingBox, ElementType, UIElement
-from friday.voice.perception_resolver import (
-    SpokenVisualIntentType,
-    VoicePerceptionResolution,
-    VoicePerceptionResolver,
-)
 
 
 # 1. Full Multimodal Lifecycle Gate

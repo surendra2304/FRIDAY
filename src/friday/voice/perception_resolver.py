@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Voice-to-Perception Reference Resolver for Evidence-Based Verification.7.
 
 Resolves spoken contextual references (e.g. "what is this", "what changed", "look at the error",
@@ -6,10 +5,10 @@ Resolves spoken contextual references (e.g. "what is this", "what changed", "loo
 to decide whether visual capture is necessary and formulate targeted query parameters.
 """
 
+import re
 from dataclasses import dataclass
 from enum import Enum
-import re
-from typing import Any, Dict, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.memory.task_context import ActiveTaskContext
@@ -46,12 +45,12 @@ class VoicePerceptionResolution:
     """Result of analyzing a spoken voice utterance for visual perception relevance."""
     intent_type: SpokenVisualIntentType
     requires_perception: bool
-    targeted_query: Optional[str] = None
-    target_element_label: Optional[str] = None
-    resolved_context_summary: Optional[str] = None
+    targeted_query: str | None = None
+    target_element_label: str | None = None
+    resolved_context_summary: str | None = None
     confidence: float = 0.9
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "intent_type": self.intent_type.value,
             "requires_perception": self.requires_perception,
@@ -67,9 +66,9 @@ class VoicePerceptionResolver:
 
     def __init__(
         self,
-        active_perception: Optional[ActivePerceptionEngine] = None,
-        temporal_tracker: Optional[TemporalEnvironmentTracker] = None,
-        episodic_memory: Optional[EpisodicEnvironmentalMemoryManager] = None,
+        active_perception: ActivePerceptionEngine | None = None,
+        temporal_tracker: TemporalEnvironmentTracker | None = None,
+        episodic_memory: EpisodicEnvironmentalMemoryManager | None = None,
     ) -> None:
         self.active_perception = active_perception or ActivePerceptionEngine()
         self.temporal_tracker = temporal_tracker
@@ -90,8 +89,8 @@ class VoicePerceptionResolver:
     def resolve_voice_request(
         self,
         utterance: str,
-        current_screen_context: Optional[ScreenContext] = None,
-        task_context: Optional[ActiveTaskContext] = None,
+        current_screen_context: ScreenContext | None = None,
+        task_context: ActiveTaskContext | None = None,
     ) -> VoicePerceptionResolution:
         """Analyze voice utterance and determine if screen observation or reference resolution is needed."""
         intent = self.classify_spoken_utterance(utterance)

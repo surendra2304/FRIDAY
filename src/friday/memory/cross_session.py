@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Cross-Session Learning Engine for FRIDAY.
 
 Extracts long-term patterns across user sessions:
@@ -7,10 +6,10 @@ Extracts long-term patterns across user sessions:
 3. Behavioral contradiction detection: surfaces conflicts between user instructions and behavior
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -21,7 +20,7 @@ logger = get_logger("memory.cross_session")
 class CommandPattern:
     """Recurring sequential command workflow discovered across sessions."""
     pattern_id: str
-    sequence: List[str]
+    sequence: list[str]
     occurrence_count: int
     suggested_shortcut: str
     time_window: str = "morning"
@@ -32,7 +31,7 @@ class LearnedPreferences:
     """Dynamically adapted user preferences based on cross-session history."""
     response_length: str = "brief"  # brief, normal, detailed
     alert_timing: str = "immediate"  # immediate, batched
-    subsystem_interest_weights: Dict[str, float] = field(
+    subsystem_interest_weights: dict[str, float] = field(
         default_factory=lambda: {
             "trading_bot": 0.35,
             "nexus": 0.25,
@@ -57,8 +56,8 @@ class CrossSessionLearning:
     """Extracts shortcuts, adapts preferences, and detects behavioral contradictions."""
 
     def __init__(self) -> None:
-        self.session_command_history: List[Dict[str, Any]] = []
-        self.discovered_patterns: Dict[str, CommandPattern] = {}
+        self.session_command_history: list[dict[str, Any]] = []
+        self.discovered_patterns: dict[str, CommandPattern] = {}
         self.preferences = LearnedPreferences()
         self._lock = threading.RLock()
 
@@ -85,7 +84,7 @@ class CrossSessionLearning:
                 for sub, count in counts.items():
                     self.preferences.subsystem_interest_weights[sub] = round(count / total, 2)
 
-    def detect_recurring_shortcuts(self) -> List[CommandPattern]:
+    def detect_recurring_shortcuts(self) -> list[CommandPattern]:
         """Discovers command sequences that occur consecutively (e.g. trading status -> forge status)."""
         with self._lock:
             if len(self.session_command_history) < 2:
@@ -109,7 +108,7 @@ class CrossSessionLearning:
 
             return list(self.discovered_patterns.values())
 
-    def learn_user_preferences(self, explicit_feedback: Optional[str] = None) -> LearnedPreferences:
+    def learn_user_preferences(self, explicit_feedback: str | None = None) -> LearnedPreferences:
         """Learns and refines user preference model."""
         with self._lock:
             if explicit_feedback:
@@ -129,8 +128,8 @@ class CrossSessionLearning:
     def detect_contradictions(
         self,
         negative_rule: str,
-        recent_commands: Optional[List[str]] = None,
-    ) -> Optional[ContradictionAlert]:
+        recent_commands: list[str] | None = None,
+    ) -> ContradictionAlert | None:
         """Detects contradictions between explicit negative rules and actual usage."""
         with self._lock:
             rule_clean = negative_rule.lower()

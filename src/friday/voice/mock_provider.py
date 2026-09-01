@@ -6,13 +6,13 @@ It returns a predefined list of transcript strings and produces a silent
 MP3 placeholder for synthesized speech.
 """
 
-from typing import List, Iterator
+from collections.abc import Iterator
 
 from .base import VoiceInput, VoiceOutput, VoiceProvider
 
 
 class MockVoiceInput(VoiceInput):
-    def __init__(self, transcripts: List[str]):
+    def __init__(self, transcripts: list[str]):
         self._iter: Iterator[str] = iter(transcripts)
         self.active = False
 
@@ -42,7 +42,7 @@ class MockVoiceOutput(VoiceOutput):
 
 
 class MockVoiceProvider(VoiceProvider):
-    def __init__(self, transcripts: List[str]):
+    def __init__(self, transcripts: list[str]):
         super().__init__(MockVoiceInput(transcripts), MockVoiceOutput())
 
     def run_session(self, agent) -> None:

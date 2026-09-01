@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Daily Intelligence Briefing Workflow for FRIDAY Operating System.
 
 Compiles a dedicated daily intelligence briefing (separate from operational briefings)
@@ -11,10 +10,10 @@ synthesizing IntelX research across all 5 knowledge domains:
 - Invariant: All content tagged TrustLevel.UNTRUSTED_EXTERNAL
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import threading
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import TrustLevel
@@ -34,7 +33,7 @@ class IntelligenceBriefingSnapshot:
     completed_runs_count: int
     verified_findings_count: int
     contradictions_count: int
-    recommended_topics: List[str]
+    recommended_topics: list[str]
     trust_level: str = TrustLevel.UNTRUSTED_EXTERNAL.value
 
 
@@ -43,8 +42,8 @@ class IntelligenceBriefingWorkflow:
 
     def __init__(
         self,
-        intelx_skill: Optional[IntelXManagerSkill] = None,
-        library: Optional[ResearchLibrary] = None,
+        intelx_skill: IntelXManagerSkill | None = None,
+        library: ResearchLibrary | None = None,
     ) -> None:
         self.intelx = intelx_skill or IntelXManagerSkill()
         self.library = library or ResearchLibrary()
@@ -52,7 +51,7 @@ class IntelligenceBriefingWorkflow:
 
     def generate_daily_intelligence_briefing(
         self,
-        active_ecosystem_context: Optional[Dict[str, Any]] = None,
+        active_ecosystem_context: dict[str, Any] | None = None,
     ) -> IntelligenceBriefingSnapshot:
         """Generates comprehensive daily intelligence debrief and executive report."""
         with self._lock:
@@ -65,7 +64,7 @@ class IntelligenceBriefingWorkflow:
             completed_runs = [r for r in self.intelx._runs.values() if r.phase == "COMPLETED"]
 
             # Group findings by domain
-            domain_findings: Dict[str, List[Dict[str, Any]]] = {
+            domain_findings: dict[str, list[dict[str, Any]]] = {
                 "security": [],
                 "market": [],
                 "technical": [],
@@ -83,7 +82,7 @@ class IntelligenceBriefingWorkflow:
                 domain_findings[matched_domain].append(f)
 
             # 2. Recommended Follow-Up Research Gaps
-            recommended_topics: List[str] = [
+            recommended_topics: list[str] = [
                 "Post-quantum migration timelines for TLS certificates (Hardware latency benchmarks)",
                 "Layer-2 blob calldata compression optimizations under high network congestion",
                 "Competitor AI sales agent conversion tactics in North American enterprise markets",

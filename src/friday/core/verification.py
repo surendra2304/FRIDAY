@@ -1,7 +1,7 @@
-# -*- coding: utf-8 -*-
 """Verification logic for external AI Universe multi-agent debate responses (AI Universe Integration)."""
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
+
 from friday.core.logging import get_logger
 
 logger = get_logger("core.verification")
@@ -22,7 +22,7 @@ _SECURITY_SAFETY_KEYWORDS = {
 }
 
 
-def evaluate_ai_universe_response(response: Dict[str, Any]) -> Tuple[bool, str, Dict[str, Any]]:
+def evaluate_ai_universe_response(response: dict[str, Any]) -> tuple[bool, str, dict[str, Any]]:
     """Evaluate an AI Universe response against verification rules.
 
     Rules:

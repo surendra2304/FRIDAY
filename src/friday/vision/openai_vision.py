@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """OpenAI-compatible Multimodal Vision Provider using HTTPX.
 
 Implements BaseVisionProvider for OpenAI GPT-4o / GPT-4-turbo or any OpenAI-compatible
@@ -6,7 +5,8 @@ multimodal vision endpoint (Groq, Ollama, OpenRouter, vLLM).
 """
 
 import base64
-from typing import Any, Dict, Optional
+from typing import Any
+
 import httpx
 
 from friday.core.logging import get_logger
@@ -22,7 +22,7 @@ class OpenAIVisionProvider(BaseVisionProvider):
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         base_url: str = "https://api.openai.com/v1",
         model: str = "gpt-4o",
         temperature: float = 0.2,
@@ -66,7 +66,7 @@ class OpenAIVisionProvider(BaseVisionProvider):
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "model": kwargs.get("model", self.model),
             "messages": [
                 {

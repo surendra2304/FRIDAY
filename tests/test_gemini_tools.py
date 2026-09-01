@@ -1,8 +1,9 @@
 """Tests for Gemini LLM Provider integration with FRIDAY tool calling and safety policies."""
 
 from unittest import mock
-import pytest
+
 from google.genai import types as genai_types
+
 from friday.agent.agent import FridayAgent
 from friday.core.auth import BaseAuthorizer
 from friday.core.config import Settings
@@ -10,10 +11,7 @@ from friday.core.types import (
     AuthorizationDecision,
     AuthorizationRequest,
     AuthorizationResponse,
-    Message,
-    Role,
     SafetyLevel,
-    ToolCall,
     ToolResult,
 )
 from friday.llm.gemini_provider import GeminiLLMProvider

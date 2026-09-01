@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Deterministic unit test suite for Evidence-Based Verification.7: Advanced Voice + Vision Interaction.
 
 Tests:
@@ -12,24 +11,16 @@ Tests:
 8. Quota protection on voice-triggered vision calls.
 """
 
-from unittest import mock
-import pytest
 
 from friday.memory.in_memory import InMemoryConversationMemory
 from friday.memory.task_context import ActiveTaskContext
-from friday.vision.active_perception import ActivePerceptionEngine
 from friday.vision.episodic_memory import EpisodicEnvironmentalMemoryManager
-from friday.vision.mock_vision import MockVisionProvider
 from friday.vision.screen_context import ScreenContext
-from friday.vision.mock_screen import MockScreenCaptureProvider
 from friday.vision.temporal import (
-    EnvironmentalChange,
-    EnvironmentalChangeType,
     TemporalEnvironmentTracker,
 )
 from friday.voice.perception_resolver import (
     SpokenVisualIntentType,
-    VoicePerceptionResolution,
     VoicePerceptionResolver,
 )
 

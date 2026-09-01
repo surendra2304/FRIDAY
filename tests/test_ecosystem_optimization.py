@@ -1,8 +1,6 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for FRIDAY Final Ecosystem Optimization & User Experience."""
 
-from datetime import datetime, timezone, timedelta
-import pytest
+from datetime import datetime, timezone
 
 from friday.core.user_preferences import UserPreferenceManager
 from friday.ecosystem.context_memory import ContextualConversationMemory
@@ -10,7 +8,6 @@ from friday.ecosystem.nl_router import NLCommandRouter, NLIntent
 from friday.ecosystem.suggestions import EcosystemSuggestionsEngine
 from friday.optimization.ecosystem_perf import EcosystemPerformanceOptimizer
 from friday.ui.multimodal import MultiModalInterface
-
 
 # =========================================================================
 # 1. Natural Language Command Router Tests

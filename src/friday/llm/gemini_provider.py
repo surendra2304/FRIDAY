@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Gemini LLM Provider using the official google-genai SDK.
 
 This modern implementation uses Google's current official `google-genai` Python SDK
@@ -16,9 +15,9 @@ Security considerations:
 import json
 import threading
 import time
-from typing import Any, Dict, List, Optional
 import uuid
 import warnings
+from typing import Any
 
 # Suppress noisy upstream Google GenAI SDK AFC warnings during generate_content
 warnings.filterwarnings("ignore", message=".*automatic function calling.*", category=UserWarning)
@@ -28,13 +27,17 @@ from google import genai
 from google.genai import errors as genai_errors
 from google.genai import types as genai_types
 
+from friday.auth.credential_pool import (
+    FailureCategory,
+    GeminiCredentialPool,
+    credential_pool,
+)
+from friday.auth.request_accounting import request_accountant
 from friday.core.config import get_settings
 from friday.core.exceptions import LLMProviderError
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role, ToolCall
 from friday.llm.base import BaseLLMProvider
-from friday.auth.credential_pool import credential_pool, GeminiCredentialPool, FailureCategory
-from friday.auth.request_accounting import request_accountant
 
 logger = get_logger("llm.gemini")
 
@@ -50,8 +53,8 @@ class GeminiLLMProvider(BaseLLMProvider):
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        credential_pool: Optional[GeminiCredentialPool] = credential_pool,
+        api_key: str | None = None,
+        credential_pool: GeminiCredentialPool | None = credential_pool,
         base_url: str = "https://generativelanguage.googleapis.com/v1beta",
         model: str = "gemini-1.5-flash-latest",
         temperature: float = 0.7,
@@ -60,12 +63,12 @@ class GeminiLLMProvider(BaseLLMProvider):
         max_retries: int = 3,
         backoff_factor: float = 2.0,
         cost_mode: str = "free_first",
-        thinking_level: Optional[str] = None,
+        thinking_level: str | None = None,
     ) -> None:
         super().__init__(model=model, temperature=temperature, max_tokens=max_tokens)
-        self._explicit_api_key: Optional[str] = api_key
-        self.api_key: Optional[str] = api_key
-        self.credential_pool: Optional[GeminiCredentialPool] = credential_pool
+        self._explicit_api_key: str | None = api_key
+        self.api_key: str | None = api_key
+        self.credential_pool: GeminiCredentialPool | None = credential_pool
         self.base_url: str = base_url.rstrip("/")
         self.timeout: float = timeout
         self.max_retries: int = max_retries
@@ -74,8 +77,8 @@ class GeminiLLMProvider(BaseLLMProvider):
         self.thinking_level: str = thinking_level or "medium"
         
         # Explicit thread-safe client cache
-        self._client: Optional[genai.Client] = None
-        self._current_key: Optional[str] = None
+        self._client: genai.Client | None = None
+        self._current_key: str | None = None
         self._lock: threading.Lock = threading.Lock()
 
         # Validate thinking level
@@ -175,7 +178,7 @@ class GeminiLLMProvider(BaseLLMProvider):
     # ---------------------------------------------------------------------
     # Schema and Message Conversion Helpers
     # ---------------------------------------------------------------------
-    def _convert_schema_to_gemini(self, tool_def: Dict[str, Any]) -> Dict[str, Any]:
+    def _convert_schema_to_gemini(self, tool_def: dict[str, Any]) -> dict[str, Any]:
         """Convert an OpenAI-compatible tool JSON schema to a Gemini function declaration dict."""
         if tool_def.get("type") == "function" and "function" in tool_def:
             func = tool_def["function"]
@@ -192,12 +195,12 @@ class GeminiLLMProvider(BaseLLMProvider):
 
     def _build_contents_and_config(
         self,
-        messages: List[Message],
-        tools: Optional[List[Dict[str, Any]]] = None,
-    ) -> tuple[List[genai_types.Content], genai_types.GenerateContentConfig]:
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None = None,
+    ) -> tuple[list[genai_types.Content], genai_types.GenerateContentConfig]:
         """Translate FRIDAY Messages and Tool definitions to GenAI SDK types."""
         system_instruction_text = ""
-        contents: List[genai_types.Content] = []
+        contents: list[genai_types.Content] = []
 
         for msg in messages:
             if msg.role == Role.SYSTEM:
@@ -215,7 +218,7 @@ class GeminiLLMProvider(BaseLLMProvider):
                     )
                 )
             elif msg.role == Role.ASSISTANT:
-                parts: List[genai_types.Part] = []
+                parts: list[genai_types.Part] = []
                 if msg.content:
                     parts.append(genai_types.Part.from_text(text=msg.content))
                 if msg.tool_calls:
@@ -252,7 +255,7 @@ class GeminiLLMProvider(BaseLLMProvider):
                 )
 
         # Build tools if provided
-        genai_tools: Optional[List[genai_types.Tool]] = None
+        genai_tools: list[genai_types.Tool] | None = None
         if tools:
             func_decls = []
             for t in tools:
@@ -268,7 +271,7 @@ class GeminiLLMProvider(BaseLLMProvider):
 
         # Build config: For Gemini 3.7 models, temperature, top_p, and top_k are unsupported / deprecated.
         # Ensure they cannot accidentally reach the SDK.
-        config_kwargs: Dict[str, Any] = {
+        config_kwargs: dict[str, Any] = {
             "max_output_tokens": self.max_tokens,
             "system_instruction": system_instruction_text if system_instruction_text else None,
             "tools": genai_tools,
@@ -288,12 +291,12 @@ class GeminiLLMProvider(BaseLLMProvider):
         # Add thinking_config if supported
         if hasattr(genai_types, "ThinkingConfig") and hasattr(genai_types, "ThinkingLevel"):
             try:
-                level_enum = getattr(genai_types, "ThinkingLevel")
+                level_enum = genai_types.ThinkingLevel
                 # Map string to enum (case-insensitive)
                 level_val = getattr(level_enum, self.thinking_level.upper())
             except Exception:
                 # Fallback to MEDIUM if mapping fails
-                level_val = getattr(genai_types, "ThinkingLevel").MEDIUM
+                level_val = genai_types.ThinkingLevel.MEDIUM
             config_kwargs["thinking_config"] = genai_types.ThinkingConfig(thinking_level=level_val)
 
         config = genai_types.GenerateContentConfig(**config_kwargs)
@@ -302,12 +305,12 @@ class GeminiLLMProvider(BaseLLMProvider):
 
     def _build_gemini_payload(
         self,
-        messages: List[Message],
-        tools: Optional[List[Dict[str, Any]]] = None,
-    ) -> Dict[str, Any]:
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         """Backwards-compatible dictionary serialization of Gemini payload for testing."""
         system_instruction_parts = []
-        contents: List[Dict[str, Any]] = []
+        contents: list[dict[str, Any]] = []
 
         for msg in messages:
             if msg.role == Role.SYSTEM:
@@ -319,7 +322,7 @@ class GeminiLLMProvider(BaseLLMProvider):
                     "parts": [{"text": msg.content}],
                 })
             elif msg.role == Role.ASSISTANT:
-                parts: List[Dict[str, Any]] = []
+                parts: list[dict[str, Any]] = []
                 if msg.content:
                     parts.append({"text": msg.content})
                 if msg.tool_calls:
@@ -344,7 +347,7 @@ class GeminiLLMProvider(BaseLLMProvider):
                     "parts": [{"functionResponse": {"name": tool_name, "response": parsed}}],
                 })
 
-        generation_config: Dict[str, Any] = {
+        generation_config: dict[str, Any] = {
             "max_output_tokens": self.max_tokens,
         }
         if not is_gemini_37_model(self.model):
@@ -352,7 +355,7 @@ class GeminiLLMProvider(BaseLLMProvider):
         else:
             generation_config["thinking_config"] = {"thinking_level": self.thinking_level.upper()}
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "contents": contents,
             "generationConfig": generation_config,
         }
@@ -368,8 +371,8 @@ class GeminiLLMProvider(BaseLLMProvider):
     # ---------------------------------------------------------------------
     def generate(
         self,
-        messages: List[Message],
-        tools: Optional[List[Dict[str, Any]]] = None,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None = None,
     ) -> Message:
         """Generate an assistant response using the Google GenAI SDK.
 
@@ -450,8 +453,8 @@ class GeminiLLMProvider(BaseLLMProvider):
                 content = candidate.content
                 parts = getattr(content, "parts", []) or []
 
-                text_parts: List[str] = []
-                tool_calls: Optional[List[ToolCall]] = None
+                text_parts: list[str] = []
+                tool_calls: list[ToolCall] | None = None
 
                 for part in parts:
                     if getattr(part, "text", None):

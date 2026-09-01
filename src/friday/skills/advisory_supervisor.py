@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Advisory Supervisor Skill for FRIDAY.
 
 Supervises AI-Universe advisory activity for the Trading Bot on Binance Futures Testnet.
@@ -9,17 +8,13 @@ Command Precedence Invariant:
 Safety Gates (Trading Bot) > FRIDAY Commands (Supervisor) > AI-Universe Recommendations (Advisor).
 """
 
-from dataclasses import dataclass, field
-import json
-import os
 import re
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from typing import Any
 
 from friday.core.logging import get_logger
-from friday.core.types import AuthorizationDecision, AuthorizationRequest, SafetyLevel, TrustLevel
 from friday.skills.base_skill import BaseSkill, SkillExecutionResult
 from friday.skills.trading_bot_operator import TradingBotOperator
-from friday.skills.trading_precedence import CommandPrecedence, tag_trading_command
 
 logger = get_logger("skills.advisory_supervisor")
 
@@ -32,8 +27,8 @@ class ContestedAdvisory:
     recommendation: str
     confidence: float
     rejection_reason: str
-    parameter_adjustments: Dict[str, Any] = field(default_factory=dict)
-    raw: Dict[str, Any] = field(default_factory=dict)
+    parameter_adjustments: dict[str, Any] = field(default_factory=dict)
+    raw: dict[str, Any] = field(default_factory=dict)
 
 
 class AdvisorySupervisorSkill(BaseSkill):
@@ -59,17 +54,17 @@ class AdvisorySupervisorSkill(BaseSkill):
         r"\b(?:explain\s+advisory|explain\s+decision)\s+(?P<id>[\w\-]+)\b",
     ]
 
-    def __init__(self, bot_operator: Optional[TradingBotOperator] = None) -> None:
+    def __init__(self, bot_operator: TradingBotOperator | None = None) -> None:
         self.bot_operator = bot_operator or TradingBotOperator()
 
-    def monitor_advisories(self, limit: int = 50) -> Dict[str, Any]:
+    def monitor_advisories(self, limit: int = 50) -> dict[str, Any]:
         """Fetch recent advisory log and detect contested decisions (REJECT + confidence > 0.70)."""
         recent_data = self.bot_operator.get_advisory_recent(limit=limit)
         advisories = recent_data.get("advisories", recent_data.get("recent_advisories", []))
         if isinstance(recent_data, list):
             advisories = recent_data
 
-        contested_list: List[ContestedAdvisory] = []
+        contested_list: list[ContestedAdvisory] = []
         for a in advisories:
             verdict = str(a.get("verdict", "")).upper()
             confidence = float(a.get("confidence", 0.0))
@@ -108,7 +103,7 @@ class AdvisorySupervisorSkill(BaseSkill):
             "summary": summary,
         }
 
-    def morning_trading_briefing(self) -> Dict[str, Any]:
+    def morning_trading_briefing(self) -> dict[str, Any]:
         """Compose a spoken briefing combining bot status, advisory summary, open positions, and equity."""
         bot_status = self.bot_operator.get_bot_status()
         advisory_summary = self.bot_operator.get_advisory_summary()
@@ -149,7 +144,7 @@ class AdvisorySupervisorSkill(BaseSkill):
             "status": bot_status.status,
         }
 
-    def explain_advisory(self, decision_id: str) -> Dict[str, Any]:
+    def explain_advisory(self, decision_id: str) -> dict[str, Any]:
         """Fetch and explain a specific advisory decision in plain language."""
         clean_id = decision_id.strip()
         recent_data = self.bot_operator.get_advisory_recent(limit=50)
@@ -223,15 +218,15 @@ class AdvisorySupervisorSkill(BaseSkill):
     def execute(
         self,
         user_request: str,
-        agent: Optional[Any] = None,
-        tool_registry: Optional[Any] = None,
-        llm_provider: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        agent: Any | None = None,
+        tool_registry: Any | None = None,
+        llm_provider: Any | None = None,
+        authorizer: Any | None = None,
         **kwargs: Any,
     ) -> SkillExecutionResult:
         """Executes advisory supervision queries and briefings."""
         clean_req = user_request.strip().lower()
-        step_results: List[Dict[str, Any]] = []
+        step_results: list[dict[str, Any]] = []
 
         try:
             # 1. Trading Morning Briefing
@@ -277,7 +272,7 @@ class AdvisorySupervisorSkill(BaseSkill):
                             f"  *AI Recommended:* {c['recommendation']}\n"
                             f"  *Bot Safety Gate Rejection:* {c['rejection_reason']}"
                         )
-                    output = f"**Contested AI-Universe Advisories (High AI Confidence >70% Blocked by Bot Safety Gates):**\n\n" + "\n\n".join(lines)
+                    output = "**Contested AI-Universe Advisories (High AI Confidence >70% Blocked by Bot Safety Gates):**\n\n" + "\n\n".join(lines)
 
                 return SkillExecutionResult(
                     skill_name=self.name,

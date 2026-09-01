@@ -10,12 +10,11 @@ Provides testable, deterministic heuristics to ensure:
 from __future__ import annotations
 
 import re
-from typing import Set
 
 from friday.core.types import Message, Role
 
 # Common greetings and conversational pleasantries (exact match or prefix)
-GREETINGS: Set[str] = {
+GREETINGS: set[str] = {
     "hi",
     "hello",
     "hey",
@@ -34,7 +33,7 @@ GREETINGS: Set[str] = {
 }
 
 # Trivial acknowledgements
-ACKNOWLEDGEMENTS: Set[str] = {
+ACKNOWLEDGEMENTS: set[str] = {
     "ok",
     "okay",
     "thanks",
@@ -53,7 +52,7 @@ ACKNOWLEDGEMENTS: Set[str] = {
 }
 
 # Simple one-word commands
-TRIVIAL_COMMANDS: Set[str] = {
+TRIVIAL_COMMANDS: set[str] = {
     "stop",
     "stop.",
     "cancel",

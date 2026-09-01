@@ -1,16 +1,18 @@
-# -*- coding: utf-8 -*-
 """Unit tests for FRIDAY TradingBotOperator Skill and AI Universe Integration."""
 
 import json
 from unittest.mock import MagicMock, patch
+
 import pytest
 
-from friday.core.types import AuthorizationDecision, AuthorizationResponse, SafetyLevel
-from friday.skills.trading_bot_operator import BotStatus, TradingBotOperator
+from friday.core.types import AuthorizationDecision, AuthorizationResponse
+from friday.integrations.ai_universe_provider import (
+    AIUniverseTradingConsultant,
+    TradingConsultationResult,
+)
 from friday.skills.registry import SkillRegistry
-from friday.integrations.ai_universe_provider import AIUniverseTradingConsultant, TradingConsultationResult
+from friday.skills.trading_bot_operator import BotStatus, TradingBotOperator
 from friday.tools.ai_universe_client import AIUniverseResponse
-
 
 MOCK_STATUS_PAYLOAD = {
     "status": "ACTIVE",

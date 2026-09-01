@@ -2,8 +2,10 @@
 
 import json
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 import httpx
+
 from friday.core.exceptions import LLMProviderError
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role, ToolCall
@@ -17,7 +19,7 @@ class OpenAILLMProvider(BaseLLMProvider):
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         base_url: str = "https://api.openai.com/v1",
         model: str = "gpt-4o-mini",
         temperature: float = 0.7,
@@ -35,8 +37,8 @@ class OpenAILLMProvider(BaseLLMProvider):
 
     def generate(
         self,
-        messages: List[Message],
-        tools: Optional[List[Dict[str, Any]]] = None,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None = None,
     ) -> Message:
         """Call the chat completions endpoint."""
         url = f"{self.base_url}/chat/completions"
@@ -46,7 +48,7 @@ class OpenAILLMProvider(BaseLLMProvider):
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "model": self.model,
             "messages": [m.to_provider_dict() for m in messages],
             "temperature": self.temperature,
@@ -142,7 +144,7 @@ class OpenAILLMProvider(BaseLLMProvider):
 
         # Parse tool calls if any
         tool_calls_raw = choice_msg.get("tool_calls")
-        tool_calls: Optional[List[ToolCall]] = None
+        tool_calls: list[ToolCall] | None = None
 
         if tool_calls_raw:
             tool_calls = []

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for FRIDAY Ecosystem-Wide Kill Switch & Emergency Playbooks."""
 
 import pytest

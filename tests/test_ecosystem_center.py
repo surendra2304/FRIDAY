@@ -1,11 +1,13 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for FRIDAY Unified Ecosystem Command Center."""
 
 import pytest
 
 from friday.ecosystem.command_router import EcosystemCommandRouter, SubsystemRoute
-from friday.ecosystem.cross_orchestrator import CrossBuildTemplate, CrossSystemOrchestrator
-from friday.ecosystem.registry import EcosystemRegistry, SubsystemEntry
+from friday.ecosystem.cross_orchestrator import (
+    CrossBuildTemplate,
+    CrossSystemOrchestrator,
+)
+from friday.ecosystem.registry import EcosystemRegistry
 from friday.skills.ecosystem_status import EcosystemStatusSkill
 from friday.skills.forge_manager import ForgeManagerSkill
 from friday.ui.ecosystem_panel import EcosystemDashboardPanel

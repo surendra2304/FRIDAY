@@ -1,14 +1,12 @@
-# -*- coding: utf-8 -*-
 """Deterministic unit tests for Multimodal Screen Perception.5 Vision Memory & FTS/Embedding Fallback."""
 
-import os
-from unittest import mock
-import pytest
 
-from friday.core.types import Message, Role
 from friday.memory.sqlite import SQLiteConversationMemory
 from friday.vision.screen_context import ScreenContext
-from friday.vision.vision_memory import VisionMemoryManager, redact_sensitive_visual_text
+from friday.vision.vision_memory import (
+    VisionMemoryManager,
+    redact_sensitive_visual_text,
+)
 
 
 def test_redact_sensitive_visual_text():

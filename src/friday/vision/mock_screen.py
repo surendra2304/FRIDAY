@@ -1,9 +1,8 @@
-# -*- coding: utf-8 -*-
 """Mock screen capture provider for deterministic offline testing and fixture isolation."""
 
 import struct
-from typing import Any, Dict, List, Optional
 import zlib
+from typing import Any
 
 from friday.vision.screen_base import BaseScreenCaptureProvider, ScreenSnapshot
 
@@ -39,16 +38,16 @@ class MockScreenCaptureProvider(BaseScreenCaptureProvider):
         self.width = width
         self.height = height
         self.synthetic_color = synthetic_color
-        self.call_history: List[Dict[str, Any]] = []
+        self.call_history: list[dict[str, Any]] = []
         self.should_fail: bool = False
         self.failure_error: str = "Mock screen capture simulated error"
-        self._custom_image_bytes: Optional[bytes] = None
+        self._custom_image_bytes: bytes | None = None
 
     def set_mock_image(self, image_data: bytes) -> None:
         """Set explicit image bytes to return on capture."""
         self._custom_image_bytes = image_data
 
-    def list_displays(self) -> List[Dict[str, Any]]:
+    def list_displays(self) -> list[dict[str, Any]]:
         """Return synthetic display list."""
         if hasattr(self, "_displays") and self._displays is not None:
             return self._displays

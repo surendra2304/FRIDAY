@@ -1,8 +1,6 @@
-# -*- coding: utf-8 -*-
 """Unit tests for FRIDAY's Autonomous Think Loop, Inner Monologue Scratchpad, and Self-Correction Loop."""
 
-from typing import Any, Dict, List, Optional
-import pytest
+from typing import Any
 
 from friday.agent.agent import FridayAgent, strip_thought_tags
 from friday.agent.prompts import get_default_system_prompt
@@ -118,7 +116,7 @@ def test_agent_inner_monologue_scratchpad_logged_and_stripped():
     """Agent records <thought> in scratchpad and presents clean output to user."""
     call_count = 0
 
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -148,7 +146,7 @@ def test_agent_self_correction_loop_recovers_after_tool_error():
     call_count = 0
     received_system_feedback = []
 
-    def mock_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def mock_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -202,7 +200,7 @@ def test_agent_self_correction_loop_respects_max_3_retries():
     reg.register(always_failing_tool)
 
     # Responder that endlessly tries the failing tool
-    def endless_failing_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def endless_failing_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         return Message(
             role=Role.ASSISTANT,
             content="<thought>Trying to access secured resource.</thought>",
@@ -228,7 +226,7 @@ def test_agent_autonomous_multi_step_tool_chaining():
     """Agent chains multiple SAFE tools autonomously without asking for permission on each step."""
     call_count = 0
 
-    def chaining_responder(messages: List[Message], tools: Optional[List[Dict[str, Any]]]) -> Message:
+    def chaining_responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
         nonlocal call_count
         call_count += 1
         if call_count == 1:

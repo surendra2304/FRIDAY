@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Backup and State Recovery System for FRIDAY Operating System.
 
 Provides automated resilience and point-in-time rollback:
@@ -8,13 +7,13 @@ Provides automated resilience and point-in-time rollback:
 4. Automatic 7-day rolling backup retention and rollback capability
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
 import json
 import os
-from pathlib import Path
 import threading
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -27,32 +26,32 @@ class BackupSnapshot:
     snapshot_id: str
     snapshot_type: str  # PERIODIC_6H, CONFIG_CHANGE, MANUAL
     timestamp: str
-    memory_state: Dict[str, Any]
-    registered_skills: List[str]
-    operator_states: Dict[str, Any]
-    user_preferences: Dict[str, Any]
-    config_summary: Dict[str, Any]
+    memory_state: dict[str, Any]
+    registered_skills: list[str]
+    operator_states: dict[str, Any]
+    user_preferences: dict[str, Any]
+    config_summary: dict[str, Any]
     size_bytes: int = 0
 
 
 class BackupRecoveryManager:
     """Manages periodic 6-hour snapshots, config backups, and 7-day rollbacks."""
 
-    def __init__(self, backup_dir: Optional[str] = None, retention_days: int = 7) -> None:
+    def __init__(self, backup_dir: str | None = None, retention_days: int = 7) -> None:
         self.backup_dir = Path(backup_dir or os.path.join("backups", "friday"))
         self.backup_dir.mkdir(parents=True, exist_ok=True)
         self.retention = timedelta(days=retention_days)
         self._lock = threading.RLock()
-        self._last_snapshot_time: Optional[datetime] = None
+        self._last_snapshot_time: datetime | None = None
 
     def create_snapshot(
         self,
         snapshot_type: str = "PERIODIC_6H",
-        memory_state: Optional[Dict[str, Any]] = None,
-        registered_skills: Optional[List[str]] = None,
-        operator_states: Optional[Dict[str, Any]] = None,
-        user_preferences: Optional[Dict[str, Any]] = None,
-        config_summary: Optional[Dict[str, Any]] = None,
+        memory_state: dict[str, Any] | None = None,
+        registered_skills: list[str] | None = None,
+        operator_states: dict[str, Any] | None = None,
+        user_preferences: dict[str, Any] | None = None,
+        config_summary: dict[str, Any] | None = None,
     ) -> BackupSnapshot:
         """Creates a complete state backup and persists it to disk."""
         with self._lock:
@@ -93,14 +92,14 @@ class BackupRecoveryManager:
             logger.info(f"[BACKUP_RECOVERY] Created snapshot {snap_id} ({snapshot.size_bytes} bytes)")
             return snapshot
 
-    def snapshot_on_config_change(self, config_data: Dict[str, Any]) -> BackupSnapshot:
+    def snapshot_on_config_change(self, config_data: dict[str, Any]) -> BackupSnapshot:
         """Triggered automatically when system configurations are updated."""
         return self.create_snapshot(
             snapshot_type="CONFIG_CHANGE",
             config_summary=config_data,
         )
 
-    def list_snapshots(self) -> List[Dict[str, Any]]:
+    def list_snapshots(self) -> list[dict[str, Any]]:
         """Lists all available snapshots within the 7-day rollback window."""
         with self._lock:
             snapshots = []
@@ -118,7 +117,7 @@ class BackupRecoveryManager:
                     logger.warning(f"[BACKUP_RECOVERY] Error reading snapshot {item}: {e}")
             return snapshots
 
-    def restore_snapshot(self, snapshot_id: str) -> Optional[Dict[str, Any]]:
+    def restore_snapshot(self, snapshot_id: str) -> dict[str, Any] | None:
         """Restores FRIDAY system state from a specified snapshot."""
         with self._lock:
             for item in self.backup_dir.glob("*.json"):

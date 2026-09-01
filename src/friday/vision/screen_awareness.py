@@ -1,13 +1,12 @@
-# -*- coding: utf-8 -*-
 """Controlled background screen awareness controller.
 
 Orchestrates periodic screen captures, enforces throttle windows, filters unchanged screens
 with ScreenChangeDetector, and performs request deduplication to avoid redundant Gemini calls.
 """
 
-from datetime import datetime, timezone
 import time
-from typing import Any, Dict, Optional
+from datetime import datetime, timezone
+from typing import Any
 
 from friday.core.config import get_settings
 from friday.core.logging import get_logger
@@ -25,11 +24,11 @@ class ScreenAwarenessController:
 
     def __init__(
         self,
-        capture_provider: Optional[BaseScreenCaptureProvider] = None,
-        vision_provider: Optional[BaseVisionProvider] = None,
-        enabled: Optional[bool] = None,
-        interval_seconds: Optional[float] = None,
-        change_threshold: Optional[float] = None,
+        capture_provider: BaseScreenCaptureProvider | None = None,
+        vision_provider: BaseVisionProvider | None = None,
+        enabled: bool | None = None,
+        interval_seconds: float | None = None,
+        change_threshold: float | None = None,
     ) -> None:
         settings = get_settings()
         self.enabled = getattr(settings, "screen_aware", False) if enabled is None else enabled
@@ -42,14 +41,14 @@ class ScreenAwarenessController:
         )
         self._change_detector = ScreenChangeDetector(change_threshold=self.change_threshold)
 
-        self.last_capture_time: Optional[float] = None
-        self.last_analysis_time: Optional[float] = None
-        self.last_context: Optional[ScreenContext] = None
+        self.last_capture_time: float | None = None
+        self.last_analysis_time: float | None = None
+        self.last_context: ScreenContext | None = None
         self.total_captures_evaluated: int = 0
         self.total_gemini_calls: int = 0
         self.total_unchanged_suppressed: int = 0
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """Return safe screen awareness operational status."""
         return {
             "enabled": self.enabled,
@@ -66,8 +65,8 @@ class ScreenAwarenessController:
         self,
         force: bool = False,
         display: str = "primary",
-        user_query: Optional[str] = None,
-    ) -> Optional[ScreenContext]:
+        user_query: str | None = None,
+    ) -> ScreenContext | None:
         """Process an awareness tick.
 
         Returns:

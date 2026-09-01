@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Enhanced Friday Doctor for 5-Subsystem Diagnostics and Automated Self-Healing.
 
 Comprehensive diagnostics covering all 5 ecosystem components:
@@ -12,12 +11,13 @@ Features automated healing actions (reconnect stale sockets, restart failed oper
 clear cache corruption) and pre-flight startup configuration verification.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import os
 import threading
-from typing import Any, Callable, Dict, List, Optional
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Any
 
+from friday.core.config import get_settings
 from friday.core.logging import get_logger
 from friday.ecosystem.registry import EcosystemRegistry, ecosystem_registry
 
@@ -30,23 +30,24 @@ class PreFlightCheckResult:
     is_ready_for_startup: bool
     checks_passed: int
     checks_total: int
-    details: Dict[str, bool]
-    recommendations: List[str] = field(default_factory=list)
+    details: dict[str, bool]
+    recommendations: list[str] = field(default_factory=list)
 
 
 @dataclass
 class DoctorDiagnosticReport:
     """Comprehensive 5-subsystem diagnostic audit."""
     overall_status: str  # HEALTHY, WARNING, CRITICAL
-    subsystem_reports: Dict[str, Dict[str, Any]]
-    healing_actions_taken: List[str]
+    subsystem_reports: dict[str, dict[str, Any]]
+    healing_actions_taken: list[str]
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class FridayDoctorEnhanced:
     """Enhanced multi-system medical officer for automated diagnostics and self-healing."""
 
-    def __init__(self, registry: Optional[EcosystemRegistry] = None) -> None:
+    def __init__(self, registry: EcosystemRegistry | None = None, settings: Any | None = None) -> None:
+        self.settings = settings or get_settings()
         self.registry = registry or ecosystem_registry
         self._lock = threading.RLock()
         self._stale_connections_healed = 0
@@ -59,7 +60,7 @@ class FridayDoctorEnhanced:
 
     def run_preflight_check(self) -> PreFlightCheckResult:
         """Audits environment and configurations prior to system boot."""
-        checks: Dict[str, bool] = {
+        checks: dict[str, bool] = {
             "python_runtime_valid": True,
             "security_encryption_available": True,
             "reports_directory_writable": os.access(".", os.W_OK),
@@ -93,8 +94,8 @@ class FridayDoctorEnhanced:
     def diagnose_and_heal(self) -> DoctorDiagnosticReport:
         """Runs health audit across all 6 components and executes automated healing."""
         with self._lock:
-            subsystem_reports: Dict[str, Dict[str, Any]] = {}
-            healing_actions: List[str] = []
+            subsystem_reports: dict[str, dict[str, Any]] = {}
+            healing_actions: list[str] = []
 
             # 1. FRIDAY Core
             subsystem_reports["friday_core"] = {
@@ -125,10 +126,10 @@ class FridayDoctorEnhanced:
                 "providers_online": 7,
             }
 
-            # 5. Cortex / Nexus Growth Engine
-            subsystem_reports["cortex"] = {
+            # 5. Nexus Growth Engine
+            subsystem_reports["nexus"] = {
                 "status": "HEALTHY",
-                "api_endpoint": getattr(self.settings, "nexus_base_url", "https://cortex-qifr.onrender.com"),
+                "api_endpoint": getattr(self.settings, "nexus_base_url", "http://localhost:8002"),
                 "policy_engine": "ACTIVE",
             }
 
@@ -138,27 +139,6 @@ class FridayDoctorEnhanced:
                 "api_endpoint": getattr(self.settings, "sentinel_base_url", "http://localhost:8003"),
                 "scope_enforcement": "ENFORCED",
                 "posture": "SECURE",
-            }
-
-            # 7. IntelX Research Engine
-            subsystem_reports["intelx"] = {
-                "status": "HEALTHY",
-                "api_endpoint": getattr(self.settings, "intelx_base_url", "https://intelx-3cz1.onrender.com"),
-                "knowledge_graph": "CONNECTED",
-            }
-
-            # 8. Futuris Forecasting Engine
-            subsystem_reports["futuris"] = {
-                "status": "HEALTHY",
-                "api_endpoint": getattr(self.settings, "futuris_base_url", "https://futuris-x4f4.onrender.com"),
-                "tensor_model": "CALIBRATED",
-            }
-
-            # 9. Memora Memory Engine
-            subsystem_reports["memora"] = {
-                "status": "HEALTHY",
-                "api_endpoint": getattr(self.settings, "memora_base_url", "https://memora-9zr9.onrender.com"),
-                "storage_backend": "TURSO_CLOUD_AWS_MUMBAI",
             }
 
             # Automated Healing Actions
@@ -195,19 +175,19 @@ class FridayDoctorEnhanced:
     # 3. Automated Healing Routines
     # =========================================================================
 
-    def heal_stale_connections(self) -> Optional[str]:
+    def heal_stale_connections(self) -> str | None:
         """Refreshes HTTP/gRPC client pools for idle subsystem sockets."""
         self._stale_connections_healed += 1
         logger.info("[FRIDAY_DOCTOR] Refreshed idle subsystem connection pools.")
         return "Refreshed idle HTTP sockets across all 4 managed subsystems."
 
-    def restart_failed_operators(self) -> Optional[str]:
+    def restart_failed_operators(self) -> str | None:
         """Detects stalled operators and re-initializes event loops."""
         self._operators_restarted += 1
         logger.info("[FRIDAY_DOCTOR] Verified and restarted any degraded persistent operators.")
         return "Audited all 12 persistent operators; confirmed active event loops."
 
-    def clear_corrupted_cache(self) -> Optional[str]:
+    def clear_corrupted_cache(self) -> str | None:
         """Cleanses expired or corrupted memory caches."""
         self._cache_purges += 1
         logger.info("[FRIDAY_DOCTOR] Purged expired TTL caches.")

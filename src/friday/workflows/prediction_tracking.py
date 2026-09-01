@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Prediction Tracking Workflow for FRIDAY.
 
 Tracks FRIDAY's operational use of Futuris predictions, verifies empirical accuracy upon outcome resolution,
@@ -9,10 +8,10 @@ feeds calibration data back into Futuris, and surfaces transparency trends to Su
 - Generates user-facing accuracy summary: "Futuris predictions used in your last 15 decisions were accurate 87% of the time"
 """
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import TrustLevel
@@ -29,12 +28,12 @@ class DecisionPredictionRecord:
     forecast_id: str
     target_metric: str
     point_estimate: float
-    confidence_interval: List[float]  # [lower, upper]
+    confidence_interval: list[float]  # [lower, upper]
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     resolved: bool = False
-    actual_value: Optional[float] = None
-    was_accurate: Optional[bool] = None  # True if actual_value landed in confidence_interval
-    resolution_time: Optional[str] = None
+    actual_value: float | None = None
+    was_accurate: bool | None = None  # True if actual_value landed in confidence_interval
+    resolution_time: str | None = None
     trust_level: str = TrustLevel.UNTRUSTED_EXTERNAL.value
 
 
@@ -42,7 +41,7 @@ class PredictionTrackingWorkflow:
     """Tracks and evaluates prediction utility and empirical accuracy."""
 
     def __init__(self) -> None:
-        self._records: Dict[str, DecisionPredictionRecord] = {}
+        self._records: dict[str, DecisionPredictionRecord] = {}
         self._lock = threading.RLock()
         self._init_mock_history()
 
@@ -81,7 +80,7 @@ class PredictionTrackingWorkflow:
         forecast_id: str,
         target_metric: str,
         point_estimate: float,
-        confidence_interval: List[float],
+        confidence_interval: list[float],
     ) -> str:
         """Records a new operational decision that used a Futuris prediction as input."""
         with self._lock:
@@ -103,7 +102,7 @@ class PredictionTrackingWorkflow:
         self,
         record_id: str,
         actual_value: float,
-    ) -> Optional[DecisionPredictionRecord]:
+    ) -> DecisionPredictionRecord | None:
         """Resolves a decision with realized outcome and determines accuracy."""
         with self._lock:
             rec = self._records.get(record_id)
@@ -124,7 +123,7 @@ class PredictionTrackingWorkflow:
             )
             return rec
 
-    def get_accuracy_summary(self, last_n: int = 15) -> Dict[str, Any]:
+    def get_accuracy_summary(self, last_n: int = 15) -> dict[str, Any]:
         """Computes empirical accuracy across the last N resolved decisions."""
         with self._lock:
             resolved = [r for r in self._records.values() if r.resolved][-last_n:]

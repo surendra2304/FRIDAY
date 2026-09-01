@@ -3,12 +3,10 @@
 import asyncio
 import io
 from types import SimpleNamespace
-from unittest import mock
 
 import pytest
 
 from friday.tools.builtin.type_text import TypeTextTool, _escape_literal
-
 
 # ---------------------------------------------------------------------------
 # TypeTextTool
@@ -165,7 +163,8 @@ def test_cli_voice_uses_printer_stdin_thread_and_echo_mute():
 def test_cli_exposes_action_audit_command():
     import inspect
 
-    from friday.cli.main import main as cli_main, print_action_audit
+    from friday.cli.main import main as cli_main
+    from friday.cli.main import print_action_audit
 
     source = inspect.getsource(cli_main)
     audit_source = inspect.getsource(print_action_audit)
@@ -185,7 +184,6 @@ async def test_stdin_listener_sends_text_to_session():
         async def send_text(self, text):
             sent.append(text)
 
-    import sys
 
     session = FakeSession()
     fake_stdin = io.StringIO("open notepad\n")
@@ -433,9 +431,8 @@ def test_cli_voice_override_message(monkeypatch, capsys):
     with _mock.patch(
         "friday.auth.credential_pool.GeminiCredentialPool.preflight_check",
         return_value={"status": "HEALTHY", "active_project": "PRIMARY"},
-    ):
-        with _mock.patch("friday.voice.gemini_live_session.GeminiLiveVoiceSession", mock_cls):
-            main()
+    ), _mock.patch("friday.voice.gemini_live_session.GeminiLiveVoiceSession", mock_cls):
+        main()
 
     out = capsys.readouterr().out
     assert "Voice mode enabled via CLI override" in out
@@ -519,8 +516,8 @@ def test_threshold_is_075(tmp_path, monkeypatch):
 def test_config_toggle_and_cli_flag_wiring():
     import inspect
 
-    from friday.core.config import Settings
     from friday.cli.main import main as cli_main
+    from friday.core.config import Settings
 
     assert Settings.model_fields["voice_biometrics_enabled"].default is False
     cli_src = inspect.getsource(cli_main)
@@ -587,7 +584,6 @@ async def test_sender_biometrics_gate_blocks_unrecognized_voice():
 async def test_enroll_voice_is_async_and_awaits_mic(tmp_path, monkeypatch, capsys):
     """enroll_voice must be a coroutine that awaits read_chunk (regression:
     the sync version raised 'coroutine never awaited' and recorded silence)."""
-    from unittest import mock as _mock
 
     from friday.security import voice_biometrics as vb
 

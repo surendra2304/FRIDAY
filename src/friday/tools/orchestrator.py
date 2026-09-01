@@ -1,5 +1,5 @@
-# -*- coding: utf-8 -*-
 from __future__ import annotations
+
 """Advanced Tool Orchestration, Dependency Chaining & Parameter Inference for FRIDAY.
 
 Provides:
@@ -14,13 +14,14 @@ Provides:
 - 100% provider-independent and testable offline.
 """
 
-from copy import deepcopy
 import json
 import re
-from typing import Any, Dict, List, Optional, Set, Tuple, TYPE_CHECKING
+from copy import deepcopy
+from typing import TYPE_CHECKING, Any
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel
+from friday.tools.base import BaseTool
 
 if TYPE_CHECKING:
     from friday.agent.planner import PlanStep, TaskPlan
@@ -37,17 +38,17 @@ class DataFlowResolver:
     @classmethod
     def resolve_parameters(
         cls,
-        parameters: Dict[str, Any],
-        step_results: Dict[str, Any],
+        parameters: dict[str, Any],
+        step_results: dict[str, Any],
         target_safety_level: SafetyLevel = SafetyLevel.SAFE,
-    ) -> Tuple[Dict[str, Any], Optional[str]]:
+    ) -> tuple[dict[str, Any], str | None]:
         """Resolve `{{step_id.key}}` or `{{step_id}}` templates using verified step results.
 
         Returns (resolved_params, error_message).
         """
         resolved = deepcopy(parameters)
 
-        def _resolve_value(val: Any) -> Tuple[Any, Optional[str]]:
+        def _resolve_value(val: Any) -> tuple[Any, str | None]:
             if isinstance(val, str):
                 match = cls.TEMPLATE_PATTERN.fullmatch(val.strip())
                 if match:
@@ -147,11 +148,11 @@ class ToolOrchestrator:
     """Computes DAG execution levels (waves) for parallel and sequential tool scheduling."""
 
     @classmethod
-    def compute_execution_batches(cls, plan: TaskPlan) -> List[List[PlanStep]]:
+    def compute_execution_batches(cls, plan: TaskPlan) -> list[list[PlanStep]]:
         """Group plan steps into sequential levels where steps in the same level can run concurrently."""
-        completed_ids: Set[str] = set()
+        completed_ids: set[str] = set()
         remaining_steps = [s for s in plan.steps]
-        batches: List[List[PlanStep]] = []
+        batches: list[list[PlanStep]] = []
 
         while remaining_steps:
             # Find all steps whose dependencies are all in completed_ids
@@ -178,8 +179,8 @@ class CapabilityRouter:
     def __init__(
         self,
         tool_registry: ToolRegistry,
-        tool_fallbacks: Optional[Dict[str, str]] = None,
-        capability_map: Optional[Dict[str, List[str]]] = None,
+        tool_fallbacks: dict[str, str] | None = None,
+        capability_map: dict[str, list[str]] | None = None,
     ) -> None:
         self.registry = tool_registry
         self.tool_fallbacks = tool_fallbacks or {}
@@ -193,7 +194,7 @@ class CapabilityRouter:
             "computer_control": ["propose_computer_action"],
         }
 
-    def register_capability(self, capability: str, tool_names: List[str]) -> None:
+    def register_capability(self, capability: str, tool_names: list[str]) -> None:
         """Map a logical capability to candidate tool implementations."""
         self.capability_map[capability] = tool_names
 
@@ -239,10 +240,10 @@ class CapabilityRouter:
     def route_capability(
         self,
         required_capability: str,
-        preferred_tool: Optional[str] = None,
+        preferred_tool: str | None = None,
         max_allowed_safety: SafetyLevel = SafetyLevel.SAFE,
-        available_tools_override: Optional[List[str]] = None,
-    ) -> Tuple[Optional[str], Optional[str]]:
+        available_tools_override: list[str] | None = None,
+    ) -> tuple[str | None, str | None]:
         """Route a capability to the best registered tool.
 
         Returns (selected_tool_name, routing_rationale).
@@ -257,7 +258,7 @@ class CapabilityRouter:
         if preferred_tool and preferred_tool not in candidates:
             candidates = [preferred_tool] + candidates
 
-        valid_tools: List[Tuple[str, float]] = []
+        valid_tools: list[tuple[str, float]] = []
 
         for tname in candidates:
             if available_tools_override is not None and tname not in available_tools_override:

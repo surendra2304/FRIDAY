@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Deterministic unit test suite for Computer Action Execution.6 Autonomous Failure Recovery & Strategy Adaptation.
 
 Validates:
@@ -14,12 +13,9 @@ Validates:
 10. Provider independence: Operates 100% offline with MockLLMProvider and zero external SDK dependencies.
 """
 
-from typing import Dict, List, Optional
-import pytest
 
-from friday.agent.agent import FridayAgent
-from friday.agent.executor import TaskExecutionEngine, TaskExecutionResult
-from friday.agent.planner import GoalDecomposer, PlanStep, StepStatus, TaskPlan
+from friday.agent.executor import TaskExecutionEngine
+from friday.agent.planner import GoalDecomposer, PlanStep, StepStatus
 from friday.agent.recovery import (
     AutonomousRecoveryManager,
     FailureAnalyzer,
@@ -28,9 +24,7 @@ from friday.agent.recovery import (
     RecoveryStrategy,
 )
 from friday.agent.state import TaskState
-from friday.agent.verification import VerificationResult, VerificationStatus
 from friday.core.auth import BaseAuthorizer
-from friday.core.config import Settings
 from friday.core.types import (
     AuthorizationDecision,
     AuthorizationRequest,
@@ -38,10 +32,7 @@ from friday.core.types import (
     SafetyLevel,
     ToolResult,
 )
-from friday.llm.mock_provider import MockLLMProvider
-from friday.memory.in_memory import InMemoryConversationMemory
 from friday.tools.base import BaseTool
-from friday.tools.builtin.system_info import SystemInfoTool
 from friday.tools.registry import ToolRegistry
 
 

@@ -1,9 +1,8 @@
-# -*- coding: utf-8 -*-
 """Mock Universe API Client for standalone testing and simulation (AI Universe Integration)."""
 
-from datetime import datetime, timezone
 import random
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timezone
+from typing import Any
 
 from friday.integrations.universe_api import (
     BaseUniverseAPI,
@@ -18,13 +17,13 @@ class MockUniverseClient(BaseUniverseAPI):
     """Mock implementation of BaseUniverseAPI returning simulated synthetic data."""
 
     def __init__(self) -> None:
-        self.active_world: Optional[WorldConfig] = None
-        self.agents: Dict[str, UniverseAgentConfig] = {}
+        self.active_world: WorldConfig | None = None
+        self.agents: dict[str, UniverseAgentConfig] = {}
         self.is_running: bool = False
         self.current_step: int = 0
-        self.simulation_logs: List[Dict[str, Any]] = []
+        self.simulation_logs: list[dict[str, Any]] = []
 
-    def create_world(self, config: Optional[WorldConfig] = None) -> WorldState:
+    def create_world(self, config: WorldConfig | None = None) -> WorldState:
         """Create and reset simulated world environment."""
         self.active_world = config or WorldConfig()
         self.agents.clear()
@@ -33,7 +32,7 @@ class MockUniverseClient(BaseUniverseAPI):
         self.simulation_logs.clear()
         return self.get_world_state()
 
-    def create_agent(self, agent_config: UniverseAgentConfig) -> Dict[str, Any]:
+    def create_agent(self, agent_config: UniverseAgentConfig) -> dict[str, Any]:
         """Add simulated agent entity to world."""
         if not self.active_world:
             self.create_world()
@@ -45,7 +44,7 @@ class MockUniverseClient(BaseUniverseAPI):
             "status": "active",
         }
 
-    def start_simulation(self, steps: Optional[int] = 100) -> WorldState:
+    def start_simulation(self, steps: int | None = 100) -> WorldState:
         """Simulate execution ticks across active agents."""
         if not self.active_world:
             self.create_world()

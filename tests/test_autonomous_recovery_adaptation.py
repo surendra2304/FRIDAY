@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive unit test suite for Cognitive Task Planning.6: Autonomous Failure Recovery & Strategy Adaptation.
 
 Tests:
@@ -14,13 +13,11 @@ Tests:
 10. Recovery confidence scoring and escalation flags.
 """
 
-import pytest
 
-from friday.agent.planner import PlanStep, StepStatus, TaskPlan
+from friday.agent.planner import PlanStep
 from friday.agent.recovery import (
     AutonomousRecoveryManager,
     FailureAnalyzer,
-    FailureDiagnosis,
     FailureType,
     RecoveryStrategy,
 )

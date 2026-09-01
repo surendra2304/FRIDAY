@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive unit test suite for Cognitive Task Planning.7: Task Interruption, Checkpointing & Resumption.
 
 Tests:
@@ -11,12 +10,8 @@ Tests:
 7. Sensitive data sanitization (API keys, passwords, base64 screenshots).
 """
 
-from datetime import datetime, timezone
-import os
-import pytest
-import tempfile
 
-from friday.agent.checkpoint import InterruptionReason, TaskCheckpoint, TaskCheckpointStore
+from friday.agent.checkpoint import InterruptionReason, TaskCheckpointStore
 from friday.agent.planner import PlanStep, StepStatus, TaskPlan
 from friday.agent.state import TaskState
 

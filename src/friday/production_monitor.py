@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Production Multi-System Monitor for Trading & AI Supervision.
 
 Polls all three core systems (Trading Bot, AI-Universe, FRIDAY OS) every 30 seconds,
@@ -6,15 +5,14 @@ tracks interdependencies, detects cascading failures, monitors resource usage,
 predicts emerging risks, and generates unified health reports.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import os
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any
 
 from friday.core.logging import get_logger
-from friday.core.types import Message, Role, TrustLevel
 from friday.skills.trading_bot_operator import TradingBotOperator
 
 logger = get_logger("production_monitor")
@@ -25,14 +23,14 @@ class SystemHealthReport:
     """Comprehensive snapshot of all monitored systems."""
     overall_status: str  # HEALTHY, DEGRADED, CRITICAL
     timestamp: str
-    trading_bot: Dict[str, Any]
-    ai_universe: Dict[str, Any]
-    friday_os: Dict[str, Any]
+    trading_bot: dict[str, Any]
+    ai_universe: dict[str, Any]
+    friday_os: dict[str, Any]
     active_alerts_count: int
-    cascading_failures: List[str]
-    predictive_warnings: List[str]
+    cascading_failures: list[str]
+    predictive_warnings: list[str]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "overall_status": self.overall_status,
             "timestamp": self.timestamp,
@@ -50,28 +48,28 @@ class ProductionMonitor:
 
     def __init__(
         self,
-        bot_operator: Optional[TradingBotOperator] = None,
-        alert_manager: Optional[Any] = None,
+        bot_operator: TradingBotOperator | None = None,
+        alert_manager: Any | None = None,
         poll_interval: float = 30.0,
-        memory: Optional[Any] = None,
+        memory: Any | None = None,
     ) -> None:
         self.bot_operator = bot_operator or TradingBotOperator()
         self.alert_manager = alert_manager
         self.poll_interval = poll_interval
         self.memory = memory
-        self._history: List[SystemHealthReport] = []
+        self._history: list[SystemHealthReport] = []
         self._lock = threading.RLock()
 
     def poll_all_systems(self) -> SystemHealthReport:
         """Polls Trading Bot, AI-Universe, and FRIDAY OS to generate a unified health report."""
         now_iso = datetime.now(timezone.utc).isoformat()
-        cascading_failures: List[str] = []
-        predictive_warnings: List[str] = []
+        cascading_failures: list[str] = []
+        predictive_warnings: list[str] = []
 
         # 1. Inspect Trading Bot Tier
         t0 = time.perf_counter()
         bot_status = "UNKNOWN"
-        bot_data: Dict[str, Any] = {}
+        bot_data: dict[str, Any] = {}
         try:
             bot_data = self.bot_operator.get_status()
             bot_latency_ms = (time.perf_counter() - t0) * 1000.0
@@ -83,7 +81,7 @@ class ProductionMonitor:
 
         # 2. Inspect AI-Universe Advisory Tier
         t1 = time.perf_counter()
-        ai_data: Dict[str, Any] = {}
+        ai_data: dict[str, Any] = {}
         try:
             adv_state = self.bot_operator.get_advisory_state()
             ai_latency_ms = (time.perf_counter() - t1) * 1000.0
@@ -163,7 +161,7 @@ class ProductionMonitor:
 
         return report
 
-    def get_latest_report(self) -> Optional[SystemHealthReport]:
+    def get_latest_report(self) -> SystemHealthReport | None:
         """Returns the most recent system health report."""
         with self._lock:
             return self._history[-1] if self._history else self.poll_all_systems()

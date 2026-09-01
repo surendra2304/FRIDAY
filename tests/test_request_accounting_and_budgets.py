@@ -1,22 +1,15 @@
-# -*- coding: utf-8 -*-
 """Comprehensive tests for Gemini Request Accounting, Token Tracking, and Multi-Level Budget Enforcement."""
 
+
 import pytest
-import time
-from unittest.mock import MagicMock, patch
 
 from friday.auth.request_accounting import (
     BudgetLimits,
-    BudgetExceededError,
     RequestAccountant,
-    RequestRecord,
 )
-from friday.auth.credential_pool import GeminiCredentialPool, FailureCategory
-from friday.core.exceptions import LLMProviderError
-from friday.vision.pipeline import PerceptionPipeline
 from friday.vision.mock_screen import MockScreenCaptureProvider, create_synthetic_png
 from friday.vision.mock_vision import MockVisionProvider
-from friday.vision.gemini_vision import GeminiVisionProvider
+from friday.vision.pipeline import PerceptionPipeline
 
 
 @pytest.fixture(autouse=True)

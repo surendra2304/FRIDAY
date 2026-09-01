@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Strategy Evolution Approval & Review Skill for FRIDAY.
 
 Provides interactive voice-driven evaluation and human approval workflow for evolved trading strategies:
@@ -12,14 +11,16 @@ Provides interactive voice-driven evaluation and human approval workflow for evo
 - "What have we learned from retired strategies?": Failure pattern analysis
 """
 
-import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.security.production_security import ProductionSecurityManager
 from friday.skills.base_skill import BaseSkill, SkillExecutionResult
 from friday.trading.evolution_history import EvolutionHistoryTracker
-from friday.trading.strategy_portfolio import StrategyLifecycleState, StrategyPortfolioManager
+from friday.trading.strategy_portfolio import (
+    StrategyLifecycleState,
+    StrategyPortfolioManager,
+)
 
 logger = get_logger("skills.evolution_approval")
 
@@ -53,9 +54,9 @@ class EvolutionApprovalSkill(BaseSkill):
 
     def __init__(
         self,
-        portfolio_manager: Optional[StrategyPortfolioManager] = None,
-        history_tracker: Optional[EvolutionHistoryTracker] = None,
-        security_manager: Optional[ProductionSecurityManager] = None,
+        portfolio_manager: StrategyPortfolioManager | None = None,
+        history_tracker: EvolutionHistoryTracker | None = None,
+        security_manager: ProductionSecurityManager | None = None,
     ) -> None:
         self._portfolio_manager = portfolio_manager
         self._history_tracker = history_tracker
@@ -82,17 +83,17 @@ class EvolutionApprovalSkill(BaseSkill):
     def execute(
         self,
         user_request: str,
-        agent: Optional[Any] = None,
-        tool_registry: Optional[Any] = None,
-        llm_provider: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        agent: Any | None = None,
+        tool_registry: Any | None = None,
+        llm_provider: Any | None = None,
+        authorizer: Any | None = None,
         **kwargs: Any,
     ) -> SkillExecutionResult:
         """Dispatches voice-driven evolution candidate review and approval queries."""
         clean = user_request.strip().lower()
         speaker_id = kwargs.get("speaker_id", "operator_surendra")
         voice_embedding = kwargs.get("voice_embedding")
-        step_results: List[Dict[str, Any]] = []
+        step_results: list[dict[str, Any]] = []
 
         candidate = self.portfolio_manager.get_latest_candidate()
         c_name = candidate.name if candidate else "Order_Flow_Imbalance"

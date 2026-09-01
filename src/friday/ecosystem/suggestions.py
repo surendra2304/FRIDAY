@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Intelligent Task Suggestions Engine for FRIDAY Ecosystem.
 
 Synthesizes trading performance metrics, FORGE historical build patterns,
@@ -7,7 +6,7 @@ and temporal schedules into actionable proactive suggestions for the operator.
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -22,7 +21,7 @@ class SuggestionItem:
     prompt: str
     rationale: str
     action_type: str
-    action_payload: Dict[str, Any] = field(default_factory=dict)
+    action_payload: dict[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -34,13 +33,13 @@ class EcosystemSuggestionsEngine:
 
     def generate_suggestions(
         self,
-        trading_data: Optional[Dict[str, Any]] = None,
-        nexus_data: Optional[Dict[str, Any]] = None,
-        forge_history: Optional[List[Dict[str, Any]]] = None,
-        current_time: Optional[datetime] = None,
-    ) -> List[SuggestionItem]:
+        trading_data: dict[str, Any] | None = None,
+        nexus_data: dict[str, Any] | None = None,
+        forge_history: list[dict[str, Any]] | None = None,
+        current_time: datetime | None = None,
+    ) -> list[SuggestionItem]:
         """Evaluates inputs and outputs targeted recommendations."""
-        suggestions: List[SuggestionItem] = []
+        suggestions: list[SuggestionItem] = []
         now = current_time or datetime.now(timezone.utc)
 
         # 1. Trading-Based Suggestions
@@ -54,7 +53,7 @@ class EcosystemSuggestionsEngine:
                         SuggestionItem(
                             suggestion_id=f"sug_trade_{self._counter:03d}",
                             category="TRADING",
-                            prompt=f"Supertrend underperforming, want a strategy analysis from AI-Universe?",
+                            prompt="Supertrend underperforming, want a strategy analysis from AI-Universe?",
                             rationale=f"Strategy '{name}' has a profit factor of {strat.get('profit_factor', 0.8):.2f}.",
                             action_type="consult_ai_universe_strategy",
                             action_payload={"strategy_name": name},

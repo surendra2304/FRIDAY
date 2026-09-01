@@ -1,17 +1,16 @@
-# -*- coding: utf-8 -*-
 """Unit tests for Multi-Agent Specialist System: BaseAgent, Registry, Decomposer, Router."""
 
 import asyncio
-from unittest import mock
-import pytest
 
 from friday.agents.base_agent import AgentTask, AgentTaskResult, BaseAgent
-from friday.agents.decomposer import DecomposedSubtask, DecompositionResult, TaskDecomposer
+from friday.agents.decomposer import (
+    DecomposedSubtask,
+    TaskDecomposer,
+)
 from friday.agents.registry import AgentRegistry
 from friday.agents.router import AgentRouter
-from friday.core.types import Message, Role, ToolCall, ToolResult
+from friday.core.types import Message, Role
 from friday.llm.base import BaseLLMProvider
-from friday.tools.registry import ToolRegistry
 
 
 class DummyLLM(BaseLLMProvider):

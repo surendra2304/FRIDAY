@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Production Supervisor Skill for FRIDAY.
 
 Integrates voice and text commands for production operations:
@@ -12,10 +11,9 @@ Integrates voice and text commands for production operations:
 """
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
-from friday.core.types import AuthorizationDecision, SafetyLevel, TrustLevel
 from friday.skills.base_skill import BaseSkill, SkillExecutionResult
 
 logger = get_logger("skills.production_supervisor")
@@ -49,10 +47,10 @@ class ProductionSupervisorSkill(BaseSkill):
 
     def __init__(
         self,
-        bot_operator: Optional[Any] = None,
-        alert_manager: Optional[Any] = None,
-        emergency_manager: Optional[Any] = None,
-        dashboard: Optional[Any] = None,
+        bot_operator: Any | None = None,
+        alert_manager: Any | None = None,
+        emergency_manager: Any | None = None,
+        dashboard: Any | None = None,
     ) -> None:
         self._bot_operator = bot_operator
         self._alert_manager = alert_manager
@@ -96,15 +94,15 @@ class ProductionSupervisorSkill(BaseSkill):
     def execute(
         self,
         user_request: str,
-        agent: Optional[Any] = None,
-        tool_registry: Optional[Any] = None,
-        llm_provider: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        agent: Any | None = None,
+        tool_registry: Any | None = None,
+        llm_provider: Any | None = None,
+        authorizer: Any | None = None,
         **kwargs: Any,
     ) -> SkillExecutionResult:
         """Dispatches natural language production operations commands."""
         clean_req = user_request.strip().lower()
-        step_results: List[Dict[str, Any]] = []
+        step_results: list[dict[str, Any]] = []
 
         try:
             # 1. Emergency Halt

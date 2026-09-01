@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Seven-System Ecosystem Integration Test Suite.
 
 Validates end-to-end multi-subsystem workflows across all 7 registered systems:
@@ -19,7 +18,6 @@ Tests:
 - EcosystemRegistry 7-system health and status validation
 """
 
-import pytest
 
 from friday.core.types import TrustLevel
 from friday.ecosystem.command_router import EcosystemCommandRouter, SubsystemRoute
@@ -28,10 +26,7 @@ from friday.ecosystem.emergency_controller import MasterEmergencyController
 from friday.ecosystem.registry import EcosystemRegistry
 from friday.memory.research_library import ResearchLibrary
 from friday.skills.ecosystem_status import EcosystemStatusSkill
-from friday.skills.intelx_manager import IntelXManagerSkill
-from friday.workflows.intelligence_briefing import IntelligenceBriefingWorkflow
 from friday.workflows.master_briefing import MasterDailyBriefingWorkflow
-from friday.workflows.research_coordination import ResearchCoordinationWorkflow
 
 
 def test_seven_system_registry_registration_and_health():

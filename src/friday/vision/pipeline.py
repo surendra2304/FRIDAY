@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Intelligent Multi-Stage Perception Pipeline for FRIDAY Vision Architecture.
 
 Provides:
@@ -11,10 +10,10 @@ Provides:
 7. Strict Prompt-Injection Isolation (treats on-screen text as passive, untrusted visual data).
 """
 
-from dataclasses import dataclass, field
 import hashlib
 import time
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from typing import Any
 
 from friday.auth.request_accounting import request_accountant
 from friday.core.logging import get_logger
@@ -44,7 +43,7 @@ class MonitorInfo:
     def contains_point(self, px: int, py: int) -> bool:
         return (self.x <= px < self.x + self.width) and (self.y <= py < self.y + self.height)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "monitor_id": self.monitor_id,
             "index": self.index,
@@ -64,13 +63,13 @@ class PerceptionResult:
     confidence: float
     is_stale: bool = False
     is_ambiguous: bool = False
-    ambiguity_reason: Optional[str] = None
+    ambiguity_reason: str | None = None
     prompt_injection_detected: bool = False
-    detected_injections: List[str] = field(default_factory=list)
-    active_monitor: Optional[MonitorInfo] = None
+    detected_injections: list[str] = field(default_factory=list)
+    active_monitor: MonitorInfo | None = None
     duration_ms: float = 0.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "screen_context": self.screen_context.to_dict(),
             "source": self.source,
@@ -107,9 +106,9 @@ class PerceptionPipeline:
 
     def __init__(
         self,
-        capture_provider: Optional[BaseScreenCaptureProvider] = None,
-        vision_provider: Optional[BaseVisionProvider] = None,
-        cache_manager: Optional[PerceptionCacheManager] = None,
+        capture_provider: BaseScreenCaptureProvider | None = None,
+        vision_provider: BaseVisionProvider | None = None,
+        cache_manager: PerceptionCacheManager | None = None,
         confidence_threshold: float = 0.70,
         change_threshold: float = 0.03,
         ttl_seconds: float = 30.0,
@@ -120,18 +119,18 @@ class PerceptionPipeline:
         self.change_threshold = change_threshold
         self.ttl_seconds = ttl_seconds
 
-        self._cached_context: Optional[ScreenContext] = None
-        self._cached_image_sha: Optional[str] = None
-        self._cached_image_bytes: Optional[bytes] = None
+        self._cached_context: ScreenContext | None = None
+        self._cached_image_sha: str | None = None
+        self._cached_image_bytes: bytes | None = None
         self._cached_at: float = 0.0
 
         self._last_action_timestamp: float = 0.0
         self._last_observation_timestamp: float = 0.0
 
     @property
-    def _monitors(self) -> List[MonitorInfo]:
+    def _monitors(self) -> list[MonitorInfo]:
         """Dynamically enumerate display monitors from capture provider."""
-        monitors: List[MonitorInfo] = []
+        monitors: list[MonitorInfo] = []
         displays = self.capture_provider.list_displays()
         for idx, disp in enumerate(displays):
             monitors.append(
@@ -164,7 +163,7 @@ class PerceptionPipeline:
     def should_perceive(
         self,
         task_goal: str,
-        current_context: Optional[ScreenContext] = None,
+        current_context: ScreenContext | None = None,
         force_refresh: bool = False,
     ) -> bool:
         """Determine whether visual perception is genuinely required for the current task."""
@@ -186,11 +185,11 @@ class PerceptionPipeline:
 
     def perceive(
         self,
-        query: Optional[str] = None,
-        target_roi: Optional[BoundingBox] = None,
+        query: str | None = None,
+        target_roi: BoundingBox | None = None,
         display: str = "primary",
         force_refresh: bool = False,
-        task_id: Optional[str] = None,
+        task_id: str | None = None,
     ) -> PerceptionResult:
         """Execute the perception pipeline with caching, local ROI check, and injection isolation."""
         start_time = time.perf_counter()
@@ -367,7 +366,7 @@ class PerceptionPipeline:
         from friday.vision.screen_analyzer import parse_vision_json_response
         parsed_data = parse_vision_json_response(vision_resp.text)
 
-        elements: List[UIElement] = []
+        elements: list[UIElement] = []
         for raw_el in parsed_data.get("ui_elements", []):
             try:
                 bbox_data = raw_el.get("bounding_box", {})
@@ -439,8 +438,8 @@ class PerceptionPipeline:
         self,
         snapshot: ScreenSnapshot,
         target_roi: BoundingBox,
-        query: Optional[str],
-    ) -> Optional[ScreenContext]:
+        query: str | None,
+    ) -> ScreenContext | None:
         """Perform lightweight local ROI extraction."""
         if target_roi.xmax <= target_roi.xmin or target_roi.ymax <= target_roi.ymin:
             return None
@@ -472,8 +471,8 @@ class PerceptionPipeline:
         screen_context: ScreenContext,
         source: str,
         confidence: float,
-        active_monitor: Optional[MonitorInfo],
-        query: Optional[str],
+        active_monitor: MonitorInfo | None,
+        query: str | None,
         start_time: float,
     ) -> PerceptionResult:
         """Audit for prompt injections, ambiguity, duplicate labels, and multi-monitor offsets."""

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Advanced Intent Router for FRIDAY Ecosystem.
 
 Decomposes complex compound natural language commands into discrete sub-intents
@@ -9,10 +8,10 @@ and extracts structured entities across four domains:
 - Time References: today, this week, last month, overnight, yesterday
 """
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
-import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -41,11 +40,11 @@ class ActionIntent(str, Enum):
 @dataclass
 class ExtractedEntities:
     """Structured entities extracted from natural language input."""
-    project_types: List[str] = field(default_factory=list)
-    trading_terms: List[str] = field(default_factory=list)
-    website_terms: List[str] = field(default_factory=list)
-    time_references: List[str] = field(default_factory=list)
-    raw_entities: Dict[str, Any] = field(default_factory=dict)
+    project_types: list[str] = field(default_factory=list)
+    trading_terms: list[str] = field(default_factory=list)
+    website_terms: list[str] = field(default_factory=list)
+    time_references: list[str] = field(default_factory=list)
+    raw_entities: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -63,7 +62,7 @@ class ParsedCompoundCommand:
     """Comprehensive decomposition of a user request."""
     original_command: str
     is_compound: bool
-    sub_intents: List[SubIntentPlan]
+    sub_intents: list[SubIntentPlan]
     global_entities: ExtractedEntities
 
 
@@ -123,7 +122,7 @@ class IntentRouter:
 
         # Split on conjunctions: ' and ', ' & ', ' while ', ' also ', ' then '
         segments = re.split(r"\s+(?:and|&|while|also|then)\s+", clean, flags=re.IGNORECASE)
-        sub_intents: List[SubIntentPlan] = []
+        sub_intents: list[SubIntentPlan] = []
 
         for seg in segments:
             seg_clean = seg.strip().lower()

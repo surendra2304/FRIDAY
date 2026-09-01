@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive unit test suite for Evidence-Based Verification.5: Visual Memory & Episodic Environmental Memory.
 
 Tests:
@@ -12,18 +11,13 @@ Tests:
 8. Cross-task isolation with task ID filtering.
 """
 
-from datetime import datetime, timezone
-import pytest
 
 from friday.memory.in_memory import InMemoryConversationMemory
 from friday.vision.episodic_memory import (
-    EpisodicEnvironmentalFact,
     EpisodicEnvironmentalMemoryManager,
     MemoryImportance,
-    redact_sensitive_visual_text,
 )
 from friday.vision.screen_context import ScreenContext
-from friday.vision.temporal import EnvironmentalChange, EnvironmentalChangeType
 
 
 # 1. Storing Derived Observations Without Screenshots

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Conversational Ecosystem Query Skill for FRIDAY.
 
 Enables fluid natural language queries spanning all four managed subsystems
@@ -6,11 +5,13 @@ Enables fluid natural language queries spanning all four managed subsystems
 (e.g., "Compare website leads to trading profits this week").
 """
 
-from typing import Any, Dict, List, Optional
-import re
+from typing import Any
 
 from friday.core.logging import get_logger
-from friday.ecosystem.intelligence_service import EcosystemIntelligenceService, ecosystem_intelligence
+from friday.ecosystem.intelligence_service import (
+    EcosystemIntelligenceService,
+    ecosystem_intelligence,
+)
 from friday.ecosystem.registry import EcosystemRegistry, ecosystem_registry
 from friday.skills.base_skill import BaseSkill, SkillExecutionResult
 
@@ -43,8 +44,8 @@ class ConversationalEcosystemQuery(BaseSkill):
 
     def __init__(
         self,
-        intelligence_service: Optional[EcosystemIntelligenceService] = None,
-        registry: Optional[EcosystemRegistry] = None,
+        intelligence_service: EcosystemIntelligenceService | None = None,
+        registry: EcosystemRegistry | None = None,
     ) -> None:
         self.intelligence_service = intelligence_service or ecosystem_intelligence
         self.registry = registry or ecosystem_registry
@@ -52,15 +53,15 @@ class ConversationalEcosystemQuery(BaseSkill):
     def execute(
         self,
         user_request: str,
-        agent: Optional[Any] = None,
-        tool_registry: Optional[Any] = None,
-        llm_provider: Optional[Any] = None,
-        authorizer: Optional[Any] = None,
+        agent: Any | None = None,
+        tool_registry: Any | None = None,
+        llm_provider: Any | None = None,
+        authorizer: Any | None = None,
         **kwargs: Any,
     ) -> SkillExecutionResult:
         """Executes conversational multi-subsystem inquiries."""
         clean = user_request.strip().lower()
-        step_results: List[Dict[str, Any]] = []
+        step_results: list[dict[str, Any]] = []
 
         try:
             status = self.registry.get_ecosystem_status()

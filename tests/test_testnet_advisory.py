@@ -1,7 +1,7 @@
-# -*- coding: utf-8 -*-
 """Validation Tests for Testnet Advisory Supervision."""
 
 from unittest.mock import MagicMock
+
 import pytest
 
 from friday.core.types import AuthorizationDecision, AuthorizationResponse, TrustLevel

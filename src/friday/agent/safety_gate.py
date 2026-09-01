@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Centralized Safety Gate & Risk Policy Enforcement for Autonomous Tasks.
 
 Provides:
@@ -13,7 +12,7 @@ Provides:
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from friday.agent.planner import PlanStep
 from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer
@@ -67,12 +66,12 @@ class AutonomousSafetyGate:
     def __init__(
         self,
         tool_registry: ToolRegistry,
-        authorizer: Optional[BaseAuthorizer] = None,
+        authorizer: BaseAuthorizer | None = None,
     ) -> None:
         self.registry = tool_registry
         self.authorizer = authorizer or DefaultSecureAuthorizer()
 
-    def classify_risk(self, step: PlanStep, tool: Optional[BaseTool] = None) -> TaskRiskLevel:
+    def classify_risk(self, step: PlanStep, tool: BaseTool | None = None) -> TaskRiskLevel:
         """Determine the risk classification level for a given task step."""
         # 1. Check for hard-blocked dangerous operations in description, tool name, or parameters
         text_payload = f"{step.description} {step.tool_name} {step.parameters}".lower()
@@ -96,9 +95,9 @@ class AutonomousSafetyGate:
 
     def validate_environment_freshness(
         self,
-        checkpoint_env_hash: Optional[str],
-        current_env_hash: Optional[str],
-    ) -> Tuple[bool, Optional[str]]:
+        checkpoint_env_hash: str | None,
+        current_env_hash: str | None,
+    ) -> tuple[bool, str | None]:
         """Verify that the desktop or UI environment has not changed since planning/checkpoint."""
         if not checkpoint_env_hash or not current_env_hash:
             return True, None
@@ -111,9 +110,9 @@ class AutonomousSafetyGate:
     def evaluate_step(
         self,
         step: PlanStep,
-        step_results: Optional[Dict[str, Any]] = None,
-        checkpoint_env_hash: Optional[str] = None,
-        current_env_hash: Optional[str] = None,
+        step_results: dict[str, Any] | None = None,
+        checkpoint_env_hash: str | None = None,
+        current_env_hash: str | None = None,
         allow_confirmation: bool = False,
     ) -> GateEvaluationResult:
         """Run complete centralized safety checks on a plan step prior to execution."""

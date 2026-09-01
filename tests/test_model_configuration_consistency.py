@@ -1,20 +1,17 @@
-# -*- coding: utf-8 -*-
 """Model-configuration consistency test suite.
 
 Fails if production source code in `src/` introduces legacy, deprecated,
 or unapproved Gemini models, or deviates from the authoritative configuration.
 """
 
-import ast
-from pathlib import Path
 import re
-import pytest
+from pathlib import Path
 
-from friday.core.config import Settings, get_settings
+from friday.core.config import Settings
 from friday.llm.gemini_provider import GeminiLLMProvider
+from friday.memory.embeddings.gemini import GeminiEmbeddingProvider
 from friday.vision.gemini_vision import GeminiVisionProvider
 from friday.voice.gemini_live_session import GeminiLiveVoiceSession
-from friday.memory.embeddings.gemini import GeminiEmbeddingProvider
 
 # Authoritative active model configuration
 AUTHORITATIVE_MODELS = {

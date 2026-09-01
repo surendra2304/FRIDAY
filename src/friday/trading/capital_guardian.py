@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Capital Level Guardian for FRIDAY Live Trading.
 
 Enforces disciplined capital tier progression (Level 1 Starter -> Level 2 Growth -> Level 3 Scale),
@@ -6,12 +5,11 @@ tracks clean-day counts (30+ days without risk breaches), generates cryptographi
 and verifies operator signatures before authorizing capital ceiling increases.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import hashlib
-import json
 import threading
-from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any
 
 from friday.core.logging import get_logger
 
@@ -78,7 +76,7 @@ class CapitalLevelGuardian:
         self.critical_incidents_count = critical_incidents_count
         self._lock = threading.RLock()
 
-    def get_level_status(self) -> Dict[str, Any]:
+    def get_level_status(self) -> dict[str, Any]:
         """Returns current capital level details and progression telemetry."""
         with self._lock:
             tier = self.TIERS.get(self.current_level, self.TIERS[1])
@@ -102,7 +100,7 @@ class CapitalLevelGuardian:
                 "progression_reason": eligibility["reason"],
             }
 
-    def evaluate_progression_eligibility(self) -> Dict[str, Any]:
+    def evaluate_progression_eligibility(self) -> dict[str, Any]:
         """Evaluates whether the system qualifies for the next capital tier upgrade."""
         with self._lock:
             if self.current_level >= 3:
@@ -151,7 +149,7 @@ class CapitalLevelGuardian:
                 "reason": reason,
             }
 
-    def generate_authorization_file_content(self, target_level: Optional[int] = None) -> str:
+    def generate_authorization_file_content(self, target_level: int | None = None) -> str:
         """Generates cryptographically structured authorization file content for manual operator signing."""
         with self._lock:
             lvl = target_level or (self.current_level + 1)
@@ -189,8 +187,8 @@ class CapitalLevelGuardian:
     def confirm_level_transition(
         self,
         target_level: int,
-        authorizer: Optional[Any] = None,
-    ) -> Dict[str, Any]:
+        authorizer: Any | None = None,
+    ) -> dict[str, Any]:
         """Upgrades capital tier upon authorized command."""
         with self._lock:
             if target_level not in self.TIERS:

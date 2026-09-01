@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Live Morning Briefing Workflow for FRIDAY.
 
 Generates comprehensive morning live operations briefings:
@@ -9,9 +8,9 @@ Generates comprehensive morning live operations briefings:
 - Active incidents and alert clearances
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.trading.live_operations import LiveOperationsCenter
@@ -46,9 +45,9 @@ class LiveMorningBriefingWorkflow:
 
     def __init__(
         self,
-        live_ops: Optional[LiveOperationsCenter] = None,
-        regime_detector: Optional[MarketRegimeDetector] = None,
-        incident_manager: Optional[Any] = None,
+        live_ops: LiveOperationsCenter | None = None,
+        regime_detector: MarketRegimeDetector | None = None,
+        incident_manager: Any | None = None,
     ) -> None:
         self._live_ops = live_ops
         self._regime_detector = regime_detector

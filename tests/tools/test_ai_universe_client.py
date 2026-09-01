@@ -1,14 +1,17 @@
-# -*- coding: utf-8 -*-
 """Unit tests for AI Universe Client (AI Universe Integration) with httpx mocking."""
 
-import os
 from unittest import mock
-import pytest
+
 import httpx
+import pytest
 
 from friday.core.verification import evaluate_ai_universe_response
 from friday.memory.in_memory import InMemoryConversationMemory
-from friday.tools.ai_universe_client import AIUniverseClient, AIUniverseResponse, AIUniverseTool
+from friday.tools.ai_universe_client import (
+    AIUniverseClient,
+    AIUniverseResponse,
+    AIUniverseTool,
+)
 
 
 @pytest.mark.anyio

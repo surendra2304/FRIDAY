@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive unit test suite for Goal Understanding: Autonomous Goal Understanding & Decomposition.
 
 Tests:
@@ -14,16 +13,13 @@ Tests:
 10. Provider independence with MockLLMProvider.
 """
 
-import pytest
 
 from friday.agent.goal import (
     Goal,
     GoalRequestType,
     GoalRiskLevel,
     GoalUnderstandingEngine,
-    SubGoal,
 )
-from friday.core.types import SafetyLevel
 from friday.llm.mock_provider import MockLLMProvider
 
 

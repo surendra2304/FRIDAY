@@ -1,8 +1,6 @@
-# -*- coding: utf-8 -*-
 """Screen Prediction and Context-Aware Workflow Suggestion Engine for FRIDAY."""
 
-import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel, ToolResult
@@ -17,9 +15,9 @@ class ScreenPredictionEngine:
     def __init__(self):
         pass
 
-    def analyze_screen_context(self, screen_text: str = "", active_window: str = "") -> List[Dict[str, str]]:
+    def analyze_screen_context(self, screen_text: str = "", active_window: str = "") -> list[dict[str, str]]:
         """Analyze visible screen content and generate proactive suggestions."""
-        suggestions: List[Dict[str, str]] = []
+        suggestions: list[dict[str, str]] = []
         text_lower = (screen_text or "").lower()
         win_lower = (active_window or "").lower()
 
@@ -81,7 +79,7 @@ class ScreenPredictionTool(BaseTool):
         },
     }
 
-    def __init__(self, engine: Optional[ScreenPredictionEngine] = None):
+    def __init__(self, engine: ScreenPredictionEngine | None = None):
         super().__init__()
         self.engine = engine or ScreenPredictionEngine()
 

@@ -41,8 +41,8 @@ FRIDAY is a modular, extensible, **Autonomous Multi-Agent AI Operating System** 
 - **Voice Email Workflow (`EmailDraftingWorkflow`)**: Composes professional emails from voice commands and securely delivers via SMTP with STARTTLS.
 - **Smart Home Integration**: Controls IoT lights, plugs, and switches via local REST APIs.
 
-### 📈 7. Algorithmic Trading Bot & Advisory Supervision (Binance Futures Testnet)
-- **Direct Trading Bot <-> AI-Universe Link**: The cloud-hosted trading engine (`https://algorithmic-trading-bot-fra.onrender.com`) queries AI-Universe directly on a schedule via `/v1/trading/consult`, logging all advice to `advisory_log.jsonl`.
+### 📈 7. Stratex Algorithmic Trading Platform & Advisory Supervision (Binance Futures Testnet)
+- **Direct Stratex <-> Inference Link**: The cloud-hosted trading engine (`https://stratex-ucjz.onrender.com`) queries Inference directly on a schedule via `/v1/trading/consult`, logging all advice to `advisory_log.jsonl`.
 - **FRIDAY as Supervisor (`AdvisorySupervisorSkill`)**: FRIDAY monitors the bot, inspects AI advisories, detects contested proposals (`verdict=REJECT` + `confidence > 0.7`), explains decisions in plain language, and generates trading morning briefings.
 - **Immutable Command Precedence**:
   $$\text{Safety Gates (Trading Bot)} > \text{FRIDAY Commands (Supervisor)} > \text{AI-Universe Recommendations (Advisor)}$$

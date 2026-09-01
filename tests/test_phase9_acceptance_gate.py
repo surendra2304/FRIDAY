@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive End-to-End Multimodal Acceptance Gate for Goal Understanding1.
 
 Validates the complete autonomous cognitive pipeline:
@@ -16,21 +15,21 @@ Validates the complete autonomous cognitive pipeline:
 12. 100% Provider-Independent Offline Mock Execution Guarantee
 """
 
-from datetime import datetime, timezone
 import json
 import time
+
 import pytest
 
 from friday.agent.agent import FridayAgent
-from friday.agent.checkpoint import InterruptionReason, TaskCheckpoint, TaskCheckpointStore
+from friday.agent.checkpoint import InterruptionReason, TaskCheckpointStore
 from friday.agent.executor import StepStatus, TaskExecutionEngine
-from friday.agent.goal import Goal, GoalRequestType, GoalRiskLevel, GoalUnderstandingEngine
+from friday.agent.goal import GoalRequestType, GoalRiskLevel, GoalUnderstandingEngine
 from friday.agent.planner import GoalDecomposer, PlanStep, TaskPlan
-from friday.agent.recovery import AutonomousRecoveryManager, FailureDiagnosis, FailureType, RecoveryStrategy
 from friday.agent.safety_gate import AutonomousSafetyGate, TaskRiskLevel
-from friday.agent.state import ReasoningStateMachine, TaskState
-from friday.agent.verification import StepVerifier, VerificationResult, VerificationStatus
-from friday.core.auth import AutoApproveAuthorizer, AutoDenyAuthorizer, DefaultSecureAuthorizer
+from friday.agent.state import TaskState
+from friday.core.auth import (
+    DefaultSecureAuthorizer,
+)
 from friday.core.config import Settings
 from friday.core.types import SafetyLevel, ToolResult
 from friday.llm.mock_provider import MockLLMProvider
@@ -38,11 +37,8 @@ from friday.memory.in_memory import InMemoryConversationMemory
 from friday.memory.task_context import ActiveTaskContext
 from friday.tasks.manager import LongRunningTaskManager, TaskLifecycleStatus
 from friday.tools.base import BaseTool
-from friday.tools.orchestrator import CapabilityRouter, DataFlowResolver, ToolOrchestrator
+from friday.tools.orchestrator import CapabilityRouter
 from friday.tools.registry import ToolRegistry
-from friday.vision.actions import ActionType, ComputerActionProposal, ProposalBuilder
-from friday.vision.ui_elements import BoundingBox, ElementType, UIElement
-from friday.vision.region_filter import LocalRegionPreFilter
 
 
 class MockSearchTool(BaseTool):
@@ -262,9 +258,9 @@ def test_long_running_background_task_governance(test_environment):
 # 6. Provider Independence: Verify 100% Mock Operation
 def test_multimodal_autonomous_provider_independence():
     """Verify entire Cognitive Task Planning cognitive stack operates offline with zero cloud SDK calls."""
+    import friday.agent.executor as exec_mod
     import friday.agent.goal as goal_mod
     import friday.agent.planner as plan_mod
-    import friday.agent.executor as exec_mod
     import friday.agent.safety_gate as gate_mod
     import friday.tools.orchestrator as orch_mod
 

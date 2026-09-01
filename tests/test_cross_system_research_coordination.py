@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Test Suite for Cross-System Research Coordination.
 
 Validates:
@@ -13,11 +12,10 @@ Validates:
    - All research context strictly carries TrustLevel.UNTRUSTED_EXTERNAL
 """
 
-from datetime import datetime, timezone, timedelta
-import pytest
+from datetime import datetime, timedelta, timezone
 
 from friday.core.types import TrustLevel
-from friday.memory.research_library import ResearchLibrary, ResearchArchiveEntry
+from friday.memory.research_library import ResearchArchiveEntry, ResearchLibrary
 from friday.skills.intelx_manager import IntelXManagerSkill
 from friday.skills.research_context import ResearchContextInjector
 from friday.workflows.research_coordination import ResearchCoordinationWorkflow

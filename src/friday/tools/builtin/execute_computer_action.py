@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Safe Win32 Computer Action Execution Tool for FRIDAY.
 
 Bridges ComputerActionProposal → ComputerActionExecutor with mandatory layered pre-execution guards:
@@ -21,7 +20,7 @@ Permanently blocked at Guard 4 regardless of mode:
 """
 
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 
 from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer
 from friday.core.logging import get_logger
@@ -120,7 +119,7 @@ class ExecuteComputerActionTool(BaseTool):
     def __init__(
         self,
         sandboxed: bool = True,
-        authorizer: Optional[BaseAuthorizer] = None,
+        authorizer: BaseAuthorizer | None = None,
         max_screen_age_seconds: float = _MAX_SCREEN_AGE_SECONDS,
     ) -> None:
         super().__init__()
@@ -147,7 +146,7 @@ class ExecuteComputerActionTool(BaseTool):
     # Guard helpers
     # ------------------------------------------------------------------
 
-    def _guard_authorization(self, token: str, intent: str) -> Optional[str]:
+    def _guard_authorization(self, token: str, intent: str) -> str | None:
         """Guard 1: Deserialize and verify an HMAC-signed ToolAuthorizationCapability.
 
         The caller must pass the JSON-serialized capability issued by
@@ -177,7 +176,7 @@ class ExecuteComputerActionTool(BaseTool):
         except Exception as exc:
             return f"Authorization check failed: {exc}"
 
-    def _guard_screen_freshness(self, screen_timestamp_iso: str) -> Optional[str]:
+    def _guard_screen_freshness(self, screen_timestamp_iso: str) -> str | None:
         """Guard 2: Ensure screen observation is recent enough to trust coordinates.
 
         Returns an error string on failure, None on success.
@@ -196,7 +195,7 @@ class ExecuteComputerActionTool(BaseTool):
         except Exception as exc:
             return f"Invalid screen_timestamp_iso format: {exc}"
 
-    def _guard_coordinates(self, act_enum: ActionType, x: Optional[int], y: Optional[int]) -> Optional[str]:
+    def _guard_coordinates(self, act_enum: ActionType, x: int | None, y: int | None) -> str | None:
         """Guard 3: Require coordinates for all spatial actions."""
         if act_enum in _SPATIAL_ACTIONS:
             if x is None or y is None:
@@ -210,11 +209,11 @@ class ExecuteComputerActionTool(BaseTool):
         self,
         act_enum: ActionType,
         intent: str,
-        x: Optional[int],
-        y: Optional[int],
-        text: Optional[str],
-        key: Optional[str],
-        delta_y: Optional[int],
+        x: int | None,
+        y: int | None,
+        text: str | None,
+        key: str | None,
+        delta_y: int | None,
     ) -> ComputerActionProposal:
         """Construct a proposal from execution parameters (no OS effect)."""
         if act_enum in (ActionType.CLICK, ActionType.DOUBLE_CLICK, ActionType.RIGHT_CLICK):
@@ -261,11 +260,11 @@ class ExecuteComputerActionTool(BaseTool):
         intent: str,
         screen_timestamp_iso: str,
         authorization_token: str,
-        x: Optional[int] = None,
-        y: Optional[int] = None,
-        text: Optional[str] = None,
-        key: Optional[str] = None,
-        delta_y: Optional[int] = None,
+        x: int | None = None,
+        y: int | None = None,
+        text: str | None = None,
+        key: str | None = None,
+        delta_y: int | None = None,
         **kwargs: Any,
     ) -> ToolResult:
         """Execute a computer action through five mandatory pre-execution guards."""

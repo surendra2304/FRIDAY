@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Local Text, Region-of-Interest (ROI) Slicing & Perceptual Pre-Filtering for Evidence-Based Verification.4 (Quota Saver).
 
 Provides offline, lightweight, deterministic image region slicing, perceptual ROI hashing,
@@ -18,12 +17,12 @@ Core Capabilities:
    as verified factual TaskObservations with secret redaction and zero raw screenshot persistence.
 """
 
-from dataclasses import dataclass
-from enum import Enum
 import hashlib
 import struct
-from typing import Any, Dict, List, Optional, Tuple
 import zlib
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any
 
 import numpy as np
 
@@ -51,7 +50,7 @@ class ROIAnalysisResult:
     """Structured result of a localized region analysis."""
     roi_id: str
     bounding_box: BoundingBox
-    pixel_rect: Tuple[int, int, int, int]  # (xmin, ymin, xmax, ymax)
+    pixel_rect: tuple[int, int, int, int]  # (xmin, ymin, xmax, ymax)
     image_bytes: bytes
     image_sha256: str
     text_density: TextDensityLevel
@@ -59,7 +58,7 @@ class ROIAnalysisResult:
     has_changed: bool = False
     change_ratio: float = 0.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "roi_id": self.roi_id,
             "bounding_box": self.bounding_box.to_dict(),
@@ -73,7 +72,7 @@ class ROIAnalysisResult:
         }
 
 
-def decode_png_to_rgba(png_bytes: bytes) -> Tuple[np.ndarray, int, int]:
+def decode_png_to_rgba(png_bytes: bytes) -> tuple[np.ndarray, int, int]:
     """Decode raw PNG image bytes to an RGBA numpy array without PIL or external heavy dependencies.
     
     Supports standard 8-bit RGBA (type 6) and RGB (type 2) uncompressed/compressed streams.
@@ -196,9 +195,9 @@ def encode_rgba_to_png(img_arr: np.ndarray) -> bytes:
 def crop_image_region(
     png_bytes: bytes,
     bounding_box: BoundingBox,
-    image_width: Optional[int] = None,
-    image_height: Optional[int] = None,
-) -> Tuple[bytes, Tuple[int, int, int, int]]:
+    image_width: int | None = None,
+    image_height: int | None = None,
+) -> tuple[bytes, tuple[int, int, int, int]]:
     """Crop a sub-region from PNG bytes using normalized coordinates (0-1000).
     
     Returns:
@@ -221,7 +220,7 @@ def crop_image_region(
     return cropped_png, (xmin, ymin, xmax, ymax)
 
 
-def estimate_local_text_density(img_arr: np.ndarray) -> Tuple[TextDensityLevel, float]:
+def estimate_local_text_density(img_arr: np.ndarray) -> tuple[TextDensityLevel, float]:
     """Estimate local text density and visual complexity using spatial gradient & variance heuristics.
     
     Returns:
@@ -270,16 +269,16 @@ class LocalRegionPreFilter:
 
     def __init__(self, change_threshold: float = 0.05) -> None:
         self.change_threshold = change_threshold
-        self._roi_hashes: Dict[str, str] = {}
-        self._roi_last_bytes: Dict[str, bytes] = {}
+        self._roi_hashes: dict[str, str] = {}
+        self._roi_last_bytes: dict[str, bytes] = {}
 
     def slice_and_evaluate_roi(
         self,
         png_bytes: bytes,
         bounding_box: BoundingBox,
         roi_id: str,
-        image_width: Optional[int] = None,
-        image_height: Optional[int] = None,
+        image_width: int | None = None,
+        image_height: int | None = None,
     ) -> ROIAnalysisResult:
         """Slice an ROI, evaluate its perceptual difference against prior state, and estimate text density."""
         cropped_bytes, pixel_rect = crop_image_region(
@@ -328,8 +327,8 @@ class LocalRegionPreFilter:
     def evaluate_multiple_rois(
         self,
         png_bytes: bytes,
-        rois: Dict[str, BoundingBox],
-    ) -> Dict[str, ROIAnalysisResult]:
+        rois: dict[str, BoundingBox],
+    ) -> dict[str, ROIAnalysisResult]:
         """Evaluate a dictionary of labelled ROIs across the screen."""
         results = {}
         for roi_id, bbox in rois.items():
@@ -349,7 +348,7 @@ class VisualDeltaTaskContextFeeder:
     def feed_environmental_delta(
         task_context: ActiveTaskContext,
         step_id: str,
-        changes: List[EnvironmentalChange],
+        changes: list[EnvironmentalChange],
         source_tool: str = "visual_perception",
     ) -> int:
         """Record verified environmental state changes as TaskObservations in ActiveTaskContext.

@@ -1,7 +1,7 @@
-# -*- coding: utf-8 -*-
 """Advisory Watchdog Operator Validation Tests."""
 
 from unittest.mock import MagicMock
+
 import pytest
 
 from friday.core.types import TrustLevel

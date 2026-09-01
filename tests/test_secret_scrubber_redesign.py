@@ -1,14 +1,12 @@
-# -*- coding: utf-8 -*-
 """Unit and integration tests for the unified Secret Scrubber redesign."""
 
 import logging
 import sqlite3
-import pytest
-from friday.security.scrubber import redact_secrets, global_scrubber
-from friday.core.exceptions import FridayError
-from friday.core.types import ToolResult, Message, Role, SafetyLevel
-from friday.memory.sqlite import SQLiteConversationMemory
 
+from friday.core.exceptions import FridayError
+from friday.core.types import Message, Role, SafetyLevel, ToolResult
+from friday.memory.sqlite import SQLiteConversationMemory
+from friday.security.scrubber import global_scrubber, redact_secrets
 
 # Direct test vectors for different credential formats
 SECRET_TEST_CASES = [

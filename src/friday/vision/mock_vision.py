@@ -1,7 +1,7 @@
-# -*- coding: utf-8 -*-
 """Deterministic mock vision provider for offline testing and fixture isolation."""
 
-from typing import Any, Dict, List
+from typing import Any
+
 from friday.vision.base import BaseVisionProvider, VisionAnalysisResult
 
 
@@ -15,8 +15,8 @@ class MockVisionProvider(BaseVisionProvider):
     ) -> None:
         self.default_response = default_response
         self.model = model
-        self.call_history: List[Dict[str, Any]] = []
-        self.custom_responses: Dict[str, str] = {}
+        self.call_history: list[dict[str, Any]] = []
+        self.custom_responses: dict[str, str] = {}
         self.should_fail: bool = False
         self.failure_error: str = "Mock vision provider simulated error"
 

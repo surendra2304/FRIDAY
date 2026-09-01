@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive unit test suite for Evidence-Based Verification.3: Temporal & Environmental Context.
 
 Tests:
@@ -12,15 +11,11 @@ Tests:
 8. Quota protection via deduplication & delta evaluation.
 """
 
-from datetime import datetime, timezone
-import pytest
 
 from friday.vision.screen_context import ScreenContext
 from friday.vision.temporal import (
-    EnvironmentalChange,
     EnvironmentalChangeType,
     TemporalEnvironmentTracker,
-    TemporalObservation,
 )
 from friday.vision.ui_elements import BoundingBox, ElementType, UIElement
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Comprehensive Third-Generation Red Team Adversarial Security Audit.
 
 Assaults:
@@ -11,25 +10,20 @@ Assaults:
 7. Quota-Exhaustion & Cancellation Race Attacks: Concurrently cancelling during deep provider retry loops.
 """
 
-import base64
-import json
-import pytest
-from unittest import mock
 
 from friday.agent.agent import FridayAgent
 from friday.agent.checkpoint import TaskCheckpointStore
-from friday.agent.executor import StepStatus, TaskExecutionEngine
+from friday.agent.executor import StepStatus
 from friday.agent.planner import PlanStep, TaskPlan
-from friday.agent.state import ReasoningStateMachine, TaskState
+from friday.agent.state import TaskState
 from friday.core.auth import DefaultSecureAuthorizer, SafetyLevel
-from friday.core.types import Message, Role, SafetyLevel as TypesSafetyLevel, ToolCall, TrustLevel
+from friday.core.types import Message, Role, ToolCall, TrustLevel
 from friday.llm.mock_provider import MockLLMProvider
-from friday.memory.in_memory import InMemoryConversationMemory
 from friday.memory.policies import should_embed_message
 from friday.memory.sqlite import SQLiteConversationMemory
 from friday.tools.base import BaseTool, ToolResult
 from friday.tools.registry import ToolRegistry
-from friday.vision.mock_screen import MockScreenCaptureProvider, create_synthetic_png
+from friday.vision.mock_screen import MockScreenCaptureProvider
 from friday.vision.mock_vision import MockVisionProvider
 from friday.vision.pipeline import PerceptionPipeline
 
