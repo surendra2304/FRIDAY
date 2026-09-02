@@ -340,7 +340,7 @@ if __name__ == "__main__":
     benchmark_results = run_all_benchmarks()
     report = generate_markdown_report(benchmark_results)
 
-    with open("performance_report.md", "w", encoding="utf-8") as f:
+    with open("docs/reports/performance_report.md", "w", encoding="utf-8") as f:
         f.write(report)
 
-    print("\nBenchmark report successfully written to performance_report.md")
+    print("\nBenchmark report successfully written to docs/reports/performance_report.md")

@@ -596,7 +596,9 @@ def test_genuine_real_world_acceptance_matrix():
     runner = GenuineAcceptanceRunner()
     results = runner.run_all()
 
-    report_file = Path(__file__).resolve().parent.parent / "real_world_acceptance_report.md"
+    # Write output to the reports directory
+    report_file = Path(__file__).resolve().parent.parent / "docs" / "reports" / "real_world_acceptance_report.md"
+    report_file.parent.mkdir(parents=True, exist_ok=True)
     runner.generate_markdown_report(report_file)
 
     # Invariants:

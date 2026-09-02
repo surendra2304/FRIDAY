@@ -42,7 +42,7 @@ def scan_for_real_secrets() -> List[Tuple[str, int, str]]:
 
     for f in files:
         # Ignore security scanning scripts themselves
-        if f in ("security_check.py", "scripts/phase6_audit.py"):
+        if f in ("scripts/security_check.py", "scripts/phase6_audit.py"):
             continue
         try:
             with open(f, "r", encoding="utf-8", errors="ignore") as fh:
