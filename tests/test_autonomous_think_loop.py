@@ -2,7 +2,8 @@
 
 from typing import Any
 
-from friday.agent.agent import FridayAgent, strip_thought_tags
+from friday.agent.agent import FridayAgent
+from friday.agent.mixins.cognitive import strip_thought_tags
 from friday.agent.prompts import get_default_system_prompt
 from friday.agent.state import TaskState
 from friday.core.config import Settings
