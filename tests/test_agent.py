@@ -98,7 +98,7 @@ def test_agent_direct_notepad_type_fast_path(monkeypatch):
     agent = FridayAgent(settings=Settings(env="testing", llm_provider="mock", embedding_provider="none"))
     monkeypatch.setattr(agent, "_launch_process", lambda *args: actions.append(("launch", args)))
     monkeypatch.setattr(agent, "_focus_window_for_direct_action", lambda title: actions.append(("focus", title)) or True)
-    monkeypatch.setattr("friday.agent.agent.WindowsNativeInputDriver", Driver)
+    monkeypatch.setattr("friday.agent.mixins.fast_paths.WindowsNativeInputDriver", Driver)
 
     response = agent.process_message("Open notepad and type I am Friday")
 
