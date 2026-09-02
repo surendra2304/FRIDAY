@@ -45,13 +45,13 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
     if provider_type in ("ai_universe", "inference"):
         url = (
             getattr(settings, "inference_url", None)
-            or os.getenv("INFERENCE_URL")
+            or os.getenv("FRIDAY_INFERENCE_URL")
             or getattr(settings, "universe_api_url", None)
             or "http://localhost:8001"
         )
         key = (
             getattr(settings, "inference_api_key", None)
-            or os.getenv("INFERENCE_API_KEY")
+            or os.getenv("FRIDAY_INFERENCE_API_KEY")
             or ""
         )
         logger.info(f"Initializing Inference Gateway LLM Provider (URL: {url})")
@@ -62,18 +62,18 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
         has_keys = (
             bool(settings.gemini_api_key)
             or bool(settings.llm_api_key)
-            or bool(os.getenv("GEMINI_API_KEY"))
+            or bool(os.getenv("FRIDAY_GEMINI_API_KEY"))
             or (credential_pool and len(getattr(credential_pool, "credentials", [])) > 0)
         )
         if not has_keys and not has_explicit:
             logger.info("Direct Gemini API key not configured; using live Inference Cloud Gateway (25 Keys).")
-            url = getattr(settings, "inference_url", None) or os.getenv("INFERENCE_URL") or "http://localhost:8001"
-            key = getattr(settings, "inference_api_key", None) or os.getenv("INFERENCE_API_KEY") or ""
+            url = getattr(settings, "inference_url", None) or os.getenv("FRIDAY_INFERENCE_URL") or "http://localhost:8001"
+            key = getattr(settings, "inference_api_key", None) or os.getenv("FRIDAY_INFERENCE_API_KEY") or ""
             return AIUniverseLLMProvider(base_url=url, api_key=key)
 
         api_key = settings.gemini_api_key if settings.gemini_api_key is not None else settings.llm_api_key
         if api_key is None:
-            api_key = os.getenv("GEMINI_API_KEY")
+            api_key = os.getenv("FRIDAY_GEMINI_API_KEY")
 
         model_name = settings.gemini_model or settings.llm_model
         temperature = settings.gemini_temperature if settings.gemini_temperature is not None else settings.llm_temperature

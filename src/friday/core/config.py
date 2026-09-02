@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from pydantic import AliasChoices, Field
+from pydantic import Field, model_validator
 from pydantic_settings import (
     BaseSettings,
     EnvSettingsSource,
@@ -50,6 +50,8 @@ def resolve_env_file() -> Path:
 class NonEmptyEnvSettingsSource(EnvSettingsSource):
     """Environment settings source that ignores empty-string environment variables."""
 
+
+
     def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:
         val, val_name, is_complex = super().get_field_value(field, field_name)
         if isinstance(val, str) and val.strip() == "":
@@ -66,6 +68,23 @@ class Settings(BaseSettings):
         env_prefix="FRIDAY_",
         extra="ignore",
     )
+
+    def __init__(self, **kwargs):
+        import os
+        import warnings
+        
+        legacy_aliases = {'FRIDAY_IOT_HUB_URL': ['IOT_HUB_URL', 'iot_hub_url'], 'FRIDAY_IOT_HUB_TOKEN': ['IOT_HUB_TOKEN', 'iot_hub_token'], 'FRIDAY_CALENDAR_ICS_URL': ['CALENDAR_ICS_URL', 'calendar_ics_url'], 'FRIDAY_EMAIL_ADDRESS': ['EMAIL_ADDRESS', 'email_address'], 'FRIDAY_EMAIL_APP_PASSWORD': ['EMAIL_APP_PASSWORD', 'email_app_password'], 'FRIDAY_EMAIL_SMTP_HOST': ['EMAIL_SMTP_HOST', 'email_smtp_host'], 'FRIDAY_EMAIL_SMTP_PORT': ['EMAIL_SMTP_PORT', 'email_smtp_port'], 'FRIDAY_ACTIVE_DEVICE': ['ACTIVE_DEVICE', 'active_device'], 'FRIDAY_UNIVERSE_API_URL': ['AI_UNIVERSE_API_URL', 'FRIDAY_AI_UNIVERSE_API_URL', 'universe_api_url'], 'FRIDAY_VOICE_ENABLED': ['VOICE_ENABLED', 'voice_enabled'], 'FRIDAY_AUDIO_INPUT_DEVICE': ['AUDIO_INPUT_DEVICE', 'audio_input_device'], 'FRIDAY_AUDIO_OUTPUT_DEVICE': ['AUDIO_OUTPUT_DEVICE', 'audio_output_device'], 'FRIDAY_VOICE_NAME': ['VOICE_NAME', 'voice_name'], 'FRIDAY_VOICE_LIVE_MODEL': ['VOICE_LIVE_MODEL', 'voice_live_model'], 'FRIDAY_VOICE_VAD_START_SENSITIVITY': ['VOICE_VAD_START_SENSITIVITY', 'voice_vad_start_sensitivity'], 'FRIDAY_VOICE_VAD_END_SENSITIVITY': ['VOICE_VAD_END_SENSITIVITY', 'voice_vad_end_sensitivity'], 'FRIDAY_VOICE_SPEAKER_TIMEOUT_MS': ['VOICE_SPEAKER_TIMEOUT_MS', 'voice_speaker_timeout_ms', 'speaker_timeout_ms'], 'FRIDAY_VOICE_LOCAL_BARGE_IN_DURING_PLAYBACK': ['VOICE_LOCAL_BARGE_IN_DURING_PLAYBACK', 'voice_local_barge_in_during_playback'], 'FRIDAY_VOICE_HEADPHONES_MODE': ['VOICE_HEADPHONES_MODE', 'voice_headphones_mode'], 'FRIDAY_VOICE_BIOMETRICS_ENABLED': ['VOICE_BIOMETRICS_ENABLED', 'voice_biometrics_enabled'], 'FRIDAY_VOICE_THINKING_LEVEL': ['VOICE_THINKING_LEVEL', 'voice_thinking_level'], 'FRIDAY_VISION_MODEL': ['VISION_MODEL', 'vision_model'], 'FRIDAY_VISION_PROVIDER': ['VISION_PROVIDER', 'vision_provider'], 'FRIDAY_SCREEN_CAPTURE_PROVIDER': ['SCREEN_CAPTURE_PROVIDER', 'screen_capture_provider'], 'FRIDAY_SCREEN_DISPLAY': ['SCREEN_DISPLAY', 'screen_display'], 'FRIDAY_SCREEN_AWARE': ['SCREEN_AWARE', 'screen_aware'], 'FRIDAY_SCREEN_INTERVAL_SECONDS': ['SCREEN_INTERVAL_SECONDS', 'screen_interval_seconds'], 'FRIDAY_SCREEN_CHANGE_THRESHOLD': ['SCREEN_CHANGE_THRESHOLD', 'screen_change_threshold'], 'FRIDAY_PROACTIVE_WATCHER_ENABLED': ['PROACTIVE_WATCHER_ENABLED', 'proactive_watcher_enabled'], 'FRIDAY_WATCHER_INTERVAL_SECONDS': ['WATCHER_INTERVAL_SECONDS', 'watcher_interval_seconds'], 'FRIDAY_TESSERACT_CMD': ['TESSERACT_CMD', 'tesseract_cmd'], 'FRIDAY_FORGE_BASE_URL': ['FORGE_BASE_URL', 'FRIDAY_FORGE_API_URL', 'FORGE_API_URL', 'forge_api_url', 'forge_base_url'], 'FRIDAY_FORGE_API_KEY': ['FORGE_API_KEY', 'forge_api_key'], 'FRIDAY_FORGE_ENABLED': ['FORGE_ENABLED', 'forge_enabled'], 'FRIDAY_FORGE_MAX_CONCURRENT_TASKS': ['FORGE_MAX_CONCURRENT_TASKS', 'forge_max_concurrent_tasks'], 'FRIDAY_FORGE_TASK_TIMEOUT': ['FORGE_TASK_TIMEOUT', 'forge_task_timeout'], 'FRIDAY_FORGE_SUPERVISION_INTERVAL_SECONDS': ['FORGE_SUPERVISION_INTERVAL_SECONDS', 'forge_supervision_interval_seconds'], 'FRIDAY_FORGE_HEALTH_CHECK_INTERVAL_SECONDS': ['FORGE_HEALTH_CHECK_INTERVAL_SECONDS', 'forge_health_check_interval_seconds'], 'FRIDAY_ECOSYSTEM_ENABLED': ['ECOSYSTEM_ENABLED', 'ecosystem_enabled'], 'FRIDAY_TRADING_BOT_BASE_URL': ['STRATEX_URL', 'TRADING_BOT_BASE_URL', 'trading_bot_base_url'], 'FRIDAY_STRATEX_API_KEY': ['TRADING_BOT_API_KEY', 'BOT_API_KEY'], 'FRIDAY_AI_UNIVERSE_BASE_URL': ['INFERENCE_URL', 'AI_UNIVERSE_BASE_URL', 'ai_universe_base_url'], 'FRIDAY_INFERENCE_API_KEY': ['INFERENCE_API_KEY'], 'FRIDAY_INTELX_URL': ['INTELX_URL', 'intelx_base_url'], 'FRIDAY_FUTURIS_URL': ['FUTURIS_URL', 'futuris_base_url'], 'FRIDAY_MEMORA_URL': ['MEMORA_URL', 'memora_base_url'], 'FRIDAY_SENTINEL_URL': ['SENTINEL_URL', 'sentinel_base_url'], 'FRIDAY_NEXUS_BASE_URL': ['CORTEX_URL', 'NEXUS_URL', 'NEXUS_BASE_URL', 'nexus_base_url'], 'FRIDAY_NEXUS_ENABLED': ['NEXUS_ENABLED', 'CORTEX_ENABLED', 'nexus_enabled'], 'FRIDAY_NEXUS_VIGILANCE_INTERVAL_SECONDS': ['NEXUS_VIGILANCE_INTERVAL_SECONDS', 'nexus_vigilance_interval_seconds'], 'FRIDAY_LLM_API_KEY': ['OPENAI_API_KEY', 'LLM_API_KEY', 'llm_api_key'], 'FRIDAY_GEMINI_API_KEY': ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'gemini_api_key'], 'FRIDAY_GROQ_API_KEY': ['GROQ_API_KEY', 'groq_api_key'], 'FRIDAY_API_KEY': ['FRIDAY_UNIVERSE_API_KEY']}
+        
+        for canonical, aliases in legacy_aliases.items():
+            if canonical not in os.environ:
+                for alias in aliases:
+                    if alias in os.environ:
+                        warnings.warn(f"Environment variable '{alias}' is deprecated. Please use '{canonical}' instead.", DeprecationWarning, stacklevel=2)
+                        kwargs[canonical[7:].lower()] = os.environ[alias]
+                        break
+        super().__init__(**kwargs)
+
+
 
     @classmethod
     def settings_customise_sources(
@@ -100,37 +119,30 @@ class Settings(BaseSettings):
     llm_model: str = Field(default="gemini-1.5-flash-latest", description="Model identifier")
     llm_api_key: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("FRIDAY_LLM_API_KEY", "OPENAI_API_KEY", "LLM_API_KEY", "llm_api_key"),
         description="API Key for the provider (OpenAI or general)",
     )
     gemini_api_key: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("FRIDAY_GEMINI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "gemini_api_key"),
         description="API Key specifically for Google Gemini",
     )
     gemini_fallback_api_key_1: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("FRIDAY_GEMINI_FALLBACK_API_KEY_1", "GEMINI_FALLBACK_API_KEY_1"),
         description="Fallback Gemini API Key 1",
     )
     gemini_fallback_api_key_2: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("FRIDAY_GEMINI_FALLBACK_API_KEY_2", "GEMINI_FALLBACK_API_KEY_2"),
         description="Fallback Gemini API Key 2",
     )
     gemini_fallback_api_key_3: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("FRIDAY_GEMINI_FALLBACK_API_KEY_3", "GEMINI_FALLBACK_API_KEY_3"),
         description="Fallback Gemini API Key 3",
     )
     gemini_fallback_api_key_4: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("FRIDAY_GEMINI_FALLBACK_API_KEY_4", "GEMINI_FALLBACK_API_KEY_4"),
         description="Fallback Gemini API Key 4",
     )
     gemini_model: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("FRIDAY_GEMINI_MODEL", "GEMINI_MODEL", "gemini_model"),
         description="Optional Gemini-specific model name override",
     )
     gemini_timeout: float = Field(default=60.0, ge=1.0, le=600.0, description="Request timeout in seconds for Gemini API")
@@ -144,7 +156,6 @@ class Settings(BaseSettings):
     llm_temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="Sampling temperature")
     llm_thinking_level: str = Field(
         default="medium",
-        validation_alias=AliasChoices("FRIDAY_LLM_THINKING_LEVEL", "LLM_THINKING_LEVEL", "llm_thinking_level"),
         description="Thinking level for Gemini 3.7 Flash: low, medium, high"
     )
     llm_max_tokens: int = Field(default=2048, ge=1, le=32768, description="Max tokens per response")
@@ -152,121 +163,94 @@ class Settings(BaseSettings):
     # Groq (text/reasoning provider; OpenAI-SDK compatible)
     groq_api_key: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("FRIDAY_GROQ_API_KEY", "GROQ_API_KEY", "groq_api_key"),
         description="API Key for Groq (text/reasoning only; never used for voice)",
     )
     groq_model: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("FRIDAY_GROQ_MODEL", "GROQ_MODEL", "groq_model"),
         description="Optional Groq model override (default: openai/gpt-oss-120b)",
     )
     groq_fallback_model: str = Field(
         default="openai/gpt-oss-20b",
-        validation_alias=AliasChoices("FRIDAY_GROQ_FALLBACK_MODEL", "GROQ_FALLBACK_MODEL", "groq_fallback_model"),
         description="Groq fallback model used on 429 rate limits",
     )
 
     # OpenRouter (text/reasoning provider; OpenAI-SDK compatible)
     openrouter_api_key: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("FRIDAY_OPENROUTER_API_KEY", "OPENROUTER_API_KEY", "openrouter_api_key"),
         description="API Key for OpenRouter (text/reasoning only; never used for voice)",
     )
     openrouter_model: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("FRIDAY_OPENROUTER_MODEL", "OPENROUTER_MODEL", "openrouter_model"),
         description="Optional OpenRouter model override (default: meta-llama/llama-3.3-70b-instruct)",
     )
 
     # Mistral (deep-fallback text/reasoning provider; OpenAI-SDK compatible)
     mistral_api_key: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("FRIDAY_MISTRAL_API_KEY", "MISTRAL_API_KEY", "mistral_api_key"),
         description="API Key for Mistral (text/reasoning only; never used for voice)",
     )
     mistral_model: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("FRIDAY_MISTRAL_MODEL", "MISTRAL_MODEL", "mistral_model"),
         description="Optional Mistral model override (default: mistral-large-latest)",
     )
 
     # GitHub Integration
     github_token: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("FRIDAY_GITHUB_TOKEN", "GITHUB_TOKEN", "github_token"),
         description="Personal Access Token for GitHub Automation",
     )
 
     # IoT & Smart Home Hub Settings (IoT & Smart Home Control)
     iot_hub_enabled: bool = Field(
         default=False,
-        validation_alias=AliasChoices("FRIDAY_IOT_HUB_ENABLED", "IOT_HUB_ENABLED", "iot_hub_enabled"),
         description="Whether local Smart Home / IoT Hub control is enabled",
     )
     iot_hub_url: str = Field(
         default="http://localhost:8123",
-        validation_alias=AliasChoices("FRIDAY_IOT_HUB_URL", "IOT_HUB_URL", "iot_hub_url"),
         description="Base URL for local Smart Home / IoT Hub (e.g. Home Assistant or local bridge)",
     )
     iot_hub_token: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("FRIDAY_IOT_HUB_TOKEN", "IOT_HUB_TOKEN", "iot_hub_token"),
         description="Bearer token or API key for local Smart Home / IoT Hub",
     )
 
     # Calendar & Schedule Settings (Calendar & Morning Briefings)
     calendar_ics_url: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("FRIDAY_CALENDAR_ICS_URL", "CALENDAR_ICS_URL", "calendar_ics_url"),
         description="Public or secret read-only .ics URL for calendar integration",
     )
 
     # Email Integration Settings (Web Research & Email Automation)
     email_address: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("FRIDAY_EMAIL_ADDRESS", "EMAIL_ADDRESS", "email_address"),
         description="User email address for outgoing SMTP mail (e.g. Gmail)",
     )
     email_app_password: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("FRIDAY_EMAIL_APP_PASSWORD", "EMAIL_APP_PASSWORD", "email_app_password"),
         description="App Password / Token for outgoing SMTP mail",
     )
     email_smtp_host: str = Field(
         default="smtp.gmail.com",
-        validation_alias=AliasChoices("FRIDAY_EMAIL_SMTP_HOST", "EMAIL_SMTP_HOST", "email_smtp_host"),
         description="SMTP server hostname (default: smtp.gmail.com)",
     )
     email_smtp_port: int = Field(
         default=587,
-        validation_alias=AliasChoices("FRIDAY_EMAIL_SMTP_PORT", "EMAIL_SMTP_PORT", "email_smtp_port"),
         description="SMTP server port (default: 587 for STARTTLS)",
     )
 
     # Device Control Settings (OpenJarvis Device Control Abstraction)
     active_device: str = Field(
         default="windows",
-        validation_alias=AliasChoices("FRIDAY_ACTIVE_DEVICE", "ACTIVE_DEVICE", "active_device"),
         description="Active device controller target platform: 'windows', 'android', 'mock'",
     )
 
     # AI Universe Integration Settings (AI Universe Integration)
     universe_api_url: str = Field(
         default="http://localhost:8000",
-        validation_alias=AliasChoices("FRIDAY_UNIVERSE_API_URL", "AI_UNIVERSE_API_URL", "FRIDAY_AI_UNIVERSE_API_URL", "universe_api_url"),
         description="Base URL for external AI Universe multi-agent debate API",
     )
     api_key: str | None = Field(
         default=None,
-        validation_alias=AliasChoices(
-            "FRIDAY_API_KEY",
-            "FRIDAY_UNIVERSE_KEY",
-            "UNIVERSE_KEY",
-            "FRIDAY_UNIVERSE_API_KEY",
-            "FRIDAY_FRIDAY_API_KEY",
-            "friday_api_key",
-            "api_key",
-        ),
         description="API Key for authenticating FRIDAY with external AI Universe services",
     )
 
@@ -295,31 +279,26 @@ class Settings(BaseSettings):
     # Voice Interface Settings
     voice_enabled: bool = Field(
         default=False,
-        validation_alias=AliasChoices("FRIDAY_VOICE_ENABLED", "VOICE_ENABLED", "voice_enabled"),
         description="Enable voice interface",
     )
     voice_provider: str = Field(default="gemini", description="Voice provider: 'gemini' or 'mock'")
     audio_input_device: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("FRIDAY_AUDIO_INPUT_DEVICE", "AUDIO_INPUT_DEVICE", "audio_input_device"),
         description="Optional name or index of specific audio input device (microphone)",
     )
     audio_output_device: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("FRIDAY_AUDIO_OUTPUT_DEVICE", "AUDIO_OUTPUT_DEVICE", "audio_output_device"),
         description="Optional name or index of specific audio output device (speaker)",
     )
     voice_input_sample_rate: int = Field(default=16000, description="Audio sample rate for microphone input (Hz)")
     voice_output_format: str = Field(default="mp3", description="Audio format for synthesized speech")
     voice_name: str = Field(
         default="Aoede",
-        validation_alias=AliasChoices("FRIDAY_VOICE_NAME", "VOICE_NAME", "voice_name"),
         description="Prebuilt voice name for Gemini speech synthesis (e.g. Aoede, Puck, Charon, Kore, Fenrir)",
     )
     voice_playback_buffer_ms: int = Field(default=100, description="Playback buffer size in milliseconds for non‑blocking audio")
     voice_live_model: str = Field(
         default="gemini-3.1-flash-live-preview",
-        validation_alias=AliasChoices("FRIDAY_VOICE_LIVE_MODEL", "VOICE_LIVE_MODEL", "voice_live_model"),
         description="Gemini Live multimodal voice model",
     )
     voice_live_sample_rate: int = Field(default=24000, description="Audio sample rate for Gemini Live output (Hz)")
@@ -329,12 +308,10 @@ class Settings(BaseSettings):
     voice_context_compression_enabled: bool = Field(default=True, description="Enable Gemini Live context window compression")
     voice_vad_start_sensitivity: str = Field(
         default="LOW",
-        validation_alias=AliasChoices("FRIDAY_VOICE_VAD_START_SENSITIVITY", "VOICE_VAD_START_SENSITIVITY", "voice_vad_start_sensitivity"),
         description="VAD start of speech sensitivity: HIGH, LOW, UNSPECIFIED (LOW prevents premature false turn starts on breath/ambient noise)",
     )
     voice_vad_end_sensitivity: str = Field(
         default="HIGH",
-        validation_alias=AliasChoices("FRIDAY_VOICE_VAD_END_SENSITIVITY", "VOICE_VAD_END_SENSITIVITY", "voice_vad_end_sensitivity"),
         description="VAD end of speech sensitivity: HIGH, LOW, UNSPECIFIED",
     )
     voice_vad_prefix_padding_ms: int = Field(default=300, ge=0, le=1000, description="VAD prefix audio padding (ms)")
@@ -343,7 +320,6 @@ class Settings(BaseSettings):
         default=10000,
         ge=1000,
         le=60000,
-        validation_alias=AliasChoices("FRIDAY_VOICE_SPEAKER_TIMEOUT_MS", "VOICE_SPEAKER_TIMEOUT_MS", "voice_speaker_timeout_ms", "speaker_timeout_ms"),
         description="Maximum continuous speaker playback timeout before auto-unmuting mic (1000ms to 60000ms)",
     )
     voice_barge_in_rms_threshold: float = Field(default=350.0, ge=50.0, le=5000.0, description="RMS energy threshold for local zero-latency barge-in")
@@ -352,24 +328,20 @@ class Settings(BaseSettings):
     voice_barge_in_cooldown_seconds: float = Field(default=1.0, ge=0.0, le=5.0, description="Cooldown window after an interruption during which new local interruptions are suppressed")
     voice_local_barge_in_during_playback: bool = Field(
         default=False,
-        validation_alias=AliasChoices("FRIDAY_VOICE_LOCAL_BARGE_IN_DURING_PLAYBACK", "VOICE_LOCAL_BARGE_IN_DURING_PLAYBACK", "voice_local_barge_in_during_playback"),
         description="Whether to allow local RMS detector to interrupt during speaker playback (False lets Gemini Server VAD drive authoritative interruptions to prevent acoustic echo self-interruption)",
     )
     voice_headphones_mode: bool = Field(
         default=False,
-        validation_alias=AliasChoices("FRIDAY_VOICE_HEADPHONES_MODE", "VOICE_HEADPHONES_MODE", "voice_headphones_mode"),
         description="Whether headphones are used (enables local barge-in during playback with lower threshold)",
     )
     voice_biometrics_enabled: bool = Field(
         default=False,
-        validation_alias=AliasChoices("FRIDAY_VOICE_BIOMETRICS_ENABLED", "VOICE_BIOMETRICS_ENABLED", "voice_biometrics_enabled"),
         description="Enroll and verify the owner's voice before obeying spoken commands (resemblyzer; enroll with 'friday --enroll-voice')",
     )
     voice_adaptive_noise_alpha: float = Field(default=0.05, ge=0.001, le=0.5, description="Exponential moving average alpha for tracking ambient noise floor")
     voice_adaptive_noise_multiplier: float = Field(default=3.5, ge=1.5, le=10.0, description="Adaptive noise floor multiplier to declare candidate speech")
     voice_thinking_level: str = Field(
         default="MINIMAL",
-        validation_alias=AliasChoices("FRIDAY_VOICE_THINKING_LEVEL", "VOICE_THINKING_LEVEL", "voice_thinking_level"),
         description="Thinking level for Gemini 3.1 Live session: MINIMAL, LOW, MEDIUM, HIGH",
     )
     voice_thinking_budget: int | None = Field(default=0, ge=0, le=2048, description="Deprecated: Thinking budget tokens for legacy models")
@@ -377,12 +349,10 @@ class Settings(BaseSettings):
     # Vision & Multimodal Settings
     vision_model: str = Field(
         default="gemini-3.6-flash",
-        validation_alias=AliasChoices("FRIDAY_VISION_MODEL", "VISION_MODEL", "vision_model"),
         description="Multimodal Gemini vision model identifier",
     )
     vision_provider: str = Field(
         default="gemini",
-        validation_alias=AliasChoices("FRIDAY_VISION_PROVIDER", "VISION_PROVIDER", "vision_provider"),
         description="Vision provider: 'gemini' or 'mock'",
     )
     vision_max_image_bytes: int = Field(
@@ -391,12 +361,10 @@ class Settings(BaseSettings):
     )
     screen_capture_provider: str = Field(
         default="windows",
-        validation_alias=AliasChoices("FRIDAY_SCREEN_CAPTURE_PROVIDER", "SCREEN_CAPTURE_PROVIDER", "screen_capture_provider"),
         description="Screen capture provider backend: 'windows' or 'mock'",
     )
     screen_display: str = Field(
         default="primary",
-        validation_alias=AliasChoices("FRIDAY_SCREEN_DISPLAY", "SCREEN_DISPLAY", "screen_display"),
         description="Target display for capture: 'primary' or display index '0', '1', etc.",
     )
     screen_capture_timeout: float = Field(
@@ -407,39 +375,33 @@ class Settings(BaseSettings):
     )
     screen_aware: bool = Field(
         default=False,
-        validation_alias=AliasChoices("FRIDAY_SCREEN_AWARE", "SCREEN_AWARE", "screen_aware"),
         description="Whether background periodic screen awareness is enabled (default False)",
     )
     screen_interval_seconds: float = Field(
         default=10.0,
         ge=1.0,
         le=3600.0,
-        validation_alias=AliasChoices("FRIDAY_SCREEN_INTERVAL_SECONDS", "SCREEN_INTERVAL_SECONDS", "screen_interval_seconds"),
         description="Minimum interval in seconds between periodic screen captures",
     )
     screen_change_threshold: float = Field(
         default=0.05,
         ge=0.001,
         le=1.0,
-        validation_alias=AliasChoices("FRIDAY_SCREEN_CHANGE_THRESHOLD", "SCREEN_CHANGE_THRESHOLD", "screen_change_threshold"),
         description="Minimum image difference ratio (0.0 to 1.0) required to trigger visual analysis for changed screens",
     )
     proactive_watcher_enabled: bool = Field(
         default=False,
-        validation_alias=AliasChoices("FRIDAY_PROACTIVE_WATCHER_ENABLED", "PROACTIVE_WATCHER_ENABLED", "proactive_watcher_enabled"),
         description="Enable Proactive Screen Reading Proactive Screen Reading (The Watcher)",
     )
     watcher_interval_seconds: float = Field(
         default=120.0,
         ge=30.0,
         le=3600.0,
-        validation_alias=AliasChoices("FRIDAY_WATCHER_INTERVAL_SECONDS", "WATCHER_INTERVAL_SECONDS", "watcher_interval_seconds"),
         description="Interval in seconds between proactive screen watcher checks",
     )
 
     tesseract_cmd: str | None = Field(
         default=r"C:\Program Files\Tesseract-OCR\tesseract.exe" if os.name == "nt" else None,
-        validation_alias=AliasChoices("FRIDAY_TESSERACT_CMD", "TESSERACT_CMD", "tesseract_cmd"),
         description="Path to Tesseract OCR executable (e.g. C:\\Program Files\\Tesseract-OCR\\tesseract.exe on Windows)",
     )
 
@@ -452,96 +414,78 @@ class Settings(BaseSettings):
     # FORGE (Autonomous Software Engineering Engine) Integration
     forge_api_url: str = Field(
         default="http://localhost:8000",
-        validation_alias=AliasChoices("FRIDAY_FORGE_BASE_URL", "FORGE_BASE_URL", "FRIDAY_FORGE_API_URL", "FORGE_API_URL", "forge_api_url", "forge_base_url"),
         description="Base URL for FORGE Software Engineering API",
     )
     forge_base_url: str = Field(
         default="http://localhost:8000",
-        validation_alias=AliasChoices("FRIDAY_FORGE_BASE_URL", "FORGE_BASE_URL", "forge_base_url", "forge_api_url"),
         description="Base URL for FORGE Software Engineering API",
     )
     forge_api_key: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("FRIDAY_FORGE_API_KEY", "FORGE_API_KEY", "forge_api_key"),
         description="API Key for FORGE authentication and HMAC signing",
     )
     forge_enabled: bool = Field(
         default=True,
-        validation_alias=AliasChoices("FRIDAY_FORGE_ENABLED", "FORGE_ENABLED", "forge_enabled"),
         description="Enable FORGE ecosystem integration",
     )
     forge_max_concurrent_tasks: int = Field(
         default=3,
-        validation_alias=AliasChoices("FRIDAY_FORGE_MAX_CONCURRENT_TASKS", "FORGE_MAX_CONCURRENT_TASKS", "forge_max_concurrent_tasks"),
         description="Maximum concurrent tasks dispatched to FORGE",
     )
     forge_task_timeout: int = Field(
         default=1800,
-        validation_alias=AliasChoices("FRIDAY_FORGE_TASK_TIMEOUT", "FORGE_TASK_TIMEOUT", "forge_task_timeout"),
         description="Default timeout in seconds for FORGE tasks (default: 30 minutes)",
     )
     forge_supervision_interval_seconds: int = Field(
         default=60,
-        validation_alias=AliasChoices("FRIDAY_FORGE_SUPERVISION_INTERVAL_SECONDS", "FORGE_SUPERVISION_INTERVAL_SECONDS", "forge_supervision_interval_seconds"),
         description="Polling interval in seconds for FORGE task supervision",
     )
     forge_health_check_interval_seconds: int = Field(
         default=300,
-        validation_alias=AliasChoices("FRIDAY_FORGE_HEALTH_CHECK_INTERVAL_SECONDS", "FORGE_HEALTH_CHECK_INTERVAL_SECONDS", "forge_health_check_interval_seconds"),
         description="Polling interval in seconds for FORGE health monitoring",
     )
 
     # Unified Ecosystem Command Center
     ecosystem_enabled: bool = Field(
         default=True,
-        validation_alias=AliasChoices("FRIDAY_ECOSYSTEM_ENABLED", "ECOSYSTEM_ENABLED", "ecosystem_enabled"),
         description="Enable unified ecosystem command center across Bot, FORGE, and AI-Universe",
     )
     trading_bot_base_url: str = Field(
         default="http://localhost:8000",
-        validation_alias=AliasChoices("STRATEX_URL", "FRIDAY_STRATEX_URL", "FRIDAY_TRADING_BOT_BASE_URL", "TRADING_BOT_BASE_URL", "trading_bot_base_url"),
         description="Base URL for Algorithmic Trading Bot API (Stratex)",
     )
     ai_universe_base_url: str = Field(
         default="http://localhost:8001",
-        validation_alias=AliasChoices("INFERENCE_URL", "FRIDAY_INFERENCE_URL", "FRIDAY_AI_UNIVERSE_BASE_URL", "AI_UNIVERSE_BASE_URL", "ai_universe_base_url"),
         description="Base URL for AI-Universe / Inference Core API",
     )
     intelx_base_url: str = Field(
         default="http://localhost:8002",
-        validation_alias=AliasChoices("INTELX_URL", "FRIDAY_INTELX_URL", "intelx_base_url"),
         description="Base URL for IntelX Evidence & Research API",
     )
     futuris_base_url: str = Field(
         default="http://localhost:8003",
-        validation_alias=AliasChoices("FUTURIS_URL", "FRIDAY_FUTURIS_URL", "futuris_base_url"),
         description="Base URL for Futuris Predictive Forecasting API",
     )
     memora_base_url: str = Field(
         default="http://localhost:8004",
-        validation_alias=AliasChoices("MEMORA_URL", "FRIDAY_MEMORA_URL", "memora_base_url"),
         description="Base URL for Memora Universal Memory API",
     )
     sentinel_base_url: str = Field(
         default="http://localhost:8003",
-        validation_alias=AliasChoices("SENTINEL_URL", "FRIDAY_SENTINEL_URL", "sentinel_base_url"),
         description="Base URL for Sentinel Security API",
     )
 
     # CORTEX / NEXUS (Autonomous Website & Growth Engine) Integration
     nexus_base_url: str = Field(
         default="http://localhost:8005",
-        validation_alias=AliasChoices("CORTEX_URL", "NEXUS_URL", "FRIDAY_CORTEX_URL", "FRIDAY_NEXUS_BASE_URL", "NEXUS_BASE_URL", "nexus_base_url"),
         description="Base URL for Cortex / Nexus Autonomous Website & Growth API",
     )
     nexus_enabled: bool = Field(
         default=True,
-        validation_alias=AliasChoices("FRIDAY_NEXUS_ENABLED", "NEXUS_ENABLED", "CORTEX_ENABLED", "nexus_enabled"),
         description="Enable Cortex autonomous growth & website integration",
     )
     nexus_vigilance_interval_seconds: int = Field(
         default=60,
-        validation_alias=AliasChoices("FRIDAY_NEXUS_VIGILANCE_INTERVAL_SECONDS", "NEXUS_VIGILANCE_INTERVAL_SECONDS", "nexus_vigilance_interval_seconds"),
         description="Polling interval in seconds for Cortex vigilance operator",
     )
 

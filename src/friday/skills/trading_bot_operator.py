@@ -79,8 +79,8 @@ class TradingBotOperator(BaseSkill):
     ]
 
     def __init__(self, base_url: str | None = None, api_key: str | None = None, timeout: float = 15.0) -> None:
-        self.base_url = (base_url or os.getenv("STRATEX_URL") or os.getenv("TRADING_BOT_URL") or DEFAULT_BOT_URL).rstrip("/")
-        self.api_key = (api_key or os.getenv("STRATEX_API_KEY") or os.getenv("BOT_API_KEY") or os.getenv("TRADING_BOT_API_KEY") or "").strip()
+        self.base_url = (base_url or os.getenv("FRIDAY_STRATEX_URL") or os.getenv("FRIDAY_STRATEX_URL") or DEFAULT_BOT_URL).rstrip("/")
+        self.api_key = (api_key or os.getenv("FRIDAY_STRATEX_API_KEY") or os.getenv("FRIDAY_STRATEX_API_KEY") or os.getenv("FRIDAY_STRATEX_API_KEY") or "").strip()
         self.timeout = timeout
 
     def _http_get(self, endpoint: str) -> dict[str, Any]:

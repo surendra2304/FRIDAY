@@ -59,7 +59,7 @@ class AIUniverseClient:
             self.base_url = base_url.rstrip("/")
         else:
             self.base_url = (
-                os.getenv("INFERENCE_URL")
+                os.getenv("FRIDAY_INFERENCE_URL")
                 or os.getenv("FRIDAY_UNIVERSE_API_URL")
                 or "http://localhost:8001"
             ).rstrip("/")
@@ -68,7 +68,7 @@ class AIUniverseClient:
             self.api_key = api_key.strip()
         else:
             self.api_key = (
-                os.getenv("INFERENCE_API_KEY")
+                os.getenv("FRIDAY_INFERENCE_API_KEY")
                 or os.getenv("FRIDAY_UNIVERSE_API_KEY")
                 or ""
             ).strip()

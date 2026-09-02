@@ -108,7 +108,8 @@ def test_failure_chain_primary_to_fb3():
     mock_sleep.assert_not_called()
 
 
-def test_interactive_friday_agent_path_failover(tmp_path):
+def test_interactive_friday_agent_path_failover(tmp_path, monkeypatch):
+    monkeypatch.delenv("FRIDAY_GEMINI_API_KEY", raising=False)
     """Verify that FridayAgent -> create_llm_provider -> GeminiLLMProvider -> GeminiCredentialPool
 
     fails over immediately when Primary returns 429 RESOURCE_EXHAUSTED.
@@ -123,7 +124,7 @@ def test_interactive_friday_agent_path_failover(tmp_path):
     pool.load_keys(keys)
     pool.reset_all()
 
-    settings = Settings(
+    settings = Settings(_env_file=None, 
         llm_provider="gemini",
         llm_model="gemini-3.6-flash",
         gemini_api_key=None,
