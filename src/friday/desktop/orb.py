@@ -1,6 +1,6 @@
 import math
-from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, pyqtProperty
-from PyQt6.QtGui import QPainter, QColor, QPen, QRadialGradient, QPainterPath
+from PyQt6.QtCore import Qt, QTimer, QPointF
+from PyQt6.QtGui import QPainter, QColor, QPen, QRadialGradient
 from PyQt6.QtWidgets import QWidget
 
 class FridayOrb(QWidget):
@@ -28,7 +28,8 @@ class FridayOrb(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        center = self.rect().center()
+        # In PyQt6, we need QPointF for gradients
+        center = QPointF(self.rect().center())
         radius = min(self.width(), self.height()) / 2.0 - 10
         
         base_color = QColor(0, 200, 255) # Cyan futuristic
@@ -50,6 +51,7 @@ class FridayOrb(QWidget):
         
         painter.setBrush(gradient)
         painter.setPen(Qt.PenStyle.NoPen)
+        # drawEllipse requires floats or QPointF
         painter.drawEllipse(center, radius + pulse * 10, radius + pulse * 10)
         
         # Inner core
