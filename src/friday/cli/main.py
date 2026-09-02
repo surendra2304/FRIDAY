@@ -267,6 +267,7 @@ Modes:
     parser.add_argument("--action-audit", action="store_true", help="List and validate FRIDAY's registered action surface")
     parser.add_argument("--enroll-voice", action="store_true", help="Record 5 seconds of speech to enroll your voice profile for speaker recognition")
     parser.add_argument("--run-lab", action="store_true", help="Run FRIDAY Lab multi-provider benchmark suite and print comparison")
+    parser.add_argument("--serve", action="store_true", help="Start FRIDAY as a FastAPI/WebSocket server for U.L.T.R.O.N. web UI")
     parser.add_argument("--text", action="store_true", help="Start explicitly in interactive text conversation mode")
     parser.add_argument("--debug", action="store_true", help="Enable verbose debug logging in terminal console")
     args, unknown = parser.parse_known_args()
@@ -325,6 +326,15 @@ Modes:
             authorizer=CLIAuthorizer(),
         )
         print_action_audit(audit_agent)
+        return
+
+    if args.serve:
+        print("\n==================================================")
+        print("  🌐 FRIDAY UI SERVER STARTING")
+        print("==================================================")
+        import uvicorn
+        from friday.api.server import app
+        uvicorn.run(app, host="127.0.0.1", port=8001)
         return
 
     # Perform one-time startup preflight check on Gemini pool if available
