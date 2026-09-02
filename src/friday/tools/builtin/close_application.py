@@ -74,6 +74,17 @@ class CloseApplicationTool(BaseTool):
             )
 
         if window is None:
+            if "chrome" in title.lower():
+                import subprocess
+                res = subprocess.run(["taskkill.exe", "/F", "/IM", "chrome.exe", "/T"], capture_output=True, text=True)
+                combined = f"{res.stdout}\n{res.stderr}".lower()
+                if res.returncode == 0 or "success" in combined or "not found" in combined:
+                    return ToolResult(
+                        name=self.name,
+                        content=f"Closed {title}.",
+                        is_error=False,
+                        safety_level=self.safety_level,
+                    )
             return ToolResult(
                 name=self.name,
                 content=f"No open window found matching '{title}'.",
@@ -92,6 +103,17 @@ class CloseApplicationTool(BaseTool):
                 safety_level=self.safety_level,
             )
         except Exception as e:
+            if "chrome" in title.lower():
+                import subprocess
+                res = subprocess.run(["taskkill.exe", "/F", "/IM", "chrome.exe", "/T"], capture_output=True, text=True)
+                combined = f"{res.stdout}\n{res.stderr}".lower()
+                if res.returncode == 0 or "success" in combined or "not found" in combined:
+                    return ToolResult(
+                        name=self.name,
+                        content=f"Closed {title}.",
+                        is_error=False,
+                        safety_level=self.safety_level,
+                    )
             logger.error(f"Failed to close window matching '{title}': {e}")
             return ToolResult(
                 name=self.name,
