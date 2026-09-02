@@ -167,7 +167,7 @@ class FridayDoctor:
             if not valid_keys:
                 env_keys = [
                     os.getenv("FRIDAY_GEMINI_API_KEY", ""),
-                    os.getenv("GEMINI_API_KEY", ""),
+                    os.getenv("FRIDAY_GEMINI_API_KEY", ""),
                     os.getenv("FRIDAY_GEMINI_FALLBACK_API_KEY_1", ""),
                 ]
                 valid_keys = [k for k in env_keys if k and str(k).strip()]
@@ -221,7 +221,7 @@ class FridayDoctor:
                 )
 
             if provider == "gemini":
-                has_key = bool(self.settings.gemini_api_key or os.getenv("GEMINI_API_KEY"))
+                has_key = bool(self.settings.gemini_api_key or os.getenv("FRIDAY_GEMINI_API_KEY"))
                 if not has_key:
                     return ComponentHealth(
                         name="llm_provider",
@@ -322,7 +322,7 @@ class FridayDoctor:
     def diagnose_vision_provider(self) -> ComponentHealth:
         """Audit multimodal vision perception provider."""
         try:
-            has_gemini = bool(self.settings.gemini_api_key or os.getenv("GEMINI_API_KEY"))
+            has_gemini = bool(self.settings.gemini_api_key or os.getenv("FRIDAY_GEMINI_API_KEY"))
             if self.settings.env == "testing" or not has_gemini:
                 return ComponentHealth(
                     name="vision_provider",

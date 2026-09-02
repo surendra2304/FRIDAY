@@ -89,8 +89,8 @@ class OnboardingWizard:
             if self.state.is_fully_onboarded:
                 return False
             # Check if essential API keys and subsystems are configured
-            has_gemini = bool(os.getenv("GEMINI_API_KEY"))
-            has_groq = bool(os.getenv("GROQ_API_KEY"))
+            has_gemini = bool(os.getenv("FRIDAY_GEMINI_API_KEY"))
+            has_groq = bool(os.getenv("FRIDAY_GROQ_API_KEY"))
             if not has_gemini and not has_groq and not self.state.api_keys_configured:
                 return True
             return not self.state.is_fully_onboarded

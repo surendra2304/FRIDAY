@@ -15,7 +15,7 @@ def _get_github_client(token: str | None = None):
     """Lazily construct PyGithub client."""
     from github import Auth, Github
 
-    tok = token or getattr(get_settings(), "github_token", None) or os.getenv("FRIDAY_GITHUB_TOKEN") or os.getenv("GITHUB_TOKEN")
+    tok = token or getattr(get_settings(), "github_token", None) or os.getenv("FRIDAY_GITHUB_TOKEN") or os.getenv("FRIDAY_GITHUB_TOKEN")
     if not tok:
         raise ValueError(
             "GitHub token is required. Please set FRIDAY_GITHUB_TOKEN in your environment or .env file."

@@ -242,9 +242,9 @@ def test_non_gemini_pools_are_distinct_from_gemini_pool():
 
 
 def test_groq_pool_loads_env_key(monkeypatch):
-    monkeypatch.setenv("GROQ_API_KEY", "env-groq-key")
+    monkeypatch.setenv("FRIDAY_GROQ_API_KEY", "env-groq-key")
     pool = OpenAICompatibleCredentialPool(
-        env_key_names=("FRIDAY_GROQ_API_KEY", "GROQ_API_KEY"),
+        env_key_names=("FRIDAY_GROQ_API_KEY", "FRIDAY_GROQ_API_KEY"),
         state_file_name="data/_test_groq_pool_state.json",
     )
     pool.reload()
@@ -255,7 +255,7 @@ def test_openrouter_pool_loads_prefixed_env_key(monkeypatch):
     monkeypatch.setenv("FRIDAY_OPENROUTER_API_KEY", "env-or-key")
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     pool = OpenAICompatibleCredentialPool(
-        env_key_names=("FRIDAY_OPENROUTER_API_KEY", "OPENROUTER_API_KEY"),
+        env_key_names=("FRIDAY_OPENROUTER_API_KEY", "FRIDAY_OPENROUTER_API_KEY"),
         state_file_name="data/_test_or_pool_state.json",
     )
     pool.reload()
@@ -264,7 +264,7 @@ def test_openrouter_pool_loads_prefixed_env_key(monkeypatch):
 
 def test_settings_load_groq_and_openrouter_keys(monkeypatch):
     monkeypatch.setenv("FRIDAY_GROQ_API_KEY", "gk")
-    monkeypatch.setenv("OPENROUTER_API_KEY", "ork")
+    monkeypatch.setenv("FRIDAY_OPENROUTER_API_KEY", "ork")
     s = Settings()
     assert s.groq_api_key == "gk"
     assert s.openrouter_api_key == "ork"
