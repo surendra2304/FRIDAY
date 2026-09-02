@@ -48,13 +48,19 @@ class BackendWorker(QObject):
         async def _process():
             try:
                 # Fast paths
-                if "swipe left" in text.lower():
+                if "open chrome" in text.lower() or "chrome" in text.lower() or "swipe right" in text.lower():
+                    from friday.tools.builtin.open_application import OpenApplicationTool
+                    res = OpenApplicationTool().execute(application="chrome")
+                    self.response_signal.emit(f"Executed PC Action: {res.content}")
+                    self.status_signal.emit("SYSTEM IDLE", "idle")
+                    return
+                elif "open notepad" in text.lower() or "notepad" in text.lower() or "swipe left" in text.lower():
                     from friday.tools.builtin.open_application import OpenApplicationTool
                     res = OpenApplicationTool().execute(application="notepad")
                     self.response_signal.emit(f"Executed PC Action: {res.content}")
                     self.status_signal.emit("SYSTEM IDLE", "idle")
                     return
-                elif "swipe right" in text.lower():
+                elif "open calc" in text.lower() or "calculator" in text.lower():
                     from friday.tools.builtin.open_application import OpenApplicationTool
                     res = OpenApplicationTool().execute(application="calc")
                     self.response_signal.emit(f"Executed PC Action: {res.content}")
