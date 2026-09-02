@@ -1,5 +1,7 @@
 # FRIDAY — Autonomous Multi-Agent AI Operating System
 
+[![CI Pipeline](https://github.com/surendra2304/FRIDAY/actions/workflows/ci.yml/badge.svg)](https://github.com/surendra2304/FRIDAY/actions/workflows/ci.yml)
+
 > **F**ully **R**esponsive **I**ntelligent **D**igital **A**ssistant for **Y**ou
 
 FRIDAY is a modular, extensible, **Autonomous Multi-Agent AI Operating System** built with a cloud-first, safety-first architecture, clean component separation, a high-throughput **Unified Multi-Provider AI Gateway** (`Groq` -> `Mistral` -> `OpenRouter` -> `AI Universe`), dedicated Gemini Real-Time Voice/Vision isolation, foundational **Multi-Agent Specialist Delegation** (`BaseAgent`, `AgentRegistry`, `TaskDecomposer`, `AgentRouter`), tiered tool execution policies, contextual persistent memory, proactive background monitoring, scientific experimentation framework (`FRIDAY Lab`), futuristic split-view observability, and external AI Universe SDK integration.
