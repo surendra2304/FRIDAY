@@ -2,6 +2,12 @@
 
 from friday.tools.ai_universe_client import AIUniverseTool, GetAIUniverseStatusTool
 from friday.tools.builtin.action_proposal import ProposeComputerActionTool
+from friday.tools.builtin.android_control import (
+    OpenAndroidAppTool,
+    SwipeScreenTool,
+    TapScreenTool,
+    TypeTextTool as AndroidTypeTextTool,
+)
 from friday.tools.builtin.calculator import CalculatorTool
 from friday.tools.builtin.calendar import GetTodaysEventsTool
 from friday.tools.builtin.close_application import CloseApplicationTool
@@ -58,6 +64,10 @@ from friday.vision.screen_prediction import ScreenPredictionTool
 
 __all__ = [
     "AIUniverseTool",
+    "AndroidTypeTextTool",
+    "OpenAndroidAppTool",
+    "SwipeScreenTool",
+    "TapScreenTool",
     "CalculatorTool",
     "CloseApplicationTool",
     "ControlLightTool",

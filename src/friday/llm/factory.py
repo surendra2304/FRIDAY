@@ -47,12 +47,12 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
             getattr(settings, "inference_url", None)
             or os.getenv("INFERENCE_URL")
             or getattr(settings, "universe_api_url", None)
-            or "https://inference-3i2b.onrender.com"
+            or "http://localhost:8001"
         )
         key = (
             getattr(settings, "inference_api_key", None)
             or os.getenv("INFERENCE_API_KEY")
-            or "inference_api"
+            or ""
         )
         logger.info(f"Initializing Inference Gateway LLM Provider (URL: {url})")
         return AIUniverseLLMProvider(base_url=url, api_key=key)
@@ -67,8 +67,8 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
         )
         if not has_keys and not has_explicit:
             logger.info("Direct Gemini API key not configured; using live Inference Cloud Gateway (25 Keys).")
-            url = getattr(settings, "inference_url", None) or os.getenv("INFERENCE_URL") or "https://inference-3i2b.onrender.com"
-            key = getattr(settings, "inference_api_key", None) or os.getenv("INFERENCE_API_KEY") or "inference_api"
+            url = getattr(settings, "inference_url", None) or os.getenv("INFERENCE_URL") or "http://localhost:8001"
+            key = getattr(settings, "inference_api_key", None) or os.getenv("INFERENCE_API_KEY") or ""
             return AIUniverseLLMProvider(base_url=url, api_key=key)
 
         api_key = settings.gemini_api_key if settings.gemini_api_key is not None else settings.llm_api_key
@@ -154,8 +154,8 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
                 max_tokens=settings.llm_max_tokens,
             ),
             AIUniverseLLMProvider(
-                base_url=getattr(settings, "universe_api_url", None) or getattr(settings, "ai_universe_api_url", None) or getattr(settings, "inference_url", None) or "https://inference-3i2b.onrender.com",
-                api_key=getattr(settings, "api_key", None) or getattr(settings, "friday_api_key", None) or getattr(settings, "inference_api_key", None) or "inference_api",
+                base_url=getattr(settings, "universe_api_url", None) or getattr(settings, "ai_universe_api_url", None) or getattr(settings, "inference_url", None) or "http://localhost:8001",
+                api_key=getattr(settings, "api_key", None) or getattr(settings, "friday_api_key", None) or getattr(settings, "inference_api_key", None) or "",
             ),
         ]
         logger.info(

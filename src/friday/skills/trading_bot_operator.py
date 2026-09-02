@@ -1,7 +1,7 @@
 """Stratex Trading Bot Operator Skill for FRIDAY.
 
 Interfaces autonomously with the external Stratex 24/7 Algorithmic Trading Platform on Binance Futures Testnet
-hosted at https://stratex-ucjz.onrender.com (or STRATEX_URL).
+hosted at http://localhost:8000 (or STRATEX_URL).
 
 Command Precedence & Safety Invariants:
 1. Safety Gates (in Trading Bot) [Highest Authority]: Hard risk boundaries, max drawdown, testnet invariant.
@@ -35,7 +35,7 @@ from friday.skills.trading_precedence import (
 
 logger = get_logger("skills.trading_bot_operator")
 
-DEFAULT_BOT_URL = "https://stratex-ucjz.onrender.com"
+DEFAULT_BOT_URL = "http://localhost:8000"
 
 
 @dataclass

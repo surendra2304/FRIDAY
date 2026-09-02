@@ -108,7 +108,7 @@ class FridayDoctorEnhanced:
             # 2. Trading Bot (Stratex)
             subsystem_reports["trading_bot"] = {
                 "status": "HEALTHY",
-                "api_endpoint": getattr(self.settings, "trading_bot_base_url", "https://stratex-ucjz.onrender.com"),
+                "api_endpoint": getattr(self.settings, "trading_bot_base_url", "http://localhost:8000"),
                 "advisory_bridge": "ONLINE",
             }
 
@@ -122,7 +122,7 @@ class FridayDoctorEnhanced:
             # 4. AI-Universe / Inference Core
             subsystem_reports["ai_universe"] = {
                 "status": "HEALTHY",
-                "api_endpoint": getattr(self.settings, "ai_universe_base_url", "https://inference-3i2b.onrender.com"),
+                "api_endpoint": getattr(self.settings, "ai_universe_base_url", "http://localhost:8001"),
                 "providers_online": 7,
             }
 
