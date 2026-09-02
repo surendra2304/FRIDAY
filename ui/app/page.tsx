@@ -35,11 +35,13 @@ export default function UltronUI() {
 
     camera.position.z = 5;
 
+    let mounted = true;
     let frameId: number;
     const animate = () => {
+      if (!mounted) return;
       frameId = requestAnimationFrame(animate);
-      orb.rotation.x += 0.005;
-      orb.rotation.y += 0.005;
+      orb.rotation.x += 0.01;
+      orb.rotation.y += 0.01;
       // Audio pulse effect simulation
       const scale = 1 + Math.sin(Date.now() * 0.005) * 0.1;
       orb.scale.set(scale, scale, scale);
@@ -55,6 +57,7 @@ export default function UltronUI() {
     window.addEventListener("resize", handleResize);
 
     return () => {
+      mounted = false;
       cancelAnimationFrame(frameId);
       window.removeEventListener("resize", handleResize);
       renderer.dispose();

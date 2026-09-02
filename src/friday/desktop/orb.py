@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import QWidget
 class FridayOrb(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.setFixedSize(120, 120)
         self.state = "idle" # idle, listening, thinking, speaking, error
         
