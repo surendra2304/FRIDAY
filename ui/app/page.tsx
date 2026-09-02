@@ -5,49 +5,86 @@ import * as THREE from "three";
 import { HandLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 
 export default function UltronUI() {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [status, setStatus] = useState("INITIALIZING FRIDAY PROTOCOL...");
   const [gesture, setGesture] = useState("None");
   const wsRef = useRef<WebSocket | null>(null);
 
-  // Initialize WebGL and Orb
+  // Initialize WebGL Holographic Orb
   useEffect(() => {
-    if (!containerRef.current) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
     
     renderer.setSize(window.innerWidth, window.innerHeight);
-    containerRef.current.appendChild(renderer.domElement);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-    // Create Holographic Orb
-    const geometry = new THREE.IcosahedronGeometry(2, 4);
-    const material = new THREE.MeshBasicMaterial({
+    // Outer Holographic Sphere (Cyan Wireframe)
+    const outerGeo = new THREE.IcosahedronGeometry(2.2, 3);
+    const outerMat = new THREE.MeshBasicMaterial({
       color: 0x00ffff,
       wireframe: true,
       transparent: true,
-      opacity: 0.8,
+      opacity: 0.85,
     });
-    const orb = new THREE.Mesh(geometry, material);
-    scene.add(orb);
+    const outerOrb = new THREE.Mesh(outerGeo, outerMat);
+    scene.add(outerOrb);
+
+    // Inner Counter-Rotating Holographic Sphere (Deep Teal)
+    const innerGeo = new THREE.IcosahedronGeometry(1.6, 2);
+    const innerMat = new THREE.MeshBasicMaterial({
+      color: 0x00aaff,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.65,
+    });
+    const innerOrb = new THREE.Mesh(innerGeo, innerMat);
+    scene.add(innerOrb);
+
+    // Central Pulsing Core
+    const coreGeo = new THREE.SphereGeometry(0.7, 16, 16);
+    const coreMat = new THREE.MeshBasicMaterial({
+      color: 0x88ffff,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.45,
+    });
+    const coreOrb = new THREE.Mesh(coreGeo, coreMat);
+    scene.add(coreOrb);
 
     camera.position.z = 5;
 
-    let mounted = true;
     let frameId: number;
+    let running = true;
+
     const animate = () => {
-      if (!mounted) return;
-      frameId = requestAnimationFrame(animate);
-      orb.rotation.x += 0.01;
-      orb.rotation.y += 0.01;
-      // Audio pulse effect simulation
-      const scale = 1 + Math.sin(Date.now() * 0.005) * 0.1;
-      orb.scale.set(scale, scale, scale);
+      if (!running) return;
+
+      const now = performance.now() * 0.001;
+
+      // Noticeable, smooth dynamic rotation
+      outerOrb.rotation.x += 0.015;
+      outerOrb.rotation.y += 0.020;
+
+      innerOrb.rotation.x -= 0.022;
+      innerOrb.rotation.y -= 0.018;
+
+      coreOrb.rotation.y += 0.030;
+
+      // Audio pulse simulation
+      const pulse = 1 + Math.sin(now * 3) * 0.08;
+      outerOrb.scale.set(pulse, pulse, pulse);
+      innerOrb.scale.set(1.05 / pulse, 1.05 / pulse, 1.05 / pulse);
+
       renderer.render(scene, camera);
+      frameId = requestAnimationFrame(animate);
     };
-    animate();
+
+    frameId = requestAnimationFrame(animate);
 
     const handleResize = () => {
       camera.aspect = window.innerWidth / window.innerHeight;
@@ -57,13 +94,16 @@ export default function UltronUI() {
     window.addEventListener("resize", handleResize);
 
     return () => {
-      mounted = false;
+      running = false;
       cancelAnimationFrame(frameId);
       window.removeEventListener("resize", handleResize);
       renderer.dispose();
-      if (containerRef.current) {
-        containerRef.current.innerHTML = "";
-      }
+      outerGeo.dispose();
+      outerMat.dispose();
+      innerGeo.dispose();
+      innerMat.dispose();
+      coreGeo.dispose();
+      coreMat.dispose();
     };
   }, []);
 
@@ -125,7 +165,7 @@ export default function UltronUI() {
     let lastGestureTime = 0;
     const predictWebcam = async () => {
       if (videoRef.current && handLandmarker) {
-        let startTimeMs = performance.now();
+        const startTimeMs = performance.now();
         if (lastVideoTime !== videoRef.current.currentTime) {
           lastVideoTime = videoRef.current.currentTime;
           const results = handLandmarker.detectForVideo(videoRef.current, startTimeMs);
@@ -179,14 +219,16 @@ export default function UltronUI() {
       });
       const data = await res.json();
       setStatus(`Response: ${data.reply}`);
-    } catch (e) {
+    } catch {
       setStatus("Error executing command.");
     }
   };
 
   return (
     <main>
-      <div id="canvas-container" ref={containerRef}></div>
+      <div id="canvas-container">
+        <canvas ref={canvasRef} className="w-full h-full block" />
+      </div>
       <div id="ui-layer">
         <header className="flex justify-between items-center glass-panel w-full">
           <div>
