@@ -406,6 +406,15 @@ class FastPathMixin:
                     )
                     combined = f"{result.stdout}\n{result.stderr}".lower()
                     ok = result.returncode == 0 or "not found" in combined
+                    if not ok:
+                        result = subprocess.run(
+                            ["taskkill.exe", "/F", "/IM", "chrome.exe", "/T"],
+                            capture_output=True,
+                            text=True,
+                            timeout=10,
+                        )
+                        combined = f"{result.stdout}\n{result.stderr}".lower()
+                        ok = result.returncode == 0 or "not found" in combined or "success" in combined
                 except Exception as e:
                     logger.warning(f"Closing Chrome failed: {e}")
                 self.state_machine.transition_to(TaskState.VERIFYING, reason="Checking Chrome close request")
