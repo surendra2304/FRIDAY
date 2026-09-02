@@ -124,6 +124,7 @@ def strip_thought_tags(text: str) -> str:
     return text.strip()
 
 class CognitiveMixin:
+    task_context: dict | None = None
     def process_message(
             self,
             user_input: str,

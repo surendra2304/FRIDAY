@@ -264,6 +264,7 @@ Modes:
     )
     parser.add_argument("--voice", action="store_true", help="Start in real-time Gemini Live bidirectional voice mode")
     parser.add_argument("--doctor", action="store_true", help="Run FRIDAY system diagnostics and exit")
+    parser.add_argument("--desktop", action="store_true", help="Launch the FRIDAY desktop UI overlay")
     parser.add_argument("--action-audit", action="store_true", help="List and validate FRIDAY's registered action surface")
     parser.add_argument("--enroll-voice", action="store_true", help="Record 5 seconds of speech to enroll your voice profile for speaker recognition")
     parser.add_argument("--run-lab", action="store_true", help="Run FRIDAY Lab multi-provider benchmark suite and print comparison")
@@ -316,6 +317,13 @@ Modes:
         print(report.to_cli_table())
         return
 
+    if args.desktop:
+        try:
+            from friday.desktop.app import run_desktop_app
+            return run_desktop_app()
+        except ImportError as e:
+            print(f"Desktop UI dependencies not met: {e}. Run 'pip install PyQt6 keyboard'")
+            return 1
     if args.action_audit:
         from friday.memory.in_memory import InMemoryConversationMemory
 
