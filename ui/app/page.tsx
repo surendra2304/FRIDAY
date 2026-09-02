@@ -119,6 +119,7 @@ export default function UltronUI() {
     };
 
     let lastVideoTime = -1;
+    let lastGestureTime = 0;
     const predictWebcam = async () => {
       if (videoRef.current && handLandmarker) {
         let startTimeMs = performance.now();
@@ -129,18 +130,25 @@ export default function UltronUI() {
           if (results.landmarks.length > 0) {
             const indexFingerTip = results.landmarks[0][8]; // Index finger tip
             // Basic gesture logic: Swipe Left vs Right
-            if (indexFingerTip.x < 0.3) {
-               setGesture("Swipe Left");
-               if (wsRef.current?.readyState === WebSocket.OPEN) {
-                 wsRef.current.send(JSON.stringify({ type: "gesture", gesture: "swipe_left" }));
-               }
-            } else if (indexFingerTip.x > 0.7) {
-               setGesture("Swipe Right");
-               if (wsRef.current?.readyState === WebSocket.OPEN) {
-                 wsRef.current.send(JSON.stringify({ type: "gesture", gesture: "swipe_right" }));
-               }
+            const now = Date.now();
+            if (now - lastGestureTime > 2000) { // 2-second cooldown
+              if (indexFingerTip.x < 0.3) {
+                 setGesture("Swipe Left");
+                 lastGestureTime = now;
+                 if (wsRef.current?.readyState === WebSocket.OPEN) {
+                   wsRef.current.send(JSON.stringify({ type: "gesture", gesture: "swipe_left" }));
+                 }
+              } else if (indexFingerTip.x > 0.7) {
+                 setGesture("Swipe Right");
+                 lastGestureTime = now;
+                 if (wsRef.current?.readyState === WebSocket.OPEN) {
+                   wsRef.current.send(JSON.stringify({ type: "gesture", gesture: "swipe_right" }));
+                 }
+              } else {
+                 setGesture("Tracking");
+              }
             } else {
-               setGesture("Tracking");
+              setGesture("Cooldown...");
             }
           } else {
             setGesture("None");
@@ -189,11 +197,11 @@ export default function UltronUI() {
         </header>
 
         <div className="flex gap-4">
-          <button onClick={() => sendCommand("open youtube on phone")} className="glass-panel hud-text hover:bg-cyan-900 transition">
-            Test: Open YouTube
+          <button onClick={() => sendCommand("open notepad")} className="glass-panel hud-text hover:bg-cyan-900 transition">
+            Test: Open Notepad
           </button>
-          <button onClick={() => sendCommand("swipe left on phone")} className="glass-panel hud-text hover:bg-cyan-900 transition">
-            Test: Swipe
+          <button onClick={() => sendCommand("swipe left")} className="glass-panel hud-text hover:bg-cyan-900 transition">
+            Test: Swipe Left
           </button>
         </div>
 

@@ -40,10 +40,27 @@ class CommandRequest(BaseModel):
 @app.post("/api/command")
 async def execute_command(req: CommandRequest) -> dict[str, Any]:
     """Execute a text command and return the response."""
+    cmd = req.command.lower()
+    
+    # UI Fast-paths to bypass 45s LLM processing
+    try:
+        if "swipe left" in cmd:
+            from friday.tools.builtin.open_application import OpenApplicationTool
+            res = OpenApplicationTool().execute(application="notepad")
+            return {"reply": res.content, "metadata": {"fast_path": True}}
+        elif "swipe right" in cmd:
+            from friday.tools.builtin.open_application import OpenApplicationTool
+            res = OpenApplicationTool().execute(application="calc")
+            return {"reply": res.content, "metadata": {"fast_path": True}}
+        elif "open notepad" in cmd:
+            from friday.tools.builtin.open_application import OpenApplicationTool
+            res = OpenApplicationTool().execute(application="notepad")
+            return {"reply": res.content, "metadata": {"fast_path": True}}
+    except Exception as e:
+        return {"reply": f"Fast-path PC Error: {e}", "metadata": {"error": True}}
+
     # Run sync process_message in an executor to avoid blocking the event loop
     loop = asyncio.get_event_loop()
-    
-    # We use run_in_executor for process_message because it's synchronous but does LLM calls
     response = await loop.run_in_executor(None, agent.process_message, req.command)
     return {"reply": response.content, "metadata": response.metadata}
 
@@ -64,9 +81,16 @@ async def voice_endpoint(websocket: WebSocket):
             if event_type == "gesture":
                 gesture = data.get("gesture")
                 logger.info(f"Received gesture: {gesture}")
-                # We could dispatch this gesture as a command to FridayAgent
-                # E.g., if "swipe_left", trigger next window etc.
-                await websocket.send_json({"type": "status", "message": f"Processed gesture {gesture}"})
+                try:
+                    from friday.tools.builtin.open_application import OpenApplicationTool
+                    if gesture == "swipe_left":
+                        res = OpenApplicationTool().execute(application="notepad")
+                    elif gesture == "swipe_right":
+                        res = OpenApplicationTool().execute(application="calc")
+                    await websocket.send_json({"type": "status", "message": f"Executed PC Action: {res.content}"})
+                except Exception as e:
+                    logger.error(f"Gesture execution failed: {e}")
+                    await websocket.send_json({"type": "status", "message": f"Error: {e}"})
             elif event_type == "audio":
                 # placeholder for audio routing
                 pass
