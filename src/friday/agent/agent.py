@@ -1364,6 +1364,21 @@ class FridayAgent:
         registry.register(SendEmailTool())
         registry.register(ReadOwnCodebaseTool())
         registry.register(AIUniverseTool(memory=self.memory))
+        
+        # FRIDAY Android Control Tools
+        try:
+            from friday.tools.builtin.android_control import (
+                OpenAndroidAppTool,
+                SwipeScreenTool,
+                TapScreenTool,
+                TypeTextTool as AndroidTypeTextTool,
+            )
+            registry.register(TapScreenTool())
+            registry.register(SwipeScreenTool())
+            registry.register(OpenAndroidAppTool())
+            registry.register(AndroidTypeTextTool())
+        except ImportError:
+            pass
         registry.register(GetAIUniverseStatusTool())
         registry.register(ScreenPredictionTool())
         return registry
