@@ -44,17 +44,17 @@ async def execute_command(req: CommandRequest) -> dict[str, Any]:
     
     # UI Fast-paths to bypass 45s LLM processing
     try:
-        if "swipe left" in cmd:
+        if "open chrome" in cmd or "chrome" in cmd or "swipe right" in cmd:
+            from friday.tools.builtin.open_application import OpenApplicationTool
+            res = OpenApplicationTool().execute(application="chrome")
+            return {"reply": res.content, "metadata": {"fast_path": True}}
+        elif "open notepad" in cmd or "notepad" in cmd or "swipe left" in cmd:
             from friday.tools.builtin.open_application import OpenApplicationTool
             res = OpenApplicationTool().execute(application="notepad")
             return {"reply": res.content, "metadata": {"fast_path": True}}
-        elif "swipe right" in cmd:
+        elif "open calc" in cmd or "calculator" in cmd:
             from friday.tools.builtin.open_application import OpenApplicationTool
             res = OpenApplicationTool().execute(application="calc")
-            return {"reply": res.content, "metadata": {"fast_path": True}}
-        elif "open notepad" in cmd:
-            from friday.tools.builtin.open_application import OpenApplicationTool
-            res = OpenApplicationTool().execute(application="notepad")
             return {"reply": res.content, "metadata": {"fast_path": True}}
     except Exception as e:
         return {"reply": f"Fast-path PC Error: {e}", "metadata": {"error": True}}
@@ -86,7 +86,7 @@ async def voice_endpoint(websocket: WebSocket):
                     if gesture == "swipe_left":
                         res = OpenApplicationTool().execute(application="notepad")
                     elif gesture == "swipe_right":
-                        res = OpenApplicationTool().execute(application="calc")
+                        res = OpenApplicationTool().execute(application="chrome")
                     await websocket.send_json({"type": "status", "message": f"Executed PC Action: {res.content}"})
                 except Exception as e:
                     logger.error(f"Gesture execution failed: {e}")

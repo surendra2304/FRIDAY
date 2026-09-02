@@ -199,12 +199,18 @@ export default function UltronUI() {
           </div>
         </header>
 
-        <div className="flex gap-4">
-          <button onClick={() => sendCommand("open notepad")} className="glass-panel hud-text hover:bg-cyan-900 transition">
+        <div className="flex flex-wrap gap-4">
+          <button onClick={() => sendCommand("open notepad")} className="glass-panel hud-text hover:bg-cyan-900 transition px-4 py-2">
             Test: Open Notepad
           </button>
-          <button onClick={() => sendCommand("swipe left")} className="glass-panel hud-text hover:bg-cyan-900 transition">
-            Test: Swipe Left
+          <button onClick={() => sendCommand("open chrome")} className="glass-panel hud-text hover:bg-cyan-900 transition px-4 py-2">
+            Test: Open Chrome
+          </button>
+          <button onClick={() => sendCommand("swipe left")} className="glass-panel hud-text hover:bg-cyan-900 transition px-4 py-2">
+            Test: Swipe Left (Notepad)
+          </button>
+          <button onClick={() => sendCommand("swipe right")} className="glass-panel hud-text hover:bg-cyan-900 transition px-4 py-2">
+            Test: Swipe Right (Chrome)
           </button>
         </div>
 
