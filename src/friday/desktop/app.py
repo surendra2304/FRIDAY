@@ -67,7 +67,7 @@ class BackendWorker(QObject):
                     self.status_signal.emit("SYSTEM IDLE", "idle")
                     return
 
-                res = await self.agent.process_message(text)
+                res = await self.loop.run_in_executor(None, self.agent.process_message, text)
                 self.response_signal.emit(res.content)
                 self.status_signal.emit("SYSTEM IDLE", "idle")
             except Exception as e:
@@ -102,10 +102,12 @@ class BackendWorker(QObject):
             self.status_signal.emit("AUDIO ERROR", "error")
             return
 
-        if self.voice_session and self.voice_session.is_active():
+        if self.voice_session and self.voice_session.is_active:
             # Stop the session
             self.response_signal.emit("Disconnecting voice interface...")
             async def _stop():
+                if hasattr(self, "voice_stop_event") and self.voice_stop_event:
+                    self.voice_stop_event.set()
                 if self.voice_task:
                     self.voice_task.cancel()
                 self.voice_session = None
@@ -117,16 +119,23 @@ class BackendWorker(QObject):
             
             async def _start():
                 try:
+                    from friday.auth.credential_pool import credential_pool
                     from friday.voice.gemini_live_session import GeminiLiveVoiceSession
                     self.voice_session = GeminiLiveVoiceSession(
                         agent=self.agent,
+                        credential_pool=credential_pool,
                         on_state_change=self._on_voice_state_change,
                     )
+                    self.voice_stop_event = asyncio.Event()
                     self.voice_task = self.loop.create_task(
-                        self.voice_session.run_live_loop()
+                        self.voice_session.run_live_loop(
+                            on_turn_complete=self._on_voice_transcript,
+                            stop_event=self.voice_stop_event,
+                        )
                     )
                     await self.voice_session._connected_event.wait()
-                    await self.voice_session.send_text("Hello FRIDAY. I have activated your holographic desktop interface.")
+                    self.response_signal.emit("FRIDAY Live Voice session connected. Listening...")
+                    await self.voice_session.send_text("Hello FRIDAY. The desktop interface is active.")
                 except Exception as e:
                     self.response_signal.emit(f"Voice Error: {e}")
                     self.status_signal.emit("ERROR", "error")
@@ -135,6 +144,8 @@ class BackendWorker(QObject):
             asyncio.run_coroutine_threadsafe(_start(), self.loop)
 
     def shutdown(self):
+        if hasattr(self, "voice_stop_event") and self.voice_stop_event:
+            self.voice_stop_event.set()
         if self.voice_task:
             self.loop.call_soon_threadsafe(self.voice_task.cancel)
         self.loop.call_soon_threadsafe(self.loop.stop)

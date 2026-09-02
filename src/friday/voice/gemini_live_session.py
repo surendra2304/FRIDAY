@@ -86,9 +86,11 @@ class GeminiLiveVoiceSession:
         thinking_level: str | None = None,
         thinking_budget: int | None = None,
         credential_pool: GeminiCredentialPool | None = credential_pool,
+        on_state_change: Callable[[LiveSessionState, LiveSessionState], None] | None = None,
     ):
         settings = get_settings()
         self.credential_pool = credential_pool
+        self.on_state_change = on_state_change
         self._explicit_api_key = api_key
         try:
             self.api_key = api_key or (credential_pool.get_active_key() if credential_pool else None) or settings.gemini_api_key or settings.llm_api_key
@@ -179,6 +181,11 @@ class GeminiLiveVoiceSession:
             if new_state == LiveSessionState.FRIDAY_SPEAKING:
                 self._friday_speaking_start_time = time.time()
             logger.debug(f"LiveSession state transition: {old.value} -> {new_state.value}")
+            if self.on_state_change is not None and callable(self.on_state_change):
+                try:
+                    self.on_state_change(old, new_state)
+                except Exception as e:
+                    logger.warning(f"Error in on_state_change callback: {e}")
 
     @property
     def state(self) -> LiveSessionState:
