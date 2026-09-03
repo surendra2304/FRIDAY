@@ -59,18 +59,21 @@ class AIUniverseClient:
             self.base_url = base_url.rstrip("/")
         else:
             self.base_url = (
-                os.getenv("FRIDAY_INFERENCE_URL")
+                os.getenv("INFERENCE_URL")
+                or os.getenv("FRIDAY_INFERENCE_URL")
+                or os.getenv("FRIDAY_AI_UNIVERSE_BASE_URL")
                 or os.getenv("FRIDAY_UNIVERSE_API_URL")
-                or "http://localhost:8001"
+                or "https://inference-3i2b.onrender.com"
             ).rstrip("/")
 
-        if api_key is not None:
+        if api_key is not None and api_key.strip():
             self.api_key = api_key.strip()
         else:
             self.api_key = (
-                os.getenv("FRIDAY_INFERENCE_API_KEY")
+                os.getenv("INFERENCE_API_KEY")
+                or os.getenv("FRIDAY_INFERENCE_API_KEY")
                 or os.getenv("FRIDAY_UNIVERSE_API_KEY")
-                or ""
+                or "inference_api"
             ).strip()
         self.timeout = timeout
 

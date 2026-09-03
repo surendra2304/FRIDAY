@@ -37,8 +37,23 @@ class AIUniverseLLMProvider(BaseLLMProvider):
             max_tokens=max_tokens,
         )
         import os
-        final_url = base_url or os.getenv("FRIDAY_INFERENCE_URL") or "http://localhost:8001"
-        final_key = api_key or os.getenv("FRIDAY_INFERENCE_API_KEY") or ""
+        from friday.core.config import get_settings
+        st = get_settings()
+        final_url = (
+            base_url
+            or os.getenv("INFERENCE_URL")
+            or os.getenv("FRIDAY_INFERENCE_URL")
+            or getattr(st, "inference_url", None)
+            or os.getenv("FRIDAY_AI_UNIVERSE_BASE_URL")
+            or "https://inference-3i2b.onrender.com"
+        )
+        final_key = (
+            api_key
+            or os.getenv("INFERENCE_API_KEY")
+            or os.getenv("FRIDAY_INFERENCE_API_KEY")
+            or getattr(st, "inference_api_key", None)
+            or "inference_api"
+        )
         self.api_key = final_key
         self.client = AIUniverseClient(base_url=final_url, api_key=final_key)
         self.min_confidence = min_confidence

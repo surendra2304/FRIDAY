@@ -314,8 +314,9 @@ class GeminiLLMProvider(BaseLLMProvider):
                     "and has been omitted from SDK GenerateContentConfig."
                 )
 
-        # Add thinking_config if supported
-        if hasattr(genai_types, "ThinkingConfig") and hasattr(genai_types, "ThinkingLevel"):
+        # Add thinking_config only if explicitly supported by model (e.g. thinking models)
+        is_thinking_model = "thinking" in (self.model or "").lower()
+        if is_thinking_model and hasattr(genai_types, "ThinkingConfig") and hasattr(genai_types, "ThinkingLevel"):
             try:
                 level_enum = genai_types.ThinkingLevel
                 # Map string to enum (case-insensitive)

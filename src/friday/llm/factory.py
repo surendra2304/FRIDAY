@@ -179,8 +179,8 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
                 max_tokens=settings.llm_max_tokens,
             ),
             AIUniverseLLMProvider(
-                base_url=getattr(settings, "universe_api_url", None) or getattr(settings, "ai_universe_api_url", None) or getattr(settings, "inference_url", None) or "http://localhost:8001",
-                api_key=getattr(settings, "api_key", None) or getattr(settings, "friday_api_key", None) or getattr(settings, "inference_api_key", None) or "",
+                base_url=os.getenv("INFERENCE_URL") or os.getenv("FRIDAY_INFERENCE_URL") or getattr(settings, "inference_url", None) or "https://inference-3i2b.onrender.com",
+                api_key=os.getenv("INFERENCE_API_KEY") or os.getenv("FRIDAY_INFERENCE_API_KEY") or getattr(settings, "inference_api_key", None) or "inference_api",
             ),
         ])
         logger.info(

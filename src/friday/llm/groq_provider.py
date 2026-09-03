@@ -78,6 +78,7 @@ class GroqLLMProvider(BaseLLMProvider):
         credential_pool: Any | None = None,
     ):
         super().__init__(model=model, temperature=temperature, max_tokens=max_tokens)
+        self.credential_pool = credential_pool
         if not api_key and credential_pool is not None:
             try:
                 api_key = credential_pool.get_active_key()
@@ -88,85 +89,105 @@ class GroqLLMProvider(BaseLLMProvider):
         self.fallback_model = fallback_model
         self.universal_fallback_model = universal_fallback_model
         self.timeout = timeout
-        self._client: Any | None = None
+        self._clients: dict[str, Any] = {}
 
     @property
     def provider_name(self) -> str:
         return "groq"
 
-    def _get_client(self) -> Any:
-        if self._client is None:
-            if _openai_sdk is None:
-                raise LLMProviderError(
-                    "The 'openai' Python package is required for the Groq provider. "
-                    "Install it with: pip install openai"
-                )
-            if not self.api_key:
-                raise LLMProviderError("Groq API key is not configured (FRIDAY_GROQ_API_KEY)")
-            self._client = _openai_sdk.OpenAI(
-                api_key=self.api_key,
+    def _get_active_api_key(self) -> str:
+        if self.credential_pool:
+            try:
+                key = self.credential_pool.get_active_key()
+                if key and key.strip():
+                    return key.strip()
+            except Exception:
+                pass
+        return self.api_key
+
+    def _get_client_for_key(self, api_key: str) -> Any:
+        if _openai_sdk is None:
+            raise LLMProviderError(
+                "The 'openai' Python package is required for the Groq provider. "
+                "Install it with: pip install openai"
+            )
+        if not api_key:
+            raise LLMProviderError("Groq API key is not configured (FRIDAY_GROQ_API_KEY)")
+        if api_key not in self._clients:
+            self._clients[api_key] = _openai_sdk.OpenAI(
+                api_key=api_key,
                 base_url=self.base_url,
                 timeout=self.timeout,
             )
-        return self._client
+        return self._clients[api_key]
 
     def generate(
         self,
         messages: list[Message],
         tools: list[dict[str, Any]] | None = None,
     ) -> Message:
-        """Call Groq chat completions with automatic in-provider model fallbacks.
+        """Call Groq chat completions with automatic multi-key pool rotation and in-provider model fallbacks."""
+        pool_creds = getattr(self.credential_pool, "credentials", []) if self.credential_pool else []
+        max_attempts = max(1, len(pool_creds))
+        last_error = None
 
-        - 429 rate limit on the primary model -> retry once with `fallback_model`
-          (fast fallback), then with `universal_fallback_model` if that model
-          is not found.
-        - 404 model_not_found on the primary model -> retry directly with the
-          universally available `universal_fallback_model` (llama-3.1-8b-instant).
-        - A second 429 fails fast (Groq rate limits are organization-wide, so
-          further same-org retries waste quota): raise LLMProviderError so the
-          fallback chain advances to Mistral/OpenRouter.
-        """
-        try:
-            return self._generate_with_model(self.model, messages, tools)
-        except _RateLimitedError as primary_error:
-            if self.fallback_model and self.fallback_model != self.model:
+        for attempt in range(max_attempts):
+            active_key = self._get_active_api_key()
+            if not active_key:
+                raise LLMProviderError("Groq API key is not configured (FRIDAY_GROQ_API_KEY)")
+
+            try:
+                return self._generate_with_key_and_model(active_key, self.model, messages, tools)
+            except _RateLimitedError as primary_error:
+                last_error = primary_error
+                if self.credential_pool and len(pool_creds) > 1:
+                    self.credential_pool.report_failure(active_key, error=primary_error)
+                    logger.warning(
+                        f"Groq key rate limited (429/413). Rotating to next key in pool ({attempt + 1}/{max_attempts})..."
+                    )
+                    continue
+
+                if self.fallback_model and self.fallback_model != self.model:
+                    logger.warning(
+                        f"Groq rate limit (429) on model '{self.model}'. "
+                        f"Retrying same prompt with fallback model '{self.fallback_model}'..."
+                    )
+                    try:
+                        return self._generate_with_key_and_model(active_key, self.fallback_model, messages, tools)
+                    except _ModelNotFoundError:
+                        logger.warning(
+                            f"Groq fallback model '{self.fallback_model}' not found (404). "
+                            f"Retrying with universally available model '{self.universal_fallback_model}'..."
+                        )
+                        return self._generate_with_key_and_model(active_key, self.universal_fallback_model, messages, tools)
+                    except _RateLimitedError as fallback_error:
+                        raise LLMProviderError(
+                            f"Groq rate limited on both '{self.model}' and '{self.fallback_model}': {fallback_error}"
+                        ) from fallback_error
+                raise LLMProviderError(f"Groq rate limited on '{self.model}': {primary_error}") from primary_error
+            except _ModelNotFoundError:
                 logger.warning(
-                    f"Groq rate limit (429) on model '{self.model}'. "
-                    f"Retrying same prompt with fallback model '{self.fallback_model}'..."
+                    f"Groq model '{self.model}' not found (404). Retrying same prompt with "
+                    f"universally available model '{self.universal_fallback_model}'..."
                 )
                 try:
-                    return self._generate_with_model(self.fallback_model, messages, tools)
-                except _ModelNotFoundError:
-                    logger.warning(
-                        f"Groq fallback model '{self.fallback_model}' not found (404). "
-                        f"Retrying with universally available model '{self.universal_fallback_model}'..."
-                    )
-                    return self._generate_with_model(self.universal_fallback_model, messages, tools)
-                except _RateLimitedError as fallback_error:
+                    return self._generate_with_key_and_model(active_key, self.universal_fallback_model, messages, tools)
+                except (_RateLimitedError, _ModelNotFoundError) as universal_error:
                     raise LLMProviderError(
-                        f"Groq rate limited on both '{self.model}' and '{self.fallback_model}': {fallback_error}"
-                    ) from fallback_error
-            raise LLMProviderError(f"Groq rate limited on '{self.model}': {primary_error}") from primary_error
-        except _ModelNotFoundError:
-            logger.warning(
-                f"Groq model '{self.model}' not found (404). Retrying same prompt with "
-                f"universally available model '{self.universal_fallback_model}'..."
-            )
-            try:
-                return self._generate_with_model(self.universal_fallback_model, messages, tools)
-            except (_RateLimitedError, _ModelNotFoundError) as universal_error:
-                raise LLMProviderError(
-                    f"Groq failed on '{self.model}' (model_not_found) and on "
-                    f"'{self.universal_fallback_model}': {universal_error}"
-                ) from universal_error
+                        f"Groq failed on '{self.model}' (model_not_found) and on "
+                        f"'{self.universal_fallback_model}': {universal_error}"
+                    ) from universal_error
 
-    def _generate_with_model(
+        raise LLMProviderError(f"All {max_attempts} Groq credentials exhausted: {last_error}")
+
+    def _generate_with_key_and_model(
         self,
+        api_key: str,
         model: str,
         messages: list[Message],
         tools: list[dict[str, Any]] | None,
     ) -> Message:
-        client = self._get_client()
+        client = self._get_client_for_key(api_key)
         kwargs: dict[str, Any] = {
             "model": model,
             "messages": [m.to_provider_dict() for m in messages],
