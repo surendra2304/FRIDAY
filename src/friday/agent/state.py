@@ -36,7 +36,7 @@ class TaskState(str, Enum):
 VALID_TRANSITIONS: dict[TaskState, list[TaskState]] = {
     TaskState.NOT_STARTED: [TaskState.UNDERSTANDING, TaskState.PLANNING, TaskState.CANCELLED, TaskState.FAILED],
     TaskState.UNDERSTANDING: [TaskState.PLANNING, TaskState.CANCELLED, TaskState.FAILED],
-    TaskState.PLANNING: [TaskState.EXECUTING, TaskState.PAUSED, TaskState.VERIFYING, TaskState.CANCELLED, TaskState.FAILED],
+    TaskState.PLANNING: [TaskState.PLANNING, TaskState.EXECUTING, TaskState.PAUSED, TaskState.VERIFYING, TaskState.CANCELLED, TaskState.FAILED],
     TaskState.EXECUTING: [TaskState.PLANNING, TaskState.EXECUTING, TaskState.PAUSED, TaskState.VERIFYING, TaskState.CANCELLED, TaskState.FAILED],
     TaskState.PAUSED: [TaskState.EXECUTING, TaskState.CANCELLED, TaskState.FAILED],
     TaskState.VERIFYING: [TaskState.COMPLETED, TaskState.PLANNING, TaskState.EXECUTING, TaskState.CANCELLED, TaskState.FAILED],
@@ -119,7 +119,7 @@ class ReasoningStateMachine:
         from friday.security.scrubber import redact_secrets
 
         allowed = VALID_TRANSITIONS.get(self._current_state, [])
-        if new_state not in allowed:
+        if new_state != self._current_state and new_state not in allowed:
             err_msg = (
                 f"Invalid state transition from {self._current_state.value} to {new_state.value}. "
                 f"Allowed target states: {[s.value for s in allowed]}"

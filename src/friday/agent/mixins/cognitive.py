@@ -767,7 +767,8 @@ class CognitiveMixin:
             if has_jarvis_cues and getattr(self.settings, "planner_enabled", True):
                 try:
                     logger.info(f"[JARVIS-PLANNER] Engaging Jarvis Task Graph Orchestration for: '{clean_input}'")
-                    self.state_machine.transition_to(TaskState.PLANNING, reason="Decomposing into task graph DAG")
+                    if self.state_machine.current_state != TaskState.PLANNING:
+                        self.state_machine.transition_to(TaskState.PLANNING, reason="Decomposing into task graph DAG")
                     self.state_machine.transition_to(TaskState.EXECUTING, reason="Executing topological waves with parallel workers")
                     jarvis_res = self.execute_complex_task(clean_input)
                     self.state_machine.transition_to(TaskState.VERIFYING, reason="Synthesizing multi-modal results")
