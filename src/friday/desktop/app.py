@@ -79,6 +79,8 @@ class BackendWorker(QObject):
     response_signal = pyqtSignal(str)
     status_signal = pyqtSignal(str, str)  # (status_text, state_key)
     confirm_request_signal = pyqtSignal(str)
+    task_progress_signal = pyqtSignal(str, str, str)  # (task_id, description, status)
+    clear_tasks_signal = pyqtSignal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -95,6 +97,36 @@ class BackendWorker(QObject):
             authorizer=self.authorizer,
             tool_callback=self._on_tool_call,
         )
+
+        # Connect planning event bus for HUD task checklist
+        try:
+            from friday.planning.events import (
+                TaskEventType,
+                TaskProgressEvent,
+                global_task_event_bus,
+            )
+
+            def _on_event(ev: TaskProgressEvent) -> None:
+                if ev.event_type == TaskEventType.PLAN_CREATED:
+                    self.clear_tasks_signal.emit()
+                    self.status_signal.emit("Planning Workflow...", "thinking")
+                elif ev.event_type == TaskEventType.TASK_STARTED:
+                    t_id = ev.task_id or "task"
+                    self.task_progress_signal.emit(t_id, ev.message, "running")
+                    self.status_signal.emit(f"Executing: {t_id}", "executing")
+                elif ev.event_type == TaskEventType.TASK_COMPLETED:
+                    t_id = ev.task_id or "task"
+                    self.task_progress_signal.emit(t_id, ev.message, "completed")
+                elif ev.event_type == TaskEventType.TASK_FAILED:
+                    t_id = ev.task_id or "task"
+                    self.task_progress_signal.emit(t_id, ev.message, "failed")
+                    self.status_signal.emit("Task Failed", "error")
+                elif ev.event_type == TaskEventType.WORKFLOW_COMPLETED:
+                    self.status_signal.emit("Workflow Complete", "idle")
+
+            global_task_event_bus.subscribe(_on_event)
+        except Exception as e:
+            logger.debug(f"Task event bus subscription: {e}")
 
         # Asyncio event loop running in a background thread
         self.loop = asyncio.new_event_loop()
@@ -241,6 +273,8 @@ def run_desktop_app() -> int:
     worker.response_signal.connect(lambda text: overlay.append_transcript("FRIDAY", text))
     worker.status_signal.connect(overlay.set_status)
     worker.confirm_request_signal.connect(overlay.request_confirmation)
+    worker.task_progress_signal.connect(overlay.update_task_progress)
+    worker.clear_tasks_signal.connect(overlay.clear_task_progress)
 
     # Global Hotkey hook via keyboard library if available
     try:

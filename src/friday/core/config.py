@@ -278,6 +278,31 @@ class Settings(BaseSettings):
         description="Global Windows hotkey to summon or toggle the FRIDAY desktop companion",
     )
 
+    # Microsoft JARVIS / HuggingGPT Planning Engine Settings
+    planner_enabled: bool = Field(
+        default=True,
+        description="Whether dynamic task graph decomposition and multi-model planning is enabled",
+    )
+    planner_max_concurrent_tasks: int = Field(
+        default=5,
+        ge=1,
+        description="Maximum concurrent subtasks executed in parallel",
+    )
+    planner_task_timeout_seconds: float = Field(
+        default=60.0,
+        gt=0,
+        description="Default timeout per subtask in seconds",
+    )
+    planner_max_retries: int = Field(
+        default=3,
+        ge=0,
+        description="Maximum retries per subtask on transient failures",
+    )
+    planner_model: str | None = Field(
+        default=None,
+        description="Optional model identifier override dedicated to task decomposition",
+    )
+
     # Memory & Semantic Settings
     memory_backend: str = Field(default="sqlite", description="Memory backend: 'sqlite', 'in_memory'")
     memory_db_path: str = Field(default="data/friday.db", description="Path to SQLite database file")

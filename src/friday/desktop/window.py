@@ -266,6 +266,23 @@ class DesktopOverlay(QWidget):
         """)
         chat_layout.addWidget(self.transcript)
 
+        # 4. Live Task Execution Checklist (Microsoft JARVIS Task Graph HUD)
+        self._task_labels: dict[str, QLabel] = {}
+        self.tasks_frame = QFrame()
+        self.tasks_frame.setStyleSheet("""
+            QFrame {
+                background-color: rgba(15, 25, 35, 180);
+                border: 1px solid rgba(0, 210, 255, 60);
+                border-radius: 8px;
+                padding: 4px;
+            }
+        """)
+        self.tasks_frame.hide()
+        self.tasks_layout = QVBoxLayout(self.tasks_frame)
+        self.tasks_layout.setContentsMargins(6, 4, 6, 4)
+        self.tasks_layout.setSpacing(2)
+        chat_layout.addWidget(self.tasks_frame)
+
         input_layout = QHBoxLayout()
         self.text_input = QLineEdit()
         self.text_input.setStyleSheet("""
@@ -344,6 +361,42 @@ class DesktopOverlay(QWidget):
             f"color: rgb({base_color.red()}, {base_color.green()}, {base_color.blue()}); "
             f"font-family: 'Consolas'; font-size: 9.5pt; font-weight: bold;"
         )
+
+    def update_task_progress(self, task_id: str, desc: str, status: str) -> None:
+        """Update live task progress checklist item (✓ completed, ● running, ○ pending, ✕ failed)."""
+        status_lower = status.lower()
+        symbol = "○"
+        color = "#888888"
+        if "complete" in status_lower or "done" in status_lower:
+            symbol = "✓"
+            color = "#00ff88"
+        elif "running" in status_lower or "start" in status_lower:
+            symbol = "●"
+            color = "#ffcc00"
+        elif "failed" in status_lower or "error" in status_lower:
+            symbol = "✕"
+            color = "#ff3344"
+
+        clean_desc = desc[:65] + "..." if len(desc) > 65 else desc
+        label_text = f"<span style='color:{color}; font-weight:bold;'>{symbol}</span> <span style='color:#e0e0e0;'>{clean_desc}</span>"
+
+        if task_id in self._task_labels:
+            self._task_labels[task_id].setText(label_text)
+        else:
+            lbl = QLabel(label_text)
+            lbl.setStyleSheet("font-family: 'Consolas', 'Segoe UI'; font-size: 9pt;")
+            lbl.setWordWrap(True)
+            self.tasks_layout.addWidget(lbl)
+            self._task_labels[task_id] = lbl
+            self.tasks_frame.show()
+
+    def clear_task_progress(self) -> None:
+        """Clear all items in the task execution checklist."""
+        for lbl in list(self._task_labels.values()):
+            self.tasks_layout.removeWidget(lbl)
+            lbl.deleteLater()
+        self._task_labels.clear()
+        self.tasks_frame.hide()
 
     def request_confirmation(self, prompt: str) -> None:
         """Display the interactive confirmation prompt."""
