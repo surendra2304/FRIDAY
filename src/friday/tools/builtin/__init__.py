@@ -8,6 +8,7 @@ from friday.tools.builtin.android_control import (
     TapScreenTool,
     TypeTextTool as AndroidTypeTextTool,
 )
+from friday.tools.builtin.browser_tool import BrowserAutomationTool
 from friday.tools.builtin.calculator import CalculatorTool
 from friday.tools.builtin.calendar import GetTodaysEventsTool
 from friday.tools.builtin.close_application import CloseApplicationTool
@@ -79,6 +80,7 @@ __all__ = [
     "OpenAndroidAppTool",
     "SwipeScreenTool",
     "TapScreenTool",
+    "BrowserAutomationTool",
     "CalculatorTool",
     "CloseApplicationTool",
     "ControlLightTool",

@@ -49,6 +49,7 @@ from friday.observability.notifications import NotificationManager
 from friday.routing.capability_router import CapabilityRouter
 from friday.tools.builtin import (
     AIUniverseTool,
+    BrowserAutomationTool,
     CalculatorTool,
     CloseApplicationTool,
     ControlLightTool,
@@ -144,6 +145,7 @@ class ToolExecutionMixin:
             registry.register(ManageWindowsTool())
             registry.register(WebSearchTool())
             registry.register(FetchWebpageTool())
+            registry.register(BrowserAutomationTool())
             registry.register(FileOperationsTool())
             registry.register(ExecuteCommandTool())
             registry.register(ReadScreenTextTool())

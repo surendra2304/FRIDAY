@@ -349,8 +349,25 @@ class SpecialistAgentExecutor(BaseExecutor):
 class ExecutorRegistry:
     """Catalog of all available executors, tools, vision systems, and specialist agents."""
 
-    def __init__(self) -> None:
+    def __init__(self, register_defaults: bool = True) -> None:
         self._executors: dict[str, BaseExecutor] = {}
+        if register_defaults:
+            try:
+                from friday.integrations.browser_use.executor import BrowserUseExecutor
+                self.register(BrowserUseExecutor())
+            except Exception as e:
+                logger.debug(f"Default BrowserUseExecutor not registered: {e}")
+
+            try:
+                from friday.integrations.mini_swe.executor import MiniSWEAgentExecutor
+                self.register(MiniSWEAgentExecutor())
+            except Exception as e:
+                logger.debug(f"Default MiniSWEAgentExecutor not registered: {e}")
+
+            try:
+                self.register(VisionExecutor())
+            except Exception as e:
+                logger.debug(f"Default VisionExecutor not registered: {e}")
 
     def register(self, executor: BaseExecutor) -> None:
         self._executors[executor.name] = executor
