@@ -259,6 +259,7 @@ class BackendWorker(QObject):
 
 def run_desktop_app() -> int:
     app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
 
     overlay = DesktopOverlay()
     worker = BackendWorker()
