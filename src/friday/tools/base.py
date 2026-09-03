@@ -29,12 +29,25 @@ class BaseTool(ABC):
 
     def to_openai_schema(self) -> dict[str, Any]:
         """Convert tool definition into OpenAI function calling format."""
+        import copy
+
+        params = copy.deepcopy(self.parameters)
+        props = params.get("properties", {})
+        required = set(params.get("required", []))
+        for key, prop_def in props.items():
+            if key not in required and isinstance(prop_def, dict):
+                p_type = prop_def.get("type")
+                if isinstance(p_type, str) and p_type != "null":
+                    prop_def["type"] = [p_type, "null"]
+                elif isinstance(p_type, list) and "null" not in p_type:
+                    prop_def["type"].append("null")
+
         return {
             "type": "function",
             "function": {
                 "name": self.name,
                 "description": f"[{self.safety_level.value}] {self.description}",
-                "parameters": self.parameters,
+                "parameters": params,
             },
         }
 

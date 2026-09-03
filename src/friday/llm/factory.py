@@ -139,6 +139,31 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
                 temperature=settings.llm_temperature,
                 max_tokens=settings.llm_max_tokens,
             ),
+        ]
+
+        has_gemini = (
+            bool(settings.gemini_api_key)
+            or bool(os.getenv("FRIDAY_GEMINI_API_KEY"))
+            or bool(os.getenv("GEMINI_API_KEY"))
+            or (credential_pool and len(getattr(credential_pool, "credentials", [])) > 0)
+        )
+        if has_gemini:
+            chain_providers.append(
+                GeminiLLMProvider(
+                    api_key=settings.gemini_api_key or os.getenv("FRIDAY_GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY"),
+                    credential_pool=credential_pool,
+                    model=gemini_model,
+                    temperature=settings.gemini_temperature if settings.gemini_temperature is not None else settings.llm_temperature,
+                    max_tokens=settings.gemini_max_tokens if settings.gemini_max_tokens is not None else settings.llm_max_tokens,
+                    timeout=settings.gemini_timeout,
+                    max_retries=settings.gemini_max_retries,
+                    backoff_factor=settings.gemini_backoff_factor,
+                    cost_mode=settings.cost_mode,
+                    thinking_level=getattr(settings, "llm_thinking_level", "medium"),
+                )
+            )
+
+        chain_providers.extend([
             MistralLLMProvider(
                 api_key=settings.mistral_api_key or settings.llm_api_key,
                 credential_pool=mistral_credential_pool,
@@ -157,7 +182,7 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
                 base_url=getattr(settings, "universe_api_url", None) or getattr(settings, "ai_universe_api_url", None) or getattr(settings, "inference_url", None) or "http://localhost:8001",
                 api_key=getattr(settings, "api_key", None) or getattr(settings, "friday_api_key", None) or getattr(settings, "inference_api_key", None) or "",
             ),
-        ]
+        ])
         logger.info(
             "Initializing Fallback Chain Provider: "
             + " -> ".join(p.provider_name for p in chain_providers)

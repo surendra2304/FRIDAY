@@ -21,6 +21,7 @@ from friday.core.logging import get_logger
 from friday.core.types import (
     AuthorizationDecision,
     AuthorizationRequest,
+    AuthorizationResponse,
     SafetyLevel,
     ToolCall,
     ToolResult,
@@ -38,13 +39,12 @@ class DesktopAuthorizer(BaseAuthorizer):
         self.response_event = response_event
         self.last_decision = False
 
-    def authorize(self, request: AuthorizationRequest) -> AuthorizationDecision:
+    def authorize(self, request: AuthorizationRequest) -> AuthorizationResponse:
         # Safe tools execute automatically
         if request.safety_level == SafetyLevel.SAFE:
-            return AuthorizationDecision(
-                is_authorized=True,
+            return AuthorizationResponse(
+                decision=AuthorizationDecision.APPROVED,
                 reason="Safe tool auto-approved",
-                safety_level=request.safety_level,
             )
 
         # Sensitive or dangerous tools require user confirmation
@@ -60,16 +60,14 @@ class DesktopAuthorizer(BaseAuthorizer):
         # Wait for user input on UI (30-second timeout)
         confirmed = self.response_event.wait(timeout=30.0)
         if confirmed and self.last_decision:
-            return AuthorizationDecision(
-                is_authorized=True,
+            return AuthorizationResponse(
+                decision=AuthorizationDecision.APPROVED,
                 reason="Authorized by user on desktop overlay",
-                safety_level=request.safety_level,
             )
 
-        return AuthorizationDecision(
-            is_authorized=False,
+        return AuthorizationResponse(
+            decision=AuthorizationDecision.DENIED,
             reason="Action cancelled or timed out by user",
-            safety_level=request.safety_level,
         )
 
 
