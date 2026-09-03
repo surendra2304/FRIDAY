@@ -36,12 +36,26 @@ def get_current_system_resources() -> dict[str, Any]:
         processes.sort(key=lambda x: x["memory_mb"], reverse=True)
         top_processes = processes[:5]
 
+        # Battery telemetry
+        battery_data = None
+        try:
+            bat = psutil.sensors_battery()
+            if bat is not None:
+                battery_data = {
+                    "percent": round(bat.percent, 1),
+                    "power_plugged": bat.power_plugged,
+                    "seconds_left": bat.secsleft if bat.secsleft != -1 and bat.secsleft != -2 else None,
+                }
+        except Exception:
+            battery_data = None
+
         return {
             "cpu_percent": cpu_percent,
             "ram_percent": ram_percent,
             "total_ram_gb": total_ram_gb,
             "used_ram_gb": used_ram_gb,
             "top_processes": top_processes,
+            "battery": battery_data,
         }
     except Exception as e:
         logger.warning(f"Failed to query system resources: {e}")
@@ -51,17 +65,18 @@ def get_current_system_resources() -> dict[str, Any]:
             "total_ram_gb": 0.0,
             "used_ram_gb": 0.0,
             "top_processes": [],
+            "battery": None,
             "error": str(e),
         }
 
 
 class GetSystemResourcesTool(BaseTool):
-    """Inspect CPU usage, RAM utilization, and top memory-consuming processes."""
+    """Inspect CPU usage, RAM utilization, battery status, and top memory-consuming processes."""
 
     name = "get_system_resources"
     description = (
         "Get current system resource telemetry: CPU usage (%), RAM usage (%), "
-        "and the top 5 memory-consuming applications/processes."
+        "battery level and charging status, and top 5 memory-consuming applications."
     )
     safety_level = SafetyLevel.SAFE
     parameters = {
@@ -88,7 +103,6 @@ class GetSystemResourcesTool(BaseTool):
         if process_name:
             import psutil
             needle = process_name.lower().strip()
-            # Match specific process
             matched = []
             for p in psutil.process_iter(['pid', 'name', 'memory_info', 'cpu_percent']):
                 try:
@@ -115,8 +129,19 @@ class GetSystemResourcesTool(BaseTool):
         lines = [
             f"CPU Usage: {res['cpu_percent']}%",
             f"RAM Usage: {res['ram_percent']}% ({res['used_ram_gb']} GB / {res['total_ram_gb']} GB)",
-            "Top Memory-Consuming Processes:",
         ]
+
+        # Battery reporting
+        bat = res.get("battery")
+        if bat:
+            plug_str = "Plugged in (Charging)" if bat.get("power_plugged") else "On Battery"
+            mins_str = ""
+            if bat.get("seconds_left"):
+                mins = int(bat["seconds_left"] // 60)
+                mins_str = f" (~{mins // 60}h {mins % 60}m remaining)"
+            lines.append(f"Battery: {bat['percent']}% — {plug_str}{mins_str}")
+
+        lines.append("Top Memory-Consuming Processes:")
         for p in res.get("top_processes", []):
             lines.append(f"- {p['name']} (PID {p['pid']}): {p['memory_mb']} MB RAM")
 

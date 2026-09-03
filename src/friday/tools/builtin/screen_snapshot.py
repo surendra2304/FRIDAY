@@ -29,6 +29,10 @@ class ScreenSnapshotTool(BaseTool):
                 "type": "string",
                 "description": "Optional question or visual analysis query (e.g. 'What is on my screen?', 'What error is visible?')",
             },
+            "save_path": {
+                "type": "string",
+                "description": "Optional file path where the screenshot image should be saved to disk (e.g. 'screenshot.png').",
+            },
         },
         "required": [],
     }
@@ -109,6 +113,17 @@ class ScreenSnapshotTool(BaseTool):
                 f"Payload size: {meta['size_bytes']} bytes\n"
                 f"Timestamp: {meta['captured_at']}"
             )
+
+            # Optional save to disk
+            target_path = kwargs.get("save_path")
+            if target_path and hasattr(snapshot, "data_bytes") and snapshot.data_bytes:
+                from pathlib import Path
+                sp = Path(target_path).resolve()
+                sp.parent.mkdir(parents=True, exist_ok=True)
+                with open(sp, "wb") as f:
+                    f.write(snapshot.data_bytes)
+                summary += f"\nSaved to: {sp}"
+
             return ToolResult(
                 name=self.name,
                 content=summary,

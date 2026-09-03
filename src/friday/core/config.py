@@ -254,6 +254,30 @@ class Settings(BaseSettings):
         description="API Key for authenticating FRIDAY with external AI Universe services",
     )
 
+    # Face Biometrics Authentication Settings
+    face_auth_enabled: bool = Field(
+        default=False,
+        description="Whether facial recognition biometric authentication is enabled",
+    )
+    face_similarity_threshold: float = Field(
+        default=0.70,
+        description="Cosine similarity threshold for face recognition verification",
+    )
+    face_profile_dir: str = Field(
+        default="data/face_profiles",
+        description="Directory storing enrolled face profiles",
+    )
+
+    # Desktop Companion Shell Settings
+    desktop_enabled: bool = Field(
+        default=True,
+        description="Whether the floating desktop companion overlay is enabled",
+    )
+    desktop_hotkey: str = Field(
+        default="Ctrl+Shift+Space",
+        description="Global Windows hotkey to summon or toggle the FRIDAY desktop companion",
+    )
+
     # Memory & Semantic Settings
     memory_backend: str = Field(default="sqlite", description="Memory backend: 'sqlite', 'in_memory'")
     memory_db_path: str = Field(default="data/friday.db", description="Path to SQLite database file")
