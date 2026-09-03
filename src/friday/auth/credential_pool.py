@@ -169,44 +169,75 @@ class GeminiCredentialPool:
             self._session_active_key = None
 
     def _load_credentials(self) -> None:
-        primary = next((os.getenv(name) for name in self.env_key_names if os.getenv(name)), None)
-        fallbacks = []
-        for i in range(1, 5):
-            val = next(
-                (os.getenv(fmt.format(i=i)) for fmt in self.env_fallback_fmts if os.getenv(fmt.format(i=i))),
-                None,
-            )
-            fallbacks.append(val)
+        raw_keys: list[str] = []
 
-        if not primary and not any(fallbacks):
-            try:
-                from dotenv import dotenv_values
+        # 1. Check environment variables
+        for name in self.env_key_names:
+            val = os.getenv(name)
+            if val:
+                for k in val.split(","):
+                    k_str = k.strip()
+                    if k_str and k_str not in raw_keys:
+                        raw_keys.append(k_str)
 
-                from friday.core.config import resolve_env_file
-                env_p = resolve_env_file()
-                if env_p and env_p.is_file():
-                    vals = dotenv_values(dotenv_path=env_p)
-                    for name in self.env_key_names:
-                        primary = primary or vals.get(name)
-                    fallbacks = []
-                    for i in range(1, 5):
-                        val = None
-                        for fmt in self.env_fallback_fmts:
-                            val = val or vals.get(fmt.format(i=i))
-                        fallbacks.append(val)
-            except Exception:
-                pass
+        for fmt in self.env_fallback_fmts:
+            for i in range(1, 10):
+                val = os.getenv(fmt.format(i=i))
+                if val:
+                    for k in val.split(","):
+                        k_str = k.strip()
+                        if k_str and k_str not in raw_keys:
+                            raw_keys.append(k_str)
+
+        # 2. Check FRIDAY .env
+        try:
+            from dotenv import dotenv_values
+            from friday.core.config import resolve_env_file
+            env_p = resolve_env_file()
+            if env_p and env_p.is_file():
+                vals = dotenv_values(dotenv_path=env_p)
+                for name in self.env_key_names:
+                    val = vals.get(name)
+                    if val:
+                        for k in val.split(","):
+                            k_str = k.strip()
+                            if k_str and k_str not in raw_keys:
+                                raw_keys.append(k_str)
+                for fmt in self.env_fallback_fmts:
+                    for i in range(1, 10):
+                        val = vals.get(fmt.format(i=i))
+                        if val:
+                            for k in val.split(","):
+                                k_str = k.strip()
+                                if k_str and k_str not in raw_keys:
+                                    raw_keys.append(k_str)
+        except Exception:
+            pass
+
+        # 3. Check Inference subsystem .env (D:/FRIDAY Universe/Inference/.env)
+        try:
+            from pathlib import Path
+            from dotenv import dotenv_values
+            inf_env = Path("D:/FRIDAY Universe/Inference/.env")
+            if inf_env.is_file():
+                inf_vals = dotenv_values(dotenv_path=inf_env)
+                for name in self.env_key_names:
+                    short_name = name.replace("FRIDAY_", "")
+                    val = inf_vals.get(short_name) or inf_vals.get(name)
+                    if val:
+                        for k in val.split(","):
+                            k_str = k.strip()
+                            if k_str and k_str not in raw_keys:
+                                raw_keys.append(k_str)
+        except Exception:
+            pass
 
         self.credentials = []
-        if primary and primary.strip():
+        for i, key in enumerate(raw_keys):
+            label = "PRIMARY" if i == 0 else f"KEY_{i+1}"
             self.credentials.append(
-                Credential(api_key=primary.strip(), project_label="PRIMARY", is_primary=True)
+                Credential(api_key=key, project_label=label, is_primary=(i == 0))
             )
-        for i, key in enumerate(fallbacks, 1):
-            if key and key.strip():
-                self.credentials.append(
-                    Credential(api_key=key.strip(), project_label=f"FALLBACK {i}", is_primary=False)
-                )
 
     def _load_persisted_state(self) -> None:
         """Load persistent health metadata (without keys) from disk."""
