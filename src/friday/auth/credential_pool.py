@@ -214,27 +214,10 @@ class GeminiCredentialPool:
         except Exception:
             pass
 
-        # 3. Check Inference subsystem .env (D:/FRIDAY Universe/Inference/.env)
-        try:
-            from pathlib import Path
-            from dotenv import dotenv_values
-            inf_env = Path("D:/FRIDAY Universe/Inference/.env")
-            if inf_env.is_file():
-                inf_vals = dotenv_values(dotenv_path=inf_env)
-                for name in self.env_key_names:
-                    short_name = name.replace("FRIDAY_", "")
-                    val = inf_vals.get(short_name) or inf_vals.get(name)
-                    if val:
-                        for k in val.split(","):
-                            k_str = k.strip()
-                            if k_str and k_str not in raw_keys:
-                                raw_keys.append(k_str)
-        except Exception:
-            pass
-
         self.credentials = []
         for i, key in enumerate(raw_keys):
-            label = "PRIMARY" if i == 0 else f"KEY_{i+1}"
+            labels = ["PRIMARY"] + [f"FALLBACK {j}" for j in range(1, 5)]
+            label = labels[i] if i < len(labels) else f"KEY_{i+1}"
             self.credentials.append(
                 Credential(api_key=key, project_label=label, is_primary=(i == 0))
             )
