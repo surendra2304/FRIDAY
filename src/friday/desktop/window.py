@@ -66,37 +66,12 @@ class DesktopOverlay(QWidget):
         self.resize(340, 160)
         self.move(100, 100)
 
-        self._setup_global_hotkey()
+        self._setup_shortcuts()
 
-    def _setup_global_hotkey(self) -> None:
-        """Register global Windows hotkey: Ctrl + Shift + Space."""
-        if sys.platform == "win32":
-            try:
-                hwnd = int(self.winId())
-                ok = ctypes.windll.user32.RegisterHotKey(
-                    hwnd, HOTKEY_ID, MOD_CONTROL | MOD_SHIFT, VK_SPACE
-                )
-                self._hotkey_registered = bool(ok)
-            except Exception:
-                self._hotkey_registered = False
-
-        # In-app fallback shortcut
+    def _setup_shortcuts(self) -> None:
+        """Register in-app keyboard shortcut: Ctrl + Shift + Space."""
         shortcut = QShortcut(QKeySequence("Ctrl+Shift+Space"), self)
         shortcut.activated.connect(self.toggle_visibility_or_focus)
-
-    def nativeEvent(self, event_type: Any, message: Any) -> tuple[bool, int]:
-        """Intercept Windows WM_HOTKEY messages."""
-        if sys.platform == "win32" and event_type == b"windows_generic_MSG":
-            try:
-                import ctypes.wintypes
-
-                msg = ctypes.wintypes.MSG.from_address(int(message))
-                if msg.message == WM_HOTKEY and msg.wParam == HOTKEY_ID:
-                    self.toggle_visibility_or_focus()
-                    return True, 0
-            except Exception:
-                pass
-        return super().nativeEvent(event_type, message)
 
     def toggle_visibility_or_focus(self) -> None:
         if self.isVisible():
@@ -449,10 +424,5 @@ class DesktopOverlay(QWidget):
             self.resize(340, 160)
 
     def closeEvent(self, event: Any) -> None:
-        if sys.platform == "win32" and self._hotkey_registered:
-            try:
-                ctypes.windll.user32.UnregisterHotKey(int(self.winId()), HOTKEY_ID)
-            except Exception:
-                pass
         self.close_signal.emit()
         super().closeEvent(event)
