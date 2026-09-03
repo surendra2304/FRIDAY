@@ -759,6 +759,24 @@ class CognitiveMixin:
                 except Exception as e:
                     logger.warning(f"[MULTI-AGENT] Multi-agent orchestration fallback to single agent loop: {e}")
 
+            # Microsoft JARVIS / HuggingGPT Task Graph Orchestration
+            has_jarvis_cues = any(cue in clean_input.lower() for cue in [
+                "task graph", "plan and execute", "jarvis plan", "decompose and run",
+                "analyze and compare", "compare these", "compare the following",
+            ])
+            if has_jarvis_cues and getattr(self.settings, "planner_enabled", True):
+                try:
+                    logger.info(f"[JARVIS-PLANNER] Engaging Jarvis Task Graph Orchestration for: '{clean_input}'")
+                    self.state_machine.transition_to(TaskState.PLANNING, reason="Decomposing into task graph DAG")
+                    self.state_machine.transition_to(TaskState.EXECUTING, reason="Executing topological waves with parallel workers")
+                    jarvis_res = self.execute_complex_task(clean_input)
+                    self.state_machine.transition_to(TaskState.VERIFYING, reason="Synthesizing multi-modal results")
+                    self.state_machine.transition_to(TaskState.COMPLETED, reason="Task graph workflow complete")
+                    self.memory.add_message(Message(role=Role.ASSISTANT, content=jarvis_res.content))
+                    return jarvis_res
+                except Exception as e:
+                    logger.warning(f"[JARVIS-PLANNER] Orchestration fallback to default loop: {e}")
+
             working_context: list[Message] = [base_sys_msg] + self.memory.get_context_window(
                 max_messages=self.settings.memory_max_messages,
                 max_turns=5,

@@ -244,6 +244,46 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, TaskMixin, Cog
             return self.memory.active_conversation_id
         return None
 
+    @property
+    def jarvis_orchestrator(self):
+        """Lazy-loaded Microsoft JARVIS / HuggingGPT task graph orchestrator."""
+        if getattr(self, "_jarvis_orchestrator", None) is None:
+            from friday.planning.orchestrator import JarvisOrchestrator
+            orch = JarvisOrchestrator(
+                tool_registry=self.tools,
+                llm_provider=self.llm,
+                authorizer=self.authorizer,
+            )
+            # Register specialist agents into executor catalog
+            if hasattr(self, "agent_registry") and self.agent_registry:
+                try:
+                    for agent in self.agent_registry.list_agents():
+                        orch.register_specialist_agent(agent, getattr(agent, "role", "specialist"))
+                except Exception as e:
+                    logger.debug(f"Specialist agent registration: {e}")
+            self._jarvis_orchestrator = orch
+        return self._jarvis_orchestrator
+
+    def execute_complex_task(self, goal: str, context: dict | None = None) -> AgentResponse:
+        """Execute a complex multi-step user goal using Microsoft JARVIS task graph orchestration."""
+        import time
+        start_time = time.perf_counter()
+        synth_response = self.jarvis_orchestrator.execute_goal(goal, context=context)
+        duration = time.perf_counter() - start_time
+        return AgentResponse(
+            content=synth_response.content,
+            is_done=True,
+            metadata={
+                "jarvis_orchestration": True,
+                "graph_id": synth_response.graph_id,
+                "total_tasks": synth_response.total_tasks,
+                "completed_tasks": synth_response.completed_tasks,
+                "failed_tasks": synth_response.failed_tasks,
+                "duration_seconds": duration,
+                "is_successful": synth_response.is_successful,
+            },
+        )
+
 
 
 
