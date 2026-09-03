@@ -329,6 +329,12 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, TaskMixin, Cog
         r"^\s*(?:please\s+)?search\s+(?P<query2>.+?)\s+in\s+(?:chrome|google chrome)\s*$",
         re.IGNORECASE,
     )
+    _PLAY_MEDIA_PATTERN = re.compile(
+        r"^\s*(?:please\s+)?(?:(?:play|stream)\s+(?:the\s+)?(?:song\s+|video\s+|music\s+|track\s+)?(?P<query>.+?)(?:\s+on\s+youtube)?|"
+        r"play\s+on\s+youtube\s+(?P<query2>.+?)|"
+        r"play\s+(?P<query3>.+?))\s*$",
+        re.IGNORECASE,
+    )
     _CLOSE_CHROME_PATTERN = re.compile(
         r"^\s*(?:please\s+)?(?:close|quit|exit)\s+(?:google\s+)?chrome\.?\s*$",
         re.IGNORECASE,

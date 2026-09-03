@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import re
 import urllib.parse
+import urllib.request
 import webbrowser
 from typing import Any
 
@@ -14,12 +16,12 @@ logger = get_logger("tools.youtube")
 
 
 class YouTubeTool(BaseTool):
-    """Search and open YouTube videos or channels in the default web browser."""
+    """Search and play YouTube videos or music in the default web browser."""
 
     name = "youtube"
     description = (
-        "Open YouTube or search for videos, music, tutorials, and channels on YouTube. "
-        "Supports opening YouTube homepage or directly launching search results."
+        "Open YouTube, search for videos/music, or directly play a requested song or video. "
+        "When a song/music query is given, directly launches and plays the video."
     )
     safety_level = SafetyLevel.SAFE
     parameters = {
@@ -27,21 +29,63 @@ class YouTubeTool(BaseTool):
         "properties": {
             "query": {
                 "type": "string",
-                "description": "Video search query (e.g. 'lofi hip hop', 'Iron Man theme', 'python tutorial'). If omitted, opens YouTube home.",
+                "description": "Video or song search query (e.g. 'Starboy', 'lofi hip hop', 'python tutorial'). If omitted, opens YouTube home.",
+            },
+            "play": {
+                "type": "boolean",
+                "description": "If True, directly plays the first matching video instead of just showing search results.",
             },
         },
         "required": [],
     }
 
-    def execute(self, query: str = "", **kwargs: Any) -> ToolResult:
+    def _get_first_video_url(self, query: str) -> str | None:
+        """Extract the direct watch URL for the top search result."""
+        try:
+            encoded = urllib.parse.quote_plus(query)
+            search_url = f"https://www.youtube.com/results?search_query={encoded}"
+            req = urllib.request.Request(
+                search_url,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+            )
+            with urllib.request.urlopen(req, timeout=4.0) as resp:
+                html = resp.read().decode("utf-8", errors="ignore")
+                matches = re.findall(r"watch\?v=([a-zA-Z0-9_-]{11})", html)
+                if matches:
+                    return f"https://www.youtube.com/watch?v={matches[0]}"
+        except Exception as e:
+            logger.warning(f"Could not resolve direct YouTube video for '{query}': {e}")
+        return None
+
+    def execute(self, query: str = "", play: bool = True, **kwargs: Any) -> ToolResult:
         q = (query or "").strip()
         if not q:
             url = "https://www.youtube.com"
             msg = "Opened YouTube in your browser."
         else:
-            encoded_query = urllib.parse.quote_plus(q)
-            url = f"https://www.youtube.com/results?search_query={encoded_query}"
-            msg = f"Searching YouTube for '{q}' in your browser."
+            # Strip command prefixes
+            clean_q = q
+            for prefix in [
+                "play the song", "play song", "play the", "play on youtube", "play",
+            ]:
+                if clean_q.lower().startswith(prefix):
+                    clean_q = clean_q[len(prefix):].strip()
+            if clean_q.lower().endswith("on youtube"):
+                clean_q = clean_q[:-len("on youtube")].strip()
+            if not clean_q:
+                clean_q = q
+
+            video_url = None
+            if play:
+                video_url = self._get_first_video_url(clean_q)
+
+            if video_url:
+                url = video_url
+                msg = f"Playing '{clean_q}' on YouTube."
+            else:
+                encoded_query = urllib.parse.quote_plus(clean_q)
+                url = f"https://www.youtube.com/results?search_query={encoded_query}"
+                msg = f"Searching YouTube for '{clean_q}' in your browser."
 
         try:
             webbrowser.open(url)
