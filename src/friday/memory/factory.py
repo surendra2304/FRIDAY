@@ -26,6 +26,20 @@ def create_memory(
             max_messages=settings.memory_max_messages,
             embedding_provider=embedding_provider,
         )
+    elif backend == "mem0":
+        logger.debug("Initializing Mem0MemoryAdapter with SQLite fallback")
+        from friday.memory.adapters.mem0_adapter import Mem0MemoryAdapter
+
+        fallback_mem = SQLiteConversationMemory(
+            db_path=settings.memory_db_path,
+            conversation_id=conversation_id,
+            max_messages=settings.memory_max_messages,
+            embedding_provider=embedding_provider,
+        )
+        return Mem0MemoryAdapter(
+            user_id="friday_user",
+            fallback_memory=fallback_mem,
+        )
     elif backend in ("in_memory", "memory", "mock"):
         logger.debug("Initializing InMemoryConversationMemory")
         return InMemoryConversationMemory(

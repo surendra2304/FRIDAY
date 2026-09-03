@@ -38,6 +38,7 @@ class JarvisOrchestrator:
     def __init__(
         self,
         tool_registry: ToolRegistry | None = None,
+        executor_registry: ExecutorRegistry | None = None,
         llm_provider: Any = None,
         authorizer: BaseAuthorizer | None = None,
         max_concurrency: int = 5,
@@ -49,7 +50,7 @@ class JarvisOrchestrator:
         self.authorizer = authorizer or DefaultSecureAuthorizer()
 
         # 1. Initialize Executor Registry & Catalog
-        self.registry = ExecutorRegistry()
+        self.registry = executor_registry or ExecutorRegistry()
         if tool_registry:
             self.registry.register_tool_registry(tool_registry)
 
@@ -115,3 +116,11 @@ class JarvisOrchestrator:
         # Stage 4: Result Synthesis
         response = self.synthesizer.synthesize(executed_graph)
         return response
+
+    def execute_graph(
+        self,
+        graph: TaskGraph,
+        cancellation_token: threading.Event | None = None,
+    ) -> TaskGraph:
+        """Execute a pre-constructed TaskGraph directly through the scheduler."""
+        return self.scheduler.execute_graph(graph, cancellation_token=cancellation_token)
