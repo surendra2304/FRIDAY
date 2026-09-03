@@ -37,10 +37,10 @@ class BaseTool(ABC):
         for key, prop_def in props.items():
             if key not in required and isinstance(prop_def, dict):
                 p_type = prop_def.get("type")
-                if isinstance(p_type, str) and p_type != "null":
-                    prop_def["type"] = [p_type, "null"]
-                elif isinstance(p_type, list) and "null" not in p_type:
-                    prop_def["type"].append("null")
+                if isinstance(p_type, list):
+                    non_null = [t for t in p_type if t != "null"]
+                    prop_def["type"] = non_null[0] if non_null else "string"
+                prop_def["nullable"] = True
 
         return {
             "type": "function",

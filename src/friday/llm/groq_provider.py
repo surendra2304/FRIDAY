@@ -36,12 +36,20 @@ class _ModelNotFoundError(Exception):
 
 
 def _is_rate_limit(error: Exception) -> bool:
-    """Detect a 429 across native SDK exceptions and SDK-less environments."""
+    """Detect rate limits (429 or 413 TPM limits) across SDK exceptions."""
     if _openai_sdk is not None and isinstance(error, _openai_sdk.RateLimitError):
         return True
-    if getattr(error, "status_code", None) == 429:
+    if getattr(error, "status_code", None) in (413, 429):
         return True
-    return "429" in str(error) or "rate limit" in str(error).lower()
+    err = str(error).lower()
+    return (
+        "429" in err
+        or "413" in err
+        or "rate limit" in err
+        or "rate_limit_exceeded" in err
+        or "tpm" in err
+        or "tokens per minute" in err
+    )
 
 
 def _is_model_not_found(error: Exception) -> bool:

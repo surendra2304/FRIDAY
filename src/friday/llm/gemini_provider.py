@@ -178,6 +178,32 @@ class GeminiLLMProvider(BaseLLMProvider):
     # ---------------------------------------------------------------------
     # Schema and Message Conversion Helpers
     # ---------------------------------------------------------------------
+    def _sanitize_parameters_for_gemini(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Recursively sanitize JSON schema parameters for Google GenAI SDK compatibility."""
+        if not isinstance(params, dict):
+            return {}
+        import copy
+        sanitized = copy.deepcopy(params)
+        props = sanitized.get("properties")
+        if isinstance(props, dict):
+            for prop_name, prop_def in props.items():
+                if isinstance(prop_def, dict):
+                    p_type = prop_def.get("type")
+                    if isinstance(p_type, list):
+                        non_null = [t for t in p_type if str(t).lower() != "null"]
+                        base_type = non_null[0] if non_null else "string"
+                        prop_def["type"] = str(base_type).upper()
+                        prop_def["nullable"] = True
+                    elif isinstance(p_type, str):
+                        prop_def["type"] = p_type.upper()
+                    if "properties" in prop_def:
+                        prop_def["properties"] = self._sanitize_parameters_for_gemini(prop_def).get("properties", {})
+                    elif "items" in prop_def and isinstance(prop_def["items"], dict):
+                        prop_def["items"] = self._sanitize_parameters_for_gemini(prop_def["items"])
+        if "type" in sanitized and isinstance(sanitized["type"], str):
+            sanitized["type"] = sanitized["type"].upper()
+        return sanitized
+
     def _convert_schema_to_gemini(self, tool_def: dict[str, Any]) -> dict[str, Any]:
         """Convert an OpenAI-compatible tool JSON schema to a Gemini function declaration dict."""
         if tool_def.get("type") == "function" and "function" in tool_def:
@@ -185,12 +211,12 @@ class GeminiLLMProvider(BaseLLMProvider):
             return {
                 "name": func.get("name", ""),
                 "description": func.get("description", ""),
-                "parameters": func.get("parameters", {}),
+                "parameters": self._sanitize_parameters_for_gemini(func.get("parameters", {})),
             }
         return {
             "name": tool_def.get("name", ""),
             "description": tool_def.get("description", ""),
-            "parameters": tool_def.get("parameters", {}),
+            "parameters": self._sanitize_parameters_for_gemini(tool_def.get("parameters", {})),
         }
 
     def _build_contents_and_config(
