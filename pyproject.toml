@@ -49,6 +49,7 @@ dev = [
 
 [project.scripts]
 friday = "friday.cli.main:main"
+friday-desktop = "friday.desktop.app:run_desktop_app"
 
 [tool.setuptools.packages.find]
 where = ["src"]

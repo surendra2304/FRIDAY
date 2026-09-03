@@ -451,6 +451,10 @@ class FastPathMixin:
                     exe = "wt.exe"
                 elif normalized_app in ("settings", "windowsettings"):
                     exe = "ms-settings:"
+                elif normalized_app in ("youtube", "amazon", "github", "netflix", "reddit", "twitter"):
+                    exe = f"https://www.{normalized_app}.com"
+                elif normalized_app in ("spotify",):
+                    exe = "https://open.spotify.com"
                 elif app_raw in IntentDetector.APP_LAUNCH_MAP.values():
                     exe = app_raw
 
@@ -460,7 +464,10 @@ class FastPathMixin:
                     self.state_machine.transition_to(TaskState.EXECUTING, reason=f"Opening {app_raw}")
                     ok = False
                     try:
-                        if exe.startswith("ms-"):
+                        if exe.startswith("http"):
+                            import webbrowser
+                            webbrowser.open(exe)
+                        elif exe.startswith("ms-"):
                             self._launch_process("explorer.exe", exe)
                         else:
                             self._launch_process(exe)

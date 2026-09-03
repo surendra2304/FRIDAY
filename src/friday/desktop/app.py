@@ -1,126 +1,198 @@
+"""Desktop companion application runtime for FRIDAY.
+
+Bridges the 9-state PyQt6 DesktopOverlay with the core FridayAgent,
+GeminiLiveVoiceSession, and desktop authorization system.
+"""
+
+from __future__ import annotations
+
+import asyncio
 import sys
 import threading
-import asyncio
+from typing import Any
+
+from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
 
-import keyboard
-
-from friday.desktop.window import DesktopOverlay
 from friday.agent.agent import FridayAgent
+from friday.core.auth import BaseAuthorizer
 from friday.core.config import get_settings
 from friday.core.logging import get_logger
-from friday.cli.auth import CLIAuthorizer
+from friday.core.types import (
+    AuthorizationDecision,
+    AuthorizationRequest,
+    SafetyLevel,
+    ToolCall,
+    ToolResult,
+)
+from friday.desktop.window import DesktopOverlay
 
 logger = get_logger("desktop.app")
 
+
+class DesktopAuthorizer(BaseAuthorizer):
+    """Authorizer bridging sensitive tool calls to the desktop confirmation prompt."""
+
+    def __init__(self, request_signal: pyqtSignal, response_event: threading.Event) -> None:
+        self.request_signal = request_signal
+        self.response_event = response_event
+        self.last_decision = False
+
+    def authorize(self, request: AuthorizationRequest) -> AuthorizationDecision:
+        # Safe tools execute automatically
+        if request.safety_level == SafetyLevel.SAFE:
+            return AuthorizationDecision(
+                is_authorized=True,
+                reason="Safe tool auto-approved",
+                safety_level=request.safety_level,
+            )
+
+        # Sensitive or dangerous tools require user confirmation
+        prompt = (
+            f"Action Authorization Required:\n"
+            f"Tool: {request.tool_name}\n"
+            f"Classification: {request.safety_level.value.upper()}\n"
+            f"Arguments: {request.arguments}"
+        )
+        self.response_event.clear()
+        self.request_signal.emit(prompt)
+
+        # Wait for user input on UI (30-second timeout)
+        confirmed = self.response_event.wait(timeout=30.0)
+        if confirmed and self.last_decision:
+            return AuthorizationDecision(
+                is_authorized=True,
+                reason="Authorized by user on desktop overlay",
+                safety_level=request.safety_level,
+            )
+
+        return AuthorizationDecision(
+            is_authorized=False,
+            reason="Action cancelled or timed out by user",
+            safety_level=request.safety_level,
+        )
+
+
 class BackendWorker(QObject):
+    """Background engine connecting FridayAgent and voice session to the UI."""
+
     response_signal = pyqtSignal(str)
-    status_signal = pyqtSignal(str, str)
-    
-    def __init__(self):
+    status_signal = pyqtSignal(str, str)  # (status_text, state_key)
+    confirm_request_signal = pyqtSignal(str)
+
+    def __init__(self) -> None:
         super().__init__()
         self.settings = get_settings()
-        self.agent = FridayAgent(settings=self.settings, authorizer=CLIAuthorizer())
-        
+
+        self._confirm_event = threading.Event()
+        self.authorizer = DesktopAuthorizer(
+            request_signal=self.confirm_request_signal,
+            response_event=self._confirm_event,
+        )
+
+        self.agent = FridayAgent(
+            settings=self.settings,
+            authorizer=self.authorizer,
+            tool_callback=self._on_tool_call,
+        )
+
         # Asyncio event loop running in a background thread
         self.loop = asyncio.new_event_loop()
         self.thread = threading.Thread(target=self._run_loop, daemon=True)
         self.thread.start()
 
-        self.voice_session = None
-        self.voice_task = None
-        
-        # Audio stream detection
+        self.voice_session: Any = None
+        self.voice_task: Any = None
+        self.voice_stop_event: asyncio.Event | None = None
+
+        # Check audio capabilities
         try:
             import sounddevice as sd
+
             self.audio_available = True
         except ImportError:
             self.audio_available = False
 
-    def _run_loop(self):
+    def _run_loop(self) -> None:
         asyncio.set_event_loop(self.loop)
         self.loop.run_forever()
 
-    def handle_text_command(self, text: str):
+    def _on_tool_call(self, tool_call: ToolCall, tool_result: ToolResult | None) -> None:
+        """Invoked by FridayAgent during cognitive loop tool execution."""
+        if tool_result is None:
+            self.status_signal.emit(f"Executing: {tool_call.name}...", "executing")
+        else:
+            self.status_signal.emit("Analyzing outcome...", "thinking")
+
+    def handle_confirmation_response(self, approved: bool) -> None:
+        self.authorizer.last_decision = approved
+        self._confirm_event.set()
+
+    def handle_text_command(self, text: str) -> None:
         self.status_signal.emit("THINKING...", "thinking")
-        
+
         async def _process():
             try:
-                # Fast paths
-                if "open chrome" in text.lower() or "chrome" in text.lower() or "swipe right" in text.lower():
-                    from friday.tools.builtin.open_application import OpenApplicationTool
-                    res = OpenApplicationTool().execute(application="chrome")
-                    self.response_signal.emit(f"Executed PC Action: {res.content}")
-                    self.status_signal.emit("SYSTEM IDLE", "idle")
-                    return
-                elif "open notepad" in text.lower() or "notepad" in text.lower() or "swipe left" in text.lower():
-                    from friday.tools.builtin.open_application import OpenApplicationTool
-                    res = OpenApplicationTool().execute(application="notepad")
-                    self.response_signal.emit(f"Executed PC Action: {res.content}")
-                    self.status_signal.emit("SYSTEM IDLE", "idle")
-                    return
-                elif "open calc" in text.lower() or "calculator" in text.lower():
-                    from friday.tools.builtin.open_application import OpenApplicationTool
-                    res = OpenApplicationTool().execute(application="calc")
-                    self.response_signal.emit(f"Executed PC Action: {res.content}")
-                    self.status_signal.emit("SYSTEM IDLE", "idle")
-                    return
-
+                # Fast path execution where appropriate
                 res = await self.loop.run_in_executor(None, self.agent.process_message, text)
                 self.response_signal.emit(res.content)
                 self.status_signal.emit("SYSTEM IDLE", "idle")
             except Exception as e:
+                logger.error(f"Error handling message: {e}")
                 self.response_signal.emit(f"Error: {e}")
                 self.status_signal.emit("ERROR", "error")
 
         asyncio.run_coroutine_threadsafe(_process(), self.loop)
 
-    def _on_voice_state_change(self, old_state: str, new_state: str):
-        # Maps voice state to UI state
-        # Voice states: IDLE, CONNECTING, LISTENING, SPEAKING, TOOL_EXECUTION, ERROR, DISCONNECTED
+    def _on_voice_state_change(self, old_state: Any, new_state: Any) -> None:
+        """Map voice session states to the 9 UI overlay states."""
+        state_str = str(new_state.name if hasattr(new_state, "name") else new_state).upper()
         state_map = {
-            "IDLE": "idle",
-            "CONNECTING": "listening",
-            "LISTENING": "listening",
-            "SPEAKING": "speaking",
-            "TOOL_EXECUTION": "thinking",
-            "ERROR": "error",
-            "DISCONNECTED": "error"
+            "IDLE": ("SYSTEM IDLE", "idle"),
+            "CONNECTING": ("CONNECTING TO VOICE...", "listening"),
+            "LISTENING": ("LISTENING...", "listening"),
+            "THINKING": ("PROCESSING...", "thinking"),
+            "PLANNING": ("PREPARING PLAN...", "planning"),
+            "SPEAKING": ("SPEAKING...", "speaking"),
+            "TOOL_EXECUTION": ("EXECUTING TOOL...", "executing"),
+            "CONFIRMATION": ("CONFIRMATION REQUIRED", "confirmation"),
+            "ERROR": ("VOICE ERROR", "error"),
+            "DISCONNECTED": ("DISCONNECTED", "disconnected"),
         }
-        ui_state = state_map.get(new_state.name if hasattr(new_state, 'name') else str(new_state), "idle")
-        
-        label = new_state.name if hasattr(new_state, 'name') else str(new_state)
-        self.status_signal.emit(label, ui_state)
+        text, ui_state = state_map.get(state_str, ("PROCESSING...", "thinking"))
+        self.status_signal.emit(text, ui_state)
 
-    def _on_voice_transcript(self, speaker: str, text: str):
+    def _on_voice_transcript(self, speaker: str, text: str) -> None:
         self.response_signal.emit(f"[{speaker}] {text}")
 
-    def toggle_voice(self):
+    def toggle_voice(self) -> None:
         if not self.audio_available:
-            self.response_signal.emit("Voice interface unavailable. Install sounddevice and PyAudio.")
+            self.response_signal.emit("Voice interface unavailable: missing sounddevice.")
             self.status_signal.emit("AUDIO ERROR", "error")
             return
 
-        if self.voice_session and self.voice_session.is_active:
-            # Stop the session
+        if self.voice_session and getattr(self.voice_session, "is_active", False):
+            # Graceful voice session shutdown
             self.response_signal.emit("Disconnecting voice interface...")
+
             async def _stop():
-                if hasattr(self, "voice_stop_event") and self.voice_stop_event:
+                if self.voice_stop_event:
                     self.voice_stop_event.set()
                 if self.voice_task:
                     self.voice_task.cancel()
                 self.voice_session = None
                 self.status_signal.emit("SYSTEM IDLE", "idle")
+
             asyncio.run_coroutine_threadsafe(_stop(), self.loop)
         else:
-            self.response_signal.emit("Voice interface connecting to Gemini Live...")
+            self.response_signal.emit("Connecting to Gemini Live Voice...")
             self.status_signal.emit("CONNECTING...", "listening")
-            
+
             async def _start():
                 try:
                     from friday.auth.credential_pool import credential_pool
                     from friday.voice.gemini_live_session import GeminiLiveVoiceSession
+
                     self.voice_session = GeminiLiveVoiceSession(
                         agent=self.agent,
                         credential_pool=credential_pool,
@@ -135,16 +207,17 @@ class BackendWorker(QObject):
                     )
                     await self.voice_session._connected_event.wait()
                     self.response_signal.emit("FRIDAY Live Voice session connected. Listening...")
-                    await self.voice_session.send_text("Hello FRIDAY. The desktop interface is active.")
+                    self.status_signal.emit("LISTENING...", "listening")
                 except Exception as e:
-                    self.response_signal.emit(f"Voice Error: {e}")
-                    self.status_signal.emit("ERROR", "error")
+                    logger.error(f"Voice startup failure: {e}")
+                    self.response_signal.emit(f"Voice Connection Error: {e}")
+                    self.status_signal.emit("VOICE ERROR", "error")
                     self.voice_session = None
 
             asyncio.run_coroutine_threadsafe(_start(), self.loop)
 
-    def shutdown(self):
-        if hasattr(self, "voice_stop_event") and self.voice_stop_event:
+    def shutdown(self) -> None:
+        if self.voice_stop_event:
             self.voice_stop_event.set()
         if self.voice_task:
             self.loop.call_soon_threadsafe(self.voice_task.cancel)
@@ -152,38 +225,36 @@ class BackendWorker(QObject):
         self.thread.join(timeout=1.0)
 
 
-def run_desktop_app():
+def run_desktop_app() -> int:
     app = QApplication(sys.argv)
-    
+
     overlay = DesktopOverlay()
     worker = BackendWorker()
-    
-    # Connect signals
+
+    # Wire UI signals to backend
     overlay.send_text_signal.connect(worker.handle_text_command)
     overlay.toggle_voice_signal.connect(worker.toggle_voice)
+    overlay.confirmation_response_signal.connect(worker.handle_confirmation_response)
     overlay.close_signal.connect(app.quit)
-    
+
+    # Wire backend telemetry to UI
     worker.response_signal.connect(lambda text: overlay.append_transcript("FRIDAY", text))
     worker.status_signal.connect(overlay.set_status)
-    
-    # Global Hotkey
-    def toggle_visibility():
-        if overlay.isVisible():
-            if overlay.isActiveWindow():
-                overlay.hide()
-            else:
-                overlay.activateWindow()
-        else:
-            overlay.show()
-            overlay.activateWindow()
-            
-    keyboard.add_hotkey('ctrl+shift+space', toggle_visibility)
-    
+    worker.confirm_request_signal.connect(overlay.request_confirmation)
+
+    # Global Hotkey hook via keyboard library if available
+    try:
+        import keyboard
+
+        keyboard.add_hotkey("ctrl+shift+space", overlay.toggle_visibility_or_focus)
+    except Exception as e:
+        logger.debug(f"keyboard library hotkey registration: {e}")
+
     overlay.show()
-    
     res = app.exec()
     worker.shutdown()
     return res
+
 
 if __name__ == "__main__":
     sys.exit(run_desktop_app())

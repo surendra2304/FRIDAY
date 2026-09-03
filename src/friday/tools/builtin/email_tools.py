@@ -129,3 +129,53 @@ class SendEmailTool(BaseTool):
             is_error=not ok,
             safety_level=self.safety_level,
         )
+
+
+class DraftEmailTool(BaseTool):
+    """Draft an email for user review and confirmation before sending."""
+
+    name = "draft_email"
+    description = (
+        "Draft an email message with recipient, subject, and body for user review. "
+        "Safe to call without sending. Returns the formatted draft."
+    )
+    safety_level = SafetyLevel.SAFE
+    parameters = {
+        "type": "object",
+        "properties": {
+            "to_address": {
+                "type": "string",
+                "description": "Recipient name or email address.",
+            },
+            "subject": {
+                "type": "string",
+                "description": "The proposed email subject line.",
+            },
+            "body": {
+                "type": "string",
+                "description": "The proposed body text of the email.",
+            },
+        },
+        "required": ["to_address", "subject", "body"],
+    }
+
+    def execute(self, to_address: str, subject: str, body: str, **kwargs: Any) -> ToolResult:
+        recipient = (to_address or "").strip()
+        subj = (subject or "").strip()
+        content = (body or "").strip()
+
+        draft = (
+            f"--- EMAIL DRAFT ---\n"
+            f"To: {recipient}\n"
+            f"Subject: {subj}\n\n"
+            f"{content}\n"
+            f"-------------------\n"
+            f"Draft created. Ready to send upon user confirmation."
+        )
+
+        return ToolResult(
+            name=self.name,
+            content=draft,
+            is_error=False,
+            safety_level=self.safety_level,
+        )

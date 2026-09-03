@@ -55,6 +55,9 @@ from friday.tools.builtin import (
     ControlPlugTool,
     CreateGitBranchTool,
     CreateGitHubIssueTool,
+    DictionaryTool,
+    DraftEmailTool,
+    EnrollFaceIdentityTool,
     ExecuteCommandTool,
     FetchWebpageContentTool,
     FetchWebpageTool,
@@ -73,14 +76,20 @@ from friday.tools.builtin import (
     KillProcessTool,
     LaunchApplicationTool,
     ListGitHubIssuesTool,
+    LocationMapsTool,
+    ManageTasksTool,
     ManageVolumeTool,
     ManageWindowsTool,
+    MediaControlTool,
     MemorySearchTool,
+    NewsTool,
     OpenApplicationTool,
+    OpenWebsiteTool,
     ProposeComputerActionTool,
     ReadActiveWindowTextTool,
     ReadOwnCodebaseTool,
     ReadScreenTextTool,
+    RememberFactTool,
     ReplaceFileContentTool,
     RunTestsTool,
     ScreenPredictionTool,
@@ -95,8 +104,12 @@ from friday.tools.builtin import (
     ToggleDarkModeTool,
     ToggleWifiTool,
     TypeTextTool,
+    VerifyFaceIdentityTool,
+    WeatherTool,
     WebSearchTool,
+    WikipediaTool,
     WriteCodeFileTool,
+    YouTubeTool,
 )
 from friday.tools.registry import ToolRegistry
 from friday.vision.actions import ActionType
@@ -160,8 +173,21 @@ class ToolExecutionMixin:
             registry.register(ToggleWifiTool())
             registry.register(GetTodaysEventsTool())
             registry.register(SendEmailTool())
+            registry.register(DraftEmailTool())
             registry.register(ReadOwnCodebaseTool())
             registry.register(AIUniverseTool(memory=self.memory))
+            registry.register(WeatherTool())
+            registry.register(NewsTool())
+            registry.register(ManageTasksTool())
+            registry.register(OpenWebsiteTool())
+            registry.register(YouTubeTool())
+            registry.register(LocationMapsTool())
+            registry.register(WikipediaTool())
+            registry.register(DictionaryTool())
+            registry.register(MediaControlTool())
+            registry.register(RememberFactTool(memory=self.memory))
+            registry.register(VerifyFaceIdentityTool())
+            registry.register(EnrollFaceIdentityTool())
             
             # FRIDAY Android Control Tools
             try:
