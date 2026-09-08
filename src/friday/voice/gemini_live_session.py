@@ -102,12 +102,12 @@ class GeminiLiveVoiceSession:
         if "live" not in live_model.lower() and live_model.lower() not in _LIVE_CAPABLE_MODEL_NAMES:
             logger.warning(
                 f"Model '{live_model}' is not a valid Gemini Live voice model. "
-                f"Falling back to configured Live voice model '{getattr(settings, 'voice_live_model', 'gemini-1.5-flash-latest')}'."
+                f"Falling back to configured Live voice model '{getattr(settings, 'voice_live_model', 'gemini-3.1-flash-live-preview')}'."
             )
             live_model = getattr(settings, "voice_live_model", "gemini-3.1-flash-live-preview")
         self.model = live_model
         self.agent = agent
-        self.voice_name = voice_name or getattr(settings, "voice_name", "Aoede")
+        self.voice_name = voice_name or getattr(settings, "voice_name", "Kore")
         self.sample_rate_in = sample_rate_in
         self.sample_rate_out = sample_rate_out
         self.max_retries = max_retries
