@@ -1,4 +1,4 @@
-"""Unit and integration tests for FRIDAY Security & Authorization Boundary.6: Futuristic Voice Persona."""
+﻿"""Unit and integration tests for FRIDAY Security & Authorization Boundary.6: Futuristic Voice Persona."""
 
 import asyncio
 from unittest import mock
@@ -73,7 +73,7 @@ def test_voice_persona_system_prompt_guidelines(memory_db):
     session = GeminiLiveVoiceSession(
         api_key="TEST_GEMINI_API_KEY",
         agent=agent,
-        voice_name="Aoede",
+        voice_name="Kore",
     )
     sys_inst = session._build_system_instruction()
     assert sys_inst is not None

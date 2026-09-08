@@ -350,8 +350,8 @@ class Settings(BaseSettings):
     voice_input_sample_rate: int = Field(default=16000, description="Audio sample rate for microphone input (Hz)")
     voice_output_format: str = Field(default="mp3", description="Audio format for synthesized speech")
     voice_name: str = Field(
-        default="Aoede",
-        description="Prebuilt voice name for Gemini speech synthesis (e.g. Aoede, Puck, Charon, Kore, Fenrir)",
+        default="Kore",
+        description="Prebuilt voice name for Gemini speech synthesis: the single female voice Kore",
     )
     voice_playback_buffer_ms: int = Field(default=100, description="Playback buffer size in milliseconds for non‑blocking audio")
     voice_live_model: str = Field(

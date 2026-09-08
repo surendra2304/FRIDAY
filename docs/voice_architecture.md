@@ -73,7 +73,7 @@ WebSocket Send |                       | WebSocket Receive
 |  - Real-time Audio Processing & Speech Understanding                 |
 |  - Gemini 2.0 Flash / Gemini 2.5 Flash Multimodal Live Model         |
 |  - Server-Side Voice Activity Detection (VAD)                        |
-|  - Real-time Speech Synthesis (Configurable: Aoede, Puck, Charon)    |
+|  - Real-time Speech Synthesis (Configurable: Kore, Puck, Charon)    |
 |  - Native Function Calling Protocol & Cancellation Signaling         |
 +----------------------------------------------------------------------+
 ```
@@ -179,7 +179,7 @@ The system prompt injected into `LiveConnectConfig.system_instruction` enforces 
 | `FRIDAY_VOICE_ENABLED` | `false` | Master toggle for voice subsystem |
 | `FRIDAY_VOICE_PROVIDER` | `gemini` | Voice provider backend (`gemini` or `mock`) |
 | `FRIDAY_VOICE_LIVE_MODEL` | `gemini-2.0-flash` | Gemini Live multimodal model |
-| `FRIDAY_VOICE_NAME` | `Aoede` | Voice timbre (`Aoede`, `Puck`, `Charon`, `Kore`, `Fenrir`) |
+| `FRIDAY_VOICE_NAME` | `Kore` | Voice timbre (`Kore`, `Puck`, `Charon`, `Fenrir`) |
 | `FRIDAY_VOICE_INPUT_SAMPLE_RATE` | `16000` | Input PCM sample rate (16 kHz) |
 | `FRIDAY_VOICE_LIVE_SAMPLE_RATE` | `24000` | Output PCM sample rate (24 kHz) |
 | `FRIDAY_VOICE_PLAYBACK_BUFFER_MS`| `100` | Playback buffer window in ms |
