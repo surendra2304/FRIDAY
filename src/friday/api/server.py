@@ -473,6 +473,58 @@ async def mcp_sse_endpoint(request: Request):
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
+# =========================================================================
+# FRIDAY Proactive & Diagnostics Endpoints (JARVIS-like ambient awareness)
+# =========================================================================
+
+
+@app.get("/api/diagnostics")
+async def diagnostics_endpoint() -> dict[str, Any]:
+    """Return live system telemetry for the HUD / proactive monitoring."""
+    try:
+        diag = agent.get_system_diagnostics()
+        diag["status"] = "ok"
+        return diag
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@app.get("/api/proactive")
+async def proactive_endpoint() -> dict[str, Any]:
+    """Return any pending proactive announcements (unprompted FRIDAY insights)."""
+    try:
+        announcement = agent.get_proactive_announcement()
+        return {
+            "status": "ok",
+            "has_announcement": announcement is not None,
+            "announcement": announcement,
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/proactive/dismiss")
+async def dismiss_proactive() -> dict[str, Any]:
+    """Clear all pending proactive notifications."""
+    try:
+        agent.notifications.clear()
+        return {"status": "ok", "cleared": True}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+def start_proactive_monitoring() -> None:
+    """Start FRIDAY's background proactive monitoring loop. Call at server boot."""
+    try:
+        agent.start_proactive_monitoring()
+        logger.info("FRIDAY proactive monitoring started")
+    except Exception as e:
+        logger.warning(f"Could not start proactive monitoring: {e}")
+
+
+# Auto-start proactive monitoring when the module loads (server boot)
+start_proactive_monitoring()
+
 
 @app.post("/messages")
 async def mcp_messages_endpoint(request: Request) -> JSONResponse:
