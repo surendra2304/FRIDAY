@@ -205,12 +205,46 @@ class GeminiLiveVoiceSession:
         return self._resumption_handle
 
     def _build_tools_config(self) -> list[genai_types.Tool] | None:
-        """Extract tool schemas from agent registry and convert to GenAI tool declarations.
-        
-        Voice mode uses Gemini Live for real-time speech I/O. The local FridayAgent owns
-        tool routing after each completed transcript so the Live model cannot keep executing
-        stale desktop/search actions across later turns.
-        """
+        """Extract tool schemas from agent registry and convert to GenAI tool declarations."""
+        registry = getattr(self.agent, "tools", getattr(self.agent, "tool_registry", None)) if self.agent else None
+        if not registry:
+            return None
+
+        allowed_tool_names = [
+            "open_application",
+            "close_application",
+            "youtube",
+            "get_time_date",
+            "get_system_info",
+            "get_screen_snapshot",
+            "manage_volume",
+            "search_web",
+            "android_open_app",
+            "android_keyevent",
+        ]
+
+        function_declarations = []
+        for name in allowed_tool_names:
+            tool = registry.get(name)
+            if not tool:
+                continue
+            try:
+                schema = tool.to_openai_schema()
+                fn_info = schema.get("function", {})
+                desc = fn_info.get("description", tool.description or "")
+                params = fn_info.get("parameters", {"type": "object", "properties": {}})
+                function_declarations.append(
+                    genai_types.FunctionDeclaration(
+                        name=name,
+                        description=desc,
+                        parameters=params,
+                    )
+                )
+            except Exception as e:
+                logger.debug(f"Failed to convert tool '{name}' for Gemini Live: {e}")
+
+        if function_declarations:
+            return [genai_types.Tool(function_declarations=function_declarations)]
         return None
 
     def _build_system_instruction(self) -> genai_types.Content | None:
@@ -666,6 +700,7 @@ class GeminiLiveVoiceSession:
         # VAD can still detect genuine interruptions.
         if echo_mute and not self.headphones_mode:
             self._echo_suppression = True
+            spk.set_echo_mute_target(mic)
             logger.info(
                 "Echo suppression enabled: low-energy frames suppressed during playback "
                 f"(interrupt threshold RMS {self.echo_interrupt_rms_threshold:.0f})."
@@ -1034,13 +1069,15 @@ class GeminiLiveVoiceSession:
                         if instant_key:
                             try:
                                 local_response = await asyncio.to_thread(self.agent.process_message, user_text)
-                                agent_text = local_response.content or agent_text or "Done."
+                                if local_response.content:
+                                    agent_text = local_response.content
                                 local_agent_handled = True
-                                # Send result back to Live model for speaking
-                                try:
-                                    await self.send_text(f"FRIDAY, say the following result out loud briefly: {agent_text}")
-                                except Exception:
-                                    pass
+                                # Only request spoken confirmation if the Live model was silent
+                                if not raw_agent_text:
+                                    try:
+                                        await self.send_text(f"FRIDAY, acknowledge briefly that you completed: {agent_text}")
+                                    except Exception:
+                                        pass
                             except Exception as e:
                                 logger.warning(f"Local voice agent processing failed: {e}")
 

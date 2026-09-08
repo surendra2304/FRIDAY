@@ -17,18 +17,12 @@ from datetime import datetime
 
 from friday.agent.checkpoint import TaskCheckpoint, TaskCheckpointStore
 from friday.agent.cognitive import CognitiveIntelligenceEngine, CognitivePhase
-from friday.agent.executor import (
-    ExecutionProgress,
-    TaskExecutionEngine,
-    TaskExecutionResult,
-)
-from friday.agent.planner import GoalDecomposer, TaskPlan
+
 from friday.agent.prompts import build_system_message
 from friday.agent.state import ReasoningStateMachine, TaskState
+from friday.planning.types import TaskGraph
 from friday.agents.base_agent import AgentTask, BaseAgent
-from friday.agents.decomposer import TaskDecomposer
 from friday.agents.registry import AgentRegistry
-from friday.agents.router import AgentRouter
 from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer
 from friday.core.config import Settings, get_settings
 from friday.core.logging import get_logger
@@ -130,9 +124,9 @@ logger = get_logger("agent.core")
 
 
 
-from friday.agent.mixins import MemoryMixin, FastPathMixin, ToolExecutionMixin, TaskMixin, CognitiveMixin
+from friday.agent.mixins import MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
 
-class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, TaskMixin, CognitiveMixin):
+class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin):
     """The central FRIDAY agent orchestrating reasoning, memory, multi-step tool calling, and output."""
 
     def __init__(
@@ -160,7 +154,7 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, TaskMixin, Cog
         self.system_message = build_system_message(self.settings)
         self._processed_tool_ids: set = set()
         self.state_machine: ReasoningStateMachine = ReasoningStateMachine()
-        self._current_plan: TaskPlan | None = None
+        self._current_plan: TaskGraph | None = None
         self.task_context: ActiveTaskContext | None = None
         self.checkpoint_store: TaskCheckpointStore = TaskCheckpointStore()
         self.cognitive_engine: CognitiveIntelligenceEngine = CognitiveIntelligenceEngine(
@@ -169,8 +163,6 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, TaskMixin, Cog
         )
         self.capability_router: CapabilityRouter = CapabilityRouter()
         self._agent_registry: AgentRegistry | None = None
-        self._task_decomposer: TaskDecomposer | None = None
-        self._agent_router: AgentRouter | None = None
         self.notifications: NotificationManager = NotificationManager()
         self._skill_registry: Any | None = skill_registry
 
@@ -206,21 +198,7 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, TaskMixin, Cog
         assert self._agent_registry is not None
         return self._agent_registry
 
-    @property
-    def task_decomposer(self) -> TaskDecomposer:
-        """Lazy-loaded task decomposer."""
-        if getattr(self, "_task_decomposer", None) is None:
-            self._task_decomposer = TaskDecomposer(llm_provider=self.llm)
-        assert self._task_decomposer is not None
-        return self._task_decomposer
 
-    @property
-    def agent_router(self) -> AgentRouter:
-        """Lazy-loaded agent router."""
-        if getattr(self, "_agent_router", None) is None:
-            self._agent_router = AgentRouter(registry=self.agent_registry)
-        assert self._agent_router is not None
-        return self._agent_router
 
     @property
     def skill_registry(self):
@@ -330,9 +308,9 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, TaskMixin, Cog
         re.IGNORECASE,
     )
     _PLAY_MEDIA_PATTERN = re.compile(
-        r"^\s*(?:please\s+)?(?:(?:play|stream)\s+(?:the\s+)?(?:song\s+|video\s+|music\s+|track\s+)?(?P<query>.+?)(?:\s+on\s+youtube)?|"
-        r"play\s+on\s+youtube\s+(?P<query2>.+?)|"
-        r"play\s+(?P<query3>.+?))\s*$",
+        r"^\s*(?:please\s+)?(?:(?:open\s+(?:chrome|google\s+chrome|browser|youtube)\s+and\s+)?(?:play|stream)\s+(?:the\s+)?(?:song\s+|video\s+|music\s+|track\s+)?(?P<query>.+?)(?:\s+(?:on|in)\s+youtube)?|"
+        r"(?:play|stream)\s+(?:on|in)\s+youtube\s+(?P<query2>.+?)|"
+        r"(?:play|stream)\s+(?P<query3>.+?)(?:\s+(?:on|in)\s+youtube)?)\s*$",
         re.IGNORECASE,
     )
     _CLOSE_CHROME_PATTERN = re.compile(
@@ -467,8 +445,8 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, TaskMixin, Cog
         return self.state_machine.current_state
 
     @property
-    def current_plan(self) -> TaskPlan | None:
-        """Return the active TaskPlan if one exists."""
+    def current_plan(self) -> TaskGraph | None:
+        """Return the active TaskGraph if one exists."""
         return self._current_plan
 
 

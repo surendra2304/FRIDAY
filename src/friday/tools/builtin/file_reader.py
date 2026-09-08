@@ -5,6 +5,7 @@ from typing import Any
 
 from friday.core.types import SafetyLevel, ToolResult
 from friday.tools.base import BaseTool
+from friday_deep.security.filesystem import FileAccessDenied, SecureWorkspace
 
 
 class FileReaderTool(BaseTool):
@@ -45,19 +46,25 @@ class FileReaderTool(BaseTool):
                 safety_level=self.safety_level,
             )
 
+        secure_workspace = SecureWorkspace(workspace_root)
         try:
-            # Combine paths and resolve to eliminate traversal components (e.g. '..')
-            target_path = (workspace_root / path).resolve()
+            target_path = secure_workspace.resolve(path)
+        except FileAccessDenied as exc:
+            return ToolResult(
+                name=self.name,
+                content=f"Security Error: {exc}",
+                is_error=True,
+                safety_level=self.safety_level,
+            )
+        except Exception as exc:
+            return ToolResult(
+                name=self.name,
+                content=f"Security Error: {exc}",
+                is_error=True,
+                safety_level=self.safety_level,
+            )
 
-            # Traversal check: Target must be strictly within the workspace root
-            if not target_path.is_relative_to(workspace_root):
-                return ToolResult(
-                    name=self.name,
-                    content="Security Error: File path is outside the allowed workspace sandbox.",
-                    is_error=True,
-                    safety_level=self.safety_level,
-                )
-
+        try:
             if not target_path.is_file():
                 return ToolResult(
                     name=self.name,

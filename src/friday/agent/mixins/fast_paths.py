@@ -12,18 +12,14 @@ import uuid
 from datetime import datetime
 from friday.agent.checkpoint import TaskCheckpoint, TaskCheckpointStore
 from friday.agent.cognitive import CognitiveIntelligenceEngine, CognitivePhase
-from friday.agent.executor import (
-    ExecutionProgress,
-    TaskExecutionEngine,
-    TaskExecutionResult,
-)
-from friday.agent.planner import GoalDecomposer, TaskPlan
+
+
 from friday.agent.prompts import build_system_message
 from friday.agent.state import ReasoningStateMachine, TaskState
 from friday.agents.base_agent import AgentTask, BaseAgent
-from friday.agents.decomposer import TaskDecomposer
+
 from friday.agents.registry import AgentRegistry
-from friday.agents.router import AgentRouter
+
 from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer
 from friday.core.config import Settings, get_settings
 from friday.core.logging import get_logger
@@ -482,6 +478,26 @@ class FastPathMixin:
                         "task_state": self.state_machine.current_state.value,
                     },
                 )
+            play_match = self._PLAY_MEDIA_PATTERN.match(clean_input)
+            if play_match:
+                query_raw = (
+                    play_match.groupdict().get("query")
+                    or play_match.groupdict().get("query2")
+                    or play_match.groupdict().get("query3")
+                )
+                query_val = (query_raw or "").strip()
+                query_val = re.sub(r"\s+(?:on|in)\s+youtube[\.\!\?]*$", "", query_val, flags=re.IGNORECASE).strip().rstrip(".!?")
+                if query_val:
+                    def _play_youtube() -> str:
+                        from friday.tools.builtin.youtube import YouTubeTool
+                        return YouTubeTool().execute(query=query_val, play=True).content
+
+                    return self._complete_fast_path(
+                        clean_input, start_time, "play_media",
+                        f"Direct media playback command for '{query_val}'", f"Playing '{query_val}' on YouTube",
+                        _play_youtube,
+                        verifying_reason="Resolving YouTube video watch URL and launching in browser",
+                    )
 
             open_app_match = self._OPEN_APP_PATTERN.match(clean_input)
             if open_app_match:
@@ -514,14 +530,17 @@ class FastPathMixin:
                     self.state_machine.transition_to(TaskState.EXECUTING, reason=f"Opening {app_raw}")
                     ok = False
                     try:
-                        if exe.startswith("http"):
-                            import webbrowser
-                            webbrowser.open(exe)
-                        elif exe.startswith("ms-"):
-                            self._launch_process("explorer.exe", exe)
-                        else:
-                            self._launch_process(exe)
-                        ok = True
+                        from friday.devices.app_launcher import launch_desktop_app
+                        ok, msg = launch_desktop_app(app_raw)
+                        if not ok:
+                            if exe.startswith("http"):
+                                import webbrowser
+                                webbrowser.open(exe)
+                            elif exe.startswith("ms-"):
+                                self._launch_process("explorer.exe", exe)
+                            else:
+                                self._launch_process(exe)
+                            ok = True
                     except Exception as e:
                         logger.warning(f"Opening '{app_raw}' failed: {e}")
                     self.state_machine.transition_to(TaskState.VERIFYING, reason=f"Checking {app_raw} launch")
@@ -910,6 +929,8 @@ class FastPathMixin:
                 return "chrome_search"
             if self._CLOSE_CHROME_PATTERN.match(clean):
                 return "close_chrome"
+            if self._PLAY_MEDIA_PATTERN.match(clean):
+                return "play_media"
             open_app_match = self._OPEN_APP_PATTERN.match(clean)
             if open_app_match:
                 app_raw = open_app_match.group("app").strip().lower()

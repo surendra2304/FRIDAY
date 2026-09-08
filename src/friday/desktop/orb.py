@@ -1,4 +1,4 @@
-"""Holographic 9-state animated PyQt6 orb widget inspired by Iron Man HUD & Sagar Tamang."""
+"""Holographic 9-state animated PyQt6 orb widget for Surendra's FRIDAY."""
 
 from __future__ import annotations
 

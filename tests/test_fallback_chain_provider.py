@@ -122,7 +122,8 @@ def test_factory_creates_chain_in_groq_mistral_openrouter_order():
         groq_api_key="gk",
         mistral_api_key="mk",
         openrouter_api_key="ork",
-        api_key="universe_k",
+        inference_url="http://abc",
+        inference_api_key="universe_k",
     )
     provider = create_llm_provider(settings)
     assert isinstance(provider, FallbackChainLLMProvider)
@@ -144,7 +145,8 @@ def test_factory_chain_uses_own_pools_not_gemini(monkeypatch):
         groq_api_key="gk",
         mistral_api_key="mk",
         openrouter_api_key="ork",
-        api_key="universe_k",
+        inference_url="http://abc",
+        inference_api_key="universe_k",
     )
     provider = create_llm_provider(settings)
     assert isinstance(provider, FallbackChainLLMProvider)

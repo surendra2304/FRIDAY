@@ -68,13 +68,13 @@ class AutonomousDevWorkflow:
         # Step 1: Create and checkout git branch
         branch_name = f"{branch_prefix}{issue_id}"
         branch_tool = self.tool_registry.get("create_git_branch") or CreateGitBranchTool()
-        branch_res = branch_tool.execute(branch_name=branch_name)
+        branch_res = self.tool_registry.execute(branch_tool.name, {"branch_name": branch_name})
         steps.append(f"Branch Creation: {branch_res.content}")
 
         # Step 2: Fetch issue details from GitHub
         issue_desc = f"Issue #{issue_id} from {target_repo}"
         gh_tool = self.tool_registry.get("list_github_issues") or ListGitHubIssuesTool()
-        gh_res = gh_tool.execute(repo_name=target_repo, limit=20)
+        gh_res = self.tool_registry.execute(gh_tool.name, {"repo_name": target_repo, "limit": 20})
         if not gh_res.is_error:
             steps.append(f"GitHub Issue Context: Retrieved issues list for '{target_repo}'.")
             issue_desc = f"GitHub Issue #{issue_id} in {target_repo}:\n{gh_res.content}"
@@ -97,7 +97,7 @@ class AutonomousDevWorkflow:
 
         # Step 4: Run Tests to verify fix
         test_tool = self.tool_registry.get("run_tests") or RunTestsTool()
-        test_res = test_tool.execute()
+        test_res = self.tool_registry.execute(test_tool.name, {})
         steps.append(f"Verification: {test_tool.name} result -> {test_res.content[:200]}")
 
         tests_passed = not test_res.is_error
@@ -107,12 +107,12 @@ class AutonomousDevWorkflow:
         push_res_content = ""
         if tests_passed:
             commit_tool = self.tool_registry.get("git_commit") or GitCommitTool()
-            commit_res = commit_tool.execute(message=f"fix: resolve issue #{issue_id} autonomously")
+            commit_res = self.tool_registry.execute(commit_tool.name, {"message": f"fix: resolve issue #{issue_id} autonomously"})
             commit_res_content = commit_res.content
             steps.append(f"Git Commit: {commit_res_content}")
 
             push_tool = self.tool_registry.get("git_push") or GitPushTool()
-            push_res = push_tool.execute(branch=branch_name)
+            push_res = self.tool_registry.execute(push_tool.name, {"branch": branch_name})
             push_res_content = push_res.content
             steps.append(f"Git Push: {push_res_content}")
 

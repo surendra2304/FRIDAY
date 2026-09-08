@@ -21,6 +21,17 @@ from .execution_context import ExecutionContext
 logger = get_logger("tools.registry")
 
 
+def _run_coroutine_safely(coro):
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="friday-async-tool") as pool:
+        return pool.submit(asyncio.run, coro).result()
+
+
 class ToolRegistry:
     """Central registry for managing agent tools and enforcing safety policies."""
 
@@ -31,6 +42,8 @@ class ToolRegistry:
         self._thread_executor = ThreadPoolExecutor(max_workers=20, thread_name_prefix="friday-tool-worker")
         self._timed_out_executions = set()
         self._timed_out_lock = threading.Lock()
+        from friday_deep.security.tool_firewall import ToolFirewall
+        self._firewall = ToolFirewall({})
 
     def register(self, tool: BaseTool) -> None:
         """Register a new tool instance."""
@@ -140,6 +153,29 @@ class ToolRegistry:
                 error_detail=error_detail,
             )
 
+        # Tool Capability Firewall Check (if agent_capability present in context)
+        if exec_context and getattr(exec_context, "agent_capability", None):
+            agent_cap = exec_context.agent_capability
+            from friday_deep.security.tool_firewall import Decision
+            from friday_deep.contracts import ToolCapability
+            if name not in self._firewall.capabilities:
+                self._firewall.capabilities[name] = ToolCapability(
+                    name=name,
+                    safety=tool.safety_level.value,
+                    side_effects=(tool.safety_level != SafetyLevel.SAFE),
+                )
+            fw_res = self._firewall.evaluate(agent_cap, name, arguments)
+            if fw_res.decision == Decision.BLOCK:
+                exec_id = tool_call_id or str(uuid.uuid4())
+                logger.warning(f"Firewall Blocked tool '{name}' for role '{agent_cap.role}': {fw_res.reason}")
+                return ToolResult(
+                    tool_call_id=exec_id,
+                    name=name,
+                    content=f"Firewall Blocked: {fw_res.reason}",
+                    is_error=True,
+                    safety_level=tool.safety_level,
+                )
+
         # Check safety permissions via cryptographic ToolAuthorizationCapability
         if tool.safety_level in (SafetyLevel.SENSITIVE, SafetyLevel.DANGEROUS):
             active_authz = authorizer or tool_authorizer
@@ -174,7 +210,7 @@ class ToolRegistry:
 
         try:
             # Circuit breaker check
-            cb = exec_context.circuit_breaker if exec_context else CircuitBreaker()
+            cb = (exec_context.circuit_breaker if exec_context and exec_context.circuit_breaker else None) or CircuitBreaker()
             if cb.is_open(name):
                 exec_id = tool_call_id or str(uuid.uuid4())
                 error_detail = CircuitBreakerError(name, exec_id)
@@ -225,9 +261,9 @@ class ToolRegistry:
                 exec_args["cancel_event"] = cancel_event
 
             try:
-                if asyncio.iscoroutinefunction(tool.execute):
-                    # Run async tool with timeout
-                    result = asyncio.run(asyncio.wait_for(tool.execute(**exec_args), timeout=timeout_seconds))
+                if inspect.iscoroutinefunction(tool.execute):
+                    # Run async tool with timeout safely
+                    result = _run_coroutine_safely(asyncio.wait_for(tool.execute(**exec_args), timeout=timeout_seconds))
                 else:
                     # Run sync tool using the shared thread executor (so we don't wait for worker shutdown!)
                     future = self._thread_executor.submit(tool.execute, **exec_args)
@@ -277,6 +313,11 @@ class ToolRegistry:
                         )
                 except Exception as ve:
                     logger.exception(f"Verification method error for tool '{name}': {ve}")
+
+            # Redact secrets in tool output to prevent sensitive data leakage
+            if isinstance(result.content, str):
+                from friday_deep.security.redaction import DEFAULT as default_redactor
+                result.content = default_redactor.redact(result.content)
 
             return result
         except Exception as e:

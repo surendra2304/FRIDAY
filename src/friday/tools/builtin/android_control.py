@@ -1,84 +1,207 @@
-import subprocess
-from typing import Any, Type
+"""Android Automation Tools for Surendra's FRIDAY.
 
-from pydantic import BaseModel, Field
+Enables FRIDAY to interact with physical or emulated Android devices:
+- Tap touch digitizer coordinates
+- Swipe / drag gestures
+- Type text into focused input fields
+- Press navigation / hardware keys (Home, Back, Recents, Power, Volume, Enter)
+- Launch applications by name or package identifier
+- Capture device screenshots
+- Inspect connected devices and battery/system status
+"""
 
+from __future__ import annotations
+
+from typing import Any
+
+from friday.core.types import SafetyLevel, ToolResult
+from friday.devices.android_controller import AndroidDeviceController, COMMON_APP_PACKAGES, KEY_EVENT_MAP
 from friday.tools.base import BaseTool
 
-
-class ADBBaseTool(BaseTool):
-    """Base class for ADB tools checking connectivity."""
-
-    def _run_adb(self, args: list[str]) -> str:
-        cmd = ["adb"] + args
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            return result.stdout.strip()
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"ADB command failed: {e.stderr.strip() or e.stdout.strip()}")
-        except FileNotFoundError:
-            raise RuntimeError("ADB not found in PATH. Please install Android Platform Tools.")
+_controller = AndroidDeviceController()
 
 
-class TapScreenArgs(BaseModel):
-    x: int = Field(..., description="X coordinate on screen")
-    y: int = Field(..., description="Y coordinate on screen")
+class AndroidTapTool(BaseTool):
+    """Taps the screen of a connected Android device at (x, y) coordinates."""
 
+    name = "android_tap"
+    description = "Taps the Android device screen at the specified pixel coordinates (x, y)."
+    safety_level = SafetyLevel.SAFE
+    parameters = {
+        "type": "object",
+        "properties": {
+            "x": {"type": "integer", "description": "X coordinate on the Android touchscreen"},
+            "y": {"type": "integer", "description": "Y coordinate on the Android touchscreen"},
+        },
+        "required": ["x", "y"],
+    }
 
-class TapScreenTool(ADBBaseTool):
-    name: str = "android_tap"
-    description: str = "Taps the Android device screen at the specified (x, y) coordinates."
-    args_schema: Type[BaseModel] = TapScreenArgs
-
-    def execute(self, args: TapScreenArgs, context: dict[str, Any]) -> str:
-        self._run_adb(["shell", "input", "tap", str(args.x), str(args.y)])
-        return f"Tapped screen at ({args.x}, {args.y})."
-
-
-class SwipeScreenArgs(BaseModel):
-    x1: int = Field(..., description="Start X coordinate")
-    y1: int = Field(..., description="Start Y coordinate")
-    x2: int = Field(..., description="End X coordinate")
-    y2: int = Field(..., description="End Y coordinate")
-    duration: int = Field(500, description="Duration in milliseconds")
-
-
-class SwipeScreenTool(ADBBaseTool):
-    name: str = "android_swipe"
-    description: str = "Swipes the Android device screen from (x1, y1) to (x2, y2)."
-    args_schema: Type[BaseModel] = SwipeScreenArgs
-
-    def execute(self, args: SwipeScreenArgs, context: dict[str, Any]) -> str:
-        self._run_adb(
-            ["shell", "input", "swipe", str(args.x1), str(args.y1), str(args.x2), str(args.y2), str(args.duration)]
+    def execute(self, x: int, y: int, **kwargs: Any) -> ToolResult:
+        success = _controller.click(int(x), int(y))
+        if success:
+            return ToolResult(name=self.name, content=f"Successfully tapped Android touchscreen at ({x}, {y}).")
+        return ToolResult(
+            name=self.name,
+            content=f"Failed to tap Android screen at ({x}, {y}). Ensure an authorized device is connected via ADB.",
+            is_error=True,
         )
-        return f"Swiped screen from ({args.x1}, {args.y1}) to ({args.x2}, {args.y2})."
 
 
-class OpenAndroidAppArgs(BaseModel):
-    package_name: str = Field(..., description="The Android package name (e.g. 'com.google.android.youtube')")
+class AndroidSwipeTool(BaseTool):
+    """Performs a touch drag or swipe gesture on a connected Android device."""
+
+    name = "android_swipe"
+    description = "Swipes the Android device screen from (x1, y1) to (x2, y2) with optional duration in milliseconds."
+    safety_level = SafetyLevel.SAFE
+    parameters = {
+        "type": "object",
+        "properties": {
+            "x1": {"type": "integer", "description": "Starting X coordinate"},
+            "y1": {"type": "integer", "description": "Starting Y coordinate"},
+            "x2": {"type": "integer", "description": "Ending X coordinate"},
+            "y2": {"type": "integer", "description": "Ending Y coordinate"},
+            "duration_ms": {"type": "integer", "description": "Duration in milliseconds (default: 300)", "default": 300},
+        },
+        "required": ["x1", "y1", "x2", "y2"],
+    }
+
+    def execute(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300, **kwargs: Any) -> ToolResult:
+        success = _controller.swipe(int(x1), int(y1), int(x2), int(y2), int(duration_ms))
+        if success:
+            return ToolResult(
+                name=self.name,
+                content=f"Successfully swiped Android screen from ({x1}, {y1}) to ({x2}, {y2}) over {duration_ms}ms.",
+            )
+        return ToolResult(
+            name=self.name,
+            content="Failed to swipe Android screen. Verify ADB connection.",
+            is_error=True,
+        )
 
 
-class OpenAndroidAppTool(ADBBaseTool):
-    name: str = "android_open_app"
-    description: str = "Opens a specific application on the connected Android device via monkey."
-    args_schema: Type[BaseModel] = OpenAndroidAppArgs
+class AndroidTypeTool(BaseTool):
+    """Types text into the currently focused text field on an Android device."""
 
-    def execute(self, args: OpenAndroidAppArgs, context: dict[str, Any]) -> str:
-        self._run_adb(["shell", "monkey", "-p", args.package_name, "-c", "android.intent.category.LAUNCHER", "1"])
-        return f"Launched app {args.package_name}."
+    name = "android_type"
+    description = "Types literal text into the active input focus on the connected Android device."
+    safety_level = SafetyLevel.SAFE
+    parameters = {
+        "type": "object",
+        "properties": {
+            "text": {"type": "string", "description": "Text to type into the focused field"},
+        },
+        "required": ["text"],
+    }
+
+    def execute(self, text: str, **kwargs: Any) -> ToolResult:
+        success = _controller.type_text(str(text))
+        if success:
+            return ToolResult(name=self.name, content=f"Successfully typed text '{text}' on Android device.")
+        return ToolResult(
+            name=self.name,
+            content="Failed to type text on Android device. Ensure a text field has keyboard focus.",
+            is_error=True,
+        )
 
 
-class TypeTextArgs(BaseModel):
-    text: str = Field(..., description="The text to type on the Android device")
+class AndroidKeyEventTool(BaseTool):
+    """Sends a hardware or navigation key event to the Android device."""
+
+    name = "android_keyevent"
+    description = (
+        "Sends a key event to the Android device: 'home', 'back', 'app_switch', 'power', "
+        "'volume_up', 'volume_down', 'enter', 'space', 'tab', 'delete'."
+    )
+    safety_level = SafetyLevel.SAFE
+    parameters = {
+        "type": "object",
+        "properties": {
+            "key": {
+                "type": "string",
+                "description": "Key event name (e.g. 'home', 'back', 'app_switch', 'power', 'enter')",
+            },
+        },
+        "required": ["key"],
+    }
+
+    def execute(self, key: str, **kwargs: Any) -> ToolResult:
+        success = _controller.press_key(str(key))
+        if success:
+            return ToolResult(name=self.name, content=f"Pressed Android key '{key}'.")
+        return ToolResult(
+            name=self.name,
+            content=f"Failed to press Android key '{key}'. Supported: {', '.join(sorted(KEY_EVENT_MAP.keys()))}.",
+            is_error=True,
+        )
 
 
-class TypeTextTool(ADBBaseTool):
-    name: str = "android_type_text"
-    description: str = "Types text on the Android device (requires a text field to be focused)."
-    args_schema: Type[BaseModel] = TypeTextArgs
+class AndroidOpenAppTool(BaseTool):
+    """Launches an application package on the Android device."""
 
-    def execute(self, args: TypeTextArgs, context: dict[str, Any]) -> str:
-        escaped_text = args.text.replace(" ", "%s")  # ADB requires %s for spaces
-        self._run_adb(["shell", "input", "text", escaped_text])
-        return f"Typed text: {args.text}"
+    name = "android_open_app"
+    description = (
+        "Launches an Android application by common name (e.g. 'youtube', 'chrome', 'whatsapp', "
+        "'settings', 'camera', 'calculator', 'spotify', 'maps') or package ID."
+    )
+    safety_level = SafetyLevel.SAFE
+    parameters = {
+        "type": "object",
+        "properties": {
+            "app_name": {
+                "type": "string",
+                "description": "App name (e.g. 'youtube', 'chrome', 'whatsapp') or full package identifier",
+            },
+        },
+        "required": ["app_name"],
+    }
+
+    def execute(self, app_name: str, **kwargs: Any) -> ToolResult:
+        success = _controller.open_app(str(app_name))
+        if success:
+            return ToolResult(name=self.name, content=f"Successfully launched Android app '{app_name}'.")
+        return ToolResult(
+            name=self.name,
+            content=f"Failed to launch Android app '{app_name}'. Supported aliases: {', '.join(sorted(COMMON_APP_PACKAGES.keys()))}.",
+            is_error=True,
+        )
+
+
+class AndroidDeviceInfoTool(BaseTool):
+    """Checks ADB connectivity, lists attached Android devices, and returns system info."""
+
+    name = "android_device_info"
+    description = "Inspects ADB connectivity, attached Android devices, battery level, and model status."
+    safety_level = SafetyLevel.SAFE
+    parameters = {
+        "type": "object",
+        "properties": {},
+    }
+
+    def execute(self, **kwargs: Any) -> ToolResult:
+        devices = _controller.list_devices()
+        if not devices:
+            return ToolResult(
+                name=self.name,
+                content="No authorized Android devices detected over ADB. Connect an Android phone with USB Debugging enabled.",
+            )
+
+        details = [f"Found {len(devices)} connected Android device(s):"]
+        for d in devices:
+            details.append(f" - Device ID: {d['id']} | Status: {d['status']} | Model: {d['model']}")
+
+        # Read battery info from first device
+        rc, battery, _ = _controller.run_adb(["shell", "dumpsys", "battery"])
+        if rc == 0 and battery:
+            level_line = [ln.strip() for ln in battery.splitlines() if "level:" in ln]
+            if level_line:
+                details.append(f" - Battery: {level_line[0]}")
+
+        return ToolResult(name=self.name, content="\n".join(details))
+
+
+# Aliases for backward compatibility
+TapScreenTool = AndroidTapTool
+SwipeScreenTool = AndroidSwipeTool
+TypeTextTool = AndroidTypeTool
+OpenAndroidAppTool = AndroidOpenAppTool
+

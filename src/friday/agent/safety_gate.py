@@ -13,8 +13,9 @@ Provides:
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
+from friday.planning.types import TaskStep, TaskGraph
 
-from friday.agent.planner import PlanStep
+
 from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer
 from friday.core.logging import get_logger
 from friday.core.types import (
@@ -71,7 +72,7 @@ class AutonomousSafetyGate:
         self.registry = tool_registry
         self.authorizer = authorizer or DefaultSecureAuthorizer()
 
-    def classify_risk(self, step: PlanStep, tool: BaseTool | None = None) -> TaskRiskLevel:
+    def classify_risk(self, step: TaskStep, tool: BaseTool | None = None) -> TaskRiskLevel:
         """Determine the risk classification level for a given task step."""
         # 1. Check for hard-blocked dangerous operations in description, tool name, or parameters
         text_payload = f"{step.description} {step.tool_name} {step.parameters}".lower()
@@ -109,7 +110,7 @@ class AutonomousSafetyGate:
 
     def evaluate_step(
         self,
-        step: PlanStep,
+        step: TaskStep,
         step_results: dict[str, Any] | None = None,
         checkpoint_env_hash: str | None = None,
         current_env_hash: str | None = None,

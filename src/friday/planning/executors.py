@@ -11,13 +11,15 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel, ToolResult
 from friday.planning.types import TaskDataType
-from friday.tools.base import BaseTool
-from friday.tools.registry import ToolRegistry
+
+if TYPE_CHECKING:
+    from friday.tools.base import BaseTool
+    from friday.tools.registry import ToolRegistry
 
 logger = get_logger("planning.executors")
 
@@ -90,7 +92,8 @@ class BaseExecutor(ABC):
 class ToolExecutor(BaseExecutor):
     """Wraps a FRIDAY BaseTool instance from the ToolRegistry as an Executor."""
 
-    def __init__(self, tool: BaseTool) -> None:
+    def __init__(self, tool: "BaseTool", registry=None) -> None:
+        self.registry = registry
         input_types = [TaskDataType.JSON, TaskDataType.TEXT]
         output_type = TaskDataType.TOOL_RESULT
 
@@ -122,6 +125,7 @@ class ToolExecutor(BaseExecutor):
 
     def execute(self, inputs: dict[str, Any], context: dict[str, Any] | None = None) -> ExecutorResult:
         import time
+        from friday.tools.registry import ToolRegistry
 
         start_t = time.perf_counter()
         try:
@@ -130,7 +134,23 @@ class ToolExecutor(BaseExecutor):
             if isinstance(inputs, dict):
                 kwargs.update(inputs)
 
-            result: ToolResult = self.tool.execute(**kwargs)
+            registry = self.registry
+            if not registry:
+                registry = ToolRegistry()
+                registry.register(self.tool)
+            exec_ctx = None
+            auth_cap = None
+            if context:
+                exec_ctx = context.get("execution_context")
+                auth_cap = context.get("authorization")
+                
+            result: ToolResult = registry.execute(
+                name=self.tool.name,
+                arguments=kwargs,
+                tool_call_id=None,
+                authorization=auth_cap,
+                exec_context=exec_ctx
+            )
             duration = time.perf_counter() - start_t
 
             if result.is_error:
@@ -328,13 +348,28 @@ class SpecialistAgentExecutor(BaseExecutor):
         try:
             from friday.agents.base_agent import AgentTask
 
-            task = AgentTask(description=query)
-            res = self.agent.execute_task(task)
+            task = AgentTask(goal=query)
+            import asyncio
+            try:
+                loop = asyncio.get_running_loop()
+                # We are in an event loop but execute() is sync. This is a design flaw in the framework 
+                # where BaseExecutor is sync. If called in a thread, get_running_loop() raises RuntimeError.
+            except RuntimeError:
+                loop = None
+
+            if loop and loop.is_running():
+                # Usually we shouldn't block the loop, but since we are constrained to sync interface:
+                import nest_asyncio
+                nest_asyncio.apply()
+                res = asyncio.run(self.agent.execute_task(task))
+            else:
+                res = asyncio.run(self.agent.execute_task(task))
+
             duration = time.perf_counter() - start_t
             return ExecutorResult(
                 success=res.success,
-                output=res.result,
-                error=res.error,
+                output=res.output,
+                error=None if res.success else res.output,
                 duration_seconds=duration,
             )
         except Exception as e:
@@ -387,10 +422,10 @@ class ExecutorRegistry:
             if TaskDataType.ANY in e.input_types or data_type in e.input_types
         ]
 
-    def register_tool_registry(self, tool_registry: ToolRegistry) -> None:
+    def register_tool_registry(self, tool_registry: "ToolRegistry") -> None:
         """Automatically wrap and register every tool from ToolRegistry."""
         for tool in tool_registry.list_tools():
-            self.register(ToolExecutor(tool))
+            self.register(ToolExecutor(tool, registry=tool_registry))
 
     def get_easytool_catalog(self, limit: int = 50) -> str:
         """Produce a compact EasyTool format catalog for LLM prompt context."""

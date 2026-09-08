@@ -45,8 +45,46 @@ class OpenApplicationTool(BaseTool):
     }
 
     def _resolve_executable(self, application: str) -> str:
-        """Map a spoken/typed application name to an executable."""
+        """Map a spoken/typed application name to an executable or full binary path."""
         app = (application or "").strip().lower()
+
+        # Known absolute paths for standard Windows software that might not be in PATH
+        known_system_paths = {
+            "chrome": [
+                r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+                os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+            ],
+            "google chrome": [
+                r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+                os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+            ],
+            "edge": [
+                r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+                r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+            ],
+            "microsoft edge": [
+                r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+                r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+            ],
+            "code": [
+                os.path.expandvars(r"%LOCALAPPDATA%\Programs\Microsoft VS Code\Code.exe"),
+                r"C:\Program Files\Microsoft VS Code\Code.exe",
+            ],
+            "vscode": [
+                os.path.expandvars(r"%LOCALAPPDATA%\Programs\Microsoft VS Code\Code.exe"),
+                r"C:\Program Files\Microsoft VS Code\Code.exe",
+            ],
+        }
+
+        # Check explicit path candidates first
+        for key, paths in known_system_paths.items():
+            if key in app or app in key:
+                for candidate in paths:
+                    if os.path.exists(candidate):
+                        return candidate
+
         if app in IntentDetector.APP_LAUNCH_MAP:
             return IntentDetector.APP_LAUNCH_MAP[app]
         # Substring match on known names ("the notepad app")
@@ -56,17 +94,24 @@ class OpenApplicationTool(BaseTool):
         return ""
 
     def _launch(self, executable: str) -> bool:
-        """Launch natively: App Paths via ShellExecute, then PATH via shell."""
+        """Launch natively via direct executable spawn, App Paths, or shell."""
         try:
+            # If absolute path that exists, spawn directly
+            if os.path.isabs(executable) and os.path.exists(executable):
+                subprocess.Popen([executable])
+                return True
+
             if not executable.lower().endswith(".exe"):
                 os.startfile(executable)  # protocol URIs e.g. ms-settings:
                 return True
+
             try:
                 os.startfile(executable)
                 return True
             except OSError:
                 logger.warning(f"App Paths/ShellExecute failed for '{executable}'; trying PATH via shell.")
-            subprocess.Popen(executable, shell=True)
+
+            subprocess.Popen([executable] if not executable.endswith(".exe") else executable, shell=True)
             return True
         except Exception as e:
             logger.error(f"Failed to launch '{executable}': {e}")
@@ -79,6 +124,21 @@ class OpenApplicationTool(BaseTool):
                 name=self.name, content="No application name provided.", is_error=True,
                 safety_level=self.safety_level,
             )
+
+        # Try robust Windows desktop launcher first with CIM + foreground lock bypass
+        try:
+            from friday.devices.app_launcher import launch_desktop_app
+            ok, msg = launch_desktop_app(requested)
+            if ok:
+                logger.info(f"Opened application '{requested}' via app_launcher: {msg}")
+                return ToolResult(
+                    name=self.name,
+                    content=msg,
+                    is_error=False,
+                    safety_level=self.safety_level,
+                )
+        except Exception as e:
+            logger.warning(f"app_launcher fallback for '{requested}': {e}")
 
         executable = self._resolve_executable(requested)
         if not executable:

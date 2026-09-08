@@ -10,7 +10,7 @@ Provides:
 - `LongRunningTaskManager`:
   * Explicit background task creation and concurrent worker management.
   * Thread-safe progress tracking, state querying, and milestone reporting.
-  * Pause, resume, and cancellation controls integrated with `TaskPlan` and `TaskCheckpoint`.
+  * Pause, resume, and cancellation controls integrated with `TaskGraph` and `TaskCheckpoint`.
   * Configurable task execution limits, hard timeouts, deadlines, and infinite loop prevention.
   * Strict security gating: Never bypasses `BaseAuthorizer` or auto-approves dangerous operations.
   * Process crash recovery: Resumes incomplete tasks from latest valid checkpoints on startup.
@@ -30,8 +30,8 @@ from typing import Any
 
 from friday.agent.agent import FridayAgent
 from friday.agent.checkpoint import TaskCheckpointStore
-from friday.agent.executor import ExecutionProgress
-from friday.agent.planner import TaskPlan
+
+from friday.planning.types import TaskGraph
 from friday.core.auth import BaseAuthorizer
 from friday.core.logging import get_logger
 from friday.observability.event import Event, EventType
@@ -224,7 +224,7 @@ class TaskPersistenceStore:
         goal: str,
         status: TaskLifecycleStatus,
         spec: TaskSpec,
-        plan: TaskPlan | None = None,
+        plan: TaskGraph | None = None,
         completed_steps: int = 0,
         total_steps: int = 0,
         progress_pct: float = 0.0,
@@ -282,7 +282,7 @@ class TaskPersistenceStore:
 
 
 class LongRunningTaskManager:
-    """Manages asynchronous background execution of multi-step TaskPlans with safety bounds."""
+    """Manages asynchronous background execution of multi-step TaskGraphs with safety bounds."""
 
     def __init__(
         self,
@@ -363,8 +363,8 @@ class LongRunningTaskManager:
                     logger.warning(f"Active task with identical goal '{goal}' already exists ({t['task_id']}).")
                     return t["task_id"]
 
-            plan = self.agent.create_plan(goal=goal, steps=steps)
-            task_id = plan.plan_id
+            plan = self.agent.jarvis_orchestrator.planner.plan(goal, context={'steps': steps})
+            task_id = plan.graph_id
             timeout = timeout_seconds or self.default_timeout_seconds
             r_limit = retry_budget if retry_budget is not None else self.default_retry_budget
 
@@ -396,7 +396,7 @@ class LongRunningTaskManager:
                 "started_at": None,
                 "finished_at": None,
                 "completed_steps": 0,
-                "total_steps": len(plan.steps),
+                "total_steps": len(plan.list_tasks()),
                 "current_step_id": None,
                 "progress_percentage": 0.0,
                 "error": None,
@@ -414,8 +414,8 @@ class LongRunningTaskManager:
                 goal=goal,
                 status=TaskLifecycleStatus.SUBMITTED,
                 spec=spec,
-                plan=plan,
-                total_steps=len(plan.steps),
+                graph=plan,
+                total_steps=len(plan.list_tasks()),
             )
 
             worker = threading.Thread(
@@ -427,7 +427,7 @@ class LongRunningTaskManager:
             task_record["thread"] = worker
             worker.start()
 
-            logger.info(f"Submitted long-running task '{task_id}' (goal: '{goal}') with {len(plan.steps)} steps.")
+            logger.info(f"Submitted long-running task '{task_id}' (goal: '{goal}') with {len(plan.list_tasks())} steps.")
             self._emit_task_event("submitted", task_id, {"goal": goal})
             return task_id
 
@@ -572,7 +572,7 @@ class LongRunningTaskManager:
                     timeout_seconds=float(spec_dict.get("timeout_seconds", 300.0)),
                     retry_limit=int(spec_dict.get("retry_limit", 3)),
                 )
-                plan = TaskPlan.from_dict(plan_dict) if plan_dict else TaskPlan(plan_id=tid, goal=rec["goal"], steps=[])
+                plan = TaskGraph.from_dict(plan_dict) if plan_dict else TaskGraph(plan_id=tid, goal=rec["goal"], steps=[])
 
                 # Check if checkpoint exists
                 chk = self.checkpoint_store.get_latest_checkpoint(tid)
@@ -592,9 +592,9 @@ class LongRunningTaskManager:
                     "started_at": None,
                     "finished_at": None,
                     "completed_steps": completed_count,
-                    "total_steps": len(plan.steps),
+                    "total_steps": len(plan.list_tasks()),
                     "current_step_id": None,
-                    "progress_percentage": (completed_count / max(1, len(plan.steps))) * 100.0,
+                    "progress_percentage": (completed_count / max(1, len(plan.list_tasks()))) * 100.0,
                     "error": "Process restarted while task was active. Recovered from durable store.",
                     "result": None,
                     "cancel_event": threading.Event(),
@@ -647,7 +647,7 @@ class LongRunningTaskManager:
                 return
             t["status"] = TaskLifecycleStatus.RUNNING
             t["started_at"] = t["started_at"] or time.time()
-            plan: TaskPlan = t["plan"]
+            plan: TaskGraph = t["plan"]
             timeout = t["timeout_seconds"]
             deadline = t.get("deadline")
 
@@ -699,10 +699,10 @@ class LongRunningTaskManager:
             if is_resumption:
                 res = self.agent.resume_task(task_id)
             else:
-                res = self.agent.execute_plan(
-                    plan=plan,
-                    on_step_progress=_step_progress_callback,
-                    step_timeout_seconds=timeout,
+                res = self.agent.jarvis_orchestrator.execute_graph(
+                    graph=plan,
+                    
+                    
                     cancellation_token=t["cancel_event"],
                 )
 
@@ -723,7 +723,7 @@ class LongRunningTaskManager:
                 elif res.success:
                     task_rec["status"] = TaskLifecycleStatus.COMPLETED
                     task_rec["progress_percentage"] = 100.0
-                    task_rec["completed_steps"] = len(plan.steps)
+                    task_rec["completed_steps"] = len(plan.list_tasks())
                 else:
                     task_rec["status"] = TaskLifecycleStatus.FAILED
                     task_rec["error"] = res.error or "Task execution failed"

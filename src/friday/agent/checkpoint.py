@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from friday.agent.planner import StepStatus, TaskPlan
+from friday.planning.types import TaskStatus, TaskGraph
 from friday.agent.state import TaskState
 from friday.core.logging import get_logger
 
@@ -135,7 +135,7 @@ class TaskCheckpointStore:
         self,
         task_id: str,
         goal: str,
-        plan: TaskPlan,
+        plan: TaskGraph,
         state: TaskState,
         active_step_id: str | None,
         step_results: dict[str, Any],
@@ -144,8 +144,8 @@ class TaskCheckpointStore:
         recovery_state: dict[str, Any] | None = None,
     ) -> TaskCheckpoint:
         """Create and save a sanitized task checkpoint."""
-        completed_steps = [s.step_id for s in plan.steps if s.status == StepStatus.COMPLETED]
-        pending_steps = [s.step_id for s in plan.steps if s.status in (StepStatus.PENDING, StepStatus.IN_PROGRESS)]
+        completed_steps = [s.step_id for s in plan.steps if s.status == TaskStatus.COMPLETED]
+        pending_steps = [s.step_id for s in plan.steps if s.status in (TaskStatus.PENDING, TaskStatus.IN_PROGRESS)]
         from friday.security.scrubber import recursive_sanitize, redact_secrets
 
         # Sanitize results and metadata recursively
