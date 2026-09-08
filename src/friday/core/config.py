@@ -238,7 +238,7 @@ class Settings(BaseSettings):
         description="SMTP server port (default: 587 for STARTTLS)",
     )
 
-    # Device Control Settings (OpenJarvis Device Control Abstraction)
+    # Device Control Settings (Device Control Abstraction)
     active_device: str = Field(
         default="windows",
         description="Active device controller target platform: 'windows', 'android', 'mock'",
@@ -278,7 +278,7 @@ class Settings(BaseSettings):
         description="Global Windows hotkey to summon or toggle the FRIDAY desktop companion",
     )
 
-    # Microsoft JARVIS / HuggingGPT Planning Engine Settings
+    # Microsoft HuggingGPT Planning Engine Settings
     planner_enabled: bool = Field(
         default=True,
         description="Whether dynamic task graph decomposition and multi-model planning is enabled",
@@ -322,6 +322,14 @@ class Settings(BaseSettings):
     # Identity
     agent_name: str = Field(default="FRIDAY", description="Name of the AI assistant")
     user_name: str = Field(default="Surendra", description="Name/title to address the user")
+    persona: str = Field(
+        default="friday",
+        description="Communications persona: 'friday' (dry wit, efficient, proactive) or 'classic' (concise, neutral)",
+    )
+    persona_title: str = Field(
+        default="",
+        description="Optional formal address (e.g. 'sir') inserted on important announcements only; empty = always use the user's name",
+    )
     # Backup configuration
     backup_dir: str = Field(default="data/backups", description="Directory for SQLite hot backups")
 

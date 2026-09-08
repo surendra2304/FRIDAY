@@ -1,4 +1,4 @@
-"""Central Jarvis / HuggingGPT Orchestrator for FRIDAY.
+"""Central HuggingGPT-Style Orchestrator for FRIDAY.
 
 Brings together:
 1. Dynamic Task Planning (Decomposition into DAG)
@@ -32,8 +32,8 @@ from friday.tools.registry import ToolRegistry
 logger = get_logger("planning.orchestrator")
 
 
-class JarvisOrchestrator:
-    """Unified controller orchestrating Microsoft JARVIS / HuggingGPT capabilities natively inside FRIDAY."""
+class FridayOrchestrator:
+    """Unified controller orchestrating Microsoft HuggingGPT capabilities natively inside FRIDAY."""
 
     def __init__(
         self,
@@ -100,8 +100,8 @@ class JarvisOrchestrator:
         context: dict[str, Any] | None = None,
         cancellation_token: threading.Event | None = None,
     ) -> SynthesizedResponse:
-        """Execute a user goal through the full Microsoft JARVIS 4-stage pipeline."""
-        logger.info(f"JarvisOrchestrator processing goal: '{goal[:80]}...'")
+        """Execute a user goal through the full Microsoft HuggingGPT 4-stage pipeline."""
+        logger.info(f"FridayOrchestrator processing goal: '{goal[:80]}...'")
 
         # Stage 1: Dynamic Task Planning
         graph = self.planner.plan(goal, context=context)

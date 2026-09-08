@@ -242,7 +242,7 @@ class DesktopOverlay(QWidget):
         """)
         chat_layout.addWidget(self.transcript)
 
-        # 4. Live Task Execution Checklist (Microsoft JARVIS Task Graph HUD)
+        # 4. Live Task Execution Checklist (Microsoft HuggingGPT Task Graph HUD)
         self._task_labels: dict[str, QLabel] = {}
         self.tasks_frame = QFrame()
         self.tasks_frame.setStyleSheet("""

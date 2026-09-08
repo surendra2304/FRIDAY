@@ -1,6 +1,6 @@
 """Executor Abstraction, Built-in Executors, and Executor Registry for FRIDAY.
 
-Inspired by Microsoft JARVIS / HuggingGPT Model Selection & EasyTool Principles:
+Inspired by Microsoft HuggingGPT Model Selection & EasyTool Principles:
 - Models and tools are represented as typed expert executors with explicit capabilities.
 - Concise, semantically rich descriptions suitable for LLM prompt context without bloat.
 - Automatic wrapping of all 50+ FRIDAY tools into the unified executor catalog.

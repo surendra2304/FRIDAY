@@ -27,7 +27,7 @@ def test_browser_safety_guard_allowlist():
     policy = BrowserSafetyPolicy(allowed_domains=["github.com", "python.org"])
     guard = BrowserSafetyGuard(policy=policy)
 
-    is_safe, _ = guard.validate_url("https://github.com/microsoft/JARVIS")
+    is_safe, _ = guard.validate_url("https://github.com/microsoft/vscode")
     assert is_safe
 
     is_unauthorized, msg = guard.validate_url("https://random-unauthorized-site.com")

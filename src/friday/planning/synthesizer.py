@@ -1,6 +1,6 @@
 """Result Synthesizer for FRIDAY Planning Architecture.
 
-Inspired by Microsoft JARVIS / HuggingGPT Stage 4:
+Inspired by Microsoft HuggingGPT Stage 4:
 - Consolidates results from multiple specialist models, tools, and visual sensors.
 - Eliminates raw JSON / tool syntax noise.
 - Resolves conflicts across modalities to produce a coherent, natural, human-centric response.

@@ -459,7 +459,7 @@ async def voice_endpoint(websocket: WebSocket):
 async def mcp_sse_endpoint(request: Request):
     """
     Model Context Protocol (MCP) Server-Sent Events endpoint.
-    Allows external agents, Cursor, Claude Desktop, or OpenJarvis to consume FRIDAY's tools.
+    Allows external agents, Cursor, Claude Desktop, or any MCP-compatible client to consume FRIDAY's tools.
     """
     async def event_generator():
         # Initial endpoint event per MCP SSE spec

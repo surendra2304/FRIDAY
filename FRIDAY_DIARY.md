@@ -29,7 +29,7 @@
 | **Day 6 — 2026-08-23** | 100% Server VAD Stabilization & Sub-Second Desktop Fast-Paths | ✅ Verified | [2026-08-23](diary/2026-08-23.md) |
 | **Day 7 — 2026-08-24** | Multi-Agent AI OS, Memory 2.0 & Autonomous Self-Coding Dev | ✅ Verified | [2026-08-24](diary/2026-08-24.md) |
 | **Day 8 — 2026-08-25** | AI Universe Multi-Agent Platform & Clean Terminal Presentation | ✅ Verified | [2026-08-25](diary/2026-08-25.md) |
-| **Day 9 — 2026-08-26** | OpenJarvis Operator Architecture: Skills, Persistent Operators & Trace Learning | ✅ Verified | [2026-08-26](diary/2026-08-26.md) |
+| **Day 9 — 2026-08-26** | FRIDAY Operator Architecture: Skills, Persistent Operators & Trace Learning | ✅ Verified | [2026-08-26](diary/2026-08-26.md) |
 | **Day 10 — 2026-08-27** | Trading Bot Supervision, AI-Universe Advisory Monitoring & Precedence Enforcement | ✅ Verified | [2026-08-27](diary/2026-08-27.md) |
 | **Day 11 — 2026-08-28** | Master Emergency Orchestration, Multi-Modal Interface & Complete Ecosystem Mastery | ✅ Verified | [2026-08-28](diary/2026-08-28.md) |
 | **Day 12 — 2026-08-29** | Futuris Forecasting Engine Integration, Calibrated Uncertainty & Risk Synthesis | ✅ Verified | [2026-08-29](diary/2026-08-29.md) |
@@ -141,8 +141,8 @@ ead_file, list_files).
 
 ---
 
-### 🤖 [Day 9 — 2026-08-26: OpenJarvis Operator Architecture & Evolution](diary/2026-08-26.md)
-- **🎯 Focus**: Evolving FRIDAY from an assistant into a persistent, learning operator inspired by OpenJarvis with skills, event-driven operators, trace learning, and device abstractions.
+### 🤖 [Day 9 — 2026-08-26: FRIDAY Operator Architecture & Evolution](diary/2026-08-26.md)
+- **🎯 Focus**: Evolving FRIDAY from an assistant into a persistent, learning operator inspired by open-source operator frameworks with skills, event-driven operators, trace learning, and device abstractions.
 - **💡 What I Accomplished**:
   - Implemented the **Skills System & Capability Gating** (`src/friday/skills/`): `BaseSkill`, `SkillRegistry`, and built-in skills (`NetworkDiagnosticSkill`, `SystemHealthAuditSkill`, `FileSearchAndReadSkill`) gated by strict environment permissions.
   - Implemented **Persistent Event-Driven Operators** (`src/friday/operators/`): state machines with `watchdog` file triggers, `psutil` process triggers, and operator chaining (`op1 | op2`) integrated into `WorkflowScheduler`.

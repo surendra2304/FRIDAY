@@ -1,4 +1,4 @@
-"""FRIDAY Planning & Task Orchestration Subsystem (inspired by Microsoft JARVIS / HuggingGPT)."""
+"""FRIDAY Planning & Task Orchestration Subsystem (inspired by Microsoft HuggingGPT)."""
 
 from friday.planning.events import (
     TaskEventBus,
@@ -15,7 +15,7 @@ from friday.planning.executors import (
     ToolExecutor,
     VisionExecutor,
 )
-from friday.planning.orchestrator import JarvisOrchestrator
+from friday.planning.orchestrator import FridayOrchestrator
 from friday.planning.planner import DynamicTaskPlanner
 from friday.planning.replanner import DynamicReplanner
 from friday.planning.router import ModelRouter, RoutingEvaluation, RoutingResult
@@ -36,7 +36,7 @@ __all__ = [
     "DynamicTaskPlanner",
     "ExecutorRegistry",
     "ExecutorResult",
-    "JarvisOrchestrator",
+    "FridayOrchestrator",
     "LLMExecutor",
     "ModelRouter",
     "ResultSynthesizer",

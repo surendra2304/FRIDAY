@@ -1,8 +1,8 @@
-# FRIDAY — J.A.R.V.I.S Capability Integration & Futuristic Desktop Architecture
+# FRIDAY — Capability Integration & Futuristic Desktop Architecture
 
 ## Overview
 
-This document specifies the integration of desktop assistant capabilities inspired by [GauravSingh9356/J.A.R.V.I.S](https://github.com/GauravSingh9356/J.A.R.V.I.S) and the visual desktop experience from [Sagar Tamang](https://sagartamang.com/) into FRIDAY's enterprise architecture.
+This document specifies the integration of desktop assistant capabilities inspired by open-source desktop-assistant projects and the visual desktop experience from [Sagar Tamang](https://sagartamang.com/) into FRIDAY's enterprise architecture.
 
 **Key Rule Maintained:**
 FRIDAY remains the authoritative single source of truth. No secondary assistants, alternate memory silos, or brittle keyword parsers (`if "cmd" in query`) were introduced. Every capability is exposed as a validated, schema-driven tool in FRIDAY's cognitive loop under strict security and capability authorization.
@@ -11,7 +11,7 @@ FRIDAY remains the authoritative single source of truth. No secondary assistants
 
 ## 1. Capability Mapping & Architecture Matrix
 
-| Capability | J.A.R.V.I.S Approach | FRIDAY Unified Production Architecture |
+| Capability | Reference Approach | FRIDAY Unified Production Architecture |
 |---|---|---|
 | **Face Recognition** | Haar Cascade script with raw files (`trainer.yml`) | `FaceProfileManager` in `src/friday/security/face_biometrics.py` with multi-profile storage, normalized feature vectors, configurable threshold, and `VerifyFaceIdentityTool` / `EnrollFaceIdentityTool` gated by `AuthorizationManager`. |
 | **Email** | Hardcoded SMTP script | Enhanced `SendEmailTool` (SENSITIVE gated) and `DraftEmailTool` (SAFE review) in `src/friday/tools/builtin/email_tools.py` with SMTP credentials managed via `.env`. |

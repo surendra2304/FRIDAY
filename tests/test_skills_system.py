@@ -1,4 +1,4 @@
-"""Comprehensive test suite for the OpenJarvis-inspired Skills System and Capability Gating."""
+"""Comprehensive test suite for the FRIDAY Skills System and Capability Gating."""
 
 from typing import Any
 

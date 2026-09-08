@@ -1,4 +1,4 @@
-"""FRIDAY Device Control Abstractions (Inspired by OpenJarvis)."""
+"""FRIDAY Device Control Abstractions (Inspired by open-source operator frameworks)."""
 
 from typing import Any, Optional
 

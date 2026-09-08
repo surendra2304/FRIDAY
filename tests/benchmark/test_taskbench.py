@@ -35,7 +35,7 @@ from friday.planning.executors import (
     ToolExecutor,
     VisionExecutor,
 )
-from friday.planning.orchestrator import JarvisOrchestrator
+from friday.planning.orchestrator import FridayOrchestrator
 from friday.planning.types import (
     RetryPolicy,
     TaskDataType,
@@ -166,7 +166,7 @@ class TestTaskBenchSuite:
         tool_reg.register(ScreenSnapshotMockTool())
         tool_reg.register(ComputerInputMockTool())
 
-        self.orch = JarvisOrchestrator(tool_registry=tool_reg)
+        self.orch = FridayOrchestrator(tool_registry=tool_reg)
         self.flaky_exec = FlakyServiceExecutor("flaky_service")
         self.backup_exec = BackupSyncExecutor("backup_sync")
         self.orch.registry.register(self.flaky_exec)

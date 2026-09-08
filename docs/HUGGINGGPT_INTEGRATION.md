@@ -1,8 +1,8 @@
-# FRIDAY — Microsoft JARVIS / HuggingGPT Architecture & Integration Guide
+# FRIDAY — Microsoft HuggingGPT Architecture & Integration Guide
 
 ## 1. Architectural Overview
 
-FRIDAY integrates the foundational autonomous coordination paradigms introduced by **Microsoft JARVIS (HuggingGPT)** directly into its native architecture. In this design, FRIDAY functions as the central autonomous controller coordinating language models, multimodal vision systems, local Windows automation drivers, and specialized agents.
+FRIDAY integrates the foundational autonomous coordination paradigms introduced by **Microsoft HuggingGPT** directly into its native architecture. In this design, FRIDAY functions as the central autonomous controller coordinating language models, multimodal vision systems, local Windows automation drivers, and specialized agents.
 
 ```
                           ┌──────────────────────────┐
@@ -132,7 +132,7 @@ Add these variables to your `.env` file to customize planning behavior:
 
 | Variable | Type | Default | Description |
 |---|---|---|---|
-| `FRIDAY_PLANNER_ENABLED` | bool | `true` | Enable Microsoft JARVIS task graph planning |
+| `FRIDAY_PLANNER_ENABLED` | bool | `true` | Enable Microsoft HuggingGPT task graph planning |
 | `FRIDAY_PLANNER_MAX_CONCURRENT_TASKS` | int | `5` | Maximum parallel subtasks in execution waves |
 | `FRIDAY_PLANNER_TASK_TIMEOUT_SECONDS` | float | `60.0` | Timeout per subtask in seconds |
 | `FRIDAY_PLANNER_MAX_RETRIES` | int | `3` | Maximum retry attempts per subtask on transient failures |
@@ -148,7 +148,7 @@ from friday.agent.agent import FridayAgent
 # Initialize FRIDAY agent
 agent = FridayAgent()
 
-# Execute a complex multi-step request with Microsoft JARVIS task graph orchestration
+# Execute a complex multi-step request with Microsoft HuggingGPT task graph orchestration
 response = agent.execute_complex_task("Compare Tokyo weather and Paris weather")
 
 print("FRIDAY Response:", response.content)

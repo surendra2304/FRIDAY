@@ -112,7 +112,9 @@ class FastPathMixin:
             """Return a direct conversational greeting response, or None if not a greeting."""
             if not self._GREETING_PATTERN.match(clean_input):
                 return None
-            response = random.choice(self._GREETING_RESPONSES).format(user_name=self.settings.user_name)
+            from friday.persona.friday import greeting_responses_for
+            responses = greeting_responses_for(getattr(self.settings, "persona", "friday"))
+            response = random.choice(responses).format(user_name=self.settings.user_name)
             logger.info("Greeting fast-path: responding directly without cognitive loop or tools")
             self.state_machine.transition_to(TaskState.UNDERSTANDING, reason="Greeting recognized")
             self.state_machine.transition_to(TaskState.PLANNING, reason="Synthesizing greeting response")

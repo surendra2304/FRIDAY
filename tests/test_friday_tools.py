@@ -1,4 +1,4 @@
-"""Unit tests for newly integrated J.A.R.V.I.S capability tools."""
+"""Unit tests for newly integrated FRIDAY capability tools."""
 
 import os
 import tempfile

@@ -1,4 +1,4 @@
-"""Base Skill Abstraction for FRIDAY Skills System (Inspired by OpenJarvis).
+"""Base Skill Abstraction for FRIDAY Skills System (Inspired by open-source operator frameworks).
 
 A Skill is a cohesive macro that groups multiple tools, declared required capabilities,
 and specialized system prompts to accomplish complex, reusable workflows autonomously.
