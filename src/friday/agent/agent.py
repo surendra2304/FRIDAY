@@ -45,6 +45,7 @@ from friday.memory.factory import create_memory
 from friday.memory.policies import should_retrieve_memory
 from friday.memory.task_context import ActiveTaskContext
 from friday.observability.notifications import NotificationManager
+from friday.observability.proactive_engine import ProactiveEngine
 from friday.routing.capability_router import CapabilityRouter
 from friday.tools.builtin import (
     AIUniverseTool,
@@ -164,6 +165,10 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
         self.capability_router: CapabilityRouter = CapabilityRouter()
         self._agent_registry: AgentRegistry | None = None
         self.notifications: NotificationManager = NotificationManager()
+        self.proactive: ProactiveEngine = ProactiveEngine(
+            notifications=self.notifications,
+            user_name=self.settings.user_name,
+        )
         self._skill_registry: Any | None = skill_registry
 
         if self.settings.memory_retention_days:
@@ -458,6 +463,41 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
     def get_history(self) -> list[Message]:
         """Retrieve stored conversation messages."""
         return self.memory.get_messages()
+
+    def get_proactive_announcement(self) -> str | None:
+        """Return a proactive announcement if there is one ready, else None.
+
+        Call this at the start of a turn (text or voice) to let FRIDAY speak up
+        about something she noticed — just like JARVIS does unprompted.
+        """
+        return self.notifications.pop_notifications_summary()
+
+    def get_system_diagnostics(self) -> dict[str, Any]:
+        """Return live system telemetry for the HUD / UI."""
+        snap = self.proactive.last_snapshot or capture_snapshot()
+        return {
+            "cpu_percent": snap.cpu_percent,
+            "ram_percent": snap.ram_percent,
+            "ram_used_gb": snap.ram_used_gb,
+            "ram_total_gb": snap.ram_total_gb,
+            "battery_percent": snap.battery_percent,
+            "battery_plugged": snap.battery_plugged,
+            "disk_percent": snap.disk_percent,
+            "network_up_kbps": snap.network_up_kbps,
+            "network_down_kbps": snap.network_down_kbps,
+            "top_processes": snap.top_processes,
+            "active_window": snap.active_window,
+            "timestamp": snap.timestamp.isoformat(),
+        }
+
+    def start_proactive_monitoring(self) -> None:
+        """Start the background proactive monitoring loop."""
+        self.proactive.start()
+
+    def stop_proactive_monitoring(self) -> None:
+        """Stop the background proactive monitoring loop."""
+        self.proactive.stop()
+
 
     def get_status(self) -> dict[str, Any]:
         """Return diagnostic status information about the agent."""

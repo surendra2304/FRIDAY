@@ -401,6 +401,9 @@ export default function FridayUltimateOS() {
     network: 128,
   });
 
+  // Proactive announcements (FRIDAY speaks up unprompted, like JARVIS)
+  const [proactiveAnnouncement, setProactiveAnnouncement] = useState<string | null>(null);
+
   // Real Agent Statuses from http://127.0.0.1:8001/api/agents
   const [liveAgents, setLiveAgents] = useState<SpecialistAgent[]>(CANONICAL_FLEET);
 
@@ -632,6 +635,27 @@ export default function FridayUltimateOS() {
       clearInterval(aInterval);
     };
   }, []);
+
+  // ===========================================================================
+  // 5b. PROACTIVE ANNOUNCEMENTS POLLING (FRIDAY speaks up unprompted)
+  // ===========================================================================
+  useEffect(() => {
+    const fetchProactive = async () => {
+      try {
+        const res = await fetch("http://127.0.0.1:8001/api/proactive");
+        const data = await res.json();
+        if (data.status === "ok" && data.has_announcement && data.announcement) {
+          setProactiveAnnouncement(data.announcement);
+        }
+      } catch {}
+    };
+    fetchProactive();
+    const pInterval = setInterval(fetchProactive, 15000);
+    return () => clearInterval(pInterval);
+  }, []);
+
+  // ===========================================================================
+  // 6. WEBCAM FEED (Optical Sensor)
 
   // ===========================================================================
   // 6. WEBCAM FEED (Optical Sensor)
@@ -1191,6 +1215,17 @@ export default function FridayUltimateOS() {
                 <div className="mt-2 px-4 py-1.5 rounded-full bg-slate-950/80 border border-slate-800 text-center max-w-lg">
                   <span className="text-xs text-slate-300 italic">"{lastSpeech}"</span>
                 </div>
+
+                {/* Proactive Announcement Banner (FRIDAY speaks up unprompted) */}
+                {proactiveAnnouncement && (
+                  <div className="mt-2 px-4 py-2 rounded-xl bg-amber-950/60 border border-amber-500/40 text-center max-w-lg animate-pulse">
+                    <div className="flex items-center justify-center gap-2">
+                      <Zap className="w-3.5 h-3.5 text-amber-400" />
+                      <span className="text-xs font-semibold text-amber-200">{proactiveAnnouncement}</span>
+                    </div>
+                  </div>
+                )}
+
               </div>
 
               {/* Right HUD Wing: Optical Visor & Rapid PC Directives */}
