@@ -32,8 +32,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
+from friday.planning.types import TaskStep, TaskGraph
 
-from friday.agent.planner import PlanStep, StepStatus
+
 from friday.agent.verification import VerificationResult
 from friday.core.logging import get_logger
 
@@ -165,7 +166,7 @@ class FailureAnalyzer:
     @classmethod
     def diagnose(
         cls,
-        step: PlanStep,
+        step: TaskStep,
         error_msg: str,
         verification: VerificationResult | None = None,
         tool_fallbacks: dict[str, str] | None = None,
@@ -332,10 +333,10 @@ class AutonomousRecoveryManager:
 
     def record_and_generate_recovery_step(
         self,
-        step: PlanStep,
+        step: TaskStep,
         diagnosis: FailureDiagnosis,
-    ) -> PlanStep | None:
-        """Record attempt in budgets and produce the adapted PlanStep."""
+    ) -> TaskStep | None:
+        """Record attempt in budgets and produce the adapted TaskStep."""
         if not self.can_recover(step.step_id, diagnosis):
             return None
 
@@ -352,7 +353,7 @@ class AutonomousRecoveryManager:
         target_tool = diagnosis.suggested_tool or step.tool_name
         new_params = dict(step.parameters)
 
-        recovered_step = PlanStep(
+        recovered_step = TaskStep(
             step_id=step.step_id,
             description=f"{step.description} (Retry #{step_retry_num}: {diagnosis.reason})",
             tool_name=target_tool,

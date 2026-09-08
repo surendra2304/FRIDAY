@@ -17,8 +17,9 @@ import time
 import pytest
 
 from friday.agent.agent import FridayAgent
-from friday.agent.executor import TaskExecutionEngine
-from friday.agent.planner import PlanStep, StepStatus, TaskPlan
+from friday.planning.scheduler import TaskGraphScheduler
+from friday.planning.executors import ExecutorRegistry, ToolExecutor
+from friday.planning.types import TaskGraph, TaskStep, TaskStatus
 from friday.core.auth import (
     AutoApproveAuthorizer,
     AutoDenyAuthorizer,
@@ -316,28 +317,29 @@ def test_agent_end_to_end_denied_tool_execution(test_registry):
 
 
 def test_task_execution_engine_end_to_end(test_registry):
-    """TaskExecutionEngine issues capability through authorizer and executes step."""
-    engine = TaskExecutionEngine(
-        tool_registry=test_registry,
+    """TaskGraphScheduler issues capability through authorizer and executes step."""
+    exec_reg = ExecutorRegistry()
+    tool = test_registry.get("delete_database")
+    exec_reg.register(ToolExecutor(tool, registry=test_registry))
+
+    scheduler = TaskGraphScheduler(
+        executor_registry=exec_reg,
         authorizer=AutoApproveAuthorizer.create_for_testing(allow_dangerous=True),
     )
 
-    plan = TaskPlan(
-        goal="Clean up old test DB",
-        steps=[
-            PlanStep(
-                step_id="step_1",
-                description="Delete test db",
-                tool_name="delete_database",
-                parameters={"target": "engine_test_db"},
-            )
-        ],
+    graph = TaskGraph(goal="Clean up old test DB")
+    graph.add_task(
+        TaskStep(
+            id="step_1",
+            description="Delete test db",
+            tool_name="delete_database",
+            parameters={"target": "engine_test_db"},
+            safety_level=SafetyLevel.DANGEROUS,
+        )
     )
 
-    result = engine.execute_plan(plan)
-    assert result.success
-    assert "step_1" in result.step_results
-    assert result.step_results["step_1"].status == StepStatus.SUCCEEDED
+    scheduler.execute_graph(graph)
+    assert graph.tasks["step_1"].status == TaskStatus.COMPLETED
 
 
 def test_auto_approve_rejected_without_explicit_ack():

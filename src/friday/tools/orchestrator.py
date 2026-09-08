@@ -24,7 +24,7 @@ from friday.core.types import SafetyLevel
 from friday.tools.base import BaseTool
 
 if TYPE_CHECKING:
-    from friday.agent.planner import PlanStep, TaskPlan
+    
     from friday.tools.registry import ToolRegistry
 
 logger = get_logger("tools.orchestrator")

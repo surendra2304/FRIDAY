@@ -11,6 +11,7 @@ from typing import Any
 
 from friday.core.config import get_settings
 from friday.core.logging import get_logger
+from friday.tools.registry import ToolRegistry
 from friday.tools.builtin.calendar import GetTodaysEventsTool
 from friday.tools.builtin.web_tools import WebSearchTool
 
@@ -24,9 +25,11 @@ class MorningBriefingWorkflow:
         self,
         calendar_tool: GetTodaysEventsTool | None = None,
         search_tool: WebSearchTool | None = None,
+        tool_registry: ToolRegistry | None = None,
     ) -> None:
         self.calendar_tool = calendar_tool or GetTodaysEventsTool()
         self.search_tool = search_tool or WebSearchTool()
+        self.tool_registry = tool_registry or ToolRegistry()
 
     def can_handle(self, user_prompt: str) -> bool:
         """Check if user prompt requests a daily or morning briefing (excluding trading-specific briefings)."""
@@ -44,7 +47,7 @@ class MorningBriefingWorkflow:
         name = user_name or getattr(settings, "user_name", "Surendra") or "Surendra"
 
         # 1. Fetch Calendar Events
-        cal_res = self.calendar_tool.execute()
+        cal_res = self.tool_registry.execute(self.calendar_tool.name, {})
         meeting_count = 0
         meetings_detail = []
 
@@ -59,7 +62,7 @@ class MorningBriefingWorkflow:
         # 2. Fetch Weather via Search
         weather_summary = "clear"
         try:
-            w_res = self.search_tool.execute(query="current weather forecast today")
+            w_res = self.tool_registry.execute(self.search_tool.name, {"query": "current weather forecast today"})
             if not w_res.is_error and w_res.content:
                 # Extract first brief summary or keyword
                 first_snippet = w_res.content.split("\n")[0] if "\n" in w_res.content else w_res.content

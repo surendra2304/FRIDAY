@@ -23,6 +23,14 @@ class AddTool(BaseTool):
     name = "add_numbers"
     description = "Adds two numbers a and b"
     safety_level = SafetyLevel.SAFE
+    parameters = {
+        "type": "object",
+        "properties": {
+            "a": {"type": "integer", "description": "First number"},
+            "b": {"type": "integer", "description": "Second number"},
+            "query": {"type": "string", "description": "Alternative query input"}
+        }
+    }
 
     def execute(self, a: int = 0, b: int = 0, query: str = "", **kwargs) -> Any:
         import re

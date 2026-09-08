@@ -81,8 +81,8 @@ def test_fallback_chain_includes_ai_universe_provider_as_last_resort():
         groq_api_key="gsk-test",
         mistral_api_key="msk-test",
         openrouter_api_key="sk-or-test",
-        universe_api_url="http://localhost:8000",
-        api_key="friday-universe-key",
+        inference_url="http://localhost:8000",
+        inference_api_key="friday-universe-key",
     )
 
     provider = create_llm_provider(settings)

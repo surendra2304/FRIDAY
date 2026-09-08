@@ -68,8 +68,8 @@ def test_face_auth_tools(temp_face_manager):
     verify_tool = VerifyFaceIdentityTool(manager=temp_face_manager)
 
     frame = np.ones((64, 64, 3), dtype=np.uint8) * 150
-    temp_face_manager.enroll_face(user_id="stark", name="Tony Stark", frames=[frame])
+    temp_face_manager.enroll_face(user_id="surendra", name="Surendra", frames=[frame])
 
-    res = verify_tool.execute(user_id="stark")
+    res = verify_tool.execute(user_id="surendra")
     assert res.is_error is True or res.is_error is False
     assert res.name == "verify_face_identity"

@@ -79,6 +79,17 @@ class BaseAgent:
             if s.get("function", s).get("name") in allowed_set
         ]
 
+    def to_agent_capability(self):
+        """Export agent capability descriptor for ToolFirewall evaluation."""
+        from friday_deep.contracts import AgentCapability
+        return AgentCapability(
+            agent_id=self.agent_id,
+            role=self.role,
+            allowed_tools=tuple(self.allowed_tools),
+            preferred_models=tuple(self.preferred_models),
+            max_parallel_tasks=1,
+        )
+
     async def execute_task(self, task: AgentTask) -> AgentTaskResult:
         """Execute assigned subtask using LLM reasoning and scoped tool execution."""
         logger.info(f"Agent [{self.role} ({self.agent_id})] starting task: {task.goal}")
@@ -107,7 +118,8 @@ class BaseAgent:
         executed_results: list[ToolResult] = []
         iterations = 0
         final_output = ""
-        success = True
+        success = False
+        terminal_error = None
 
         while iterations < self.max_iterations:
             iterations += 1
@@ -132,6 +144,8 @@ class BaseAgent:
 
             if not assistant_msg.tool_calls:
                 final_output = assistant_msg.content or "Completed."
+                # Success is only granted if the LLM finishes without unrecovered errors
+                success = not bool(terminal_error)
                 break
 
             for tc in assistant_msg.tool_calls:
@@ -145,10 +159,14 @@ class BaseAgent:
                     )
                 else:
                     try:
+                        from friday.tools.execution_context import ExecutionContext
+                        exec_ctx = ExecutionContext()
+                        exec_ctx.agent_capability = self.to_agent_capability()
                         res = self.tool_registry.execute(
                             name=tc.name,
                             arguments=tc.arguments,
                             tool_call_id=tc.id,
+                            exec_context=exec_ctx,
                         )
                     except Exception as te:
                         res = ToolResult(
@@ -159,6 +177,12 @@ class BaseAgent:
                         )
 
                 executed_results.append(res)
+                if res.is_error:
+                    terminal_error = res.content
+                else:
+                    # Clear previous errors if the agent successfully uses a tool to recover
+                    terminal_error = None
+
                 self.memory.add_message(
                     Message(
                         role=Role.TOOL,
@@ -169,14 +193,16 @@ class BaseAgent:
                 )
 
         if not final_output and iterations >= self.max_iterations:
-            final_output = f"Agent reached iteration limit ({self.max_iterations})."
+            success = False
+            terminal_error = terminal_error or f"Agent reached iteration limit ({self.max_iterations})."
+            final_output = terminal_error
 
         return AgentTaskResult(
             task_id=task.task_id,
             agent_id=self.agent_id,
             role=self.role,
             success=success,
-            output=final_output,
+            output=final_output if success else (terminal_error or final_output),
             tool_calls=executed_calls,
             tool_results=executed_results,
             metadata={"iterations": iterations},

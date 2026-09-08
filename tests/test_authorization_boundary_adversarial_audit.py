@@ -13,15 +13,16 @@ Proves:
    hard safety policy, and replay protection).
 8. Parameter injection of untrusted perceptual outputs into high-safety tools is blocked by DataFlowResolver.
 9. AutoApproveAuthorizer is strictly prohibited and raises SecurityError in production mode.
-10. TaskExecutionEngine enforces BaseAuthorizer decisions and never executes unauthorized plan steps.
+10. TaskGraphScheduler enforces BaseAuthorizer decisions and never executes unauthorized plan steps.
 """
 
 from typing import Any
 
 import pytest
 
-from friday.agent.executor import TaskExecutionEngine
-from friday.agent.planner import PlanStep, StepStatus, TaskPlan
+from friday.planning.scheduler import TaskGraphScheduler
+from friday.planning.executors import ExecutorRegistry, ToolExecutor
+from friday.planning.types import TaskGraph, TaskStep, TaskStatus
 from friday.core.auth import (
     AutoApproveAuthorizer,
     DefaultSecureAuthorizer,
@@ -305,32 +306,32 @@ class TestDataFlowResolverInjectionDefenses:
 # 5. TaskExecutionEngine BaseAuthorizer Enforcement
 # ===========================================================================
 
-class TestTaskExecutionEngineAuthorizerGating:
+class TestTaskGraphSchedulerAuthorizerGating:
 
     def test_plan_step_fails_when_authorizer_denies(self):
         reg = ToolRegistry()
         reg.register(MockSensitiveFileMutatorTool())
 
+
         # DefaultSecureAuthorizer denies SENSITIVE tools by default
         authorizer = DefaultSecureAuthorizer()
-        engine = TaskExecutionEngine(tool_registry=reg, authorizer=authorizer)
+        exec_reg = ExecutorRegistry()
+        tool = reg.get("mock_sensitive_file_mutator")
+        exec_reg.register(ToolExecutor(tool, registry=reg))
 
-        plan = TaskPlan(
-            plan_id="test_plan_auth",
-            goal="Write sensitive file",
-            steps=[
-                PlanStep(
-                    step_id="step_1",
-                    tool_name="mock_sensitive_file_mutator",
-                    parameters={"path": "conf.json", "content": "{}"},
-                    safety_level=SafetyLevel.SENSITIVE,
-                    description="Write config file",
-                )
-            ],
+        scheduler = TaskGraphScheduler(executor_registry=exec_reg, authorizer=authorizer)
+
+        graph = TaskGraph(goal="Write sensitive file")
+        graph.add_task(
+            TaskStep(
+                id="step_1",
+                tool_name="mock_sensitive_file_mutator",
+                parameters={"path": "conf.json", "content": "{}"},
+                safety_level=SafetyLevel.SENSITIVE,
+                description="Write config file",
+            )
         )
 
-        res = engine.execute_plan(plan)
-        assert res.success is False
-        assert "step_1" in res.step_results
-        assert res.step_results["step_1"].status == StepStatus.FAILED
-        assert "Authorization Denied" in (res.step_results["step_1"].error or "")
+        scheduler.execute_graph(graph)
+        assert graph.tasks["step_1"].status == TaskStatus.FAILED
+        assert "Security authorization denied" in (graph.tasks["step_1"].error or "")

@@ -181,7 +181,8 @@ class MicrophoneStream:
                     except Exception:
                         pass
                 else:
-                    self._safe_enqueue(pcm_bytes)
+                    # PortAudio callback thread must never mutate asyncio.Queue directly.
+                    self.overflow_count += 1
 
         try:
             self._stream = sd.RawInputStream(

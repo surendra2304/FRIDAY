@@ -94,7 +94,7 @@ class SelfImprovementWorkflow:
 
         # Step A: Index codebase
         read_tool = self.tool_registry.get("read_own_codebase") or ReadOwnCodebaseTool()
-        codebase_res = read_tool.execute()
+        codebase_res = self.tool_registry.execute(read_tool.name, {})
         steps.append(f"Codebase Indexing: Indexed repository structure ({len(codebase_res.content)} chars).")
 
         # Step B: LLM Generation of new Python code
@@ -151,7 +151,7 @@ class SelfImprovementWorkflow:
 
         # Step C: Write file to src/friday/tools/builtin/
         write_tool = self.tool_registry.get("write_code_file") or WriteCodeFileTool()
-        write_res = write_tool.execute(filepath=target_filepath, code=generated_code)
+        write_res = self.tool_registry.execute(write_tool.name, {"filepath": target_filepath, "code": generated_code})
         if write_res.is_error:
             return {
                 "success": False,
@@ -209,7 +209,7 @@ class SelfImprovementWorkflow:
 
         # Step E: Run automated pytest verification
         test_tool = self.tool_registry.get("run_tests") or RunTestsTool()
-        test_res = test_tool.execute(test_path="tests/test_self_dev_agent_phase31.py")
+        test_res = self.tool_registry.execute(test_tool.name, {"test_path": "tests/test_self_dev_agent_phase31.py"})
         tests_passed = not test_res.is_error
         steps.append(f"Automated Testing: Tests passed = {tests_passed}.")
 
@@ -217,11 +217,11 @@ class SelfImprovementWorkflow:
         commit_msg = f"feat(auto): autonomously implement tool for {feature_desc}"
         if tests_passed:
             commit_tool = self.tool_registry.get("git_commit") or GitCommitTool()
-            commit_res = commit_tool.execute(message=commit_msg)
+            commit_res = self.tool_registry.execute(commit_tool.name, {"message": commit_msg})
             steps.append(f"Git Commit: {commit_res.content}")
 
             push_tool = self.tool_registry.get("git_push") or GitPushTool()
-            push_res = push_tool.execute()
+            push_res = self.tool_registry.execute(push_tool.name, {})
             steps.append(f"Git Push: {push_res.content}")
 
             summary = (

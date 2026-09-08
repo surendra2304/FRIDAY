@@ -3,6 +3,12 @@
 from friday.tools.ai_universe_client import AIUniverseTool, GetAIUniverseStatusTool
 from friday.tools.builtin.action_proposal import ProposeComputerActionTool
 from friday.tools.builtin.android_control import (
+    AndroidDeviceInfoTool,
+    AndroidKeyEventTool,
+    AndroidOpenAppTool,
+    AndroidSwipeTool,
+    AndroidTapTool,
+    AndroidTypeTool,
     OpenAndroidAppTool,
     SwipeScreenTool,
     TapScreenTool,
@@ -76,6 +82,12 @@ from friday.vision.screen_prediction import ScreenPredictionTool
 
 __all__ = [
     "AIUniverseTool",
+    "AndroidDeviceInfoTool",
+    "AndroidKeyEventTool",
+    "AndroidOpenAppTool",
+    "AndroidSwipeTool",
+    "AndroidTapTool",
+    "AndroidTypeTool",
     "AndroidTypeTextTool",
     "OpenAndroidAppTool",
     "SwipeScreenTool",

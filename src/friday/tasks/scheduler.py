@@ -91,7 +91,7 @@ class TaskScheduler:
         auth_req = AuthorizationRequest(
             tool_name="scheduler_run_task",
             parameters={"task_id": task.id, "prompt": task.prompt},
-            safety_level=CoreSafetyLevel.LOW,
+            safety_level=CoreSafetyLevel.SAFE,
         )
         authorizer = DefaultSecureAuthorizer()
         auth_res = authorizer.authorize(auth_req)

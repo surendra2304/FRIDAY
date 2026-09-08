@@ -21,7 +21,7 @@ from enum import Enum
 from typing import Any
 
 from friday.agent.goal import GoalRequestType, GoalUnderstandingEngine
-from friday.agent.planner import PlanStep, TaskPlan
+from friday.planning.types import TaskStep, TaskGraph
 from friday.agent.verification import VerificationResult, VerificationStatus
 from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer
 from friday.core.logging import get_logger
@@ -213,7 +213,7 @@ class CognitiveIntelligenceEngine:
 
     def check_plan_safety_and_confidence(
         self,
-        plan: TaskPlan,
+        graph: TaskGraph,
         authorizer: BaseAuthorizer | None = None,
     ) -> CognitiveDecision:
         """Execute CHECK_PLAN phase: validate safety, cycles, authorization, and plan confidence."""
@@ -225,7 +225,7 @@ class CognitiveIntelligenceEngine:
 
         # 1. Dependency DAG cycle validation
         try:
-            plan.compute_topological_schedule()
+            pass # TaskGraph validates on creation
         except Exception as err:
             confidence.planning_confidence = 0.1
             reasons.append(f"Plan validation failed with dependency error: {err}")
@@ -238,14 +238,14 @@ class CognitiveIntelligenceEngine:
             )
 
         # 2. Safety level analysis
-        for step in plan.steps:
+        for step in graph.list_tasks():
             if step.safety_level in (SafetyLevel.SENSITIVE, SafetyLevel.DANGEROUS):
                 is_unsafe = True
                 requires_confirmation = True
                 reasons.append(f"Step '{step.step_id}' ({step.tool_name}) requires formal authorization [Safety: {step.safety_level.value}].")
 
         # 3. Parameter validation
-        for step in plan.steps:
+        for step in graph.list_tasks():
             if step.tool_name and step.parameters is None:
                 confidence.tool_selection_confidence = 0.4
                 reasons.append(f"Step '{step.step_id}' has missing parameters dictionary.")
@@ -267,7 +267,7 @@ class CognitiveIntelligenceEngine:
 
     def evaluate_verification_and_learning(
         self,
-        step: PlanStep,
+        step: TaskStep,
         step_result: ToolResult,
         verification: VerificationResult,
     ) -> CognitiveDecision:

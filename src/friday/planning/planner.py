@@ -138,6 +138,29 @@ class DynamicTaskPlanner:
             self.router.route_task(step)
             tasks.append(step)
 
+        # Strict plan validation: size, duplicate IDs, self-dependencies, unknown dependencies
+        if len(tasks) > 64:
+            logger.warning("LLM produced plan exceeding maximum size (64 tasks). Aborting LLM plan.")
+            return None
+
+        task_ids = [t.id for t in tasks]
+        if len(task_ids) != len(set(task_ids)):
+            logger.warning("LLM produced plan with duplicate task IDs. Aborting LLM plan.")
+            return None
+
+        task_id_set = set(task_ids)
+        for t in tasks:
+            if not t.description.strip() and not t.objective.strip():
+                logger.warning(f"LLM produced task with empty description/objective: {t.id}. Aborting LLM plan.")
+                return None
+            if t.id in t.dependencies:
+                logger.warning(f"LLM produced task with self dependency: {t.id}. Aborting LLM plan.")
+                return None
+            unknown_deps = set(t.dependencies) - task_id_set
+            if unknown_deps:
+                logger.warning(f"LLM produced task with unknown dependency: {unknown_deps}. Aborting LLM plan.")
+                return None
+
         graph = TaskGraph(goal=user_request, tasks=tasks)
         # Validate acyclicity
         cycles = graph.detect_cycles()

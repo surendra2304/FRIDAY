@@ -113,10 +113,11 @@ class GeminiVoiceProvider(VoiceProvider):
     def run_session(self, agent: Any) -> None:
         """Synchronous wrapper to run the live session."""
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                asyncio.create_task(self.run_live_async(agent))
-            else:
-                loop.run_until_complete(self.run_live_async(agent))
+            loop = asyncio.get_running_loop()
         except RuntimeError:
-            asyncio.run(self.run_live_async(agent))
+            loop = None
+
+        if loop is not None and loop.is_running():
+            raise RuntimeError("Use run_live_async() inside an active event loop")
+
+        asyncio.run(self.run_live_async(agent))

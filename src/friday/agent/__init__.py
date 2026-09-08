@@ -2,12 +2,7 @@
 
 from friday.agent.agent import FridayAgent
 from friday.agent.checkpoint import TaskCheckpoint, TaskCheckpointStore
-from friday.agent.executor import (
-    ExecutionProgress,
-    StepExecutionResult,
-    TaskExecutionEngine,
-    TaskExecutionResult,
-)
+
 from friday.agent.goal import (
     Goal,
     GoalRequestType,
@@ -15,13 +10,7 @@ from friday.agent.goal import (
     GoalUnderstandingEngine,
     SubGoal,
 )
-from friday.agent.planner import (
-    GoalDecomposer,
-    PlanStep,
-    PlanValidationError,
-    StepStatus,
-    TaskPlan,
-)
+
 from friday.agent.prompts import build_system_message, get_default_system_prompt
 from friday.agent.recovery import (
     AutonomousRecoveryManager,

@@ -189,6 +189,7 @@ class TaskGraphScheduler:
                 return
 
         # 3. Locate Executor
+        auth_cap = auth_resp.capability if 'auth_resp' in locals() and auth_resp else None
         executor = None
         if task.selected_executor:
             executor = self.registry.get(task.selected_executor)
@@ -220,7 +221,10 @@ class TaskGraphScheduler:
                 return
 
             try:
-                res = executor.execute(resolved_inputs)
+                context = {}
+                if 'auth_cap' in locals() and auth_cap:
+                    context['authorization'] = auth_cap
+                res = executor.execute(resolved_inputs, context=context)
                 if res.success:
                     graph.mark_completed(task.id, result=res.output, outputs={"result": res.output})
                     success = True

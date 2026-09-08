@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
-from friday.agent.planner import PlanStep, StepStatus, TaskPlan
+from friday.planning.types import TaskStep, TaskStatus, TaskGraph
 from friday.core.logging import get_logger
 
 logger = get_logger("agent.verification")
@@ -66,9 +66,9 @@ class StepVerifier:
 
     @staticmethod
     def verify_step_result(
-        step: PlanStep,
+        step: TaskStep,
         step_result: Any,
-        custom_validator: Callable[[PlanStep, Any], VerificationResult] | None = None,
+        custom_validator: Callable[[TaskStep, Any], VerificationResult] | None = None,
         environment_state: dict[str, Any] | None = None,
     ) -> VerificationResult:
         """Verify that a step's execution result satisfies its postconditions and real-world evidence."""
@@ -82,7 +82,7 @@ class StepVerifier:
         if step_result is None or (isinstance(step_result, str) and not step_result.strip()):
             return VerificationResult(
                 status=VerificationStatus.FAILED,
-                criterion=step.success_criteria or "Non-empty step output",
+                criterion=step.objective or "Non-empty step output",
                 diagnostics="Step produced empty or null execution result.",
                 is_real_success=False,
             )
@@ -94,7 +94,7 @@ class StepVerifier:
         if lower_res.startswith("error:") or "traceback (most recent call last)" in lower_res or "exception:" in lower_res:
             return VerificationResult(
                 status=VerificationStatus.FAILED,
-                criterion=step.success_criteria or "Error-free execution",
+                criterion=step.objective or "Error-free execution",
                 evidence=result_str[:200],
                 diagnostics="Step execution returned an explicit error message.",
                 suggested_correction={"adjust_parameters": True, "error_context": result_str[:200]},
@@ -218,8 +218,8 @@ class StepVerifier:
 
         # 5. Evaluate Explicit Postconditions
         all_conditions = list(step.postconditions)
-        if step.success_criteria:
-            all_conditions.append(step.success_criteria)
+        if step.objective:
+            all_conditions.append(step.objective)
 
         for crit in all_conditions:
             crit = crit.strip()
@@ -387,7 +387,7 @@ class StepVerifier:
 
         return VerificationResult(
             status=VerificationStatus.PASSED,
-            criterion=step.success_criteria or "Valid execution output and postconditions verified",
+            criterion=step.objective or "Valid execution output and postconditions verified",
             evidence=result_str[:150],
             evidence_source=evidence_src,
             confidence=step.confidence,
@@ -396,7 +396,7 @@ class StepVerifier:
 
     @staticmethod
     def verify_plan_completion(
-        plan: TaskPlan,
+        plan: TaskGraph,
         step_verification_results: dict[str, VerificationResult],
     ) -> VerificationResult:
         """Verify the overall plan outcome after all steps have executed."""
@@ -443,11 +443,11 @@ class SelfCorrectionPolicy:
 
     def generate_corrected_step(
         self,
-        step: PlanStep,
+        step: TaskStep,
         failure_evidence: VerificationResult,
-        corrector_fn: Callable[[PlanStep, VerificationResult], PlanStep | None] | None = None,
-    ) -> PlanStep | None:
-        """Generate an adjusted PlanStep for retry if within bounds."""
+        corrector_fn: Callable[[TaskStep, VerificationResult], TaskStep | None] | None = None,
+    ) -> TaskStep | None:
+        """Generate an adjusted TaskStep for retry if within bounds."""
         if not self.can_attempt_correction(step.step_id):
             logger.warning(f"Step '{step.step_id}': Maximum correction attempts ({self.max_correction_attempts}) exhausted.")
             return None
@@ -461,7 +461,7 @@ class SelfCorrectionPolicy:
         # Default correction preserves existing valid parameters without injecting unexpected schema keys
         new_params = dict(step.parameters)
 
-        corrected_step = PlanStep(
+        corrected_step = TaskStep(
             step_id=step.step_id,
             description=f"{step.description} (Retry #{attempt_num})",
             tool_name=step.tool_name,
@@ -469,7 +469,7 @@ class SelfCorrectionPolicy:
             depends_on=list(step.depends_on),
             safety_level=step.safety_level,
             requires_confirmation=step.requires_confirmation,
-            status=StepStatus.PENDING,
-            success_criteria=step.success_criteria,
+            status=TaskStatus.PENDING,
+            success_criteria=step.objective,
         )
         return corrected_step

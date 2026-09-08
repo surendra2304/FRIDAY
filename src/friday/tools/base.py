@@ -69,9 +69,24 @@ class BaseTool(ABC):
                 return False, f"Missing required parameter '{req}' for tool '{self.name}'."
 
         # Check for unexpected arguments
-        for arg_name in arguments:
+        for arg_name, arg_val in list(arguments.items()):
             if arg_name not in schema_props:
                 return False, f"Unexpected parameter '{arg_name}' passed to tool '{self.name}'."
+            
+            # Simple type coercion
+            expected_type = schema_props[arg_name].get("type")
+            if expected_type == "integer" and isinstance(arg_val, str):
+                try:
+                    arguments[arg_name] = int(arg_val)
+                except ValueError:
+                    return False, f"Parameter '{arg_name}' expected integer, received str."
+            elif expected_type == "number" and isinstance(arg_val, str):
+                try:
+                    arguments[arg_name] = float(arg_val)
+                except ValueError:
+                    return False, f"Parameter '{arg_name}' expected number, received str."
+            elif expected_type == "boolean" and isinstance(arg_val, str):
+                arguments[arg_name] = arg_val.lower() == "true"
 
         # Check basic types for provided arguments
         type_mapping = {

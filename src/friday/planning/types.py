@@ -415,6 +415,14 @@ class TaskGraph:
 
         def _resolve_val(val: Any) -> Any:
             if isinstance(val, str):
+                # Check for exact tag match first (e.g. "<t1>") to preserve type
+                t_match = self.TAG_PATTERN.fullmatch(val.strip())
+                if t_match:
+                    src_id = t_match.group(1)
+                    src_task = self.get_task(src_id)
+                    if src_task and src_task.status == TaskStatus.COMPLETED:
+                        return src_task.result
+                        
                 # 1. {{task_id.key}} or {{task_id}}
                 t_match = self.TEMPLATE_PATTERN.fullmatch(val.strip())
                 if t_match:

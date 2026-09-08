@@ -39,13 +39,13 @@ _HIGH_RISK_PATTERNS: list[re.Pattern] = [
     re.compile(r"\[SYSTEM\].*", re.IGNORECASE),
     re.compile(r"\[USER\].*", re.IGNORECASE),
     re.compile(r"<script[\s\S]*?>[\s\S]*?<\/script>", re.IGNORECASE),
-    re.compile(r"base64,?([A-Za-z0-9+/=]+)"),
+    re.compile(r"(?is)(?:decode|execute|run|paste|eval).*?\bbase64\b.{0,64}[A-Za-z0-9+/]{100,}={0,2}"),
     re.compile(r"\u200b|\u200c|\u200d|\u2060"),  # zero‑width chars
 ]
 
 # Medium‑risk patterns – require explicit user confirmation.
 _MEDIUM_RISK_PATTERNS: list[re.Pattern] = [
-    re.compile(r"\\b(?:run|execute)\\b", re.IGNORECASE),
+    re.compile(r"\b(?:run|execute)\b", re.IGNORECASE),
     re.compile(r"(?:https?:\/\/)?[\w.-]+\.[a-z]{2,}\/[\w\/?=&%#-]*", re.IGNORECASE),
 ]
 

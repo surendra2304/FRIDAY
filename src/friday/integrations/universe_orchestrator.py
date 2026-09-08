@@ -3,7 +3,7 @@
 import re
 from typing import Any
 
-from friday.agents.decomposer import TaskDecomposer
+from friday.planning.planner import DynamicTaskPlanner
 from friday.core.logging import get_logger
 from friday.integrations.mock_universe import MockUniverseClient
 from friday.integrations.universe_api import (
@@ -24,11 +24,11 @@ class UniverseOrchestrator:
         self,
         universe_api: BaseUniverseAPI | None = None,
         memory: Any | None = None,
-        decomposer: TaskDecomposer | None = None,
+        planner: DynamicTaskPlanner | None = None,
     ) -> None:
         self.api: BaseUniverseAPI = universe_api or MockUniverseClient()
         self.memory = memory
-        self.decomposer = decomposer
+        self.planner = planner
 
     def can_handle(self, user_prompt: str) -> bool:
         """Detect whether prompt requires AI Universe orchestration."""
@@ -59,9 +59,9 @@ class UniverseOrchestrator:
 
         # 2. Decompose subtasks if decomposer is available
         decomposition_plan = None
-        if self.decomposer:
+        if self.planner:
             try:
-                decomposition_plan = self.decomposer.decompose(goal)
+                decomposition_plan = self.planner.plan(goal)
             except Exception as ex:
                 logger.debug(f"Decomposition fallback: {ex}")
 

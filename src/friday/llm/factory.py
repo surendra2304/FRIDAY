@@ -130,16 +130,7 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
             settings.llm_model if settings.llm_model != _DEFAULT_LLM_MODEL else MISTRAL_DEFAULT_MODEL
         )
         gemini_model = settings.gemini_model or settings.llm_model
-        chain_providers: List[BaseLLMProvider] = [
-            GroqLLMProvider(
-                api_key=settings.groq_api_key or settings.llm_api_key,
-                credential_pool=groq_credential_pool,
-                model=groq_model,
-                fallback_model=settings.groq_fallback_model,
-                temperature=settings.llm_temperature,
-                max_tokens=settings.llm_max_tokens,
-            ),
-        ]
+        chain_providers: List[BaseLLMProvider] = []
 
         has_gemini = (
             bool(settings.gemini_api_key)
@@ -163,6 +154,17 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
                 )
             )
 
+        chain_providers.append(
+            GroqLLMProvider(
+                api_key=settings.groq_api_key or settings.llm_api_key,
+                credential_pool=groq_credential_pool,
+                model=groq_model,
+                fallback_model=settings.groq_fallback_model,
+                temperature=settings.llm_temperature,
+                max_tokens=settings.llm_max_tokens,
+            )
+        )
+
         chain_providers.extend([
             MistralLLMProvider(
                 api_key=settings.mistral_api_key or settings.llm_api_key,
@@ -178,11 +180,18 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
                 temperature=settings.llm_temperature,
                 max_tokens=settings.llm_max_tokens,
             ),
-            AIUniverseLLMProvider(
-                base_url=os.getenv("INFERENCE_URL") or os.getenv("FRIDAY_INFERENCE_URL") or getattr(settings, "inference_url", None) or "https://inference-3i2b.onrender.com",
-                api_key=os.getenv("INFERENCE_API_KEY") or os.getenv("FRIDAY_INFERENCE_API_KEY") or getattr(settings, "inference_api_key", None) or "inference_api",
-            ),
         ])
+
+        inf_url = os.getenv("INFERENCE_URL") or os.getenv("FRIDAY_INFERENCE_URL") or getattr(settings, "inference_url", None)
+        inf_key = os.getenv("INFERENCE_API_KEY") or os.getenv("FRIDAY_INFERENCE_API_KEY") or getattr(settings, "inference_api_key", None)
+        
+        if inf_url and inf_key:
+            chain_providers.append(
+                AIUniverseLLMProvider(
+                    base_url=inf_url,
+                    api_key=inf_key,
+                )
+            )
         logger.info(
             "Initializing Fallback Chain Provider: "
             + " -> ".join(p.provider_name for p in chain_providers)
