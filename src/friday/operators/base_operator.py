@@ -1,4 +1,4 @@
-"""Base Operator Abstraction for Persistent Background State Machines (Inspired by OpenJarvis).
+"""Base Operator Abstraction for Persistent Background State Machines (Inspired by open-source operator frameworks).
 
 An Operator is a persistent background state machine that monitors system state over time
 and autonomously triggers actions, skill executions, or notifications based on event-driven triggers.

@@ -223,11 +223,11 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
         return None
 
     @property
-    def jarvis_orchestrator(self):
-        """Lazy-loaded Microsoft JARVIS / HuggingGPT task graph orchestrator."""
-        if getattr(self, "_jarvis_orchestrator", None) is None:
-            from friday.planning.orchestrator import JarvisOrchestrator
-            orch = JarvisOrchestrator(
+    def goal_orchestrator(self):
+        """Lazy-loaded Microsoft HuggingGPT task graph orchestrator."""
+        if getattr(self, "_goal_orchestrator", None) is None:
+            from friday.planning.orchestrator import FridayOrchestrator
+            orch = FridayOrchestrator(
                 tool_registry=self.tools,
                 llm_provider=self.llm,
                 authorizer=self.authorizer,
@@ -239,20 +239,20 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
                         orch.register_specialist_agent(agent, getattr(agent, "role", "specialist"))
                 except Exception as e:
                     logger.debug(f"Specialist agent registration: {e}")
-            self._jarvis_orchestrator = orch
-        return self._jarvis_orchestrator
+            self._goal_orchestrator = orch
+        return self._goal_orchestrator
 
     def execute_complex_task(self, goal: str, context: dict | None = None) -> AgentResponse:
-        """Execute a complex multi-step user goal using Microsoft JARVIS task graph orchestration."""
+        """Execute a complex multi-step user goal using Microsoft HuggingGPT task graph orchestration."""
         import time
         start_time = time.perf_counter()
-        synth_response = self.jarvis_orchestrator.execute_goal(goal, context=context)
+        synth_response = self.goal_orchestrator.execute_goal(goal, context=context)
         duration = time.perf_counter() - start_time
         return AgentResponse(
             content=synth_response.content,
             is_done=True,
             metadata={
-                "jarvis_orchestration": True,
+                "goal_orchestration": True,
                 "graph_id": synth_response.graph_id,
                 "total_tasks": synth_response.total_tasks,
                 "completed_tasks": synth_response.completed_tasks,

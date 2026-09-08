@@ -1,4 +1,4 @@
-"""Base Device Controller Abstraction for FRIDAY (Inspired by OpenJarvis).
+"""Base Device Controller Abstraction for FRIDAY (Inspired by open-source operator frameworks).
 
 Defines an operating system and hardware-agnostic interface for controlling devices
 (Windows desktop, Android mobile, remote browser/sandbox, or headless mock).

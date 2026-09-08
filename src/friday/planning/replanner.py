@@ -1,6 +1,6 @@
 """Dynamic Re-planner & Failure Recovery for FRIDAY Planning Architecture.
 
-Inspired by Microsoft JARVIS / HuggingGPT Fault Tolerance & Dynamic Replanning:
+Inspired by Microsoft HuggingGPT Fault Tolerance & Dynamic Replanning:
 - Diagnoses failed subtasks (timeout, model unavailable, unparseable output, parameter error).
 - Dispatches multi-tiered recovery:
   Tier 1: Bounded retry with exponential backoff (handled by Scheduler).

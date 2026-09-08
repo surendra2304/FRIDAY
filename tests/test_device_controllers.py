@@ -1,4 +1,4 @@
-"""Tests for FRIDAY Device Control Abstractions (Inspired by OpenJarvis)."""
+"""Tests for FRIDAY Device Control Abstractions (Inspired by open-source operator frameworks)."""
 
 from unittest.mock import MagicMock, patch
 

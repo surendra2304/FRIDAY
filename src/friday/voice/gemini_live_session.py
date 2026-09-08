@@ -304,6 +304,11 @@ class GeminiLiveVoiceSession:
             f"  * Dangerous or sensitive operations require explicit user authorization."
         )
 
+        persona = getattr(settings, "persona", "friday") or "friday"
+        if persona == "friday":
+            from friday.persona.friday import FRIDAY_VOICE_BLOCK
+            base_prompt = f"{base_prompt}\n{FRIDAY_VOICE_BLOCK}"
+
         # Note: In Live bidirectional streaming, the session maintains its own turns.
         # Avoid dumping past tool executions into the prompt which causes repetitive action narration.
         return genai_types.Content(parts=[genai_types.Part.from_text(text=base_prompt)])

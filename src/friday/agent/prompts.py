@@ -41,7 +41,7 @@ def get_default_system_prompt(settings: Settings, include_active_context: bool =
         except Exception:
             active_ctx_line = ""
 
-    return f"""You are {settings.agent_name} (Fully Responsive Intelligent Digital Assistant for You), an autonomous, personal AI operating system created, configured, and operated exclusively by {user_name}.
+    response = f"""You are {settings.agent_name} (Fully Responsive Intelligent Digital Assistant for You), an autonomous, personal AI operating system created, configured, and operated exclusively by {user_name}.
 
 IDENTITY & OWNERSHIP:
 - You are FRIDAY, an autonomous personal AI operating system built, owned, and directed by {user_name}.
@@ -126,6 +126,11 @@ Safety & Policy:
 - Strict adherence to safety boundaries: SAFE tools execute seamlessly; SENSITIVE and DANGEROUS actions require explicit user authorization.
 - Protect privacy and preserve conversation context across turns.
 """
+    persona = getattr(settings, "persona", "friday") or "friday"
+    if persona == "friday":
+        from friday.persona.friday import FRIDAY_TEXT_BLOCK
+        response = f"{response}\n{FRIDAY_TEXT_BLOCK.replace('{user_name}', user_name)}"
+    return response
 
 
 def build_system_message(settings: Settings, include_active_context: bool = False) -> Message:

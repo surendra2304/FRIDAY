@@ -1,4 +1,4 @@
-"""Trace Analyzer for FRIDAY Trace-Based Learning (Inspired by OpenJarvis).
+"""Trace Analyzer for FRIDAY Trace-Based Learning (Inspired by open-source operator frameworks).
 
 Analyzes execution traces to discover tool efficiency patterns, evaluate provider reliability,
 identify failing providers, and guide dynamic routing optimization.

@@ -1,4 +1,4 @@
-"""Advisory Watchdog Operator for Trading Supervision (Inspired by OpenJarvis).
+"""Advisory Watchdog Operator for Trading Supervision (Inspired by open-source operator frameworks).
 
 Persistent background operator that monitors the Algorithmic Trading Bot's AI-Universe
 advisory log every 15 minutes to identify:

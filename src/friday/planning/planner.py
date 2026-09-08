@@ -1,6 +1,6 @@
 """Dynamic Task Planner for FRIDAY Planning Architecture.
 
-Inspired by Microsoft JARVIS / HuggingGPT Controller Stage:
+Inspired by Microsoft HuggingGPT Controller Stage:
 - Uses the LLM as the central planning brain to decompose natural-language requests into executable task DAGs.
 - Synthesizes typed subtasks, data dependencies, and executor selections using EasyTool summaries.
 - Validates graph acyclicity and parameter structure before returning the TaskGraph.
@@ -21,7 +21,7 @@ from friday.planning.types import TaskDataType, TaskGraph, TaskGraphValidationEr
 
 logger = get_logger("planning.planner")
 
-PLANNER_SYSTEM_PROMPT = """You are FRIDAY's Task Planning Controller (inspired by Microsoft JARVIS / HuggingGPT).
+PLANNER_SYSTEM_PROMPT = """You are FRIDAY's Task Planning Controller (inspired by Microsoft HuggingGPT).
 Your job is to decompose a user request into a minimal, structured, dependency-aware Directed Acyclic Graph (DAG) of executable subtasks.
 
 AVAILABLE EXECUTORS & TOOLS:

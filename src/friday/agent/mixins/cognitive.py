@@ -138,7 +138,11 @@ class CognitiveMixin:
                 self.state_machine.transition_to(TaskState.VERIFYING, reason="Validating greeting response")
                 self.state_machine.transition_to(TaskState.COMPLETED, reason="Greeting ready")
                 return AgentResponse(
-                    content=f"I'm listening. How can I assist you today, {self.settings.user_name}?",
+                    content=(
+                        f"I'm listening. How can I assist you today, {self.settings.user_name}?"
+                        if getattr(self.settings, "persona", "friday") != "friday"
+                        else f"{self.settings.user_name}. I'm at your command. What would you like done?"
+                    ),
                     is_done=True,
                     metadata={
                         "task_state": self.state_machine.current_state.value,
@@ -156,6 +160,9 @@ class CognitiveMixin:
                 if hasattr(self, "notifications") and self.notifications:
                     proactive = self.notifications.pop_notifications_summary()
                     if proactive:
+                        from friday.persona.friday import proactive_style
+                        persona = getattr(self.settings, "persona", "friday") or "friday"
+                        proactive = proactive_style(persona, proactive, self.settings.user_name)
                         greeting_response.content = f"{proactive}\n\n{greeting_response.content}"
                 return greeting_response
 
@@ -201,9 +208,9 @@ class CognitiveMixin:
             )
             logger.info(f"Capability routed to: {routing_decision.selected_capability.value}")
 
-            # State: PLANNING & EXECUTING (Delegating to authoritative ExecutionGateway / JarvisOrchestrator)
+            # State: PLANNING & EXECUTING (Delegating to authoritative ExecutionGateway / FridayOrchestrator)
             self.state_machine.transition_to(TaskState.PLANNING, reason="Delegating to authoritative ExecutionGateway")
-            self.state_machine.transition_to(TaskState.EXECUTING, reason="Executing via JarvisOrchestrator")
+            self.state_machine.transition_to(TaskState.EXECUTING, reason="Executing via FridayOrchestrator")
             
             recalled = []
             if hasattr(self, "_retrieve_relevant_memories"):
@@ -261,7 +268,7 @@ class CognitiveMixin:
                     "cognitive_phase": cognitive_decision.current_phase.value,
                     "confidence": cognitive_decision.confidence.to_dict(),
                     "routed_capability": routing_decision.selected_capability.value,
-                    "jarvis_orchestration": exec_res.metadata.get("jarvis_orchestration", False),
+                    "goal_orchestration": exec_res.metadata.get("goal_orchestration", False),
                     "graph_id": exec_res.metadata.get("graph_id"),
                     "total_tasks": exec_res.metadata.get("total_tasks"),
                     "completed_tasks": exec_res.metadata.get("completed_tasks"),

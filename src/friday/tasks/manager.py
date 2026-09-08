@@ -363,7 +363,7 @@ class LongRunningTaskManager:
                     logger.warning(f"Active task with identical goal '{goal}' already exists ({t['task_id']}).")
                     return t["task_id"]
 
-            plan = self.agent.jarvis_orchestrator.planner.plan(goal, context={'steps': steps})
+            plan = self.agent.goal_orchestrator.planner.plan(goal, context={'steps': steps})
             task_id = plan.graph_id
             timeout = timeout_seconds or self.default_timeout_seconds
             r_limit = retry_budget if retry_budget is not None else self.default_retry_budget
@@ -699,7 +699,7 @@ class LongRunningTaskManager:
             if is_resumption:
                 res = self.agent.resume_task(task_id)
             else:
-                res = self.agent.jarvis_orchestrator.execute_graph(
+                res = self.agent.goal_orchestrator.execute_graph(
                     graph=plan,
                     
                     

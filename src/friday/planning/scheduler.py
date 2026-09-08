@@ -1,6 +1,6 @@
 """Async Parallel Scheduler & Execution Engine for TaskGraph DAGs.
 
-Inspired by Microsoft JARVIS / HuggingGPT Execution Stage:
+Inspired by Microsoft HuggingGPT Execution Stage:
 - Executes tasks in topological waves, running independent tasks concurrently.
 - Respects rate limits, max concurrency, and timeouts.
 - Injects outputs from upstream prerequisite tasks into downstream task inputs.

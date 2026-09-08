@@ -1,4 +1,4 @@
-"""End-to-end unit tests for JarvisOrchestrator, Scheduler, and Replanner."""
+"""End-to-end unit tests for FridayOrchestrator, Scheduler, and Replanner."""
 
 import threading
 from typing import Any
@@ -13,7 +13,7 @@ from friday.core.types import (
 )
 from friday.planning.events import TaskEventBus, TaskEventType
 from friday.planning.executors import BaseExecutor, ExecutorResult
-from friday.planning.orchestrator import JarvisOrchestrator
+from friday.planning.orchestrator import FridayOrchestrator
 from friday.planning.types import TaskDataType, TaskGraph, TaskStatus, TaskStep
 from friday.tools.base import BaseTool
 from friday.tools.registry import ToolRegistry
@@ -79,7 +79,7 @@ def test_orchestrator_single_step():
     registry = ToolRegistry()
     registry.register(AddTool())
 
-    orch = JarvisOrchestrator(tool_registry=registry)
+    orch = FridayOrchestrator(tool_registry=registry)
     resp = orch.execute_goal("add_numbers with a=5 and b=10")
 
     assert resp.is_successful is True
@@ -91,7 +91,7 @@ def test_orchestrator_multi_step_sequential():
     registry = ToolRegistry()
     registry.register(AddTool())
 
-    orch = JarvisOrchestrator(tool_registry=registry)
+    orch = FridayOrchestrator(tool_registry=registry)
 
     # Manually construct a 2-step pipeline
     t1 = TaskStep(
@@ -119,7 +119,7 @@ def test_orchestrator_parallel_execution():
     registry = ToolRegistry()
     registry.register(AddTool())
 
-    orch = JarvisOrchestrator(tool_registry=registry, max_concurrency=4)
+    orch = FridayOrchestrator(tool_registry=registry, max_concurrency=4)
 
     # 3 independent steps that can run concurrently in wave 0
     t1 = TaskStep(id="t1", description="Add 1+1", selected_executor="add_numbers", parameters={"a": 1, "b": 1})
@@ -136,7 +136,7 @@ def test_orchestrator_parallel_execution():
 
 def test_orchestrator_replanning_fallback():
     registry = ToolRegistry()
-    orch = JarvisOrchestrator(tool_registry=registry)
+    orch = FridayOrchestrator(tool_registry=registry)
     orch.registry.register(FailingExecutor("primary_failing"))
     orch.registry.register(SuccessfulFallbackExecutor("backup_executor"))
 
@@ -159,7 +159,7 @@ def test_orchestrator_replanning_fallback():
 def test_orchestrator_security_authorization_gating():
     registry = ToolRegistry()
     authorizer = MockDenyingAuthorizer()
-    orch = JarvisOrchestrator(tool_registry=registry, authorizer=authorizer)
+    orch = FridayOrchestrator(tool_registry=registry, authorizer=authorizer)
 
     t1 = TaskStep(
         id="t_danger",
@@ -177,7 +177,7 @@ def test_orchestrator_security_authorization_gating():
 
 def test_orchestrator_cancellation():
     registry = ToolRegistry()
-    orch = JarvisOrchestrator(tool_registry=registry)
+    orch = FridayOrchestrator(tool_registry=registry)
 
     cancel_token = threading.Event()
     cancel_token.set()  # Signal cancellation immediately

@@ -1,4 +1,4 @@
-"""FRIDAY Persistent Operators System (Inspired by OpenJarvis)."""
+"""FRIDAY Persistent Operators System (Inspired by open-source operator frameworks)."""
 
 from friday.operators.ab_test_operator import ABTestOperator
 from friday.operators.advisory_watchdog import AdvisoryWatchdogOperator

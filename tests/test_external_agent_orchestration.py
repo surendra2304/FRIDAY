@@ -2,7 +2,7 @@
 
 import pytest
 from friday.planning.executors import ExecutorRegistry, LLMExecutor, ToolExecutor
-from friday.planning.orchestrator import JarvisOrchestrator
+from friday.planning.orchestrator import FridayOrchestrator
 from friday.planning.router import ModelRouter
 from friday.planning.types import TaskDataType, TaskGraph, TaskStatus, TaskStep
 from friday.tools.registry import ToolRegistry
@@ -54,7 +54,7 @@ def test_orchestrator_parallel_multi_executor_pipeline():
     calc_tool = CalculatorTool()
     registry.register(ToolExecutor(calc_tool))
 
-    orchestrator = JarvisOrchestrator(executor_registry=registry)
+    orchestrator = FridayOrchestrator(executor_registry=registry)
 
     # Wave 1: Browser inspection + SWE git inspection in parallel
     t1 = TaskStep(

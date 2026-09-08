@@ -1,6 +1,6 @@
 """Typed Task Model, Statuses, and Task Graph (DAG) for FRIDAY Planning Architecture.
 
-Inspired by Microsoft JARVIS / HuggingGPT:
+Inspired by Microsoft HuggingGPT:
 - Concept of structured subtasks with typed inputs/outputs (TaskDataType)
 - Explicit dependency tracking and acyclic graph (DAG) invariants
 - Topological wave computation for safe concurrent execution
@@ -435,7 +435,7 @@ class TaskGraph:
                         return src_task.result
                     return val
 
-                # 2. <TASK_ID> tag style (from Microsoft JARVIS prompt conventions)
+                # 2. <TASK_ID> tag style (from Microsoft HuggingGPT prompt conventions)
                 tag_match = self.TAG_PATTERN.fullmatch(val.strip())
                 if tag_match:
                     src_id = tag_match.group(1)

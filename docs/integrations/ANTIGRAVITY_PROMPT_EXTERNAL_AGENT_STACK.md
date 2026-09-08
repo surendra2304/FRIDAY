@@ -4,8 +4,8 @@ Use the provided FRIDAY repository as the source of truth.
 
 Integrate the following reference repositories into FRIDAY as native capability providers, NOT as separate assistant architectures:
 
-- Microsoft JARVIS: https://github.com/microsoft/JARVIS
-- Practical J.A.R.V.I.S: https://github.com/GauravSingh9356/J.A.R.V.I.S
+- Microsoft HuggingGPT: https://arxiv.org/abs/2303.17580
+- Practical FRIDAY: https://github.com/GauravSingh9356/FRIDAY
 - Browser Use: https://github.com/browser-use/browser-use
 - Mem0: https://github.com/mem0ai/mem0
 - MCP Python SDK: https://github.com/modelcontextprotocol/python-sdk
@@ -117,9 +117,9 @@ Respect:
 - cancellation
 - audit logs
 
-### 5. Microsoft JARVIS orchestration
+### 5. Microsoft HuggingGPT orchestration
 
-Use the Microsoft JARVIS/HuggingGPT concepts already requested:
+Use the Microsoft HuggingGPT concepts already requested:
 
 - task decomposition
 - model/executor selection
@@ -130,9 +130,9 @@ Use the Microsoft JARVIS/HuggingGPT concepts already requested:
 
 Do not copy its old server or model deployment architecture.
 
-### 6. Practical J.A.R.V.I.S capabilities
+### 6. Practical FRIDAY capabilities
 
-Continue integrating useful capabilities from the previously supplied J.A.R.V.I.S repository through FRIDAY-native tools:
+Continue integrating useful capabilities from the previously supplied FRIDAY repository through FRIDAY-native tools:
 
 - email
 - news
