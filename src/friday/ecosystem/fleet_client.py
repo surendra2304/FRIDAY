@@ -360,7 +360,7 @@ class FleetClient:
             "caller_id": "surendra_friday",
         }
         try:
-            async with httpx.AsyncClient(timeout=45.0) as client:
+            async with httpx.AsyncClient(timeout=90.0) as client:
                 resp = await client.post(url, json=payload, headers=headers)
                 if resp.status_code == 200:
                     data = resp.json()
@@ -403,9 +403,15 @@ class FleetClient:
                     json={"task_query": query, "token_budget": 1000},
                     headers=headers,
                 )
+                r_search = await client.get(
+                    f"{self.memora_url}/v1/memories/search",
+                    params={"q": query, "limit": 5},
+                    headers=headers,
+                )
                 r_metrics = await client.get(f"{self.memora_url}/v1/metrics", headers=headers)
 
                 ctx_data = r_ctx.json() if r_ctx.status_code == 200 else {}
+                search_data = r_search.json() if r_search.status_code == 200 else []
                 metrics_data = r_metrics.json() if r_metrics.status_code == 200 else {}
 
                 bundle_id = ctx_data.get("bundle_id", "untracked")
@@ -413,17 +419,27 @@ class FleetClient:
                 success_rate = metrics_data.get("write_success_rate", 1.0)
                 staleness = metrics_data.get("staleness_rate", 0.0)
 
+                recalled_lines = []
+                if isinstance(search_data, list) and search_data:
+                    for item in search_data:
+                        txt = item.get("content_text", "")
+                        mtype = item.get("memory_type", "memory").upper()
+                        recalled_lines.append(f"  • [{mtype}] {txt}")
+
+                recalled_text = "\n".join(recalled_lines) if recalled_lines else "  • No specific memory match found."
+
                 formatted_reply = (
                     f"🧠 [MEMORA PERSISTENT MEMORY // 9GB TURSO AWS MUMBAI]\n"
                     f"Bundle ID: {bundle_id}\n"
                     f"Write Success Rate: {success_rate * 100:.1f}% | Staleness Rate: {staleness * 100:.1f}%\n\n"
+                    f"Recalled Knowledge & Preferences:\n{recalled_text}\n\n"
                     f"Context Telemetry:\n{summary}"
                 )
                 return {
                     "reply": formatted_reply,
                     "metadata": {
                         "agent_id": "memora", "agent_name": "Memora",
-                        "bundle_id": bundle_id, "metrics": metrics_data,
+                        "bundle_id": bundle_id, "recalled_memories": search_data, "metrics": metrics_data,
                     },
                 }
         except Exception as e:
