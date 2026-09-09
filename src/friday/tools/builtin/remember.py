@@ -101,6 +101,13 @@ class RememberFactTool(BaseTool):
             except Exception as e:
                 logger.debug(f"Could not append to conversation memory: {e}")
 
+        # 3. Synchronize fact to Memora Persistent Memory Fabric
+        try:
+            from friday.memory.memora_client import memora_client
+            memora_client.record_fact("friday", fact_text=f, category=cat, importance=0.95)
+        except Exception as e:
+            logger.debug(f"Memora fact sync skipped: {e}")
+
         return ToolResult(
             name=self.name,
             content=f"I have remembered: '{f}' (Category: {cat}).",

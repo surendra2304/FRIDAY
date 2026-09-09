@@ -248,22 +248,105 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
         return self._goal_orchestrator
 
     def execute_complex_task(self, goal: str, context: dict | None = None) -> AgentResponse:
-        """Execute a complex multi-step user goal using Microsoft HuggingGPT task graph orchestration."""
+        """Execute a goal through FRIDAY's bounded, authorized tool loop."""
         import time
+        from friday.agent.mixins.cognitive import strip_thought_tags
+
         start_time = time.perf_counter()
-        synth_response = self.goal_orchestrator.execute_goal(goal, context=context)
-        duration = time.perf_counter() - start_time
+        system_message = self.system_message
+        messages = [system_message if isinstance(system_message, Message) else Message(role=Role.SYSTEM, content=str(system_message))]
+        context_limit = max(1, int(getattr(self.memory, "max_messages", 12)))
+        messages.extend(self.memory.get_messages()[-max(0, context_limit - 1):])
+
+        # Recall persistent long-term memories and user preferences from Memora
+        try:
+            from friday.memory.memora_client import memora_client
+            memora_context = memora_client.build_context_block("friday", goal)
+            if memora_context:
+                messages.append(Message(role=Role.SYSTEM, content=memora_context))
+        except Exception as e:
+            logger.debug(f"Memora context injection skipped: {e}")
+
+        messages.append(Message(role=Role.USER, content=goal))
+        tool_results: list[ToolResult] = []
+        tool_calls: list[ToolCall] = []
+        last_error = ""
+
+        for _ in range(min(self.max_tool_iterations, 4)):
+            try:
+                response = self.llm.generate(messages, tools=self.tools.get_schemas())
+            except Exception as exc:
+                return AgentResponse(
+                    content=f"LLM generation failed. I'm having trouble connecting to my intelligence core: {exc}",
+                    tool_results=tool_results or None,
+                    tool_calls=tool_calls or None,
+                    is_done=True,
+                    metadata={
+                        "goal_orchestration": False,
+                        "duration_seconds": time.perf_counter() - start_time,
+                        "is_successful": False,
+                    },
+                )
+            if not response.tool_calls:
+                content = strip_thought_tags(response.content)
+                if content:
+                    return AgentResponse(
+                        content=content,
+                        tool_calls=tool_calls or None,
+                        tool_results=tool_results or None,
+                        is_done=True,
+                        metadata={
+                            "goal_orchestration": False,
+                            "duration_seconds": time.perf_counter() - start_time,
+                            "is_successful": True,
+                        },
+                    )
+                break
+
+            messages.append(response)
+            for call in response.tool_calls:
+                tool_calls.append(call)
+                result = self._execute_single_tool_call(call)
+                tool_results.append(result)
+                messages.append(
+                    Message(
+                        role=Role.TOOL,
+                        name=result.name,
+                        tool_call_id=result.tool_call_id or call.id,
+                        content=result.content,
+                    )
+                )
+                if result.is_error:
+                    if "Duplicate tool call ID" not in result.content:
+                        last_error = result.content
+                    messages.append(
+                        Message(
+                            role=Role.SYSTEM,
+                            content=(
+                                f"Your previous tool call '{call.name}' failed with this error: "
+                                f"{result.content}. Correct the plan or report the failure."
+                            ),
+                        )
+                    )
+
+        content = (
+            f"I encountered persistent errors while completing the request: {last_error}"
+            if last_error
+            else (
+                "I completed the requested tool operations within the action limit."
+                if tool_results
+                else "I could not complete the request within the action limit."
+            )
+        )
         return AgentResponse(
-            content=synth_response.content,
+            content=content,
+            tool_calls=tool_calls or None,
+            tool_results=tool_results or None,
             is_done=True,
             metadata={
-                "goal_orchestration": True,
-                "graph_id": synth_response.graph_id,
-                "total_tasks": synth_response.total_tasks,
-                "completed_tasks": synth_response.completed_tasks,
-                "failed_tasks": synth_response.failed_tasks,
-                "duration_seconds": duration,
-                "is_successful": synth_response.is_successful,
+                "goal_orchestration": False,
+                "duration_seconds": time.perf_counter() - start_time,
+                "is_successful": False,
             },
         )
 

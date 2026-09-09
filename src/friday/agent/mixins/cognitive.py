@@ -127,10 +127,11 @@ class CognitiveMixin:
         ) -> AgentResponse:
             """Process a user message through reasoning, safety validation, and sequential/parallel tool execution."""
             start_time = time.perf_counter()
-            clean_input = user_input.strip()
+            clean_input = self.normalize_wake_phrase(user_input)
 
             # Initialize fresh state machine for this turn/request
             self.state_machine = ReasoningStateMachine()
+            self._processed_tool_ids.clear()
 
             if not clean_input:
                 self.state_machine.transition_to(TaskState.UNDERSTANDING, reason="Received empty turn")
@@ -141,7 +142,7 @@ class CognitiveMixin:
                     content=(
                         f"I'm listening. How can I assist you today, {self.settings.user_name}?"
                         if getattr(self.settings, "persona", "friday") != "friday"
-                        else f"{self.settings.user_name}. I'm at your command. What would you like done?"
+                        else f"{self.settings.user_name}. I'm listening and at your command. What would you like done?"
                     ),
                     is_done=True,
                     metadata={
@@ -169,6 +170,10 @@ class CognitiveMixin:
             direct_desktop_response = self._direct_desktop_action_fast_path(clean_input, start_time)
             if direct_desktop_response is not None:
                 return direct_desktop_response
+
+            deterministic_response = self._deterministic_action_fast_path(clean_input, start_time)
+            if deterministic_response is not None:
+                return deterministic_response
 
             # 1. State: UNDERSTANDING (evaluating cognitive confidence, information sufficiency & capability routing)
             self.state_machine.transition_to(TaskState.UNDERSTANDING, reason="Interpreting user turn and retrieving memories")
@@ -209,8 +214,7 @@ class CognitiveMixin:
             logger.info(f"Capability routed to: {routing_decision.selected_capability.value}")
 
             # State: PLANNING & EXECUTING (Delegating to authoritative ExecutionGateway / FridayOrchestrator)
-            self.state_machine.transition_to(TaskState.PLANNING, reason="Delegating to authoritative ExecutionGateway")
-            self.state_machine.transition_to(TaskState.EXECUTING, reason="Executing via FridayOrchestrator")
+            self.state_machine.transition_to(TaskState.PLANNING, reason="Planning the requested action")
             
             recalled = []
             if hasattr(self, "_retrieve_relevant_memories"):
@@ -220,18 +224,23 @@ class CognitiveMixin:
             
             context = {
                 "has_working_context": bool(self.task_context),
-                "recalled_memories": [r.to_dict() for r in recalled] if recalled else [],
+                "recalled_memories": [
+                    r.to_dict() if hasattr(r, "to_dict") else (r.model_dump() if hasattr(r, "model_dump") else dict(r))
+                    for r in recalled
+                ] if recalled else [],
                 "routed_capability": routing_decision.selected_capability.value,
             }
             
             exec_res = self.execute_complex_task(goal=clean_input, context=context)
             
-            self.state_machine.transition_to(TaskState.VERIFYING, reason="Verifying orchestrator output")
+            if exec_res.tool_calls or exec_res.tool_results:
+                self.state_machine.transition_to(TaskState.EXECUTING, reason="Executing authorized tools")
+            self.state_machine.transition_to(TaskState.VERIFYING, reason="Verifying action or response")
             
             if exec_res.metadata.get("is_successful", True):
                 self.state_machine.transition_to(TaskState.COMPLETED, reason="Orchestrator execution successful")
             else:
-                self.state_machine.fail(reason="Orchestrator execution failed")
+                self.state_machine.fail(reason=exec_res.content or "LLM generation failed")
                 
             final_content = exec_res.content
             
@@ -243,10 +252,39 @@ class CognitiveMixin:
             if proactive_summary:
                 final_content = f"{proactive_summary}\n\n{final_content}"
 
-            # Persist final assistant turn in conversation memory
+            # Persist turns and intermediate tool traces in conversation memory
             user_msg = Message(role=Role.USER, content=clean_input)
             self.memory.add_message(user_msg)
-            
+
+            # Record turn and extract long-term facts/preferences into Memora
+            try:
+                from friday.memory.memora_client import memora_client
+                memora_client.record_interaction_async(
+                    user_input=clean_input,
+                    agent_output=final_content or "",
+                    agent_name="friday",
+                    event_type="dialogue"
+                )
+            except Exception as e:
+                logger.debug(f"Memora auto-record skipped: {e}")
+
+            all_tool_calls = exec_res.tool_calls
+            if exec_res.tool_results:
+                if not all_tool_calls:
+                    all_tool_calls = []
+                    for idx, tr in enumerate(exec_res.tool_results):
+                        all_tool_calls.append(ToolCall(id=tr.tool_call_id or f"call_{idx}", name=tr.name, arguments={}))
+                for tc, tr in zip(all_tool_calls, exec_res.tool_results):
+                    if getattr(self, "tool_callback", None):
+                        try:
+                            self.tool_callback(tc, tr)
+                        except Exception:
+                            pass
+                assistant_tc_msg = Message(role=Role.ASSISTANT, content="", tool_calls=all_tool_calls)
+                self.memory.add_message(assistant_tc_msg)
+                for tr in exec_res.tool_results:
+                    self.memory.add_message(Message(role=Role.TOOL, content=tr.content, name=tr.name, tool_call_id=tr.tool_call_id or "call_0"))
+
             final_msg = Message(role=Role.ASSISTANT, content=final_content)
             self.memory.add_message(final_msg)
 
@@ -255,8 +293,11 @@ class CognitiveMixin:
 
             return AgentResponse(
                 content=final_content,
+                tool_calls=all_tool_calls,
+                tool_results=exec_res.tool_results,
                 is_done=True,
                 metadata={
+                    "iterations": exec_res.metadata.get("total_tasks", 1) or 1,
                     "duration_seconds": duration,
                     "success": (self.state_machine.current_state == TaskState.COMPLETED),
                     "provider": self.llm.provider_name,
