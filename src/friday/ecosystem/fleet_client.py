@@ -556,47 +556,47 @@ class FleetClient:
             }
 
     async def ask_futuris(self, query: str) -> dict[str, Any]:
-        """Queries the live Futuris Probabilistic Forecasting Engine."""
+        """Queries the live Futuris Probabilistic Forecasting Engine on Cloud (Render)."""
         headers = {"X-API-Key": self.futuris_key}
-        # Try local (:8004) first for instant response, fallback to cloud
-        urls = [f"{self.futuris_local_url}/v1/friday/calibration", f"{self.futuris_url}/v1/friday/calibration"]
-        last_error = None
-        for target_url in urls:
-            try:
-                client = self.get_shared_client()
-                r_cal = await client.get(target_url, headers=headers, timeout=5.0)
-                if r_cal.status_code == 200:
-                    cal_data = r_cal.json()
-                    ece = cal_data.get("overall_ece", 0.0)
-                    trend = cal_data.get("trend", "stable")
-                    targets = cal_data.get("per_target_type_calibration", {})
-                    acc = cal_data.get("recent_accuracy_summary", {})
-                    brier = acc.get("brier_score", 0.0)
-                    samples = acc.get("resolved_samples", 0)
+        target_url = f"{self.futuris_url}/v1/friday/calibration"
+        try:
+            client = self.get_shared_client()
+            r_cal = await client.get(target_url, headers=headers, timeout=8.0)
+            if r_cal.status_code == 200:
+                cal_data = r_cal.json()
+                ece = cal_data.get("overall_ece", 0.0)
+                trend = cal_data.get("trend", "stable")
+                targets = cal_data.get("per_target_type_calibration", {})
+                acc = cal_data.get("recent_accuracy_summary", {})
+                brier = acc.get("brier_score", 0.0)
+                samples = acc.get("resolved_samples", 0)
 
-                    target_lines = "\n".join([f"• {k}: ECE {v:.4f}" for k, v in targets.items()])
+                target_lines = "\n".join([f"• {k}: ECE {v:.4f}" for k, v in targets.items()])
 
-                    formatted_reply = (
-                        f"🔮 [FUTURIS CALIBRATED PREDICTIVE FORECASTER]\n"
-                        f"Calibration Status: ECE {ece:.4f} | Trend: {trend.upper()}\n"
-                        f"Brier Score: {brier} across {samples} resolved sample horizons\n\n"
-                        f"Domain Reliability Indices:\n"
-                        f"{target_lines}"
-                    )
-                    return {
-                        "reply": formatted_reply,
-                        "metadata": {
-                            "agent_id": "futuris", "agent_name": "Futuris",
-                            "overall_ece": ece, "brier_score": brier, "trend": trend,
-                        },
-                    }
-            except Exception as e:
-                last_error = e
-
-        return {
-            "reply": f"🔮 [FUTURIS FORECASTER] Error connecting to Futuris engine: {last_error}",
-            "metadata": {"agent_id": "futuris", "error": str(last_error)},
-        }
+                formatted_reply = (
+                    f"🔮 [FUTURIS CALIBRATED PREDICTIVE FORECASTER // CLOUD RENDER]\n"
+                    f"Calibration Status: ECE {ece:.4f} | Trend: {trend.upper()}\n"
+                    f"Brier Score: {brier} across {samples} resolved sample horizons\n\n"
+                    f"Domain Reliability Indices:\n"
+                    f"{target_lines}"
+                )
+                return {
+                    "reply": formatted_reply,
+                    "metadata": {
+                        "agent_id": "futuris", "agent_name": "Futuris",
+                        "overall_ece": ece, "brier_score": brier, "trend": trend,
+                    },
+                }
+            else:
+                return {
+                    "reply": f"🔮 [FUTURIS FORECASTER] Cloud returned HTTP {r_cal.status_code}: {r_cal.text}",
+                    "metadata": {"agent_id": "futuris", "error": r_cal.text},
+                }
+        except Exception as e:
+            return {
+                "reply": f"🔮 [FUTURIS FORECASTER] Error connecting to Futuris cloud engine: {e}",
+                "metadata": {"agent_id": "futuris", "error": str(e)},
+            }
 
     async def ask_cortex(self, query: str) -> dict[str, Any]:
         """Queries the live Cortex Web Operations & Growth Engine."""
