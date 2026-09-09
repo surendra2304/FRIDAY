@@ -66,16 +66,23 @@ class FleetClient:
         self.intelx_key = os.getenv("INTELX_API_KEY", "intelx_api")
 
         self.futuris_url = os.getenv("FUTURIS_URL", "https://futuris-x4f4.onrender.com").rstrip("/")
+        self.futuris_local_url = os.getenv("FUTURIS_LOCAL_URL", "http://127.0.0.1:8004").rstrip("/")
         self.futuris_key = os.getenv("FUTURIS_API_KEY", "friday_secret_key_default")
 
         self.cortex_url = os.getenv("CORTEX_URL", "https://cortex-qifr.onrender.com").rstrip("/")
         self.cortex_key = os.getenv("CORTEX_API_KEY", "friday_api")
 
-        self.forge_url = os.getenv("FORGE_URL", "http://127.0.0.1:8002").rstrip("/")
+        self.forge_url = os.getenv("FORGE_URL", "http://127.0.0.1:8001").rstrip("/")
         self.forge_key = os.getenv("FORGE_API_KEY", "forge_api")
 
         self.sentinel_url = os.getenv("SENTINEL_URL", "http://127.0.0.1:8003").rstrip("/")
         self.sentinel_key = os.getenv("SENTINEL_API_KEY", "sentinel_api")
+        self._shared_client: httpx.AsyncClient | None = None
+
+    def get_shared_client(self) -> httpx.AsyncClient:
+        if self._shared_client is None or self._shared_client.is_closed:
+            self._shared_client = httpx.AsyncClient(timeout=30.0)
+        return self._shared_client
 
     # =========================================================================
     # 1. LIVE HEALTH & TELEMETRY PROBES
@@ -84,7 +91,7 @@ class FleetClient:
     async def probe_inference(self, client: httpx.AsyncClient) -> AgentStatus:
         t0 = time.time()
         try:
-            r = await client.get(f"{self.inference_url}/health", timeout=8.0)
+            r = await client.get(f"{self.inference_url}/health", timeout=3.5)
             lat = int((time.time() - t0) * 1000)
             if r.status_code == 200:
                 data = r.json()
@@ -114,7 +121,7 @@ class FleetClient:
         t0 = time.time()
         try:
             headers = {"Authorization": f"Bearer {self.memora_key}", "X-Agent-Name": "friday"}
-            r = await client.get(f"{self.memora_url}/health", headers=headers, timeout=8.0)
+            r = await client.get(f"{self.memora_url}/health", headers=headers, timeout=3.5)
             lat = int((time.time() - t0) * 1000)
             if r.status_code == 200:
                 data = r.json()
@@ -144,7 +151,7 @@ class FleetClient:
         t0 = time.time()
         try:
             headers = {"X-API-Key": self.stratex_key, "Authorization": f"Bearer {self.stratex_key}"}
-            r = await client.get(f"{self.stratex_url}/api/engine-health", headers=headers, timeout=8.0)
+            r = await client.get(f"{self.stratex_url}/api/engine-health", headers=headers, timeout=3.5)
             lat = int((time.time() - t0) * 1000)
             if r.status_code == 200:
                 data = r.json()
@@ -162,20 +169,20 @@ class FleetClient:
             return AgentStatus(
                 id="stratex", name="Stratex", role="Algorithmic Trading", icon="📈",
                 status="DEGRADED", latency_ms=lat, endpoint=self.stratex_url,
-                details=f"Trading bridge error: {e}",
+                details=f"Trading engine probe error: {e}",
                 last_checked=datetime.now(timezone.utc).isoformat(),
             )
         return AgentStatus(
             id="stratex", name="Stratex", role="Algorithmic Trading", icon="📈",
             status="ONLINE", latency_ms=int((time.time() - t0) * 1000), endpoint=self.stratex_url,
-            details="Binance Futures risk engine nominal.", last_checked=datetime.now(timezone.utc).isoformat(),
+            details="Binance algorithmic trading execution ready.", last_checked=datetime.now(timezone.utc).isoformat(),
         )
 
     async def probe_intelx(self, client: httpx.AsyncClient) -> AgentStatus:
         t0 = time.time()
         try:
             headers = {"Authorization": f"Bearer {self.intelx_key}"}
-            r = await client.get(f"{self.intelx_url}/api/v1/healthz", headers=headers, timeout=8.0)
+            r = await client.get(f"{self.intelx_url}/api/v1/healthz", headers=headers, timeout=3.5)
             lat = int((time.time() - t0) * 1000)
             if r.status_code == 200:
                 data = r.json()
@@ -204,7 +211,7 @@ class FleetClient:
     async def probe_futuris(self, client: httpx.AsyncClient) -> AgentStatus:
         t0 = time.time()
         try:
-            r = await client.get(f"{self.futuris_url}/health", timeout=8.0)
+            r = await client.get(f"{self.futuris_url}/health", timeout=2.5)
             lat = int((time.time() - t0) * 1000)
             if r.status_code == 200:
                 data = r.json()
@@ -212,28 +219,40 @@ class FleetClient:
                 return AgentStatus(
                     id="futuris", name="Futuris", role="Predictive Forecaster", icon="🔮",
                     status="ONLINE", latency_ms=lat, endpoint=self.futuris_url,
-                    details=f"Probabilistic forecaster online v{ver} ({lat}ms). Calibration pipeline active.",
+                    details=f"Cloud forecaster online v{ver} ({lat}ms). Calibration pipeline active.",
+                    last_checked=datetime.now(timezone.utc).isoformat(),
+                )
+        except Exception:
+            pass
+
+        # Local daemon fallback (:8004)
+        t_loc = time.time()
+        try:
+            r_loc = await client.get(f"{self.futuris_local_url}/health", timeout=2.0)
+            lat_loc = int((time.time() - t_loc) * 1000)
+            if r_loc.status_code == 200:
+                data_loc = r_loc.json()
+                ver_loc = data_loc.get("version", "2.0.0")
+                return AgentStatus(
+                    id="futuris", name="Futuris", role="Predictive Forecaster", icon="🔮",
+                    status="ONLINE", latency_ms=lat_loc, endpoint=self.futuris_local_url,
+                    details=f"Local forecaster daemon online v{ver_loc} ({lat_loc}ms). Calibration pipeline active.",
                     last_checked=datetime.now(timezone.utc).isoformat(),
                 )
         except Exception as e:
-            lat = int((time.time() - t0) * 1000)
+            lat_err = int((time.time() - t0) * 1000)
             return AgentStatus(
                 id="futuris", name="Futuris", role="Predictive Forecaster", icon="🔮",
-                status="DEGRADED", latency_ms=lat, endpoint=self.futuris_url,
-                details=f"Forecasting engine error: {e}",
+                status="DEGRADED", latency_ms=lat_err, endpoint=self.futuris_url,
+                details=f"Forecasting engine unreachable: {e}",
                 last_checked=datetime.now(timezone.utc).isoformat(),
             )
-        return AgentStatus(
-            id="futuris", name="Futuris", role="Predictive Forecaster", icon="🔮",
-            status="ONLINE", latency_ms=int((time.time() - t0) * 1000), endpoint=self.futuris_url,
-            details="Probabilistic volatility & trend forecaster online.", last_checked=datetime.now(timezone.utc).isoformat(),
-        )
 
     async def probe_cortex(self, client: httpx.AsyncClient) -> AgentStatus:
         t0 = time.time()
         try:
             headers = {"X-Friday-Api-Key": self.cortex_key}
-            r = await client.get(f"{self.cortex_url}/v1/friday/health_summary", headers=headers, timeout=8.0)
+            r = await client.get(f"{self.cortex_url}/v1/friday/health_summary", headers=headers, timeout=3.5)
             lat = int((time.time() - t0) * 1000)
             if r.status_code == 200:
                 data = r.json()
@@ -349,41 +368,46 @@ class FleetClient:
     # =========================================================================
 
     async def ask_inference(self, question: str) -> dict[str, Any]:
-        """Queries the live Inference AI Multi-Model Consensus Gateway."""
-        url = f"{self.inference_url}/v1/friday/ask"
+        """Queries the live Inference AI Gateway."""
+        url = f"{self.inference_url}/v1/agent/assist"
         headers = {
             "X-FRIDAY-API-Key": self.inference_key,
             "Content-Type": "application/json",
         }
         payload = {
-            "question": question,
-            "caller_id": "surendra_friday",
+            "caller_agent": "friday",
+            "task_type": "general",
+            "prompt": question,
+            "fast_lane": True,
+            "no_cache": False,
+            "max_tokens": 60,
         }
         try:
-            async with httpx.AsyncClient(timeout=90.0) as client:
-                resp = await client.post(url, json=payload, headers=headers)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    answer = data.get("answer", str(data))
-                    run_id = data.get("run_id", "live")
-                    task_id = data.get("task_id", "consensus")
-                    formatted_reply = (
-                        f"⚡ [INFERENCE GATEWAY // CONSENSUS ACTIVE]\n"
-                        f"Task: {task_id} | Run: {run_id}\n\n"
-                        f"{answer}"
-                    )
-                    return {
-                        "reply": formatted_reply,
-                        "metadata": {
-                            "agent_id": "inference", "agent_name": "Inference",
-                            "task_id": task_id, "run_id": run_id, "consensus_reached": True,
-                        },
-                    }
-                else:
-                    return {
-                        "reply": f"⚡ [INFERENCE GATEWAY] Error HTTP {resp.status_code}: {resp.text}",
-                        "metadata": {"agent_id": "inference", "error": resp.text},
-                    }
+            client = self.get_shared_client()
+            resp = await client.post(url, json=payload, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                answer = data.get("response", str(data))
+                model_used = data.get("model_used", "auto")
+                provider_used = data.get("provider_used", "inference")
+                formatted_reply = (
+                    f"⚡ [INFERENCE GATEWAY // FAST-LANE ACTIVE]\n"
+                    f"Model: {model_used} | Provider: {provider_used}\n\n"
+                    f"{answer}"
+                )
+                return {
+                    "reply": formatted_reply,
+                    "metadata": {
+                        "agent_id": "inference", "agent_name": "Inference",
+                        "model_used": model_used, "provider_used": provider_used,
+                        "consensus_reached": True,
+                    },
+                }
+            else:
+                return {
+                    "reply": f"⚡ [INFERENCE GATEWAY] Error HTTP {resp.status_code}: {resp.text}",
+                    "metadata": {"agent_id": "inference", "error": resp.text},
+                }
         except Exception as e:
             return {
                 "reply": f"⚡ [INFERENCE GATEWAY] Direct connection error: {e}",
@@ -397,51 +421,56 @@ class FleetClient:
             "X-Agent-Name": "friday",
         }
         try:
-            async with httpx.AsyncClient(timeout=12.0) as client:
-                r_ctx = await client.post(
+            client = self.get_shared_client()
+            r_ctx, r_search, r_metrics = await asyncio.gather(
+                client.post(
                     f"{self.memora_url}/v1/context",
                     json={"task_query": query, "token_budget": 1000},
                     headers=headers,
-                )
-                r_search = await client.get(
+                    timeout=8.0,
+                ),
+                client.get(
                     f"{self.memora_url}/v1/memories/search",
                     params={"q": query, "limit": 5},
                     headers=headers,
-                )
-                r_metrics = await client.get(f"{self.memora_url}/v1/metrics", headers=headers)
+                    timeout=8.0,
+                ),
+                client.get(f"{self.memora_url}/v1/metrics", headers=headers, timeout=8.0),
+                return_exceptions=True,
+            )
 
-                ctx_data = r_ctx.json() if r_ctx.status_code == 200 else {}
-                search_data = r_search.json() if r_search.status_code == 200 else []
-                metrics_data = r_metrics.json() if r_metrics.status_code == 200 else {}
+            ctx_data = r_ctx.json() if hasattr(r_ctx, "status_code") and r_ctx.status_code == 200 else {}
+            search_data = r_search.json() if hasattr(r_search, "status_code") and r_search.status_code == 200 else []
+            metrics_data = r_metrics.json() if hasattr(r_metrics, "status_code") and r_metrics.status_code == 200 else {}
 
-                bundle_id = ctx_data.get("bundle_id", "untracked")
-                summary = ctx_data.get("summary", "Context bundle retrieved.")
-                success_rate = metrics_data.get("write_success_rate", 1.0)
-                staleness = metrics_data.get("staleness_rate", 0.0)
+            bundle_id = ctx_data.get("bundle_id", "untracked")
+            summary = ctx_data.get("summary", "Context bundle retrieved.")
+            success_rate = metrics_data.get("write_success_rate", 1.0)
+            staleness = metrics_data.get("staleness_rate", 0.0)
 
-                recalled_lines = []
-                if isinstance(search_data, list) and search_data:
-                    for item in search_data:
-                        txt = item.get("content_text", "")
-                        mtype = item.get("memory_type", "memory").upper()
-                        recalled_lines.append(f"  • [{mtype}] {txt}")
+            recalled_lines = []
+            if isinstance(search_data, list) and search_data:
+                for item in search_data:
+                    txt = item.get("content_text", "")
+                    mtype = item.get("memory_type", "memory").upper()
+                    recalled_lines.append(f"  • [{mtype}] {txt}")
 
-                recalled_text = "\n".join(recalled_lines) if recalled_lines else "  • No specific memory match found."
+            recalled_text = "\n".join(recalled_lines) if recalled_lines else "  • No specific memory match found."
 
-                formatted_reply = (
-                    f"🧠 [MEMORA PERSISTENT MEMORY // 9GB TURSO AWS MUMBAI]\n"
-                    f"Bundle ID: {bundle_id}\n"
-                    f"Write Success Rate: {success_rate * 100:.1f}% | Staleness Rate: {staleness * 100:.1f}%\n\n"
-                    f"Recalled Knowledge & Preferences:\n{recalled_text}\n\n"
-                    f"Context Telemetry:\n{summary}"
-                )
-                return {
-                    "reply": formatted_reply,
-                    "metadata": {
-                        "agent_id": "memora", "agent_name": "Memora",
-                        "bundle_id": bundle_id, "recalled_memories": search_data, "metrics": metrics_data,
-                    },
-                }
+            formatted_reply = (
+                f"🧠 [MEMORA PERSISTENT MEMORY // 9GB TURSO AWS MUMBAI]\n"
+                f"Bundle ID: {bundle_id}\n"
+                f"Write Success Rate: {success_rate * 100:.1f}% | Staleness Rate: {staleness * 100:.1f}%\n\n"
+                f"Recalled Knowledge & Preferences:\n{recalled_text}\n\n"
+                f"Context Telemetry:\n{summary}"
+            )
+            return {
+                "reply": formatted_reply,
+                "metadata": {
+                    "agent_id": "memora", "agent_name": "Memora",
+                    "bundle_id": bundle_id, "recalled_memories": search_data, "metrics": metrics_data,
+                },
+            }
         except Exception as e:
             return {
                 "reply": f"🧠 [MEMORA PERSISTENT MEMORY] Error connecting to Turso Cloud: {e}",
@@ -452,37 +481,42 @@ class FleetClient:
         """Queries the live Stratex Algorithmic Trading Platform."""
         headers = {"X-API-Key": self.stratex_key, "Authorization": f"Bearer {self.stratex_key}"}
         try:
-            async with httpx.AsyncClient(timeout=12.0) as client:
-                r_status = await client.get(f"{self.stratex_url}/api/status", headers=headers)
-                r_health = await client.get(f"{self.stratex_url}/api/engine-health", headers=headers)
+            client = self.get_shared_client()
+            r_health = await client.get(f"{self.stratex_url}/api/engine-health", headers=headers, timeout=3.5)
+            h_data = r_health.json() if hasattr(r_health, "status_code") and r_health.status_code == 200 else {}
 
-                s_data = r_status.json() if r_status.status_code == 200 else {}
-                h_data = r_health.json() if r_health.status_code == 200 else {}
+            s_data = {}
+            try:
+                r_status = await client.get(f"{self.stratex_url}/api/status", headers=headers, timeout=1.0)
+                if r_status.status_code == 200:
+                    s_data = r_status.json()
+            except Exception:
+                pass
 
-                cash = s_data.get("cash", 0.0)
-                risk = s_data.get("available_risk", 0.0)
-                components = s_data.get("components", {})
-                eng_status = h_data.get("engine_status", "ONLINE")
-                strat = h_data.get("active_strategy", "adx_ema")
-                binance_conn = h_data.get("binance_connected", False)
-                heartbeat = h_data.get("heartbeat_age_seconds", 0.0)
+            cash = s_data.get("cash", 0.0)
+            risk = s_data.get("available_risk", 0.0)
+            components = s_data.get("components", {})
+            eng_status = h_data.get("engine_status", "ONLINE")
+            strat = h_data.get("active_strategy", "adx_ema")
+            binance_conn = h_data.get("binance_connected", False)
+            heartbeat = h_data.get("heartbeat_age_seconds", 0.0)
 
-                formatted_reply = (
-                    f"📈 [STRATEX 24/7 ALGORITHMIC TRADING // LIVE ENGINE]\n"
-                    f"Engine Status: {eng_status} (Heartbeat: {heartbeat}s) | Active Strategy: {strat}\n"
-                    f"Binance Connected: {'YES (Live)' if binance_conn else 'NO (Simulated)'}\n\n"
-                    f"Account Telemetry:\n"
-                    f"• Liquid Cash Balance: ${cash:,.2f} USDT\n"
-                    f"• Available Risk Budget: {risk}%\n"
-                    f"• Core Subsystems: Engine={components.get('engine', 'OK')}, Strategy={components.get('strategy', 'OK')}, Binance={components.get('binance', 'OK')}"
-                )
-                return {
-                    "reply": formatted_reply,
-                    "metadata": {
-                        "agent_id": "stratex", "agent_name": "Stratex",
-                        "cash": cash, "engine_status": eng_status, "strategy": strat,
-                    },
-                }
+            formatted_reply = (
+                f"📈 [STRATEX 24/7 ALGORITHMIC TRADING // LIVE ENGINE]\n"
+                f"Engine Status: {eng_status} (Heartbeat: {heartbeat}s) | Active Strategy: {strat}\n"
+                f"Binance Connected: {'YES (Live)' if binance_conn else 'NO (Simulated)'}\n\n"
+                f"Account Telemetry:\n"
+                f"• Liquid Cash Balance: ${cash:,.2f} USDT\n"
+                f"• Available Risk Budget: {risk}%\n"
+                f"• Core Subsystems: Engine={components.get('engine', 'OK')}, Strategy={components.get('strategy', 'OK')}, Binance={components.get('binance', 'OK')}"
+            )
+            return {
+                "reply": formatted_reply,
+                "metadata": {
+                    "agent_id": "stratex", "agent_name": "Stratex",
+                    "cash": cash, "engine_status": eng_status, "strategy": strat,
+                },
+            }
         except Exception as e:
             return {
                 "reply": f"📈 [STRATEX 24/7 TRADING] Error connecting to trading platform: {e}",
@@ -493,28 +527,28 @@ class FleetClient:
         """Queries the live IntelX Macro Research & Evidence Engine."""
         headers = {"Authorization": f"Bearer {self.intelx_key}"}
         try:
-            async with httpx.AsyncClient(timeout=12.0) as client:
-                r_health = await client.get(f"{self.intelx_url}/api/v1/healthz", headers=headers)
-                h_data = r_health.json() if r_health.status_code == 200 else {}
-                ver = h_data.get("version", "2.0.0")
-                db_st = h_data.get("database", "ok")
-                mock_mode = h_data.get("mock_mode", False)
+            client = self.get_shared_client()
+            r_health = await client.get(f"{self.intelx_url}/api/v1/healthz", headers=headers, timeout=8.0)
+            h_data = r_health.json() if r_health.status_code == 200 else {}
+            ver = h_data.get("version", "2.0.0")
+            db_st = h_data.get("database", "ok")
+            mock_mode = h_data.get("mock_mode", False)
 
-                formatted_reply = (
-                    f"🔍 [INTELX EVIDENCE & MACRO RESEARCH ENGINE v{ver}]\n"
-                    f"Research Database: {db_st.upper()} | Live Production: {'YES' if not mock_mode else 'MOCK'}\n\n"
-                    f"Evidence Intelligence Pipeline:\n"
-                    f"• Status: Receptive for research directives\n"
-                    f"• Directive Received: '{query}'\n"
-                    f"• Capability: Automated multi-source extraction, contradiction detection, and citation anchoring."
-                )
-                return {
-                    "reply": formatted_reply,
-                    "metadata": {
-                        "agent_id": "intelx", "agent_name": "IntelX",
-                        "version": ver, "database": db_st,
-                    },
-                }
+            formatted_reply = (
+                f"🔍 [INTELX EVIDENCE & MACRO RESEARCH ENGINE v{ver}]\n"
+                f"Research Database: {db_st.upper()} | Live Production: {'YES' if not mock_mode else 'MOCK'}\n\n"
+                f"Evidence Intelligence Pipeline:\n"
+                f"• Status: Receptive for research directives\n"
+                f"• Directive Received: '{query}'\n"
+                f"• Capability: Automated multi-source extraction, contradiction detection, and citation anchoring."
+            )
+            return {
+                "reply": formatted_reply,
+                "metadata": {
+                    "agent_id": "intelx", "agent_name": "IntelX",
+                    "version": ver, "database": db_st,
+                },
+            }
         except Exception as e:
             return {
                 "reply": f"🔍 [INTELX RESEARCH] Error connecting to IntelX engine: {e}",
@@ -524,71 +558,77 @@ class FleetClient:
     async def ask_futuris(self, query: str) -> dict[str, Any]:
         """Queries the live Futuris Probabilistic Forecasting Engine."""
         headers = {"X-API-Key": self.futuris_key}
-        try:
-            async with httpx.AsyncClient(timeout=12.0) as client:
-                r_cal = await client.get(f"{self.futuris_url}/v1/friday/calibration", headers=headers)
-                cal_data = r_cal.json() if r_cal.status_code == 200 else {}
+        # Try local (:8004) first for instant response, fallback to cloud
+        urls = [f"{self.futuris_local_url}/v1/friday/calibration", f"{self.futuris_url}/v1/friday/calibration"]
+        last_error = None
+        for target_url in urls:
+            try:
+                client = self.get_shared_client()
+                r_cal = await client.get(target_url, headers=headers, timeout=5.0)
+                if r_cal.status_code == 200:
+                    cal_data = r_cal.json()
+                    ece = cal_data.get("overall_ece", 0.0)
+                    trend = cal_data.get("trend", "stable")
+                    targets = cal_data.get("per_target_type_calibration", {})
+                    acc = cal_data.get("recent_accuracy_summary", {})
+                    brier = acc.get("brier_score", 0.0)
+                    samples = acc.get("resolved_samples", 0)
 
-                ece = cal_data.get("overall_ece", 0.0)
-                trend = cal_data.get("trend", "stable")
-                targets = cal_data.get("per_target_type_calibration", {})
-                acc = cal_data.get("recent_accuracy_summary", {})
-                brier = acc.get("brier_score", 0.0)
-                samples = acc.get("resolved_samples", 0)
+                    target_lines = "\n".join([f"• {k}: ECE {v:.4f}" for k, v in targets.items()])
 
-                target_lines = "\n".join([f"• {k}: ECE {v:.4f}" for k, v in targets.items()])
+                    formatted_reply = (
+                        f"🔮 [FUTURIS CALIBRATED PREDICTIVE FORECASTER]\n"
+                        f"Calibration Status: ECE {ece:.4f} | Trend: {trend.upper()}\n"
+                        f"Brier Score: {brier} across {samples} resolved sample horizons\n\n"
+                        f"Domain Reliability Indices:\n"
+                        f"{target_lines}"
+                    )
+                    return {
+                        "reply": formatted_reply,
+                        "metadata": {
+                            "agent_id": "futuris", "agent_name": "Futuris",
+                            "overall_ece": ece, "brier_score": brier, "trend": trend,
+                        },
+                    }
+            except Exception as e:
+                last_error = e
 
-                formatted_reply = (
-                    f"🔮 [FUTURIS CALIBRATED PREDICTIVE FORECASTER]\n"
-                    f"Calibration Status: ECE {ece:.4f} | Trend: {trend.upper()}\n"
-                    f"Brier Score: {brier} across {samples} resolved sample horizons\n\n"
-                    f"Domain Reliability Indices:\n"
-                    f"{target_lines}"
-                )
-                return {
-                    "reply": formatted_reply,
-                    "metadata": {
-                        "agent_id": "futuris", "agent_name": "Futuris",
-                        "overall_ece": ece, "brier_score": brier, "trend": trend,
-                    },
-                }
-        except Exception as e:
-            return {
-                "reply": f"🔮 [FUTURIS FORECASTER] Error connecting to Futuris engine: {e}",
-                "metadata": {"agent_id": "futuris", "error": str(e)},
-            }
+        return {
+            "reply": f"🔮 [FUTURIS FORECASTER] Error connecting to Futuris engine: {last_error}",
+            "metadata": {"agent_id": "futuris", "error": str(last_error)},
+        }
 
     async def ask_cortex(self, query: str) -> dict[str, Any]:
         """Queries the live Cortex Web Operations & Growth Engine."""
         headers = {"X-Friday-Api-Key": self.cortex_key}
         try:
-            async with httpx.AsyncClient(timeout=12.0) as client:
-                r_summary = await client.get(f"{self.cortex_url}/v1/friday/health_summary", headers=headers)
-                data = r_summary.json() if r_summary.status_code == 200 else {}
+            client = self.get_shared_client()
+            r_summary = await client.get(f"{self.cortex_url}/v1/friday/health_summary", headers=headers, timeout=8.0)
+            data = r_summary.json() if r_summary.status_code == 200 else {}
 
-                uptime = data.get("uptime_indicator", "healthy")
-                incidents = data.get("active_incidents", 0)
-                agents = data.get("active_agents", [])
-                agent_names = ", ".join([a.get("id", "agent") for a in agents])
-                loops = data.get("cognitive_loops_today", 0)
-                recent_errs = data.get("recent_errors_24h", 0)
+            uptime = data.get("uptime_indicator", "healthy")
+            incidents = data.get("active_incidents", 0)
+            agents = data.get("active_agents", [])
+            agent_names = ", ".join([a.get("id", "agent") for a in agents])
+            loops = data.get("cognitive_loops_today", 0)
+            recent_errs = data.get("recent_errors_24h", 0)
 
-                formatted_reply = (
-                    f"🌐 [CORTEX AUTONOMOUS WEB OPERATIONS // LIVE TELEMETRY]\n"
-                    f"Site Telemetry: {uptime.upper()} | Active Incidents: {incidents}\n"
-                    f"Autonomous Agents Active: {len(agents)} ({agent_names})\n\n"
-                    f"Operational Signals:\n"
-                    f"• Cognitive Loops Today: {loops}\n"
-                    f"• Recent Errors (24h): {recent_errs}\n"
-                    f"• Web Scraping & Lead Qualification Pipeline: ONLINE"
-                )
-                return {
-                    "reply": formatted_reply,
-                    "metadata": {
-                        "agent_id": "cortex", "agent_name": "Cortex",
-                        "uptime": uptime, "incidents": incidents, "agents_count": len(agents),
-                    },
-                }
+            formatted_reply = (
+                f"🌐 [CORTEX AUTONOMOUS WEB OPERATIONS // LIVE TELEMETRY]\n"
+                f"Site Telemetry: {uptime.upper()} | Active Incidents: {incidents}\n"
+                f"Autonomous Agents Active: {len(agents)} ({agent_names})\n\n"
+                f"Operational Signals:\n"
+                f"• Cognitive Loops Today: {loops}\n"
+                f"• Recent Errors (24h): {recent_errs}\n"
+                f"• Web Scraping & Lead Qualification Pipeline: ONLINE"
+            )
+            return {
+                "reply": formatted_reply,
+                "metadata": {
+                    "agent_id": "cortex", "agent_name": "Cortex",
+                    "uptime": uptime, "incidents": incidents, "agents_count": len(agents),
+                },
+            }
         except Exception as e:
             return {
                 "reply": f"🌐 [CORTEX WEB OPS] Error connecting to Cortex engine: {e}",
@@ -599,39 +639,42 @@ class FleetClient:
         """Queries the live Forge Autonomous Software Engineering Engine."""
         headers = {"Authorization": f"Bearer {self.forge_key}"}
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                r_analytics = await client.get(f"{self.forge_url}/api/v1/analytics/summary", headers=headers)
-                r_tasks = await client.get(f"{self.forge_url}/api/v1/tasks", headers=headers)
+            client = self.get_shared_client()
+            r_analytics, r_tasks = await asyncio.gather(
+                client.get(f"{self.forge_url}/api/v1/analytics/summary", headers=headers, timeout=5.0),
+                client.get(f"{self.forge_url}/api/v1/tasks", headers=headers, timeout=5.0),
+                return_exceptions=True,
+            )
 
-                ana_data = r_analytics.json() if r_analytics.status_code == 200 else {}
-                tasks_data = r_tasks.json() if r_tasks.status_code == 200 else []
+            ana_data = r_analytics.json() if hasattr(r_analytics, "status_code") and r_analytics.status_code == 200 else {}
+            tasks_data = r_tasks.json() if hasattr(r_tasks, "status_code") and r_tasks.status_code == 200 else []
 
-                total = ana_data.get("total_tasks", len(tasks_data))
-                completed = ana_data.get("completed_tasks", 0)
-                active = ana_data.get("active_tasks", 0)
-                rate = ana_data.get("success_rate_percentage", 0.0)
-                avg_dur = ana_data.get("average_duration_seconds", 0.0)
+            total = ana_data.get("total_tasks", len(tasks_data))
+            completed = ana_data.get("completed_tasks", 0)
+            active = ana_data.get("active_tasks", 0)
+            rate = ana_data.get("success_rate_percentage", 0.0)
+            avg_dur = ana_data.get("average_duration_seconds", 0.0)
 
-                top_tasks = tasks_data[:2] if isinstance(tasks_data, list) else []
-                task_summaries = []
-                for t in top_tasks:
-                    task_summaries.append(f"• [{t.get('state', 'READY')}] {t.get('goal', 'Unnamed task')}")
-                task_text = "\n".join(task_summaries) if task_summaries else "• No active task queues"
+            top_tasks = tasks_data[:2] if isinstance(tasks_data, list) else []
+            task_summaries = []
+            for t in top_tasks:
+                task_summaries.append(f"• [{t.get('state', 'READY')}] {t.get('goal', 'Unnamed task')}")
+            task_text = "\n".join(task_summaries) if task_summaries else "• No active task queues"
 
-                formatted_reply = (
-                    f"🛠️ [FORGE SOFTWARE ENGINEERING ENGINE // LOCAL PORT 8002]\n"
-                    f"Engine Status: ONLINE | Pipeline Success Rate: {rate}%\n"
-                    f"Tasks Overview: Total: {total} | Completed: {completed} | Active: {active}\n"
-                    f"Average Task Duration: {avg_dur:.1f}s\n\n"
-                    f"Current Task Queue:\n{task_text}"
-                )
-                return {
-                    "reply": formatted_reply,
-                    "metadata": {
-                        "agent_id": "forge", "agent_name": "Forge",
-                        "total_tasks": total, "completed": completed, "active": active,
-                    },
-                }
+            formatted_reply = (
+                f"🛠️ [FORGE SOFTWARE ENGINEERING ENGINE // LOCAL PORT 8002]\n"
+                f"Engine Status: ONLINE | Pipeline Success Rate: {rate}%\n"
+                f"Tasks Overview: Total: {total} | Completed: {completed} | Active: {active}\n"
+                f"Average Task Duration: {avg_dur:.1f}s\n\n"
+                f"Current Task Queue:\n{task_text}"
+            )
+            return {
+                "reply": formatted_reply,
+                "metadata": {
+                    "agent_id": "forge", "agent_name": "Forge",
+                    "total_tasks": total, "completed": completed, "active": active,
+                },
+            }
         except Exception as e:
             return {
                 "reply": f"🛠️ [FORGE SWE ENGINE] Error connecting to Forge local engine: {e}",
@@ -642,35 +685,38 @@ class FleetClient:
         """Queries the live Sentinel Zero-Trust Cybersecurity Shield."""
         headers = {"X-API-Key": self.sentinel_key, "Authorization": f"Bearer {self.sentinel_key}"}
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                r_posture = await client.get(f"{self.sentinel_url}/api/v1/friday/posture", headers=headers)
-                r_health = await client.get(f"{self.sentinel_url}/health", timeout=5.0)
+            client = self.get_shared_client()
+            r_posture, r_health = await asyncio.gather(
+                client.get(f"{self.sentinel_url}/api/v1/friday/posture", headers=headers, timeout=5.0),
+                client.get(f"{self.sentinel_url}/health", timeout=5.0),
+                return_exceptions=True,
+            )
 
-                p_data = r_posture.json() if r_posture.status_code == 200 else {}
-                h_data = r_health.json() if r_health.status_code == 200 else {}
+            p_data = r_posture.json() if hasattr(r_posture, "status_code") and r_posture.status_code == 200 else {}
+            h_data = r_health.json() if hasattr(r_health, "status_code") and r_health.status_code == 200 else {}
 
-                score = p_data.get("overall_posture_score", 100.0)
-                findings = p_data.get("open_findings_by_severity", {})
-                domains = p_data.get("per_domain_scores", {})
-                trend = p_data.get("trend", "stable")
-                audit_valid = h_data.get("audit_chain_valid", True)
+            score = p_data.get("overall_posture_score", 100.0)
+            findings = p_data.get("open_findings_by_severity", {})
+            domains = p_data.get("per_domain_scores", {})
+            trend = p_data.get("trend", "stable")
+            audit_valid = h_data.get("audit_chain_valid", True)
 
-                formatted_reply = (
-                    f"🛡️ [SENTINEL CYBERSECURITY SHIELD // LOCAL PORT 8003]\n"
-                    f"Overall Posture Score: {score}/100 | Trend: {trend.upper()}\n"
-                    f"Tamper-Proof Audit Chain: {'VERIFIED' if audit_valid else 'DEGRADED'}\n\n"
-                    f"Domain Security Breakdown:\n"
-                    f"• Web Defense: {domains.get('web', 100.0)}/100 | API Security: {domains.get('api', 100.0)}/100\n"
-                    f"• Network Surface: {domains.get('network', 100.0)}/100 | Cloud Infrastructure: {domains.get('cloud', 100.0)}/100\n"
-                    f"• Open Vulnerabilities: Critical: {findings.get('critical', 0)}, High: {findings.get('high', 0)}, Medium: {findings.get('medium', 0)}"
-                )
-                return {
-                    "reply": formatted_reply,
-                    "metadata": {
-                        "agent_id": "sentinel", "agent_name": "Sentinel",
-                        "posture_score": score, "audit_chain_valid": audit_valid,
-                    },
-                }
+            formatted_reply = (
+                f"🛡️ [SENTINEL CYBERSECURITY SHIELD // LOCAL PORT 8003]\n"
+                f"Overall Posture Score: {score}/100 | Trend: {trend.upper()}\n"
+                f"Tamper-Proof Audit Chain: {'VERIFIED' if audit_valid else 'DEGRADED'}\n\n"
+                f"Domain Security Breakdown:\n"
+                f"• Web Defense: {domains.get('web', 100.0)}/100 | API Security: {domains.get('api', 100.0)}/100\n"
+                f"• Network Surface: {domains.get('network', 100.0)}/100 | Cloud Infrastructure: {domains.get('cloud', 100.0)}/100\n"
+                f"• Open Vulnerabilities: Critical: {findings.get('critical', 0)}, High: {findings.get('high', 0)}, Medium: {findings.get('medium', 0)}"
+            )
+            return {
+                "reply": formatted_reply,
+                "metadata": {
+                    "agent_id": "sentinel", "agent_name": "Sentinel",
+                    "posture_score": score, "audit_chain_valid": audit_valid,
+                },
+            }
         except Exception as e:
             return {
                 "reply": f"🛡️ [SENTINEL SHIELD] Error connecting to Sentinel cybersecurity shield: {e}",
