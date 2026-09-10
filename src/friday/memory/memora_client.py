@@ -260,6 +260,124 @@ class MemoraClient:
         lines.append("Use these facts directly to answer accurately without asking the user to repeat themselves.")
         return "\n".join(lines)
 
+    def learn_from_outcome_async(
+        self,
+        agent_name: str,
+        task_name: str,
+        status: str,
+        error_log: Optional[str] = None,
+        actions_taken: Optional[str] = None,
+        context: Optional[str] = None,
+        domain: Optional[str] = None
+    ) -> None:
+        """Non-blocking asynchronous background experience learning."""
+        t = threading.Thread(
+            target=self.learn_from_outcome,
+            args=(agent_name, task_name, status, error_log, actions_taken, context, domain),
+            daemon=True
+        )
+        t.start()
+
+    def learn_from_outcome(
+        self,
+        agent_name: str,
+        task_name: str,
+        status: str,
+        error_log: Optional[str] = None,
+        actions_taken: Optional[str] = None,
+        context: Optional[str] = None,
+        domain: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Record a task outcome (success or failure) and synthesize operational guidelines
+        into high-importance Experience memory so the agent upgrades its future decisions.
+        """
+        payload = {
+            "agent_name": agent_name.lower(),
+            "task_name": task_name,
+            "status": status,
+            "error_log": error_log,
+            "actions_taken": actions_taken,
+            "context": context,
+            "domain": domain or "operational"
+        }
+
+        url = f"{self.base_url}/v1/memories/learn-outcome"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}",
+            "X-Agent-Name": agent_name.lower()
+        }
+
+        try:
+            req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                if resp.status in (200, 201):
+                    return json.loads(resp.read().decode("utf-8"))
+        except Exception as e:
+            logger.debug(f"Memora learn-outcome API write failed ({e}), using local fallback.")
+
+        return self._learn_locally(agent_name, task_name, status, error_log, actions_taken, context, domain)
+
+    def recall_experience(
+        self,
+        agent_name: str,
+        task_query: str,
+        domain: Optional[str] = None,
+        limit: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieve relevant operational guidelines and experience memories for an agent.
+        """
+        encoded_domain = urllib.parse.quote(domain.strip()) if domain else ""
+        url = f"{self.base_url}/v1/memories/experience?limit={limit}"
+        if encoded_domain:
+            url += f"&domain={encoded_domain}"
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "X-Agent-Name": agent_name.lower()
+        }
+
+        try:
+            req = urllib.request.Request(url, headers=headers, method="GET")
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                if resp.status == 200:
+                    results = json.loads(resp.read().decode("utf-8"))
+                    if results:
+                        return results
+        except Exception as e:
+            logger.debug(f"Memora recall_experience API failed ({e}), using local fallback.")
+
+        return self._recall_experience_locally(agent_name, task_query, domain, limit)
+
+    def build_self_upgrade_context(
+        self,
+        agent_name: str,
+        task_query: str,
+        domain: Optional[str] = None
+    ) -> str:
+        """
+        Synthesize an actionable self-upgrade instruction block from past learned lessons.
+        """
+        experiences = self.recall_experience(agent_name, task_query, domain=domain, limit=5)
+        if not experiences:
+            return ""
+
+        lines = [
+            "[SELF-UPGRADED OPERATIONAL GUIDELINES & EXPERIENCE (MEMORA)]:",
+            "The following verified rules were learned from your past execution outcomes. Adapt your actions accordingly:"
+        ]
+        seen = set()
+        for exp in experiences:
+            txt = exp.get("content_text", "").strip()
+            if txt and txt not in seen:
+                seen.add(txt)
+                lines.append(f"- {txt}")
+
+        lines.append("Apply these operational rules to prevent past failures and ensure high execution quality.")
+        return "\n".join(lines)
+
     # -------------------------------------------------------------------------
     # Local Storage Engine
     # -------------------------------------------------------------------------
@@ -394,6 +512,113 @@ class MemoraClient:
             return results[:limit]
         except Exception as e:
             logger.error(f"Local memory search failed: {e}")
+            return []
+
+    @staticmethod
+    def _extract_remediation_rule_fallback(task_name: str, error_log: str, domain: Optional[str] = None) -> str:
+        err_lower = (error_log or "").lower()
+        if "permission" in err_lower or "access denied" in err_lower or "elevat" in err_lower:
+            return f"Verify process security privilege and administrator execution rights before running '{task_name}'."
+        elif "not found" in err_lower or "no such file" in err_lower or "path" in err_lower:
+            return f"Validate absolute filesystem paths and ensure target directory/file exists prior to executing '{task_name}'."
+        elif "syntax" in err_lower or "unexpected token" in err_lower or "parse" in err_lower:
+            return f"Ensure strict parameter quote escaping and schema validation before dispatching '{task_name}'."
+        elif "timeout" in err_lower or "timed out" in err_lower or "deadline" in err_lower:
+            return f"Increase request timeout budget and configure exponential backoff retries when calling '{task_name}'."
+        elif "connection refused" in err_lower or "connect" in err_lower or "unreachable" in err_lower:
+            return f"Check endpoint health status and verify socket/service availability before connecting in '{task_name}'."
+        elif "rate limit" in err_lower or "429" in err_lower or "too many requests" in err_lower:
+            return f"Apply rate limiter and automatically fallback to secondary provider gateway when running '{task_name}'."
+        elif "import" in err_lower or "module" in err_lower or "dependency" in err_lower:
+            return f"Inspect dependency environment and ensure required package is installed before launching '{task_name}'."
+        elif "drawdown" in err_lower or "slippage" in err_lower or "volatil" in err_lower:
+            return f"Reduce position sizing by 50% and enforce tighter stop-loss guardrails during high volatility in '{task_name}'."
+        else:
+            return f"Execute pre-flight parameter verification and handle graceful exceptions when executing '{task_name}'."
+
+    def _learn_locally(
+        self,
+        agent_name: str,
+        task_name: str,
+        status: str,
+        error_log: Optional[str] = None,
+        actions_taken: Optional[str] = None,
+        context: Optional[str] = None,
+        domain: Optional[str] = None
+    ) -> Dict[str, Any]:
+        if not os.path.exists(self.local_db_path):
+            return {"status": "error", "message": f"Local DB not found at {self.local_db_path}"}
+
+        rule = self._extract_remediation_rule_fallback(task_name, error_log or "", domain)
+        dom = domain or "operational"
+        if status.lower() in ("failure", "error", "crashed"):
+            err_snippet = (error_log or "execution failure").strip().replace("\n", " ")[:150]
+            content_text = f"[FAILURE WARNING in '{dom}'] Task: {task_name}. Trigger: {err_snippet}. [LEARNED BEST PRACTICE]: {rule}"
+        else:
+            cfg = (context or actions_taken or "standard baseline").strip().replace("\n", " ")[:150]
+            content_text = f"[PROVEN SUCCESS PATTERN in '{dom}'] Task: {task_name}. Configuration '{cfg}' succeeded. Replicate this strategy."
+
+        now_iso = time.strftime("%Y-%m-%d %H:%M:%S")
+        mid = str(uuid.uuid4())
+        try:
+            with sqlite3.connect(self.local_db_path, timeout=5.0) as conn:
+                aid, nid = self._get_agent_and_ns(conn, agent_name)
+                c = conn.cursor()
+                c.execute("""
+                    INSERT INTO memory_records 
+                    (id, namespace_id, owner_id, memory_type, content_text, source, confidence, importance, lifecycle_state, tenant_id, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (mid, nid, aid, "experience", content_text, f"agent:{agent_name.lower()}", 1.0, 0.99, "active", "default", now_iso))
+                conn.commit()
+            return {"status": "success", "id": mid, "memory_type": "experience", "content": content_text, "rule": rule}
+        except Exception as e:
+            logger.error(f"Local learn-outcome record failed: {e}")
+            return {"status": "error", "message": str(e)}
+
+    def _recall_experience_locally(
+        self,
+        agent_name: str,
+        task_query: str,
+        domain: Optional[str] = None,
+        limit: int = 5
+    ) -> List[Dict[str, Any]]:
+        if not os.path.exists(self.local_db_path):
+            return []
+
+        results = []
+        try:
+            with sqlite3.connect(self.local_db_path, timeout=5.0) as conn:
+                c = conn.cursor()
+                query = """
+                    SELECT m.id, m.content_text, m.memory_type, m.importance, m.created_at, a.name 
+                    FROM memory_records m
+                    JOIN agents a ON m.owner_id = a.id
+                    WHERE m.lifecycle_state = 'active' AND m.memory_type = 'experience'
+                """
+                c.execute(query + " ORDER BY m.importance DESC, m.created_at DESC LIMIT 50")
+                rows = c.fetchall()
+
+                search_terms = [w.lower() for w in f"{task_query} {domain or ''}".split() if len(w) > 2]
+                
+                for row in rows:
+                    content = row[1].lower()
+                    match_count = sum(1 for w in search_terms if w in content) if search_terms else 1
+                    score = (match_count / len(search_terms)) if search_terms else 1.0
+                    if match_count > 0 or not search_terms:
+                        results.append({
+                            "id": row[0],
+                            "content_text": row[1],
+                            "memory_type": row[2],
+                            "importance": row[3],
+                            "created_at": row[4],
+                            "owner_name": row[5],
+                            "final_score": score
+                        })
+
+            results.sort(key=lambda x: (x["final_score"], x["importance"]), reverse=True)
+            return results[:limit]
+        except Exception as e:
+            logger.error(f"Local experience recall failed: {e}")
             return []
 
 # Singleton instance

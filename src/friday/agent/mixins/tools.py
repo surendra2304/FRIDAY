@@ -396,6 +396,21 @@ class ToolExecutionMixin:
                 f"Tool '{tc.name}' execution completed in {tool_duration:.4f}s "
                 f"(Success: {not result.is_error})"
             )
+            # Automatic Experience Learning & Self-Upgrading into Memora
+            try:
+                from friday.memory.memora_client import memora_client
+                if result.is_error:
+                    memora_client.learn_from_outcome_async(
+                        agent_name="friday",
+                        task_name=tc.name,
+                        status="failure",
+                        error_log=str(result.content),
+                        actions_taken=f"tool_arguments:{str(tc.arguments)[:200]}",
+                        domain="tool_execution"
+                    )
+            except Exception as e:
+                logger.debug(f"Memora tool outcome learning skipped: {e}")
+
             return result
 
     def _execute_single_tool_call_with_timeout(

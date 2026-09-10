@@ -258,12 +258,15 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
         context_limit = max(1, int(getattr(self.memory, "max_messages", 12)))
         messages.extend(self.memory.get_messages()[-max(0, context_limit - 1):])
 
-        # Recall persistent long-term memories and user preferences from Memora
+        # Recall persistent long-term memories and self-upgraded operational guidelines from Memora
         try:
             from friday.memory.memora_client import memora_client
             memora_context = memora_client.build_context_block("friday", goal)
             if memora_context:
                 messages.append(Message(role=Role.SYSTEM, content=memora_context))
+            self_upgrade_context = memora_client.build_self_upgrade_context("friday", goal, domain="tool_execution")
+            if self_upgrade_context:
+                messages.append(Message(role=Role.SYSTEM, content=self_upgrade_context))
         except Exception as e:
             logger.debug(f"Memora context injection skipped: {e}")
 
