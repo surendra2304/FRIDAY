@@ -88,6 +88,15 @@ APP_LAUNCH_CONFIGS: dict[str, dict[str, Any]] = {
         "keywords": ["task manager"],
         "classes": ["TaskManagerWindow"],
     },
+    "whatsapp": {
+        "cim_cmd": "explorer.exe \"https://web.whatsapp.com\"",
+        "fallback_cmd": [
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            "https://web.whatsapp.com",
+        ],
+        "keywords": ["whatsapp", "whatsapp web"],
+        "classes": ["Chrome_WidgetWin_1", "ApplicationFrameWindow"],
+    },
 }
 
 
@@ -98,6 +107,10 @@ def force_window_foreground(hwnd: int) -> bool:
     user32 = ctypes.windll.user32
     kernel32 = ctypes.windll.kernel32
     try:
+        h_desk = user32.OpenDesktopW("Default", 0, False, 0x01FF)
+        if h_desk:
+            user32.SetThreadDesktop(h_desk)
+
         import win32gui
 
         if not win32gui.IsWindow(hwnd):
@@ -241,9 +254,18 @@ def launch_desktop_app(app_name: str) -> tuple[bool, str]:
     elif any(k in app_key for k in ["task manager", "taskmgr"]):
         key = "taskmgr"
         title = "Task Manager"
+    elif any(k in app_key for k in ["whatsapp", "whatsaapp", "whatsap", "wa"]):
+        key = "whatsapp"
+        title = "WhatsApp"
     else:
-        key = app_key
-        title = app_name.title()
+        import difflib
+        matches = difflib.get_close_matches(app_key, APP_LAUNCH_CONFIGS.keys(), n=1, cutoff=0.6)
+        if matches:
+            key = matches[0]
+            title = key.title()
+        else:
+            key = app_key
+            title = app_name.title()
 
     cfg = APP_LAUNCH_CONFIGS.get(key)
     launched = False
@@ -294,14 +316,22 @@ def launch_desktop_app(app_name: str) -> tuple[bool, str]:
 
         return True, f"Opened {title}."
     else:
-        # Generic application launch via shell
+        # Safe generic application launch
+        import re
+        clean_name = app_name.strip()
+        if not re.match(r"^[a-zA-Z0-9_\-. ]+$", clean_name):
+            return False, f"Invalid application name '{app_name}'."
+
+        from friday.devices.windows_controller import BLOCKED_EXECUTABLES
+        if clean_name.lower() in BLOCKED_EXECUTABLES or f"{clean_name.lower()}.exe" in BLOCKED_EXECUTABLES:
+            return False, f"Opening '{app_name}' is restricted for system safety."
+
+        target_bin = shutil.which(clean_name) or shutil.which(f"{clean_name}.exe")
+        if not target_bin:
+            return False, f"Application '{app_name}' not recognized or not found on system PATH."
+
         try:
-            ps_cmd = f"Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{{CommandLine='{app_name}'}}"
-            subprocess.run(
-                ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", ps_cmd],
-                capture_output=True,
-                timeout=5,
-            )
+            subprocess.Popen([target_bin], shell=False)
             return True, f"Opened {title}."
         except Exception as e:
             return False, f"Failed to open {title}: {e}"

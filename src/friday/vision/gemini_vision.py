@@ -9,8 +9,9 @@ import warnings
 from typing import Any
 
 # Suppress noisy upstream Google GenAI SDK AFC warnings during vision generate_content
-warnings.filterwarnings("ignore", message=".*automatic function calling.*", category=UserWarning)
-warnings.filterwarnings("ignore", message=".*Direct use of automatic function calling.*", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*automatic function calling.*")
+warnings.filterwarnings("ignore", message=".*Direct use of automatic function calling.*")
+warnings.filterwarnings("ignore", message=".*AFC.*")
 
 from google import genai
 from google.genai import types as genai_types

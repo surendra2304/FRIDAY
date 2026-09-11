@@ -411,6 +411,42 @@ class FridayDoctor:
                 message=f"FORGE engine diagnosis failed: {redact_secrets(str(e))}",
             )
 
+    def diagnose_agent_shield(self) -> ComponentHealth:
+        """Audit AgentShield security engine readiness."""
+        try:
+            from friday.security.agent_shield import AgentShield
+            shield = AgentShield()
+            return ComponentHealth(
+                name="agent_shield",
+                status=DiagnosticStatus.AVAILABLE,
+                message="AgentShield security engine active (prompt injection defense & secret scanning).",
+            )
+        except Exception as e:
+            return ComponentHealth(
+                name="agent_shield",
+                status=DiagnosticStatus.ERROR,
+                message=f"AgentShield diagnosis failed: {redact_secrets(str(e))}",
+            )
+
+    def diagnose_instinct_engine(self) -> ComponentHealth:
+        """Audit Continuous Learning Instinct Engine health."""
+        try:
+            from friday.learning.instinct_engine import InstinctEngine
+            engine = InstinctEngine()
+            count = len(engine.list_instincts())
+            return ComponentHealth(
+                name="instinct_engine",
+                status=DiagnosticStatus.AVAILABLE,
+                message=f"Instinct Engine operational ({count} active instincts).",
+                details={"instinct_count": count},
+            )
+        except Exception as e:
+            return ComponentHealth(
+                name="instinct_engine",
+                status=DiagnosticStatus.ERROR,
+                message=f"Instinct Engine diagnosis failed: {redact_secrets(str(e))}",
+            )
+
     def run_full_diagnostics(self) -> DoctorReport:
         """Execute comprehensive audit across all subsystems and generate report."""
         components = {
@@ -424,7 +460,10 @@ class FridayDoctor:
             "task_manager": self.diagnose_task_manager(),
             "safety_system": self.diagnose_safety_system(),
             "forge_engine": self.diagnose_forge(),
+            "agent_shield": self.diagnose_agent_shield(),
+            "instinct_engine": self.diagnose_instinct_engine(),
         }
+
 
         # Calculate overall system status
         statuses = [c.status for c in components.values()]

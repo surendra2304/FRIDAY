@@ -87,15 +87,27 @@ class OpenRouterLLMProvider(BaseLLMProvider):
         tools: list[dict[str, Any]] | None = None,
     ) -> Message:
         """Call OpenRouter chat completions with retry on transient errors."""
+        from friday.llm.groq_provider import GroqLLMProvider, compact_messages_and_tools
+
         client = self._get_client()
+
+        total_est_chars = sum(len(m.content or "") for m in messages)
+        should_compact = total_est_chars > 8000
+
+        msg_dicts, active_tools = compact_messages_and_tools(
+            messages,
+            tools,
+            include_tools=True
+        ) if should_compact else ([m.to_provider_dict() for m in messages], tools)
+
         kwargs: dict[str, Any] = {
             "model": self.model,
-            "messages": [m.to_provider_dict() for m in messages],
+            "messages": msg_dicts,
             "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
+            "max_tokens": min(self.max_tokens, 1024),
         }
-        if tools:
-            kwargs["tools"] = tools
+        if active_tools:
+            kwargs["tools"] = active_tools
             kwargs["tool_choice"] = "auto"
 
         initial_delay = 1.0
@@ -104,10 +116,23 @@ class OpenRouterLLMProvider(BaseLLMProvider):
         for attempt in range(self.max_retries + 1):
             try:
                 response = client.chat.completions.create(**kwargs)
-                # Reuse the shared OpenAI-SDK response parser
-                from friday.llm.groq_provider import GroqLLMProvider
                 return GroqLLMProvider._parse_response(response)
             except Exception as e:
+                err_text = str(e).lower()
+                # If credit or context limit is hit, retry once with plain text without tools
+                if ("credit" in err_text or "context" in err_text or "limit" in err_text or "token" in err_text or "402" in err_text) and active_tools:
+                    logger.warning("OpenRouter context/credit limit reached with tools. Retrying with compact messages and tools stripped...")
+                    compact_msg_dicts, _ = compact_messages_and_tools(messages, None, include_tools=False)
+                    kwargs["messages"] = compact_msg_dicts
+                    kwargs.pop("tools", None)
+                    kwargs.pop("tool_choice", None)
+                    kwargs["max_tokens"] = min(self.max_tokens, 768)
+                    active_tools = None
+                    try:
+                        response = client.chat.completions.create(**kwargs)
+                        return GroqLLMProvider._parse_response(response)
+                    except Exception as inner_e:
+                        e = inner_e
                 transient = _is_rate_limit(e) or "timeout" in str(e).lower() or "connection" in str(e).lower()
                 err_msg = str(e)
                 if self.api_key and self.api_key in err_msg:

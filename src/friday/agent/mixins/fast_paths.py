@@ -108,6 +108,17 @@ from friday.vision.windows_input_driver import (
 logger = logging.getLogger(__name__)
 
 class FastPathMixin:
+    _WAKE_PHRASE_PATTERN = re.compile(
+        r"^\s*(?:(?:hey|okay|ok|please)\s+)?friday\s*[,!:;-]?\s*",
+        re.IGNORECASE,
+    )
+
+    def normalize_wake_phrase(self, user_input: str) -> str:
+        """Remove an optional addressed wake phrase before intent matching."""
+        clean_input = (user_input or "").strip()
+        normalized = self._WAKE_PHRASE_PATTERN.sub("", clean_input, count=1)
+        return normalized.strip() or clean_input
+
     def _greeting_fast_path(self, clean_input: str) -> AgentResponse | None:
             """Return a direct conversational greeting response, or None if not a greeting."""
             if not self._GREETING_PATTERN.match(clean_input):
@@ -122,11 +133,136 @@ class FastPathMixin:
             self.state_machine.transition_to(TaskState.COMPLETED, reason="Greeting ready")
             self.memory.add_message(Message(role=Role.USER, content=clean_input))
             self.memory.add_message(Message(role=Role.ASSISTANT, content=response))
+            try:
+                from friday.memory.memora_client import memora_client
+                memora_client.record_interaction_async(
+                    user_input=clean_input,
+                    agent_output=response,
+                    agent_name="friday",
+                    event_type="dialogue",
+                    tags=["greeting", "fast_path"],
+                )
+            except Exception as e:
+                logger.debug(f"Memora record skipped in greeting: {e}")
             return AgentResponse(
                 content=response,
                 is_done=True,
                 metadata={
                     "greeting_fast_path": True,
+                    "task_state": self.state_machine.current_state.value,
+                },
+            )
+
+    def _conversational_fast_path(self, clean_input: str) -> AgentResponse | None:
+        """Return an instant zero-latency response for common conversational inquiries."""
+        low = clean_input.lower().strip().rstrip(".!? ")
+        user_name = getattr(self.settings, "user_name", "Surendra")
+
+        reply = None
+        if re.search(r"^(?:who\s+(?:are\s+you|r\s+u)|what\s+is\s+your\s+name|what\s+are\s+you|tell\s+me\s+about\s+yourself)$", low):
+            reply = f"I am FRIDAY, your personal AI assistant and Windows laptop controller, {user_name}. I can control applications, media, volume, system settings, and assist with code, research, and daily workflows."
+        elif re.search(r"^(?:how\s+are\s+you(?:\s+doing)?|how\'s\s+it\s+going|how\s+do\s+you\s+feel|how\s+are\s+things)$", low):
+            reply = f"All systems are running at peak performance, {user_name}. Ready for whatever you need. How can I assist you right now?"
+        elif re.search(r"^(?:what\s+can\s+you\s+do|what\s+are\s+your\s+capabilities|what\s+do\s+you\s+do|help\s+me\s+with\s+commands)$", low):
+            reply = (
+                f"I provide full Windows laptop control and autonomous AI assistance, {user_name}. "
+                "You can ask me to play songs on YouTube, control volume/brightness, launch or close apps, "
+                "check battery and system telemetry, execute PowerShell commands, or answer complex questions. "
+                "Type /friday in chat for a full list of laptop commands."
+            )
+        elif re.search(r"^(?:are\s+you\s+there|you\s+there|can\s+you\s+hear\s+me)$", low):
+            reply = f"Always here and listening, {user_name}. What would you like done?"
+        elif re.search(r"^(?:thank\s+you|thanks(?:\s+a\s+lot)?|thanks\s+friday|thank\s+you\s+so\s+much)$", low):
+            reply = f"You're very welcome, {user_name}!"
+        elif re.search(r"^(?:good\s+morning|good\s+afternoon|good\s+evening|good\s+night)$", low):
+            reply = f"Good day, {user_name}. Systems are primed and ready."
+
+        if not reply:
+            return None
+
+        logger.info(f"Conversational fast-path matched: '{low}' -> instant response (0ms)")
+        self.state_machine.transition_to(TaskState.UNDERSTANDING, reason="Conversational query recognized")
+        self.state_machine.transition_to(TaskState.PLANNING, reason="Synthesizing conversational response")
+        self.state_machine.transition_to(TaskState.VERIFYING, reason="Validating conversational response")
+        self.state_machine.transition_to(TaskState.COMPLETED, reason="Conversational response ready")
+        self.memory.add_message(Message(role=Role.USER, content=clean_input))
+        self.memory.add_message(Message(role=Role.ASSISTANT, content=reply))
+        try:
+            from friday.memory.memora_client import memora_client
+            memora_client.record_interaction_async(
+                user_input=clean_input,
+                agent_output=reply,
+                agent_name="friday",
+                event_type="dialogue",
+                tags=["conversational", "fast_path"],
+            )
+        except Exception as e:
+            logger.debug(f"Memora record skipped in conversational: {e}")
+        return AgentResponse(
+            content=reply,
+            is_done=True,
+            metadata={
+                "conversational_fast_path": True,
+                "task_state": self.state_machine.current_state.value,
+            },
+        )
+
+    def _deterministic_action_fast_path(self, clean_input: str, start_time: float) -> AgentResponse | None:
+            """Execute safe geometric desktop actions without vision or an LLM."""
+            intent = DeterministicActionDetector.detect(clean_input)
+            if not intent or intent.requires_confirmation:
+                return None
+            self.memory.add_message(Message(role=Role.USER, content=clean_input))
+            self.state_machine.transition_to(TaskState.PLANNING, reason="Deterministic desktop action recognized")
+            self.state_machine.transition_to(TaskState.EXECUTING, reason=f"Executing {intent.action_type.value}")
+            try:
+                executor = ComputerActionExecutor(sandboxed=False)
+                result = executor.execute_proposal(intent.to_proposal(), user_confirmed=True)
+                success = bool(result.is_success)
+                if intent.action_type.value == "move" and success:
+                    x, y = intent.arguments["x"], intent.arguments["y"]
+                    if "center" in intent.intent.lower():
+                        content = f"Moved the mouse cursor to the center of the screen ({x}, {y})."
+                    else:
+                        content = f"Moved the mouse cursor to ({x}, {y})."
+                elif intent.action_type.value == "scroll" and success:
+                    content = f"Scrolled {'up' if intent.arguments['delta_y'] > 0 else 'down'} successfully."
+                else:
+                    content = result.details if success else f"I could not complete that action: {result.details}"
+            except Exception as exc:
+                success = False
+                content = f"I could not complete that action: {exc}"
+            self.state_machine.transition_to(TaskState.VERIFYING, reason="Verifying deterministic desktop action")
+            self.state_machine.transition_to(TaskState.COMPLETED if success else TaskState.FAILED, reason=content)
+            self.memory.add_message(Message(role=Role.ASSISTANT, content=content))
+            try:
+                from friday.memory.memora_client import memora_client
+                memora_client.record_interaction_async(
+                    user_input=clean_input,
+                    agent_output=content,
+                    agent_name="friday",
+                    event_type="action",
+                    tags=["desktop_action", intent.action_type.value],
+                )
+                memora_client.learn_from_outcome_async(
+                    agent_name="friday",
+                    task_name=intent.action_type.value,
+                    status="success" if success else "failure",
+                    actions_taken=content,
+                    domain="deterministic_action",
+                )
+            except Exception as e:
+                logger.debug(f"Memora record skipped in deterministic action: {e}")
+            return AgentResponse(
+                content=content,
+                is_done=True,
+                metadata={
+                    "fast_path": True,
+                    "deterministic": True,
+                    "action_type": intent.action_type.value,
+                    "arguments": intent.arguments,
+                    "success": success,
+                    "duration_seconds": time.perf_counter() - start_time,
                     "task_state": self.state_machine.current_state.value,
                 },
             )
@@ -258,6 +394,24 @@ class FastPathMixin:
                 TaskState.COMPLETED if success else TaskState.FAILED, reason=content
             )
             self.memory.add_message(Message(role=Role.ASSISTANT, content=content))
+            try:
+                from friday.memory.memora_client import memora_client
+                memora_client.record_interaction_async(
+                    user_input=clean_input,
+                    agent_output=content,
+                    agent_name="friday",
+                    event_type="fast_path_action",
+                    tags=["fast_path", action_key],
+                )
+                memora_client.learn_from_outcome_async(
+                    agent_name="friday",
+                    task_name=action_key,
+                    status="success" if success else "failure",
+                    actions_taken=content,
+                    domain="fast_path",
+                )
+            except Exception as e:
+                logger.debug(f"Memora record skipped in _complete_fast_path: {e}")
             return AgentResponse(
                 content=content,
                 is_done=True,
@@ -390,6 +544,27 @@ class FastPathMixin:
                     },
                 )
 
+            from friday.devices.windows_friday import windows_friday
+            if (
+                windows_friday.is_whatsapp_directive(clean_input)
+                or windows_friday.is_contact_directive(clean_input)
+                or windows_friday.is_gmail_directive(clean_input)
+            ):
+                handled, reply, meta = windows_friday.handle_directive(clean_input)
+                if handled:
+                    self.memory.add_message(Message(role=Role.USER, content=clean_input))
+                    self.memory.add_message(Message(role=Role.ASSISTANT, content=reply))
+                    return AgentResponse(
+                        content=reply,
+                        is_done=True,
+                        metadata={
+                            "fast_path": True,
+                            "direct_desktop_action": meta.get("action", "desktop_directive"),
+                            "success": meta.get("success", True),
+                            "duration_seconds": time.perf_counter() - start_time,
+                        },
+                    )
+
             play_match = getattr(self, "_PLAY_MEDIA_PATTERN", None)
             if play_match:
                 m = play_match.match(clean_input)
@@ -501,6 +676,58 @@ class FastPathMixin:
                         verifying_reason="Resolving YouTube video watch URL and launching in browser",
                     )
 
+            if self._SETTINGS_PATTERN.match(clean_input):
+                self.memory.add_message(Message(role=Role.USER, content=clean_input))
+                self.state_machine.transition_to(TaskState.PLANNING, reason="Direct Settings command")
+                self.state_machine.transition_to(TaskState.EXECUTING, reason="Opening Windows Settings")
+                ok = False
+                try:
+                    self._launch_process("explorer.exe", "ms-settings:")
+                    ok = True
+                except Exception as e:
+                    logger.warning(f"Opening Settings failed: {e}")
+                self.state_machine.transition_to(TaskState.VERIFYING, reason="Checking Settings launch")
+                content = "Done." if ok else "I could not open Settings."
+                self.state_machine.transition_to(TaskState.COMPLETED if ok else TaskState.FAILED, reason=content)
+                self.memory.add_message(Message(role=Role.ASSISTANT, content=content))
+                return AgentResponse(
+                    content=content,
+                    is_done=True,
+                    metadata={
+                        "fast_path": True,
+                        "direct_desktop_action": "open_settings",
+                        "success": ok,
+                        "duration_seconds": time.perf_counter() - start_time,
+                        "task_state": self.state_machine.current_state.value,
+                    },
+                )
+
+            if self._WINDOWS_UPDATE_PATTERN.match(clean_input):
+                self.memory.add_message(Message(role=Role.USER, content=clean_input))
+                self.state_machine.transition_to(TaskState.PLANNING, reason="Direct Windows Update command")
+                self.state_machine.transition_to(TaskState.EXECUTING, reason="Opening Windows Update")
+                ok = False
+                try:
+                    self._launch_process("explorer.exe", "ms-settings:windowsupdate")
+                    ok = True
+                except Exception as e:
+                    logger.warning(f"Opening Windows Update failed: {e}")
+                self.state_machine.transition_to(TaskState.VERIFYING, reason="Checking Windows Update launch")
+                content = "Done." if ok else "I could not open Windows Update."
+                self.state_machine.transition_to(TaskState.COMPLETED if ok else TaskState.FAILED, reason=content)
+                self.memory.add_message(Message(role=Role.ASSISTANT, content=content))
+                return AgentResponse(
+                    content=content,
+                    is_done=True,
+                    metadata={
+                        "fast_path": True,
+                        "direct_desktop_action": "open_windows_update",
+                        "success": ok,
+                        "duration_seconds": time.perf_counter() - start_time,
+                        "task_state": self.state_machine.current_state.value,
+                    },
+                )
+
             open_app_match = self._OPEN_APP_PATTERN.match(clean_input)
             if open_app_match:
                 app_raw = open_app_match.group("app").strip().lower()
@@ -560,58 +787,6 @@ class FastPathMixin:
                             "task_state": self.state_machine.current_state.value,
                         },
                     )
-
-            if self._SETTINGS_PATTERN.match(clean_input):
-                self.memory.add_message(Message(role=Role.USER, content=clean_input))
-                self.state_machine.transition_to(TaskState.PLANNING, reason="Direct Settings command")
-                self.state_machine.transition_to(TaskState.EXECUTING, reason="Opening Windows Settings")
-                ok = False
-                try:
-                    self._launch_process("explorer.exe", "ms-settings:")
-                    ok = True
-                except Exception as e:
-                    logger.warning(f"Opening Settings failed: {e}")
-                self.state_machine.transition_to(TaskState.VERIFYING, reason="Checking Settings launch")
-                content = "Done." if ok else "I could not open Settings."
-                self.state_machine.transition_to(TaskState.COMPLETED if ok else TaskState.FAILED, reason=content)
-                self.memory.add_message(Message(role=Role.ASSISTANT, content=content))
-                return AgentResponse(
-                    content=content,
-                    is_done=True,
-                    metadata={
-                        "fast_path": True,
-                        "direct_desktop_action": "open_settings",
-                        "success": ok,
-                        "duration_seconds": time.perf_counter() - start_time,
-                        "task_state": self.state_machine.current_state.value,
-                    },
-                )
-
-            if self._WINDOWS_UPDATE_PATTERN.match(clean_input):
-                self.memory.add_message(Message(role=Role.USER, content=clean_input))
-                self.state_machine.transition_to(TaskState.PLANNING, reason="Direct Windows Update command")
-                self.state_machine.transition_to(TaskState.EXECUTING, reason="Opening Windows Update")
-                ok = False
-                try:
-                    self._launch_process("explorer.exe", "ms-settings:windowsupdate")
-                    ok = True
-                except Exception as e:
-                    logger.warning(f"Opening Windows Update failed: {e}")
-                self.state_machine.transition_to(TaskState.VERIFYING, reason="Checking Windows Update launch")
-                content = "Done." if ok else "I could not open Windows Update."
-                self.state_machine.transition_to(TaskState.COMPLETED if ok else TaskState.FAILED, reason=content)
-                self.memory.add_message(Message(role=Role.ASSISTANT, content=content))
-                return AgentResponse(
-                    content=content,
-                    is_done=True,
-                    metadata={
-                        "fast_path": True,
-                        "direct_desktop_action": "open_windows_update",
-                        "success": ok,
-                        "duration_seconds": time.perf_counter() - start_time,
-                        "task_state": self.state_machine.current_state.value,
-                    },
-                )
 
             if self._TIME_PATTERN.match(clean_input):
                 self.memory.add_message(Message(role=Role.USER, content=clean_input))
@@ -913,6 +1088,30 @@ class FastPathMixin:
                     verifying_reason="Formatting master intelligence briefing",
                 )
 
+            # Master Windows FRIDAY Controller (handles all additional laptop directives)
+            from friday.devices.windows_friday import windows_friday
+            handled, reply, meta = windows_friday.handle_directive(clean_input)
+            if handled:
+                self.memory.add_message(Message(role=Role.USER, content=clean_input))
+                action_name = meta.get("action", "os_directive")
+                self.state_machine.transition_to(TaskState.PLANNING, reason=f"FRIDAY OS action recognized: {action_name}")
+                self.state_machine.transition_to(TaskState.EXECUTING, reason=f"Executing {action_name}")
+                self.state_machine.transition_to(TaskState.VERIFYING, reason="Validating OS directive execution")
+                self.state_machine.transition_to(TaskState.COMPLETED, reason=reply)
+                self.memory.add_message(Message(role=Role.ASSISTANT, content=reply))
+                return AgentResponse(
+                    content=reply,
+                    is_done=True,
+                    metadata={
+                        "fast_path": True,
+                        "direct_desktop_action": action_name,
+                        "friday_meta": meta,
+                        "success": meta.get("success", True),
+                        "duration_seconds": time.perf_counter() - start_time,
+                        "task_state": self.state_machine.current_state.value,
+                    },
+                )
+
             return None
 
     def classify_instant_command(self, text: str) -> str | None:
@@ -991,6 +1190,9 @@ class FastPathMixin:
                     return "semantic_ui"
             except Exception:
                 pass
+            from friday.devices.windows_friday import windows_friday
+            if windows_friday.can_handle(clean):
+                return "windows_friday_directive"
             return None
 
     def _execute_semantic_ui_action(self, intent_result, user_input: str) -> AgentResponse | None:

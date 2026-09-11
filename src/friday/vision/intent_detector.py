@@ -74,6 +74,13 @@ class IntentDetector:
         "control panel": "control.exe",
         "microsoft store": "ms-windows-store:",
         "store": "ms-windows-store:",
+        "whatsapp": "WhatsApp.exe",
+        "whatsapp web": "https://web.whatsapp.com",
+        "spotify": "Spotify.exe",
+        "discord": "Discord.exe",
+        "slack": "slack.exe",
+        "zoom": "Zoom.exe",
+        "vlc": "vlc.exe",
     }
 
     LAUNCH_PATTERN = re.compile(

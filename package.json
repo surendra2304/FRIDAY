@@ -1,0 +1,14 @@
+{
+  "name": "friday",
+  "version": "1.0.0",
+  "private": true,
+  "description": "F.R.I.D.A.Y. - Autonomous Multi-Agent AI Operating System",
+  "scripts": {
+    "dev": "npm --prefix ui run dev",
+    "build": "npm --prefix ui run build",
+    "start": "npm --prefix ui start",
+    "lint": "npm --prefix ui run lint",
+    "install:ui": "npm --prefix ui install",
+    "postinstall": "npm --prefix ui install"
+  }
+}

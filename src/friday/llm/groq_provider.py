@@ -62,6 +62,37 @@ def _is_model_not_found(error: Exception) -> bool:
     return "404" in err or "model_not_found" in err or "model not found" in err or "decommissioned" in err
 
 
+def compact_messages_and_tools(
+    messages: list[Message],
+    tools: list[dict[str, Any]] | None = None,
+    include_tools: bool = True,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]] | None]:
+    """Compact messages and tools to comfortably fit within free-tier provider TPM limits (e.g. Groq 8k TPM)."""
+    if not messages:
+        return [], None
+
+    system_msgs = [m for m in messages if m.role == Role.SYSTEM]
+    other_msgs = [m for m in messages if m.role != Role.SYSTEM]
+
+    recent_msgs = other_msgs[-4:] if len(other_msgs) > 4 else other_msgs
+
+    compacted_dicts: list[dict[str, Any]] = []
+    for sm in system_msgs:
+        d = sm.to_provider_dict()
+        if isinstance(d.get("content"), str) and len(d["content"]) > 3000:
+            d["content"] = d["content"][:3000] + "\n...[truncated for token limit]"
+        compacted_dicts.append(d)
+
+    for om in recent_msgs:
+        d = om.to_provider_dict()
+        if isinstance(d.get("content"), str) and len(d["content"]) > 1000:
+            d["content"] = d["content"][:1000] + "\n...[truncated]"
+        compacted_dicts.append(d)
+
+    compacted_tools = tools if include_tools else None
+    return compacted_dicts, compacted_tools
+
+
 class GroqLLMProvider(BaseLLMProvider):
     """LLM Provider for Groq via the OpenAI SDK with automatic model fallback on 429."""
 
@@ -188,19 +219,45 @@ class GroqLLMProvider(BaseLLMProvider):
         tools: list[dict[str, Any]] | None,
     ) -> Message:
         client = self._get_client_for_key(api_key)
+        
+        # Check if messages + tools are excessively large
+        total_est_chars = sum(len(m.content or "") for m in messages)
+        should_compact = total_est_chars > 8000
+        
+        msg_dicts, active_tools = compact_messages_and_tools(
+            messages,
+            tools,
+            include_tools=True
+        ) if should_compact else ([m.to_provider_dict() for m in messages], tools)
+
         kwargs: dict[str, Any] = {
             "model": model,
-            "messages": [m.to_provider_dict() for m in messages],
+            "messages": msg_dicts,
             "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
+            "max_tokens": min(self.max_tokens, 2048),
         }
-        if tools:
-            kwargs["tools"] = tools
+        if active_tools:
+            kwargs["tools"] = active_tools
             kwargs["tool_choice"] = "auto"
 
         try:
             response = client.chat.completions.create(**kwargs)
         except Exception as e:
+            err_text = str(e).lower()
+            # If rate limit is due to TPM / Request too large, retry immediately with compacted text-only prompt
+            if ("tpm" in err_text or "too large" in err_text or "token" in err_text or "413" in err_text) and active_tools:
+                logger.warning("Groq TPM limit reached with tools. Retrying with compact messages and tools stripped...")
+                compact_msg_dicts, _ = compact_messages_and_tools(messages, None, include_tools=False)
+                kwargs["messages"] = compact_msg_dicts
+                kwargs.pop("tools", None)
+                kwargs.pop("tool_choice", None)
+                kwargs["max_tokens"] = min(self.max_tokens, 1024)
+                try:
+                    response = client.chat.completions.create(**kwargs)
+                    return self._parse_response(response)
+                except Exception as inner_e:
+                    e = inner_e
+
             if _is_rate_limit(e):
                 raise _RateLimitedError(str(e)) from e
             if _is_model_not_found(e):

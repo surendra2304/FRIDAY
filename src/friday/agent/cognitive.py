@@ -96,6 +96,7 @@ class CognitiveDecision:
     should_continue_autonomously: bool = True
     suggested_action: str | None = None
     explanation: str | None = None
+    recalled_instincts: list[Any] = field(default_factory=list)
 
 
 class CognitiveIntelligenceEngine:
@@ -127,11 +128,13 @@ class CognitiveIntelligenceEngine:
         llm_provider: BaseLLMProvider | None = None,
         authorizer: BaseAuthorizer | None = None,
         clarification_threshold: float = 0.65,
+        instinct_engine: Any | None = None,
     ) -> None:
         self.llm = llm_provider
         self.authorizer = authorizer or DefaultSecureAuthorizer()
         self.clarification_threshold = clarification_threshold
         self.goal_engine = GoalUnderstandingEngine(llm_provider=llm_provider)
+        self.instinct_engine = instinct_engine
 
     def evaluate_request(
         self,
@@ -151,7 +154,20 @@ class CognitiveIntelligenceEngine:
         lacks_info = False
         clarification_prompt = None
 
-        if len(clean_input) < 3 or any(re.match(p, clean_input.lower()) for p in self.AMBIGUOUS_PATTERNS):
+        low_input = clean_input.lower()
+        affirmative_words = {
+            "yes", "y", "yeah", "yep", "yup", "sure", "ok", "okay", "proceed",
+            "send", "send it", "confirm", "confirmed", "do it", "go ahead",
+            "approve", "approved", "please do", "sounds good", "let's do it",
+            "execute", "run it"
+        }
+        negation_words = {
+            "no", "n", "nope", "cancel", "stop", "abort", "don't", "dont",
+            "do not", "never mind", "nevermind", "discard"
+        }
+        is_dialogue_action = low_input in affirmative_words or low_input in negation_words
+
+        if not is_dialogue_action and (len(clean_input) < 3 or any(re.match(p, low_input) for p in self.AMBIGUOUS_PATTERNS)):
             lacks_info = True
             confidence.understanding_confidence = 0.3
             reasons.append("Request is highly underspecified or missing target subject.")
@@ -199,6 +215,13 @@ class CognitiveIntelligenceEngine:
 
         phase = CognitivePhase.CLARIFY if lacks_info else CognitivePhase.PLAN
 
+        recalled = []
+        if self.instinct_engine and hasattr(self.instinct_engine, "recall_instincts"):
+            try:
+                recalled = self.instinct_engine.recall_instincts(user_input)
+            except Exception:
+                pass
+
         return CognitiveDecision(
             current_phase=phase,
             confidence=confidence,
@@ -209,7 +232,9 @@ class CognitiveIntelligenceEngine:
             tool_necessary=tool_necessary,
             should_continue_autonomously=should_autonomously_continue,
             explanation="; ".join(reasons) if reasons else "Request clear and unambiguous.",
+            recalled_instincts=recalled,
         )
+
 
     def check_plan_safety_and_confidence(
         self,
@@ -223,9 +248,15 @@ class CognitiveIntelligenceEngine:
         is_unsafe = False
         requires_confirmation = False
 
-        # 1. Dependency DAG cycle validation
+        # 1. Dependency DAG cycle and missing dependency validation
         try:
-            pass # TaskGraph validates on creation
+            for task in graph.list_tasks():
+                for dep in task.dependencies:
+                    if dep not in graph.tasks:
+                        raise ValueError(f"Task '{task.id}' depends on nonexistent task '{dep}'")
+            cycles = graph.detect_cycles()
+            if cycles:
+                raise ValueError(f"Cyclic dependency detected among tasks: {cycles}")
         except Exception as err:
             confidence.planning_confidence = 0.1
             reasons.append(f"Plan validation failed with dependency error: {err}")
@@ -288,7 +319,20 @@ class CognitiveIntelligenceEngine:
             phase = CognitivePhase.LEARN
             should_continue = True
 
+            if self.instinct_engine and hasattr(self.instinct_engine, "learn_from_feedback") and step.tool_name:
+                try:
+                    self.instinct_engine.learn_from_feedback(
+                        trigger=f"task execution with {step.tool_name}",
+                        action=f"verify evidence with {verification.evidence[:40]}",
+                        domain="workflow",
+                        outcome="success",
+                        evidence_note=f"Step '{step.step_id}' completed with verification confidence {verification.confidence}.",
+                    )
+                except Exception:
+                    pass
+
         confidence.reasons = reasons
+
 
         return CognitiveDecision(
             current_phase=phase,

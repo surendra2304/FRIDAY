@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
-from friday.planning.types import TaskStep, TaskGraph
+from friday.planning.types import TaskStep, TaskGraph, TaskStatus
 
 
 from friday.agent.verification import VerificationResult
@@ -361,7 +361,7 @@ class AutonomousRecoveryManager:
             depends_on=list(step.depends_on),
             safety_level=step.safety_level,
             requires_confirmation=step.requires_confirmation,
-            status=StepStatus.PENDING,
+            status=TaskStatus.PENDING,
             success_criteria=step.success_criteria,
             preconditions=list(step.preconditions),
             postconditions=list(step.postconditions),

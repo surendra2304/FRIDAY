@@ -16,6 +16,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer
+
+import asyncio
 from friday.core.logging import get_logger
 from friday.core.types import AuthorizationDecision, AuthorizationRequest, SafetyLevel
 from friday.planning.events import (
@@ -225,8 +227,38 @@ class TaskGraphScheduler:
                 if 'auth_cap' in locals() and auth_cap:
                     context['authorization'] = auth_cap
                 res = executor.execute(resolved_inputs, context=context)
-                if res.success:
-                    graph.mark_completed(task.id, result=res.output, outputs={"result": res.output})
+                
+                # Phase 3: Truthful Verification with Strict Envelopes
+                from friday.agent.verification import StructuredExecutionEnvelope, StepVerifier, VerificationStatus
+                envelope = StructuredExecutionEnvelope(
+                    task_id=task.id,
+                    tool_name=task.selected_executor or task.tool_name or task.id,
+                    success=res.success,
+                    data=res.output,
+                    error=res.error,
+                    raw_output=str(res.output)
+                )
+                
+                verifier = StepVerifier()
+                v_res = verifier.verify_envelope(envelope)
+                
+                # If envelope is structurally valid and task has complex objective, run LLM judge
+                if v_res.passed and getattr(task, "objective", None):
+                    # For simplicity in synchronous context, we run the async method if possible,
+                    # but here we'll just check if there's an LLM provider we can use
+                    # If this is in a ThreadPoolExecutor, we can use asyncio.run
+                    try:
+                        loop = asyncio.get_running_loop()
+                        llm_res = asyncio.run_coroutine_threadsafe(
+                            verifier.verify_step_result_llm(task, res.output), loop
+                        ).result()
+                    except RuntimeError:
+                        # No running loop
+                        llm_res = asyncio.run(verifier.verify_step_result_llm(task, res.output))
+                    v_res = llm_res
+
+                if res.success and v_res.passed:
+                    graph.mark_completed(task.id, result=res.output, outputs={"result": res.output, "raw_result": getattr(res, "raw_result", None)})
                     success = True
                     self.event_bus.publish(
                         TaskProgressEvent(

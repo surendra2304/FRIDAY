@@ -72,8 +72,69 @@ class Settings(BaseSettings):
     def __init__(self, **kwargs):
         import os
         import warnings
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(resolve_env_file(), override=False)
+        except Exception:
+            pass
         
-        legacy_aliases = {'FRIDAY_IOT_HUB_URL': ['IOT_HUB_URL', 'iot_hub_url'], 'FRIDAY_IOT_HUB_TOKEN': ['IOT_HUB_TOKEN', 'iot_hub_token'], 'FRIDAY_CALENDAR_ICS_URL': ['CALENDAR_ICS_URL', 'calendar_ics_url'], 'FRIDAY_EMAIL_ADDRESS': ['EMAIL_ADDRESS', 'email_address'], 'FRIDAY_EMAIL_APP_PASSWORD': ['EMAIL_APP_PASSWORD', 'email_app_password'], 'FRIDAY_EMAIL_SMTP_HOST': ['EMAIL_SMTP_HOST', 'email_smtp_host'], 'FRIDAY_EMAIL_SMTP_PORT': ['EMAIL_SMTP_PORT', 'email_smtp_port'], 'FRIDAY_ACTIVE_DEVICE': ['ACTIVE_DEVICE', 'active_device'], 'FRIDAY_UNIVERSE_API_URL': ['AI_UNIVERSE_API_URL', 'FRIDAY_AI_UNIVERSE_API_URL', 'universe_api_url'], 'FRIDAY_VOICE_ENABLED': ['VOICE_ENABLED', 'voice_enabled'], 'FRIDAY_AUDIO_INPUT_DEVICE': ['AUDIO_INPUT_DEVICE', 'audio_input_device'], 'FRIDAY_AUDIO_OUTPUT_DEVICE': ['AUDIO_OUTPUT_DEVICE', 'audio_output_device'], 'FRIDAY_VOICE_NAME': ['VOICE_NAME', 'voice_name'], 'FRIDAY_VOICE_LIVE_MODEL': ['VOICE_LIVE_MODEL', 'voice_live_model'], 'FRIDAY_VOICE_VAD_START_SENSITIVITY': ['VOICE_VAD_START_SENSITIVITY', 'voice_vad_start_sensitivity'], 'FRIDAY_VOICE_VAD_END_SENSITIVITY': ['VOICE_VAD_END_SENSITIVITY', 'voice_vad_end_sensitivity'], 'FRIDAY_VOICE_SPEAKER_TIMEOUT_MS': ['VOICE_SPEAKER_TIMEOUT_MS', 'voice_speaker_timeout_ms', 'speaker_timeout_ms'], 'FRIDAY_VOICE_LOCAL_BARGE_IN_DURING_PLAYBACK': ['VOICE_LOCAL_BARGE_IN_DURING_PLAYBACK', 'voice_local_barge_in_during_playback'], 'FRIDAY_VOICE_HEADPHONES_MODE': ['VOICE_HEADPHONES_MODE', 'voice_headphones_mode'], 'FRIDAY_VOICE_BIOMETRICS_ENABLED': ['VOICE_BIOMETRICS_ENABLED', 'voice_biometrics_enabled'], 'FRIDAY_VOICE_THINKING_LEVEL': ['VOICE_THINKING_LEVEL', 'voice_thinking_level'], 'FRIDAY_VISION_MODEL': ['VISION_MODEL', 'vision_model'], 'FRIDAY_VISION_PROVIDER': ['VISION_PROVIDER', 'vision_provider'], 'FRIDAY_SCREEN_CAPTURE_PROVIDER': ['SCREEN_CAPTURE_PROVIDER', 'screen_capture_provider'], 'FRIDAY_SCREEN_DISPLAY': ['SCREEN_DISPLAY', 'screen_display'], 'FRIDAY_SCREEN_AWARE': ['SCREEN_AWARE', 'screen_aware'], 'FRIDAY_SCREEN_INTERVAL_SECONDS': ['SCREEN_INTERVAL_SECONDS', 'screen_interval_seconds'], 'FRIDAY_SCREEN_CHANGE_THRESHOLD': ['SCREEN_CHANGE_THRESHOLD', 'screen_change_threshold'], 'FRIDAY_PROACTIVE_WATCHER_ENABLED': ['PROACTIVE_WATCHER_ENABLED', 'proactive_watcher_enabled'], 'FRIDAY_WATCHER_INTERVAL_SECONDS': ['WATCHER_INTERVAL_SECONDS', 'watcher_interval_seconds'], 'FRIDAY_TESSERACT_CMD': ['TESSERACT_CMD', 'tesseract_cmd'], 'FRIDAY_FORGE_BASE_URL': ['FORGE_BASE_URL', 'FRIDAY_FORGE_API_URL', 'FORGE_API_URL', 'forge_api_url', 'forge_base_url'], 'FRIDAY_FORGE_API_KEY': ['FORGE_API_KEY', 'forge_api_key'], 'FRIDAY_FORGE_ENABLED': ['FORGE_ENABLED', 'forge_enabled'], 'FRIDAY_FORGE_MAX_CONCURRENT_TASKS': ['FORGE_MAX_CONCURRENT_TASKS', 'forge_max_concurrent_tasks'], 'FRIDAY_FORGE_TASK_TIMEOUT': ['FORGE_TASK_TIMEOUT', 'forge_task_timeout'], 'FRIDAY_FORGE_SUPERVISION_INTERVAL_SECONDS': ['FORGE_SUPERVISION_INTERVAL_SECONDS', 'forge_supervision_interval_seconds'], 'FRIDAY_FORGE_HEALTH_CHECK_INTERVAL_SECONDS': ['FORGE_HEALTH_CHECK_INTERVAL_SECONDS', 'forge_health_check_interval_seconds'], 'FRIDAY_ECOSYSTEM_ENABLED': ['ECOSYSTEM_ENABLED', 'ecosystem_enabled'], 'FRIDAY_TRADING_BOT_BASE_URL': ['STRATEX_URL', 'TRADING_BOT_BASE_URL', 'trading_bot_base_url'], 'FRIDAY_STRATEX_API_KEY': ['TRADING_BOT_API_KEY', 'BOT_API_KEY'], 'FRIDAY_AI_UNIVERSE_BASE_URL': ['INFERENCE_URL', 'AI_UNIVERSE_BASE_URL', 'ai_universe_base_url'], 'FRIDAY_INFERENCE_API_KEY': ['INFERENCE_API_KEY'], 'FRIDAY_INTELX_URL': ['INTELX_URL', 'intelx_base_url'], 'FRIDAY_FUTURIS_URL': ['FUTURIS_URL', 'futuris_base_url'], 'FRIDAY_MEMORA_URL': ['MEMORA_URL', 'memora_base_url'], 'FRIDAY_SENTINEL_URL': ['SENTINEL_URL', 'sentinel_base_url'], 'FRIDAY_NEXUS_BASE_URL': ['CORTEX_URL', 'NEXUS_URL', 'NEXUS_BASE_URL', 'nexus_base_url'], 'FRIDAY_NEXUS_ENABLED': ['NEXUS_ENABLED', 'CORTEX_ENABLED', 'nexus_enabled'], 'FRIDAY_NEXUS_VIGILANCE_INTERVAL_SECONDS': ['NEXUS_VIGILANCE_INTERVAL_SECONDS', 'nexus_vigilance_interval_seconds'], 'FRIDAY_LLM_API_KEY': ['OPENAI_API_KEY', 'LLM_API_KEY', 'llm_api_key'], 'FRIDAY_GEMINI_API_KEY': ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'gemini_api_key'], 'FRIDAY_GROQ_API_KEY': ['GROQ_API_KEY', 'groq_api_key'], 'FRIDAY_API_KEY': ['FRIDAY_UNIVERSE_API_KEY']}
+        legacy_aliases = {
+            'FRIDAY_INFERENCE_URL': ['INFERENCE_URL', 'inference_url', 'AI_UNIVERSE_BASE_URL', 'ai_universe_base_url'],
+            'FRIDAY_INFERENCE_API_KEY': ['INFERENCE_API_KEY', 'inference_api_key'],
+            'FRIDAY_IOT_HUB_URL': ['IOT_HUB_URL', 'iot_hub_url'],
+            'FRIDAY_IOT_HUB_TOKEN': ['IOT_HUB_TOKEN', 'iot_hub_token'],
+            'FRIDAY_CALENDAR_ICS_URL': ['CALENDAR_ICS_URL', 'calendar_ics_url'],
+            'FRIDAY_EMAIL_ADDRESS': ['EMAIL_ADDRESS', 'email_address'],
+            'FRIDAY_EMAIL_APP_PASSWORD': ['EMAIL_APP_PASSWORD', 'email_app_password'],
+            'FRIDAY_EMAIL_SMTP_HOST': ['EMAIL_SMTP_HOST', 'email_smtp_host'],
+            'FRIDAY_EMAIL_SMTP_PORT': ['EMAIL_SMTP_PORT', 'email_smtp_port'],
+            'FRIDAY_ACTIVE_DEVICE': ['ACTIVE_DEVICE', 'active_device'],
+            'FRIDAY_UNIVERSE_API_URL': ['AI_UNIVERSE_API_URL', 'FRIDAY_AI_UNIVERSE_API_URL', 'universe_api_url'],
+            'FRIDAY_VOICE_ENABLED': ['VOICE_ENABLED', 'voice_enabled'],
+            'FRIDAY_AUDIO_INPUT_DEVICE': ['AUDIO_INPUT_DEVICE', 'audio_input_device'],
+            'FRIDAY_AUDIO_OUTPUT_DEVICE': ['AUDIO_OUTPUT_DEVICE', 'audio_output_device'],
+            'FRIDAY_VOICE_NAME': ['VOICE_NAME', 'voice_name'],
+            'FRIDAY_VOICE_LIVE_MODEL': ['VOICE_LIVE_MODEL', 'voice_live_model'],
+            'FRIDAY_VOICE_VAD_START_SENSITIVITY': ['VOICE_VAD_START_SENSITIVITY', 'voice_vad_start_sensitivity'],
+            'FRIDAY_VOICE_VAD_END_SENSITIVITY': ['VOICE_VAD_END_SENSITIVITY', 'voice_vad_end_sensitivity'],
+            'FRIDAY_VOICE_SPEAKER_TIMEOUT_MS': ['VOICE_SPEAKER_TIMEOUT_MS', 'voice_speaker_timeout_ms', 'speaker_timeout_ms'],
+            'FRIDAY_VOICE_LOCAL_BARGE_IN_DURING_PLAYBACK': ['VOICE_LOCAL_BARGE_IN_DURING_PLAYBACK', 'voice_local_barge_in_during_playback'],
+            'FRIDAY_VOICE_HEADPHONES_MODE': ['VOICE_HEADPHONES_MODE', 'voice_headphones_mode'],
+            'FRIDAY_VOICE_BIOMETRICS_ENABLED': ['VOICE_BIOMETRICS_ENABLED', 'voice_biometrics_enabled'],
+            'FRIDAY_VOICE_THINKING_LEVEL': ['VOICE_THINKING_LEVEL', 'voice_thinking_level'],
+            'FRIDAY_VISION_MODEL': ['VISION_MODEL', 'vision_model'],
+            'FRIDAY_VISION_PROVIDER': ['VISION_PROVIDER', 'vision_provider'],
+            'FRIDAY_SCREEN_CAPTURE_PROVIDER': ['SCREEN_CAPTURE_PROVIDER', 'screen_capture_provider'],
+            'FRIDAY_SCREEN_DISPLAY': ['SCREEN_DISPLAY', 'screen_display'],
+            'FRIDAY_SCREEN_AWARE': ['SCREEN_AWARE', 'screen_aware'],
+            'FRIDAY_SCREEN_INTERVAL_SECONDS': ['SCREEN_INTERVAL_SECONDS', 'screen_interval_seconds'],
+            'FRIDAY_SCREEN_CHANGE_THRESHOLD': ['SCREEN_CHANGE_THRESHOLD', 'screen_change_threshold'],
+            'FRIDAY_PROACTIVE_WATCHER_ENABLED': ['PROACTIVE_WATCHER_ENABLED', 'proactive_watcher_enabled'],
+            'FRIDAY_WATCHER_INTERVAL_SECONDS': ['WATCHER_INTERVAL_SECONDS', 'watcher_interval_seconds'],
+            'FRIDAY_TESSERACT_CMD': ['TESSERACT_CMD', 'tesseract_cmd'],
+            'FRIDAY_FORGE_BASE_URL': ['FORGE_BASE_URL', 'FRIDAY_FORGE_API_URL', 'FORGE_API_URL', 'forge_api_url', 'forge_base_url'],
+            'FRIDAY_FORGE_API_KEY': ['FORGE_API_KEY', 'forge_api_key'],
+            'FRIDAY_FORGE_ENABLED': ['FORGE_ENABLED', 'forge_enabled'],
+            'FRIDAY_FORGE_MAX_CONCURRENT_TASKS': ['FORGE_MAX_CONCURRENT_TASKS', 'forge_max_concurrent_tasks'],
+            'FRIDAY_FORGE_TASK_TIMEOUT': ['FORGE_TASK_TIMEOUT', 'forge_task_timeout'],
+            'FRIDAY_FORGE_SUPERVISION_INTERVAL_SECONDS': ['FORGE_SUPERVISION_INTERVAL_SECONDS', 'forge_supervision_interval_seconds'],
+            'FRIDAY_FORGE_HEALTH_CHECK_INTERVAL_SECONDS': ['FORGE_HEALTH_CHECK_INTERVAL_SECONDS', 'forge_health_check_interval_seconds'],
+            'FRIDAY_ECOSYSTEM_ENABLED': ['ECOSYSTEM_ENABLED', 'ecosystem_enabled'],
+            'FRIDAY_TRADING_BOT_BASE_URL': ['STRATEX_URL', 'TRADING_BOT_BASE_URL', 'trading_bot_base_url'],
+            'FRIDAY_STRATEX_API_KEY': ['TRADING_BOT_API_KEY', 'BOT_API_KEY'],
+            'FRIDAY_AI_UNIVERSE_BASE_URL': ['INFERENCE_URL', 'AI_UNIVERSE_BASE_URL', 'ai_universe_base_url'],
+            'FRIDAY_INTELX_URL': ['INTELX_URL', 'intelx_base_url'],
+            'FRIDAY_FUTURIS_URL': ['FUTURIS_URL', 'futuris_base_url'],
+            'FRIDAY_MEMORA_URL': ['MEMORA_URL', 'memora_base_url'],
+            'FRIDAY_SENTINEL_URL': ['SENTINEL_URL', 'sentinel_base_url'],
+            'FRIDAY_NEXUS_BASE_URL': ['CORTEX_URL', 'NEXUS_URL', 'NEXUS_BASE_URL', 'nexus_base_url'],
+            'FRIDAY_NEXUS_ENABLED': ['NEXUS_ENABLED', 'CORTEX_ENABLED', 'nexus_enabled'],
+            'FRIDAY_NEXUS_VIGILANCE_INTERVAL_SECONDS': ['NEXUS_VIGILANCE_INTERVAL_SECONDS', 'nexus_vigilance_interval_seconds'],
+            'FRIDAY_LLM_API_KEY': ['OPENAI_API_KEY', 'LLM_API_KEY', 'llm_api_key'],
+            'FRIDAY_GEMINI_API_KEY': ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'gemini_api_key'],
+            'FRIDAY_GROQ_API_KEY': ['GROQ_API_KEY', 'groq_api_key'],
+            'FRIDAY_API_KEY': ['FRIDAY_UNIVERSE_API_KEY']
+        }
         
         for canonical, aliases in legacy_aliases.items():
             if canonical not in os.environ:
@@ -108,6 +169,16 @@ class Settings(BaseSettings):
     ui_automation_enabled: bool = Field(
         default=bool(os.name == "nt"),
         description="Enable Windows UI Automation provider (default true on Windows).",
+    )
+    # Autonomous laptop execution mode – execute user directives without interactive confirmation prompts
+    autonomous_mode: bool = Field(
+        default=True,
+        description="Enable autonomous execution without interactive confirmation prompts for owner.",
+    )
+    # Full access mode – give complete control to owner over laptop actions
+    full_access_mode: bool = Field(
+        default=True,
+        description="Allow complete laptop control and tool execution when commanded by owner.",
     )
     
     # Logging
@@ -248,6 +319,14 @@ class Settings(BaseSettings):
     universe_api_url: str = Field(
         default="http://localhost:8000",
         description="Base URL for external AI Universe multi-agent debate API",
+    )
+    inference_url: str = Field(
+        default="https://inference-3i2b.onrender.com",
+        description="Base URL for live Inference Cloud Gateway",
+    )
+    inference_api_key: str = Field(
+        default="inference_api",
+        description="API Key for live Inference Cloud Gateway",
     )
     api_key: str | None = Field(
         default=None,

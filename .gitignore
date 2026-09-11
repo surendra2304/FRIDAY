@@ -63,6 +63,10 @@ data/
 a.txt
 audit/deep_upgrade_after/
 audit/deep_upgrade_baseline/
+security_report.txt
+peer_mesh_friday_results.json
+ask_inference_from_friday.py
+.agents/
 
 # Local runtime data (not source)
 backups/

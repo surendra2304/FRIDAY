@@ -232,7 +232,9 @@ class GeminiLiveVoiceSession:
                 schema = tool.to_openai_schema()
                 fn_info = schema.get("function", {})
                 desc = fn_info.get("description", tool.description or "")
-                params = fn_info.get("parameters", {"type": "object", "properties": {}})
+                raw_params = fn_info.get("parameters", {"type": "object", "properties": {}})
+                from friday.llm.gemini_provider import GeminiLLMProvider
+                params = GeminiLLMProvider._sanitize_parameters_for_gemini(raw_params)
                 function_declarations.append(
                     genai_types.FunctionDeclaration(
                         name=name,
@@ -599,6 +601,16 @@ class GeminiLiveVoiceSession:
         """Route typed CLI input through the local agent for instant execution and speak/log result."""
         if not text:
             return ""
+
+        from friday.devices.windows_friday import windows_friday
+
+        handled, friday_reply, friday_meta = windows_friday.handle_directive(text)
+        if handled:
+            try:
+                await self.send_text(f"FRIDAY, acknowledge briefly that you completed: {friday_reply}")
+            except Exception as e:
+                logger.warning(f"Could not send typed result to Live model: {e}")
+            return friday_reply
 
         # Check if the typed text is an instant device command
         instant_key = None
@@ -988,7 +1000,56 @@ class GeminiLiveVoiceSession:
                     logger.warning("Gemini Live server sent GoAway signal; preparing for reconnection.")
                     break
 
-                # 3. Server content (Audio, Transcriptions, Interruption)
+                # 3. Live Tool Calls (Function Calling Execution & Response)
+                tool_call = getattr(message, "tool_call", None)
+                if tool_call and getattr(tool_call, "function_calls", None):
+                    from friday.devices.windows_friday import windows_friday
+                    responses = []
+                    for fc in tool_call.function_calls:
+                        fn_name = getattr(fc, "name", "")
+                        call_id = getattr(fc, "id", "")
+                        args = getattr(fc, "args", {}) or {}
+                        logger.info(f"Gemini Live received tool call: {fn_name}({args})")
+                        res_str = "Done."
+                        try:
+                            if fn_name == "youtube":
+                                q = args.get("query", "")
+                                _, res_str = windows_friday.play_youtube(q)
+                            elif fn_name == "open_application":
+                                app = args.get("app_name", "")
+                                _, res_str = windows_friday.launch_app(app)
+                            elif fn_name == "close_application":
+                                app = args.get("app_name", "")
+                                _, res_str = windows_friday.close_app(app)
+                            elif fn_name == "manage_volume":
+                                act = args.get("action", "")
+                                if "up" in act:
+                                    res_str = windows_friday.volume_up()
+                                elif "down" in act:
+                                    res_str = windows_friday.volume_down()
+                                elif "mute" in act:
+                                    res_str = windows_friday.volume_mute()
+                            elif fn_name == "get_system_info":
+                                res_str = windows_friday.get_system_specs()
+                            elif fn_name == "get_screen_snapshot":
+                                _, res_str, _ = windows_friday.take_screenshot()
+                            elif self.agent and hasattr(self.agent, "tools"):
+                                tool = self.agent.tools.get(fn_name)
+                                if tool:
+                                    res = tool.execute(**args)
+                                    res_str = res.content
+                        except Exception as e:
+                            logger.error(f"Error executing live tool {fn_name}: {e}")
+                            res_str = f"Error: {e}"
+
+                        responses.append(genai_types.FunctionResponse(name=fn_name, id=call_id, response={"result": res_str}))
+
+                    try:
+                        await session.send_tool_response(function_responses=responses)
+                    except Exception as e:
+                        logger.warning(f"send_tool_response failed: {e}")
+
+                # 4. Server content (Audio, Transcriptions, Interruption)
                 server_content = getattr(message, "server_content", None)
                 if server_content:
                     # Instant barge-in / Interruption from Live API

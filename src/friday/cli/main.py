@@ -6,16 +6,17 @@ import warnings
 from datetime import datetime
 from pathlib import Path
 
-# The google-genai SDK emits a noisy UserWarning on every direct generate_content
-# call; FRIDAY intentionally calls Models.generate_content (no chat wrapper).
-warnings.filterwarnings("ignore", message=".*automatic function calling.*", category=UserWarning)
-warnings.filterwarnings("ignore", message=".*Direct use of automatic function calling.*", category=UserWarning)
-warnings.filterwarnings("ignore", message=".*Revert to STA COM threading mode.*", category=UserWarning)
+# Suppress noisy upstream Google GenAI SDK AFC warnings and COM threading warnings
+warnings.filterwarnings("ignore", message=".*automatic function calling.*")
+warnings.filterwarnings("ignore", message=".*Direct use of automatic function calling.*")
+warnings.filterwarnings("ignore", message=".*Revert to STA COM threading mode.*")
+warnings.filterwarnings("ignore", message=".*AFC.*")
 
 from friday.agent.agent import FridayAgent
 from friday.cli.auth import CLIAuthorizer
 from friday.core.config import get_settings
 from friday.core.logging import get_logger, setup_logging
+from friday.core.types import Message, Role
 
 try:
     from rich.console import Console
@@ -25,6 +26,9 @@ try:
     _console = Console()
 except ImportError:  # pragma: no cover - rich is a hard dependency
     _console = None
+
+from friday.devices.windows_friday import windows_friday
+from friday.voice.native_tts import native_tts
 
 import shutil
 
@@ -77,9 +81,50 @@ def print_help() -> None:
     print("  /backup [path]  : Create local backup of SQLite database")
     print("  /export [path]  : Export current conversation to JSON")
     print("  /purge          : Permanently delete ALL stored memory (requires confirmation)")
+    print("  /friday         : View FRIDAY Windows laptop controller commands")
+    print("  /voice [on|off] : Toggle spoken voice output in PowerShell (Microsoft Zira)")
     print("  /help           : Show this help menu")
     print("  /exit           : Exit FRIDAY assistant (or /quit)")
     print("------------------------------\n")
+
+
+def print_friday_guide() -> None:
+    """Print the complete catalog of Windows laptop controller commands for FRIDAY."""
+    if _console is None:
+        print("\n=== FRIDAY LAPTOP CONTROLLER COMMANDS ===")
+        print(" - YouTube & Music: 'play <song> on youtube', 'play Star Boy', 'pause', 'resume', 'next song'")
+        print(" - Applications: 'open chrome', 'open notepad', 'open calc', 'open vs code', 'close notepad', 'close chrome'")
+        print(" - Running Apps: 'what apps are open', 'list running apps'")
+        print(" - Audio & Volume: 'volume up', 'volume down', 'mute', 'set volume to 50%'")
+        print(" - Display: 'brightness up', 'brightness down', 'set brightness to 80%', 'take screenshot'")
+        print(" - Desktop & Power: 'show desktop', 'close window', 'lock laptop', 'sleep laptop'")
+        print(" - Typing & Keyboard: 'type <text>', 'press enter', 'press space', 'hotkey ctrl+c'")
+        print(" - System Telemetry: 'battery', 'system specs', 'network status', 'what time is it', 'today\'s date'")
+        print(" - Folders: 'open downloads', 'open desktop', 'open documents', 'open friday'")
+        print(" - Terminal: 'powershell <command>', 'run command <cmd>'")
+        print(" - Voice Toggle: '/voice on' or '/voice off'\n")
+        return
+
+    from rich.table import Table
+    table = Table(title="🤖 FRIDAY OS CONTROLLER CAPABILITIES", border_style="cyan")
+    table.add_column("Category", style="bold green", width=22)
+    table.add_column("Voice / Chat Commands", style="bright_white")
+    table.add_row("🎵 YouTube & Music", "play <song/video> on youtube, play Star Boy, pause, resume, next song, stop")
+    table.add_row("🚀 App Launcher", "open chrome, open notepad, open calc, open vs code, open terminal, open settings")
+    table.add_row("🛑 App Closer", "close chrome, close notepad, close calculator, kill spotify, exit <app>")
+    table.add_row("📋 Running Tasks", "what apps are open, list running apps, open windows")
+    table.add_row("🔊 Volume Control", "volume up, volume down, mute, unmute, set volume to 50%")
+    table.add_row("☀️ Brightness", "brightness up, brightness down, set brightness to 70%")
+    table.add_row("📸 Screenshot", "take a screenshot, capture screen (saves to Pictures/Screenshots)")
+    table.add_row("🪟 Window & Desktop", "show desktop, minimize windows, close window, lock pc, sleep laptop")
+    table.add_row("⌨️ Typing & Keys", "type <text>, press enter, press space, press tab, hotkey ctrl+c")
+    table.add_row("⚡ Hardware Telemetry", "battery, system specs, network status, what time is it, today's date")
+    table.add_row("📁 System Folders", "open downloads, open desktop, open documents, open pictures, open c drive")
+    table.add_row("💻 PowerShell / CLI", "powershell <cmd>, run command <cmd>, execute <cmd>")
+    table.add_row("🎙️ Voice Feedback", "/voice on, /voice off, /voice (toggles spoken Microsoft Zira voice)")
+    _console.print()
+    _console.print(table)
+    _console.print()
 
 
 def print_status(agent: FridayAgent) -> None:
@@ -268,10 +313,13 @@ Modes:
     parser.add_argument("--action-audit", action="store_true", help="List and validate FRIDAY's registered action surface")
     parser.add_argument("--enroll-voice", action="store_true", help="Record 5 seconds of speech to enroll your voice profile for speaker recognition")
     parser.add_argument("--run-lab", action="store_true", help="Run FRIDAY Lab multi-provider benchmark suite and print comparison")
+    parser.add_argument("--security-scan", action="store_true", help="Run AgentShield security audit across codebase and configuration")
+    parser.add_argument("--instincts", action="store_true", help="List active continuous learning instincts and confidence ratings")
     parser.add_argument("--serve", action="store_true", help="Start FRIDAY as a FastAPI/WebSocket server for U.L.T.R.O.N. web UI")
     parser.add_argument("--text", action="store_true", help="Start explicitly in interactive text conversation mode")
     parser.add_argument("--debug", action="store_true", help="Enable verbose debug logging in terminal console")
     args, unknown = parser.parse_known_args()
+
 
     if hasattr(sys.stdout, "reconfigure"):
         try:
@@ -317,6 +365,35 @@ Modes:
         print(report.to_cli_table())
         return
 
+    if args.security_scan:
+        from friday.security.agent_shield import AgentShield
+        print("\n==================================================")
+        print("  🛡️ FRIDAY AGENTSHIELD SECURITY SCAN")
+        print("==================================================")
+        shield = AgentShield()
+        report = shield.audit_directory(".", max_files=200)
+        print(report.format_summary())
+        print("==================================================\n")
+        return
+
+    if args.instincts:
+        from friday.learning.instinct_engine import InstinctEngine
+        print("\n==================================================")
+        print("  🧠 FRIDAY CONTINUOUS LEARNING: INSTINCT REGISTRY")
+        print("==================================================")
+        engine = InstinctEngine()
+        insts = engine.list_instincts()
+        if not insts:
+            print("  No instincts recorded yet. Running tasks and workflows synthesizes atomic instincts.")
+        else:
+            for idx, inst in enumerate(insts, 1):
+                print(f"  {idx}. [{inst.domain.upper()}] When {inst.trigger}")
+                print(f"     -> Action: {inst.action}")
+                print(f"     -> Confidence: {inst.confidence} | Scope: {inst.scope} | Evidence: {len(inst.evidence)}")
+        print("==================================================\n")
+        return
+
+
     if args.desktop:
         try:
             from friday.desktop.app import run_desktop_app
@@ -342,7 +419,7 @@ Modes:
         print("==================================================")
         import uvicorn
         from friday.api.server import app
-        uvicorn.run(app, host="127.0.0.1", port=8001)
+        uvicorn.run(app, host="127.0.0.1", port=9000)
         return
 
     # Perform one-time startup preflight check on Gemini pool if available
@@ -476,7 +553,13 @@ Modes:
             logger.error(f"Gemini Live session failed: {e}")
         return
 
-    print(render_friday_banner("0.4.6"))
+    if _console is not None:
+        _console.print(render_friday_banner("2.0.0"))
+        _console.print("[bold cyan]🤖 FRIDAY Laptop Controller Active.[/bold cyan] Mode: [bold]Text Chat[/bold] [dim](Voice output disabled; run [bold green]python -m friday --voice[/bold green] for live voice chat)[/dim]")
+        _console.print("  Type [bold green]/friday[/bold green] for laptop command guide, [bold green]/voice on[/bold green] to enable voice speech.\n")
+    else:
+        print(render_friday_banner("2.0.0"))
+        print("  FRIDAY Laptop Controller Active. Mode: Text Chat. (Type /friday for command guide).\n")
 
     while True:
         try:
@@ -620,10 +703,96 @@ Modes:
         elif cmd in ("/help", "help"):
             print_help()
             continue
+        elif cmd in ("/voice on", "/voice:on", "voice on"):
+            native_tts.enabled = True
+            msg = "FRIDAY Voice Output Enabled (Microsoft Zira)."
+            print(f"\n{msg}\n")
+            native_tts.speak(msg)
+            continue
+        elif cmd in ("/voice off", "/voice:off", "voice off"):
+            native_tts.enabled = False
+            print("\nFRIDAY Voice Output Disabled.\n")
+            continue
+        elif cmd in ("/voice", "voice"):
+            native_tts.enabled = not native_tts.enabled
+            status_str = "Enabled (Microsoft Zira)" if native_tts.enabled else "Disabled"
+            msg = f"FRIDAY Voice Output {status_str}."
+            print(f"\n{msg}\n")
+            if native_tts.enabled:
+                native_tts.speak(msg)
+            continue
+        elif cmd in ("/friday", "friday", "/control", "/laptop"):
+            print_friday_guide()
+            continue
 
-        # Process standard conversation turn with Rich UI & Status Panel
+        # Process conversation turn or instant Windows FRIDAY directive
         try:
             start_t = datetime.now()
+
+            # 1. Fast-Path: Master Windows FRIDAY Laptop Directive (0ms native OS execution)
+            handled, friday_reply, friday_meta = windows_friday.handle_directive(user_input)
+            if handled:
+                elapsed_ms = (datetime.now() - start_t).total_seconds() * 1000.0
+                action_name = friday_meta.get("action", "os_directive")
+
+                # Sync conversation memory and Memora persistent knowledge fabric
+                try:
+                    agent.memory.add_message(Message(role=Role.USER, content=user_input))
+                    agent.memory.add_message(Message(role=Role.ASSISTANT, content=friday_reply))
+                except Exception as e:
+                    logger.debug(f"Memory sync skipped: {e}")
+
+                try:
+                    from friday.memory.memora_client import memora_client
+                    memora_client.record_interaction_async(
+                        user_input=user_input,
+                        agent_output=friday_reply,
+                        agent_name="friday",
+                        event_type="os_directive",
+                        tags=["os_directive", action_name],
+                    )
+                    memora_client.learn_from_outcome_async(
+                        agent_name="friday",
+                        task_name=action_name,
+                        status="success" if friday_meta.get("success", True) else "failure",
+                        actions_taken=friday_reply,
+                        domain="windows_controller",
+                    )
+                except Exception as e:
+                    logger.debug(f"Memora directive record skipped: {e}")
+
+                global_timeline.update_status(
+                    cognitive_phase="COMPLETED",
+                    active_agent="FRIDAY-OS",
+                    selected_provider="WindowsNative",
+                    active_tool=action_name,
+                    last_latency_ms=elapsed_ms,
+                )
+                global_timeline.record_event(
+                    event_type="friday_directive",
+                    description=f"{action_name}: {friday_reply[:60]}",
+                    duration_ms=elapsed_ms,
+                )
+                if _console is not None:
+                    _console.print(
+                        Panel(
+                            Text(f"{friday_reply}", style="bold cyan"),
+                            title=f"{settings.agent_name} [{action_name}]",
+                            border_style="green",
+                            padding=(0, 1),
+                        )
+                    )
+                    _console.print(render_status_panel())
+                    _console.print()
+                else:
+                    print(f"\n{settings.agent_name} > {friday_reply}\n")
+
+                # Speak the reply aloud only if voice output was explicitly enabled
+                if native_tts.enabled:
+                    native_tts.speak(friday_reply)
+                continue
+
+            # 2. Conversational Turn via FridayAgent
             global_timeline.update_status(
                 cognitive_phase="PROCESSING",
                 active_agent="General",
@@ -667,6 +836,10 @@ Modes:
                 elapsed_ms = (datetime.now() - start_t).total_seconds() * 1000.0
                 global_timeline.update_status(last_latency_ms=elapsed_ms)
                 print(f"\n{settings.agent_name} > {response.content}\n")
+
+            # Speak agent response out loud only if voice output was explicitly enabled
+            if native_tts.enabled and response.content:
+                native_tts.speak(response.content)
         except Exception as e:
             print(f"\n[Error]: {e}\n")
 

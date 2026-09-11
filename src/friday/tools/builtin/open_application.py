@@ -91,11 +91,24 @@ class OpenApplicationTool(BaseTool):
         for known, exe in IntentDetector.APP_LAUNCH_MAP.items():
             if known in app:
                 return exe
+
+        # Fuzzy match on known names to tolerate typos (e.g. 'whatsaapp' -> 'whatsapp')
+        import difflib
+        matches = difflib.get_close_matches(app, IntentDetector.APP_LAUNCH_MAP.keys(), n=1, cutoff=0.6)
+        if matches:
+            return IntentDetector.APP_LAUNCH_MAP[matches[0]]
+
         return ""
 
     def _launch(self, executable: str) -> bool:
         """Launch natively via direct executable spawn, App Paths, or shell."""
         try:
+            # If web URL, open in default browser
+            if executable.startswith("http://") or executable.startswith("https://"):
+                import webbrowser
+                webbrowser.open(executable)
+                return True
+
             # If absolute path that exists, spawn directly
             if os.path.isabs(executable) and os.path.exists(executable):
                 subprocess.Popen([executable])

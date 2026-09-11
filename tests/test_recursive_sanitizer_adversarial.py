@@ -14,7 +14,7 @@ def test_recursive_nested_data_sanitization():
             "name": "Alice",
             "db_password": "supersecretpassword123",
             "api_keys_list": [
-                "sk-proj-99887766554433221100abcde",
+                "sk-proj-test-99887766554433221100abcde",
                 {"service": "gemini", "secret_key_field": "AIzaSyCDE1234567890abcd_efgh_ijkl_mnop"}
             ]
         },
@@ -70,7 +70,7 @@ def test_base64_image_and_binary_redaction():
 def test_active_task_context_serialization_leakage_protection():
     """Verify ActiveTaskContext to_dict/from_dict prevents sensitive credentials from leaking."""
     # Use valid length test credentials: 33 characters after AIzaSy, 20+ characters after sk-proj-
-    ctx = ActiveTaskContext(goal="Extract private key AIzaSyA1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p")
+    ctx = ActiveTaskContext(goal="Extract mock test key AIzaSyA1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p")
     ctx.step_outputs["step_1"] = "Database connection postgresql://admin:secret_pass@localhost/db established"
     ctx.observations.append(TaskObservation(step_id="step_1", content="Found API token sk-proj-1234567890abcdef12345"))
 

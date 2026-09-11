@@ -365,7 +365,16 @@ class GeminiCredentialPool:
     def classify_error(error: Exception) -> FailureCategory:
         """Classify an exception into a FailureCategory for intelligent cooldown."""
         err_str = str(error).lower()
-        if "401" in err_str or "api_key_invalid" in err_str or "invalid api key" in err_str or "api key not valid" in err_str:
+        if (
+            "401" in err_str
+            or "403" in err_str
+            or "permission_denied" in err_str
+            or "permissiondenied" in err_str
+            or "denied access" in err_str
+            or "api_key_invalid" in err_str
+            or "invalid api key" in err_str
+            or "api key not valid" in err_str
+        ):
             return FailureCategory.AUTH_FAILED
         if "404" in err_str or "not_found" in err_str or ("model" in err_str and "no longer available" in err_str):
             return FailureCategory.MODEL_NOT_FOUND
@@ -380,9 +389,20 @@ class GeminiCredentialPool:
             ):
                 return FailureCategory.QUOTA_EXHAUSTED
             return FailureCategory.RATE_LIMIT
-        if "500" in err_str or "503" in err_str or "504" in err_str or "unavailable" in err_str:
-            return FailureCategory.SERVICE_ERROR
-        if "connect" in err_str or "timeout" in err_str or "network" in err_str or "connection reset" in err_str:
+        if (
+            "connect" in err_str
+            or "timeout" in err_str
+            or "network" in err_str
+            or "connection reset" in err_str
+            or "getaddrinfo" in err_str
+            or "11001" in err_str
+            or "dns" in err_str
+            or "eai_again" in err_str
+            or "resolution" in err_str
+            or "unreachable" in err_str
+            or "connection error" in err_str
+            or "socket" in err_str
+        ):
             return FailureCategory.NETWORK_ERROR
         if "400" in err_str or "invalid_argument" in err_str:
             return FailureCategory.INVALID_REQUEST

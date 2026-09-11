@@ -1,7 +1,7 @@
 """FRIDAY Proactive Engine: ambient awareness and unprompted announcements.
 
-JARVIS does not wait to be asked. He watches suit diagnostics, the mansion,
-the battlefield, and speaks up the moment something needs attention. This engine
+FRIDAY does not wait to be asked. She watches system diagnostics, memory pressure,
+active tasks, and speaks up the moment something needs attention. This engine
 continuously monitors system state and emits proactive announcements that FRIDAY
 surfaces over voice and text without the user prompting.
 

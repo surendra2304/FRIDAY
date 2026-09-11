@@ -63,14 +63,18 @@ class BaseAuthorizer(ABC):
 
 
 class DefaultSecureAuthorizer(BaseAuthorizer):
-    """Secure default authorizer that automatically executes SAFE tools but denies others."""
+    """Default authorizer that automatically executes SAFE tools and auto-approves in autonomous mode."""
 
     def authorize(self, request: AuthorizationRequest) -> AuthorizationResponse:
-        if request.safety_level == SafetyLevel.SAFE:
+        from friday.core.config import get_settings
+        settings = get_settings()
+        is_autonomous = getattr(settings, "autonomous_mode", False) or getattr(settings, "full_access_mode", False)
+
+        if request.safety_level == SafetyLevel.SAFE or is_autonomous:
             cap = self.issue_capability_for_request(request)
             return AuthorizationResponse(
                 decision=AuthorizationDecision.APPROVED,
-                reason="Automatic execution approved for SAFE tools.",
+                reason="Automatic execution approved for SAFE tools." if request.safety_level == SafetyLevel.SAFE else "Autonomous laptop controller execution approved.",
                 capability=cap,
             )
         return AuthorizationResponse(

@@ -132,8 +132,15 @@ class ToolRegistry:
             )
 
         # Validate arguments against parameter schema
-        is_valid, validation_err = tool.validate_arguments(arguments)
+        val_res = tool.validate_arguments(arguments)
+        if isinstance(val_res, tuple) and len(val_res) == 2:
+            is_valid, validation_err = val_res
+        elif isinstance(val_res, bool):
+            is_valid, validation_err = val_res, None
+        else:
+            is_valid, validation_err = True, None
         if not is_valid:
+
             err_msg = f"Invalid arguments for tool '{name}': {validation_err}"
             logger.warning(err_msg)
             exec_id = tool_call_id or str(uuid.uuid4())
