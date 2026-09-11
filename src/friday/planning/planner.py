@@ -95,6 +95,30 @@ class DynamicTaskPlanner:
             Message(role=Role.USER, content=prompt),
         ]
         resp = self.llm.generate(messages)
+        if resp.tool_calls:
+            tasks: list[TaskStep] = []
+            prev_id = None
+            for idx, tc in enumerate(resp.tool_calls, start=1):
+                t_id = f"task_{idx}"
+                desc = f"Execute tool {tc.name}"
+                params = tc.arguments if isinstance(tc.arguments, dict) else {}
+                deps = [prev_id] if prev_id else []
+                step = TaskStep(
+                    id=t_id,
+                    description=desc,
+                    objective="",
+                    tool_name=tc.name,
+                    parameters=params,
+                    dependencies=deps,
+                )
+                tasks.append(step)
+                prev_id = t_id
+            return TaskGraph(
+                goal=user_request,
+                tasks=tasks,
+                metadata={"interactive_tool_plan": True},
+            )
+
         content = resp.content.strip()
 
         # Clean markdown codeblocks
@@ -262,15 +286,33 @@ class DynamicTaskPlanner:
 
         # Default: Single step
         if not tasks:
+            action_verbs = {"find", "search", "lookup", "browse", "get", "fetch", "open", "run", "click", "list", "read", "write", "delete", "calculate", "calc", "math"}
+            words = set(re.findall(r"\w+", req_lower))
+            named_tool = next(
+                (executor for executor in self.registry.list_executors() if executor.name.lower() in req_lower),
+                None,
+            )
+            extracted_params = {}
+            for key, value in re.findall(r"\b([a-zA-Z_]\w*)\s*=\s*([^\s,]+)", user_request):
+                try:
+                    extracted_params[key] = int(value)
+                except ValueError:
+                    extracted_params[key] = value.strip('"\'')
+
+            executor_hint = named_tool.name if named_tool else ("llm_reasoning" if not (words & action_verbs) else None)
+            default_params = extracted_params if named_tool else {"prompt": user_request, "query": user_request}
+
             step = TaskStep(
                 id="task_1",
                 description=user_request,
-                objective=user_request,
+                objective="" if named_tool else user_request,
                 dependencies=[],
                 input_types=[TaskDataType.TEXT],
                 output_type=TaskDataType.TEXT,
-                parameters={"query": user_request},
-                inputs={"query": user_request},
+                selected_executor=executor_hint,
+                tool_name=named_tool.name if named_tool else None,
+                parameters=default_params,
+                inputs=default_params,
             )
             self.router.route_task(step)
             tasks.append(step)

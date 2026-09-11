@@ -10,6 +10,7 @@ from .contracts import (
     Trust,
 )
 from .health import Check, Health, Report, build
+from .collaboration import CollaborationLoop, CollaborationRun, MentorFeedback
 
 __all__ = [
     "AgentCapability",
@@ -23,4 +24,7 @@ __all__ = [
     "Health",
     "Report",
     "build",
+    "CollaborationLoop",
+    "CollaborationRun",
+    "MentorFeedback",
 ]

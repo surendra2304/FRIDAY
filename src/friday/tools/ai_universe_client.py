@@ -76,6 +76,7 @@ class AIUniverseClient:
                 or "inference_api"
             ).strip()
         self.timeout = timeout
+        self._shared_client: httpx.AsyncClient | None = None
 
     def _get_headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
@@ -119,30 +120,38 @@ class AIUniverseClient:
         url = f"{self.base_url}/v1/friday/info"
         headers = self._get_headers()
         key_preview = f"{self.api_key[:4]}..." if self.api_key else "(none)"
-        print(f"[DEBUG] Sending to {url} with key {key_preview}")
         logger.info(f"Sending to {url} with key {key_preview}...")
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await client.get(url, headers=headers)
             resp.raise_for_status()
-            return resp.json()
+            data = resp.json()
+            return data if isinstance(data, dict) else {"info": data}
+
+    def get_client(self) -> httpx.AsyncClient:
+        """Provide a persistent connection-pooled HTTP client for sub-second communication."""
+        if not hasattr(self, "_shared_client") or self._shared_client is None or self._shared_client.is_closed:
+            self._shared_client = httpx.AsyncClient(
+                timeout=httpx.Timeout(self.timeout, connect=10.0, read=self.timeout, write=10.0),
+                limits=httpx.Limits(max_keepalive_connections=10, keepalive_expiry=60.0),
+            )
+        return self._shared_client
 
     async def ask(self, question: str, mode: str = "auto") -> AIUniverseResponse:
-        """Query AI Universe via POST /v1/friday/ask."""
+        """Query AI Universe via POST /v1/friday/ask with sub-second fast-lane dispatch."""
         url = f"{self.base_url}/v1/friday/ask"
-        payload = {"question": question, "mode": mode}
+        payload = {"question": question, "mode": mode, "fast_lane": True, "max_latency": 2.0}
         headers = self._get_headers()
 
         key_preview = f"{self.api_key[:4]}..." if self.api_key else "(none)"
         print(f"[DEBUG] Sending to {url} with key {key_preview}")
         logger.info(f"Sending to {url} with key {key_preview}...")
 
-        timeout_obj = httpx.Timeout(self.timeout, connect=15.0, read=self.timeout, write=15.0)
-        async with httpx.AsyncClient(timeout=timeout_obj) as client:
-            resp = await client.post(url, json=payload, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
-            return AIUniverseResponse(**data)
+        client = self.get_client()
+        resp = await client.post(url, json=payload, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+        return AIUniverseResponse(**data)
 
     async def debate(self, question: str, max_agents: int = 5) -> AIUniverseResponse:
         """Trigger an in-depth multi-agent debate via POST /v1/friday/debate."""

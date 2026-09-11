@@ -9,6 +9,7 @@ Inspired by Microsoft HuggingGPT Stage 4:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import re
 from typing import Any
 
 from friday.core.logging import get_logger
@@ -16,6 +17,14 @@ from friday.core.types import Message, Role
 from friday.planning.types import TaskGraph, TaskStatus
 
 logger = get_logger("planning.synthesizer")
+
+_THOUGHT_BLOCK_PATTERN = re.compile(r"<thought>.*?</thought>", re.IGNORECASE | re.DOTALL)
+
+
+def _clean_user_response(content: str) -> str:
+    """Remove private reasoning markers before content reaches the user."""
+    cleaned = _THOUGHT_BLOCK_PATTERN.sub("", content or "").strip()
+    return cleaned or "I completed the request, but no user-facing summary was produced."
 
 SYNTHESIS_SYSTEM_PROMPT = """You are FRIDAY's Result Synthesis Engine.
 The user gave a complex goal, which was decomposed into subtasks and executed across specialist models and tools.
@@ -43,6 +52,7 @@ class SynthesizedResponse:
     completed_tasks: int
     failed_tasks: int
     task_outputs: dict[str, Any] = field(default_factory=dict)
+    tool_results: list[Any] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -82,6 +92,15 @@ class ResultSynthesizer:
                     "error": t.error,
                 }
 
+        from friday.core.types import ToolResult
+        tool_results = []
+        for t in tasks:
+            raw = t.outputs.get("raw_result") if hasattr(t, "outputs") and t.outputs else None
+            if isinstance(raw, ToolResult):
+                tool_results.append(raw)
+            elif isinstance(t.result, ToolResult):
+                tool_results.append(t.result)
+
         # 1. Attempt LLM-driven synthesis
         if self.llm and hasattr(self.llm, "generate") and completed:
             try:
@@ -96,6 +115,7 @@ class ResultSynthesizer:
                         completed_tasks=len(completed),
                         failed_tasks=len(failed),
                         task_outputs=task_outputs,
+                        tool_results=tool_results,
                     )
             except Exception as e:
                 logger.warning(f"LLM synthesis failed, falling back to deterministic synthesis: {e}")
@@ -111,6 +131,7 @@ class ResultSynthesizer:
             completed_tasks=len(completed),
             failed_tasks=len(failed),
             task_outputs=task_outputs,
+            tool_results=tool_results,
         )
 
     def _synthesize_with_llm(
@@ -142,7 +163,7 @@ Synthesize the final answer for the user:"""
             Message(role=Role.USER, content=prompt),
         ]
         resp = self.llm.generate(messages)
-        return resp.content.strip() if resp and resp.content else None
+        return _clean_user_response(resp.content) if resp and resp.content else None
 
     def _synthesize_deterministically(
         self,

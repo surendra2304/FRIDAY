@@ -49,7 +49,8 @@ def _focus_window(title_substring: str) -> bool:
     from pywinauto import Desktop
 
     needle = (title_substring or "").strip().lower()
-    if not needle:
+    if not needle or len(needle) < 2:
+        logger.warning(f"Window title '{title_substring}' is too short or ambiguous to safely target.")
         return False
     try:
         windows = Desktop(backend="uia").windows()
@@ -66,59 +67,16 @@ def _focus_window(title_substring: str) -> bool:
         return False
 
 
-def _auto_focus_top_window() -> tuple[bool, str]:
-    """Find the most recently opened top-level window (excluding the terminal) and focus it.
-
-    Returns (focused: bool, window_title: str).
-    """
-    import time as _time
-
-    from pywinauto import Desktop
-
-    terminal_needles = {
-        "powershell",
-        "command prompt",
-        "cmd.exe",
-        "terminal",
-        "windows terminal",
-        "friday",
-        "python",
-    }
-    try:
-        windows = Desktop(backend="uia").windows()
-        for w in windows:
-            title = (w.window_text() or "").strip()
-            if not title:
-                continue
-            title_lower = title.lower()
-            if any(term in title_lower for term in terminal_needles):
-                continue
-            # Found candidate top-level application window
-            try:
-                w.set_focus()
-                _time.sleep(0.5)
-                logger.info(f"Auto-focused top-level window '{title}' for typing.")
-                return True, title
-            except Exception as fe:
-                logger.warning(f"Failed to focus top-level window '{title}': {fe}")
-                continue
-    except Exception as e:
-        logger.warning(f"Auto-focus scan failed: {e}")
-    return False, ""
-
-
 class TypeTextTool(BaseTool):
-    """Type text into a window (optionally focusing it first), exactly as provided."""
+    """Type text into a specified application window after verifying target focus."""
 
     name = "type_text"
     description = (
-        "Type a piece of text into an application window, character by character, exactly "
-        "as provided (no hotkeys or special keys are possible). ALWAYS pass window_title "
-        "when the text belongs in a specific application you just opened (e.g. "
-        "window_title='Notepad') so the tool focuses that window before typing; if not provided, "
-        "the tool will automatically focus the most recently opened application window."
+        "Type a piece of text into a specific application window, character by character, "
+        "exactly as provided. Requires an explicit window_title to ensure keystrokes are "
+        "only dispatched to the intended application window."
     )
-    safety_level = SafetyLevel.SAFE
+    safety_level = SafetyLevel.SENSITIVE
     parameters = {
         "type": "object",
         "properties": {
@@ -129,21 +87,33 @@ class TypeTextTool(BaseTool):
             "window_title": {
                 "type": "string",
                 "description": (
-                    "Substring of the target window's title (e.g. 'Notepad' matches "
-                    "'Untitled - Notepad'). The window is focused before typing."
+                    "Required substring of the target window's title (e.g. 'Notepad' matches "
+                    "'Untitled - Notepad'). Keystrokes will be aborted if the window cannot be focused."
                 ),
             },
         },
-        "required": ["text"],
+        "required": ["text", "window_title"],
     }
 
     def execute(self, text: str = "", window_title: str = "", **kwargs: Any) -> ToolResult:
         payload = text or ""
         if not payload.strip():
             return ToolResult(
-                name=self.name, content="No text provided to type.", is_error=True,
+                name=self.name,
+                content="No text provided to type.",
+                is_error=True,
                 safety_level=self.safety_level,
             )
+
+        target = (window_title or "").strip()
+        if not target or len(target) < 2:
+            return ToolResult(
+                name=self.name,
+                content="Explicit window_title is required (at least 2 characters) for typing automation to ensure typing occurs only in the intended window.",
+                is_error=True,
+                safety_level=self.safety_level,
+            )
+
         try:
             send_keys = _get_send_keys()
         except Exception as e:
@@ -154,26 +124,21 @@ class TypeTextTool(BaseTool):
                 safety_level=self.safety_level,
             )
 
-        focused = False
-        target_name = ""
-        if window_title and window_title.strip():
-            focused = _focus_window(window_title)
-            target_name = f"window '{window_title}'" if focused else "current focus"
-        else:
-            focused, auto_title = _auto_focus_top_window()
-            target_name = f"window '{auto_title}'" if (focused and auto_title) else "current focus"
+        focused = _focus_window(target)
+        if not focused:
+            return ToolResult(
+                name=self.name,
+                content=f"Target window matching '{target}' could not be found or focused. Keystrokes were aborted for security.",
+                is_error=True,
+                safety_level=self.safety_level,
+            )
 
         try:
             send_keys(_escape_literal(payload), with_spaces=True, pause=0.005)
-            logger.info(f"Typed {len(payload)} characters into {target_name}.")
+            logger.info(f"Typed {len(payload)} characters into window '{target}'.")
             return ToolResult(
                 name=self.name,
-                content=(
-                    f"Typed into {target_name}: {payload[:80]}{'...' if len(payload) > 80 else ''}"
-                    + ("" if focused else " (note: target window not found; typed into current focus)")
-                    if window_title
-                    else f"Typed into {target_name}: {payload[:80]}{'...' if len(payload) > 80 else ''}"
-                ),
+                content=f"Successfully typed {len(payload)} characters into window '{target}'.",
                 is_error=False,
                 safety_level=self.safety_level,
             )
@@ -181,7 +146,7 @@ class TypeTextTool(BaseTool):
             logger.error(f"type_text failed: {e}")
             return ToolResult(
                 name=self.name,
-                content=f"Failed to type text: {e}",
+                content=f"Failed to type text into window '{target}': {e}",
                 is_error=True,
                 safety_level=self.safety_level,
             )

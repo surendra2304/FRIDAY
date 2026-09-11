@@ -51,12 +51,12 @@ def test_configured_credential_exact_masking():
 
 def test_exception_secret_scrubbing():
     """Verify that raising or printing FridayError automatically redacts credentials."""
-    gemini_key = "AIzaSyB1a2MzZDRlNWY2Zzc4OTBhYmNkZWZnaGk"
+    mock_gemini_key = "AIzaSyB1a2MzZDRlNWY2Zzc4OTBhYmNkZWZnaGk"
     try:
-        raise FridayError(f"Failed connection using key {gemini_key}")
+        raise FridayError(f"Failed connection using key {mock_gemini_key}")
     except FridayError as e:
         msg = str(e)
-        assert gemini_key not in msg
+        assert mock_gemini_key not in msg
         assert "[REDACTED_SECRET]" in msg
 
 

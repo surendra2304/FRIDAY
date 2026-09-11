@@ -653,7 +653,7 @@ class LongRunningTaskManager:
 
         start_time = time.time()
 
-        def _step_progress_callback(progress: ExecutionProgress) -> None:
+        def _step_progress_callback(progress: Any) -> None:
             with self._lock:
                 task_rec = self._tasks.get(task_id)
                 if not task_rec:

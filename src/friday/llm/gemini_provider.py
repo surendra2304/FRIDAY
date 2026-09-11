@@ -20,8 +20,9 @@ import warnings
 from typing import Any
 
 # Suppress noisy upstream Google GenAI SDK AFC warnings during generate_content
-warnings.filterwarnings("ignore", message=".*automatic function calling.*", category=UserWarning)
-warnings.filterwarnings("ignore", message=".*Direct use of automatic function calling.*", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*automatic function calling.*")
+warnings.filterwarnings("ignore", message=".*Direct use of automatic function calling.*")
+warnings.filterwarnings("ignore", message=".*AFC.*")
 
 from google import genai
 from google.genai import errors as genai_errors
@@ -96,25 +97,40 @@ class GeminiLLMProvider(BaseLLMProvider):
     def provider_name(self) -> str:
         return "gemini"
 
-    def _get_active_api_key(self) -> str:
-        """Retrieve the currently active API key from the explicit setting or pool."""
-        if self._explicit_api_key is not None:
-            if not self._explicit_api_key.strip():
-                raise LLMProviderError("Gemini API key is required")
-            return self._explicit_api_key
+    def _should_use_pool(self) -> bool:
+        """Determine whether to use multi-credential pool rotation."""
+        if not self.credential_pool or not getattr(self.credential_pool, "credentials", None):
+            return False
+        if not self._explicit_api_key:
+            return True
+        if not self._explicit_api_key.strip():
+            return False
+        return any(c.api_key == self._explicit_api_key for c in self.credential_pool.credentials)
 
-        if self.credential_pool:
+    def _get_active_api_key(self) -> str:
+        """Retrieve the currently active API key from the pool or explicit setting."""
+        if self._explicit_api_key is not None and not self._explicit_api_key.strip():
+            raise LLMProviderError("Gemini API key is required")
+
+        if self._should_use_pool():
             try:
+                assert self.credential_pool is not None
                 key = self.credential_pool.get_active_key()
                 if key and key.strip():
-                    return key
-            except RuntimeError as e:
-                raise LLMProviderError(f"Gemini API key is required: {e}") from e
+                    return key.strip()
+            except Exception as e:
+                logger.debug(f"Credential pool get_active_key: {e}")
+
+        if self._explicit_api_key is not None and self._explicit_api_key.strip():
+            return self._explicit_api_key.strip()
+
+        if self.api_key and self.api_key.strip():
+            return self.api_key.strip()
 
         settings = get_settings()
         key = settings.gemini_api_key or settings.llm_api_key
         if key and key.strip():
-            return key
+            return key.strip()
 
         raise LLMProviderError("Gemini API key is required")
 
@@ -137,9 +153,16 @@ class GeminiLLMProvider(BaseLLMProvider):
             return FailureCategory.AUTH_FAILED
         if "404" in msg or "not_found" in msg or ("model" in msg and "no longer available" in msg):
             return FailureCategory.MODEL_NOT_FOUND
-        if "500" in msg or "503" in msg or "internal" in msg or "unavailable" in msg:
-            return FailureCategory.SERVICE_ERROR
-        if "connect" in msg or "timeout" in msg or "network" in msg:
+        if (
+            "connect" in msg
+            or "timeout" in msg
+            or "network" in msg
+            or "getaddrinfo" in msg
+            or "11001" in msg
+            or "dns" in msg
+            or "connection error" in msg
+            or "socket" in msg
+        ):
             return FailureCategory.NETWORK_ERROR
         if "400" in msg or "invalid_argument" in msg:
             return FailureCategory.INVALID_REQUEST
@@ -178,7 +201,8 @@ class GeminiLLMProvider(BaseLLMProvider):
     # ---------------------------------------------------------------------
     # Schema and Message Conversion Helpers
     # ---------------------------------------------------------------------
-    def _sanitize_parameters_for_gemini(self, params: dict[str, Any]) -> dict[str, Any]:
+    @staticmethod
+    def _sanitize_parameters_for_gemini(params: dict[str, Any]) -> dict[str, Any]:
         """Recursively sanitize JSON schema parameters for Google GenAI SDK compatibility."""
         if not isinstance(params, dict):
             return {}
@@ -192,16 +216,16 @@ class GeminiLLMProvider(BaseLLMProvider):
                     if isinstance(p_type, list):
                         non_null = [t for t in p_type if str(t).lower() != "null"]
                         base_type = non_null[0] if non_null else "string"
-                        prop_def["type"] = str(base_type).upper()
+                        prop_def["type"] = str(base_type).lower()
                         prop_def["nullable"] = True
                     elif isinstance(p_type, str):
-                        prop_def["type"] = p_type.upper()
+                        prop_def["type"] = p_type.lower()
                     if "properties" in prop_def:
-                        prop_def["properties"] = self._sanitize_parameters_for_gemini(prop_def).get("properties", {})
+                        prop_def["properties"] = GeminiLLMProvider._sanitize_parameters_for_gemini(prop_def).get("properties", {})
                     elif "items" in prop_def and isinstance(prop_def["items"], dict):
-                        prop_def["items"] = self._sanitize_parameters_for_gemini(prop_def["items"])
+                        prop_def["items"] = GeminiLLMProvider._sanitize_parameters_for_gemini(prop_def["items"])
         if "type" in sanitized and isinstance(sanitized["type"], str):
-            sanitized["type"] = sanitized["type"].upper()
+            sanitized["type"] = sanitized["type"].lower()
         return sanitized
 
     def _convert_schema_to_gemini(self, tool_def: dict[str, Any]) -> dict[str, Any]:
@@ -413,13 +437,15 @@ class GeminiLLMProvider(BaseLLMProvider):
             raise LLMProviderError(f"Budget exceeded: {budget_reason}")
 
         attempt = 0
-        pool_creds = getattr(self.credential_pool, "credentials", None) if self.credential_pool else None
+        use_pool = self._should_use_pool()
+        pool_creds = getattr(self.credential_pool, "credentials", None) if use_pool else None
         pool_size = len(pool_creds) if (pool_creds is not None and len(pool_creds) > 0) else None
-        max_attempts = pool_size if (pool_size is not None and not self._explicit_api_key) else (self.max_retries + 1)
+        max_attempts = pool_size if (use_pool and pool_size is not None) else (self.max_retries + 1)
 
         last_error = None
         call_start = time.perf_counter()
 
+        attempted_models: set[str] = {self.model}
         while attempt < max_attempts:
             active_key = self._get_active_api_key()
 
@@ -456,7 +482,7 @@ class GeminiLLMProvider(BaseLLMProvider):
                     raise LLMProviderError("Gemini returned no candidates")
 
                 # Reset credential health on success
-                if self.credential_pool and not self._explicit_api_key:
+                if self.credential_pool and active_key:
                     self.credential_pool.reset_key(active_key)
 
                 # Extract token metrics if available
@@ -524,6 +550,8 @@ class GeminiLLMProvider(BaseLLMProvider):
                 # Classify error
                 category = self._classify_error(e)
 
+                # Intra-provider key rotation should not trip the circuit breaker prematurely
+                is_fatal_call = (attempt >= max_attempts)
                 request_accountant.record_request(
                     credential_label=label,
                     model=self.model,
@@ -531,26 +559,50 @@ class GeminiLLMProvider(BaseLLMProvider):
                     retries_count=attempt,
                     failure_category=category.value,
                     latency_ms=(time.perf_counter() - call_start) * 1000.0,
+                    is_fatal=is_fatal_call,
                 )
 
-                # 1. Model Not Found: Rotating credentials or retrying is useless; raise immediately
-                if category == FailureCategory.MODEL_NOT_FOUND:
-                    logger.error(f"Gemini model not found ({self.model}): {err_msg}")
-                    raise LLMProviderError(f"Gemini model not found ({self.model}): {err_msg}") from e
-
-                # 2. Report failure to credential pool if using pool
+                # Report failure to credential pool if using pool
                 failed_key = active_key or self._current_key
-                if self.credential_pool and not self._explicit_api_key and failed_key:
+                if use_pool and self.credential_pool and failed_key:
                     self.credential_pool.report_failure(failed_key, error=e)
 
-                # 3. Authentication failure handling
+                # 1. Model Fallback Handling:
+                # If model is not found (404) or quota exhausted on older/deprecated model (e.g. gemini-2.5-flash),
+                # automatically fallback to gemini-flash-latest / other working models
+                if use_pool and (
+                    category == FailureCategory.MODEL_NOT_FOUND or (
+                        category == FailureCategory.QUOTA_EXHAUSTED and ("2.5" in (self.model or "") or "not_found" in err_msg.lower())
+                    )
+                ):
+                    fallback_models = ["gemini-flash-latest", "gemini-2.0-flash", "gemini-1.5-flash"]
+                    next_model = next((m for m in fallback_models if m not in attempted_models), None)
+                    if next_model:
+                        logger.warning(
+                            f"Gemini model '{self.model}' unavailable ({category.value}: {err_msg}). "
+                            f"Automatically falling back to working model '{next_model}'..."
+                        )
+                        self.model = next_model
+                        attempted_models.add(next_model)
+                        if self.credential_pool:
+                            try:
+                                self.credential_pool.reset_all()
+                            except Exception:
+                                pass
+                        attempt = 0
+                        continue
+                    else:
+                        logger.error(f"Gemini model not found ({self.model}): {err_msg}")
+                        raise LLMProviderError(f"Gemini model not found ({self.model}): {err_msg}") from e
+
+                # 2. Authentication failure / Permission denied handling (401 / 403)
                 if category == FailureCategory.AUTH_FAILED:
-                    if self.credential_pool and not self._explicit_api_key:
+                    if use_pool and self.credential_pool:
                         try:
-                            self.credential_pool.get_active_key()
+                            next_key = self.credential_pool.get_active_key()
                             logger.warning(
-                                f"Gemini credential authentication failed ({self._mask_key(failed_key)}); "
-                                "switching to next healthy credential."
+                                f"Gemini credential failed auth/permission ({self._mask_key(failed_key)}); "
+                                f"switching to next healthy credential ({self._mask_key(next_key)})."
                             )
                             continue
                         except (RuntimeError, Exception):
@@ -560,14 +612,14 @@ class GeminiLLMProvider(BaseLLMProvider):
                         logger.error(f"Gemini authentication failed for explicit key: {err_msg}")
                         raise LLMProviderError(f"Gemini authentication failed: {err_msg}") from e
 
-                # 4. Quota Exhaustion / Rate limit handling
+                # 3. Quota Exhaustion / Rate limit handling (429)
                 if category in (FailureCategory.QUOTA_EXHAUSTED, FailureCategory.RATE_LIMIT):
-                    if self.credential_pool and not self._explicit_api_key:
+                    if use_pool and self.credential_pool:
                         try:
-                            self.credential_pool.get_active_key()
+                            next_key = self.credential_pool.get_active_key()
                             logger.warning(
                                 f"Gemini quota exhausted for credential ({self._mask_key(failed_key)}); "
-                                "switching to next available credential."
+                                f"switching to next available credential ({self._mask_key(next_key)})."
                             )
                             continue
                         except (RuntimeError, Exception):
@@ -582,7 +634,23 @@ class GeminiLLMProvider(BaseLLMProvider):
                         logger.error(f"Gemini quota/rate limit exhausted for explicit key: {err_msg}")
                         raise LLMProviderError(f"Gemini quota exhausted: {err_msg}") from e
 
-                # 5. Transient errors (RATE_LIMIT, SERVICE_ERROR, NETWORK_ERROR, UNKNOWN): bounded backoff retry
+                # 4. Host-level DNS / Network resolution error (fast-fail, avoid rotating all pool keys uselessly)
+                if category == FailureCategory.NETWORK_ERROR and ("getaddrinfo" in err_msg.lower() or "11001" in err_msg.lower()):
+                    logger.error(f"Gemini DNS/Network resolution failure: {err_msg}")
+                    raise LLMProviderError(f"Gemini network resolution failure (DNS lookup failed): {err_msg}") from e
+
+                # 5. Transient errors (SERVICE_ERROR 503, NETWORK_ERROR, UNKNOWN)
+                if use_pool and self.credential_pool and attempt < max_attempts:
+                    try:
+                        next_key = self.credential_pool.get_active_key()
+                        if next_key != failed_key:
+                            logger.warning(
+                                f"Gemini transient error ({category.value}): {err_msg}. Switching to next key in pool..."
+                            )
+                            continue
+                    except Exception:
+                        pass
+
                 if attempt < max_attempts:
                     wait = 1.0 * (self.backoff_factor ** (attempt - 1))
                     logger.warning(f"GenAI transient error ({category.value}): {err_msg}. Retrying in {wait:.2f}s...")

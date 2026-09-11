@@ -93,8 +93,12 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
         )
 
     if provider_type == "groq":
-        model_name = settings.groq_model or (
-            settings.llm_model if settings.llm_model != _DEFAULT_LLM_MODEL else GROQ_DEFAULT_MODEL
+        # Ensure Groq never inherits Gemini model names
+        candidate = settings.groq_model or settings.llm_model
+        model_name = (
+            GROQ_DEFAULT_MODEL
+            if (not candidate or "gemini" in candidate.lower() or candidate == _DEFAULT_LLM_MODEL)
+            else candidate
         )
         logger.info(f"Initializing Groq Provider (model: {model_name})")
         return GroqLLMProvider(
@@ -107,8 +111,11 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
         )
 
     if provider_type == "openrouter":
-        model_name = settings.openrouter_model or (
-            settings.llm_model if settings.llm_model != _DEFAULT_LLM_MODEL else OPENROUTER_DEFAULT_MODEL
+        candidate = settings.openrouter_model or settings.llm_model
+        model_name = (
+            OPENROUTER_DEFAULT_MODEL
+            if (not candidate or "/" not in candidate or candidate == _DEFAULT_LLM_MODEL)
+            else candidate
         )
         logger.info(f"Initializing OpenRouter Provider (model: {model_name})")
         return OpenRouterLLMProvider(
@@ -120,16 +127,13 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
         )
 
     if provider_type == "chain":
-        groq_model = settings.groq_model or (
-            settings.llm_model if settings.llm_model != _DEFAULT_LLM_MODEL else GROQ_DEFAULT_MODEL
+        # In multi-provider fallback chains, enforce independent provider-compatible models
+        groq_model = settings.groq_model or GROQ_DEFAULT_MODEL
+        openrouter_model = settings.openrouter_model or OPENROUTER_DEFAULT_MODEL
+        mistral_model = settings.mistral_model or MISTRAL_DEFAULT_MODEL
+        gemini_model = settings.gemini_model or (
+            settings.llm_model if "gemini" in settings.llm_model.lower() else "gemini-1.5-flash-latest"
         )
-        openrouter_model = settings.openrouter_model or (
-            settings.llm_model if settings.llm_model != _DEFAULT_LLM_MODEL else OPENROUTER_DEFAULT_MODEL
-        )
-        mistral_model = settings.mistral_model or (
-            settings.llm_model if settings.llm_model != _DEFAULT_LLM_MODEL else MISTRAL_DEFAULT_MODEL
-        )
-        gemini_model = settings.gemini_model or settings.llm_model
         chain_providers: List[BaseLLMProvider] = []
 
         has_gemini = (
@@ -182,16 +186,25 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
             ),
         ])
 
-        inf_url = os.getenv("INFERENCE_URL") or os.getenv("FRIDAY_INFERENCE_URL") or getattr(settings, "inference_url", None)
-        inf_key = os.getenv("INFERENCE_API_KEY") or os.getenv("FRIDAY_INFERENCE_API_KEY") or getattr(settings, "inference_api_key", None)
+        inf_url = (
+            getattr(settings, "inference_url", None)
+            or os.getenv("INFERENCE_URL")
+            or os.getenv("FRIDAY_INFERENCE_URL")
+            or "https://inference-3i2b.onrender.com"
+        )
+        inf_key = (
+            getattr(settings, "inference_api_key", None)
+            or os.getenv("INFERENCE_API_KEY")
+            or os.getenv("FRIDAY_INFERENCE_API_KEY")
+            or "inference_api"
+        )
         
-        if inf_url and inf_key:
-            chain_providers.append(
-                AIUniverseLLMProvider(
-                    base_url=inf_url,
-                    api_key=inf_key,
-                )
+        chain_providers.append(
+            AIUniverseLLMProvider(
+                base_url=inf_url,
+                api_key=inf_key,
             )
+        )
         logger.info(
             "Initializing Fallback Chain Provider: "
             + " -> ".join(p.provider_name for p in chain_providers)
@@ -199,8 +212,11 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
         return FallbackChainLLMProvider(providers=chain_providers)
 
     if provider_type == "mistral":
-        model_name = settings.mistral_model or (
-            settings.llm_model if settings.llm_model != _DEFAULT_LLM_MODEL else MISTRAL_DEFAULT_MODEL
+        candidate = settings.mistral_model or settings.llm_model
+        model_name = (
+            MISTRAL_DEFAULT_MODEL
+            if (not candidate or "gemini" in candidate.lower() or candidate == _DEFAULT_LLM_MODEL)
+            else candidate
         )
         logger.info(f"Initializing Mistral Provider (model: {model_name})")
         return MistralLLMProvider(

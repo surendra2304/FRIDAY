@@ -167,6 +167,10 @@ class CognitiveMixin:
                         greeting_response.content = f"{proactive}\n\n{greeting_response.content}"
                 return greeting_response
 
+            conversational_response = self._conversational_fast_path(clean_input)
+            if conversational_response is not None:
+                return conversational_response
+
             direct_desktop_response = self._direct_desktop_action_fast_path(clean_input, start_time)
             if direct_desktop_response is not None:
                 return direct_desktop_response
@@ -175,41 +179,122 @@ class CognitiveMixin:
             if deterministic_response is not None:
                 return deterministic_response
 
+            # Multi-turn context resolution: Handle affirmative or negative responses to previous turn
+            low_input = clean_input.lower().strip().rstrip(".!? ")
+            affirmative_words = {
+                "yes", "y", "yeah", "yep", "yup", "sure", "ok", "okay", "proceed",
+                "send", "send it", "confirm", "confirmed", "do it", "go ahead",
+                "approve", "approved", "please do", "sounds good", "let's do it",
+                "execute", "run it"
+            }
+            negation_words = {
+                "no", "n", "nope", "cancel", "stop", "abort", "don't", "dont",
+                "do not", "never mind", "nevermind", "discard"
+            }
+
+            recent_messages = self.memory.get_messages()
+            last_assistant_msg = next((m for m in reversed(recent_messages) if m.role == Role.ASSISTANT), None)
+
+            effective_goal = clean_input
+            is_confirmation_turn = False
+
+            if last_assistant_msg and last_assistant_msg.content:
+                last_text = last_assistant_msg.content
+                has_pending_prompt = (
+                    "?" in last_text
+                    or "would you like" in last_text.lower()
+                    or "ready to send" in last_text.lower()
+                    or "should i" in last_text.lower()
+                    or "draft" in last_text.lower()
+                    or "confirmation" in last_text.lower()
+                )
+
+                if low_input in negation_words and has_pending_prompt:
+                    # Graceful instant cancellation
+                    cancel_reply = "Understood. I have cancelled the pending action."
+                    self.state_machine.transition_to(TaskState.UNDERSTANDING, reason="Action cancellation received")
+                    self.state_machine.transition_to(TaskState.PLANNING, reason="Synthesizing cancellation confirmation")
+                    self.state_machine.transition_to(TaskState.VERIFYING, reason="Validating cancellation response")
+                    self.state_machine.transition_to(TaskState.COMPLETED, reason="Cancellation complete")
+
+                    self.memory.add_message(Message(role=Role.USER, content=clean_input))
+                    self.memory.add_message(Message(role=Role.ASSISTANT, content=cancel_reply))
+                    try:
+                        from friday.memory.memora_client import memora_client
+                        memora_client.record_interaction_async(
+                            user_input=clean_input,
+                            agent_output=cancel_reply,
+                            agent_name="friday",
+                            event_type="dialogue",
+                            tags=["cancellation"],
+                        )
+                    except Exception as e:
+                        logger.debug(f"Memora cancellation record skipped: {e}")
+
+                    return AgentResponse(
+                        content=cancel_reply,
+                        is_done=True,
+                        metadata={
+                            "duration_seconds": time.perf_counter() - start_time,
+                            "task_state": self.state_machine.current_state.value,
+                            "action_cancelled": True,
+                        },
+                    )
+
+                if low_input in affirmative_words and has_pending_prompt:
+                    is_confirmation_turn = True
+                    # Check if previous message was an email draft
+                    m_to = re.search(r"(?:To|to):\s*([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)", last_text)
+                    m_subj = re.search(r"(?:Subject|subject):\s*([^\n]+)", last_text)
+                    if m_to and m_subj:
+                        to_addr = m_to.group(1).strip()
+                        subject_str = m_subj.group(1).strip()
+                        effective_goal = (
+                            f"The user confirmed '{clean_input}' to send the drafted email to '{to_addr}' "
+                            f"with subject '{subject_str}'. Execute the send_email tool now to deliver this email."
+                        )
+                    else:
+                        effective_goal = (
+                            f"The user replied '{clean_input}' confirming the action from your previous message: "
+                            f"'{last_text[:120]}'. Execute the confirmed action now using the appropriate tools."
+                        )
+
             # 1. State: UNDERSTANDING (evaluating cognitive confidence, information sufficiency & capability routing)
             self.state_machine.transition_to(TaskState.UNDERSTANDING, reason="Interpreting user turn and retrieving memories")
 
-            # Evaluate cognitive loop & confidence
+            # Evaluate cognitive loop & confidence (CLARIFY prompt bypassed if this is a confirmed action turn)
             cognitive_decision = self.cognitive_engine.evaluate_request(clean_input)
-            if cognitive_decision.current_phase == CognitivePhase.CLARIFY and cognitive_decision.clarification_prompt:
-                logger.info(
-                    f"Cognitive loop triggered CLARIFY (confidence: {cognitive_decision.confidence.understanding_confidence:.2f})"
-                )
-                self.state_machine.transition_to(TaskState.PLANNING, reason="Synthesizing clarification prompt")
-                self.state_machine.transition_to(TaskState.VERIFYING, reason="Validating clarification response")
-                self.state_machine.transition_to(TaskState.COMPLETED, reason="Clarification ready")
+            if not is_confirmation_turn:
+                if cognitive_decision.current_phase == CognitivePhase.CLARIFY and cognitive_decision.clarification_prompt:
+                    logger.info(
+                        f"Cognitive loop triggered CLARIFY (confidence: {cognitive_decision.confidence.understanding_confidence:.2f})"
+                    )
+                    self.state_machine.transition_to(TaskState.PLANNING, reason="Synthesizing clarification prompt")
+                    self.state_machine.transition_to(TaskState.VERIFYING, reason="Validating clarification response")
+                    self.state_machine.transition_to(TaskState.COMPLETED, reason="Clarification ready")
 
-                user_msg = Message(role=Role.USER, content=clean_input)
-                self.memory.add_message(user_msg)
-                clarify_msg = Message(role=Role.ASSISTANT, content=cognitive_decision.clarification_prompt)
-                self.memory.add_message(clarify_msg)
+                    user_msg = Message(role=Role.USER, content=clean_input)
+                    self.memory.add_message(user_msg)
+                    clarify_msg = Message(role=Role.ASSISTANT, content=cognitive_decision.clarification_prompt)
+                    self.memory.add_message(clarify_msg)
 
-                return AgentResponse(
-                    content=cognitive_decision.clarification_prompt,
-                    is_done=True,
-                    metadata={
-                        "duration_seconds": time.perf_counter() - start_time,
-                        "task_state": self.state_machine.current_state.value,
-                        "state_history": [r.to_dict() for r in self.state_machine.history],
-                        "cognitive_phase": cognitive_decision.current_phase.value,
-                        "confidence": cognitive_decision.confidence.to_dict(),
-                        "lacks_information": cognitive_decision.lacks_information,
-                    },
-                )
+                    return AgentResponse(
+                        content=cognitive_decision.clarification_prompt,
+                        is_done=True,
+                        metadata={
+                            "duration_seconds": time.perf_counter() - start_time,
+                            "task_state": self.state_machine.current_state.value,
+                            "state_history": [r.to_dict() for r in self.state_machine.history],
+                            "cognitive_phase": cognitive_decision.current_phase.value,
+                            "confidence": cognitive_decision.confidence.to_dict(),
+                            "lacks_information": cognitive_decision.lacks_information,
+                        },
+                    )
 
             # Evaluate capability routing
             routing_decision = self.capability_router.route_request(
-                user_input=clean_input,
-                context={"has_working_context": bool(self.task_context)},
+                user_input=effective_goal,
+                context={"has_working_context": bool(self.task_context) or is_confirmation_turn},
             )
             logger.info(f"Capability routed to: {routing_decision.selected_capability.value}")
 
@@ -218,12 +303,12 @@ class CognitiveMixin:
             
             recalled = []
             if hasattr(self, "_retrieve_relevant_memories"):
-                recalled = self._retrieve_relevant_memories(clean_input)
-            elif should_retrieve_memory(clean_input):
-                recalled = self.memory.search(clean_input, limit=5)
+                recalled = self._retrieve_relevant_memories(effective_goal)
+            elif should_retrieve_memory(effective_goal):
+                recalled = self.memory.search(effective_goal, limit=5)
             
             context = {
-                "has_working_context": bool(self.task_context),
+                "has_working_context": bool(self.task_context) or is_confirmation_turn,
                 "recalled_memories": [
                     r.to_dict() if hasattr(r, "to_dict") else (r.model_dump() if hasattr(r, "model_dump") else dict(r))
                     for r in recalled
@@ -231,7 +316,7 @@ class CognitiveMixin:
                 "routed_capability": routing_decision.selected_capability.value,
             }
             
-            exec_res = self.execute_complex_task(goal=clean_input, context=context)
+            exec_res = self.execute_complex_task(goal=effective_goal, context=context)
             
             if exec_res.tool_calls or exec_res.tool_results:
                 self.state_machine.transition_to(TaskState.EXECUTING, reason="Executing authorized tools")
@@ -297,7 +382,8 @@ class CognitiveMixin:
                 tool_results=exec_res.tool_results,
                 is_done=True,
                 metadata={
-                    "iterations": exec_res.metadata.get("total_tasks", 1) or 1,
+                    "iterations": exec_res.metadata.get("iterations", exec_res.metadata.get("total_tasks", 1) or 1),
+                    "request_count": exec_res.metadata.get("iterations", exec_res.metadata.get("total_tasks", 1) or 1),
                     "duration_seconds": duration,
                     "success": (self.state_machine.current_state == TaskState.COMPLETED),
                     "provider": self.llm.provider_name,

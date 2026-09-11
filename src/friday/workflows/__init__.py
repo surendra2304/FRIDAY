@@ -5,6 +5,7 @@ from friday.workflows.dev_workflow import AutonomousDevWorkflow
 from friday.workflows.email_workflow import EmailDraftingWorkflow
 from friday.workflows.scheduler import ScheduledJob, WorkflowScheduler
 from friday.workflows.self_improve_workflow import SelfImprovementWorkflow
+from friday.workflows.verification_workflow import VerificationWorkflow
 
 __all__ = [
     "AutonomousDevWorkflow",
@@ -12,6 +13,8 @@ __all__ = [
     "MorningBriefingWorkflow",
     "ScheduledJob",
     "SelfImprovementWorkflow",
+    "VerificationWorkflow",
     "WorkflowScheduler",
 ]
+
 

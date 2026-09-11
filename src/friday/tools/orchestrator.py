@@ -148,11 +148,11 @@ class ToolOrchestrator:
     """Computes DAG execution levels (waves) for parallel and sequential tool scheduling."""
 
     @classmethod
-    def compute_execution_batches(cls, plan: TaskPlan) -> list[list[PlanStep]]:
+    def compute_execution_batches(cls, plan: Any) -> list[list[Any]]:
         """Group plan steps into sequential levels where steps in the same level can run concurrently."""
         completed_ids: set[str] = set()
         remaining_steps = [s for s in plan.steps]
-        batches: list[list[PlanStep]] = []
+        batches: list[list[Any]] = []
 
         while remaining_steps:
             # Find all steps whose dependencies are all in completed_ids

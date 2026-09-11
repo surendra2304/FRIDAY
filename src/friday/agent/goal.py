@@ -238,8 +238,53 @@ class GoalUnderstandingEngine:
                     cancellation_conditions=["Immediate cancellation on dangerous intent"],
                 )
 
-        # 2. Ambiguity & Underspecification Check
-        if len(clean_request) < 4 or clean_request in ("do it", "fix it", "run that", "open it", "start"):
+        # 2. Dialog Affirmation & Negation Confirmation Handling
+        low_req = clean_request.lower()
+        affirmative_words = {
+            "yes", "y", "yeah", "yep", "yup", "sure", "ok", "okay", "proceed",
+            "send", "send it", "confirm", "confirmed", "do it", "go ahead",
+            "approve", "approved", "please do", "sounds good", "let's do it",
+            "execute", "run it"
+        }
+        negation_words = {
+            "no", "n", "nope", "cancel", "stop", "abort", "don't", "dont",
+            "do not", "never mind", "nevermind", "discard"
+        }
+
+        if low_req in affirmative_words:
+            return Goal(
+                goal_id=goal_id,
+                original_request=clean_request,
+                normalized_intent="Confirmation to proceed with pending action or proposal",
+                desired_outcome="Execute the confirmed action or tool",
+                request_type=GoalRequestType.MULTI_STEP_TASK,
+                risk_level=GoalRiskLevel.MEDIUM,
+                is_ambiguous=False,
+                subgoals=[
+                    SubGoal(
+                        subgoal_id=f"sub_{uuid.uuid4().hex[:8]}",
+                        description=f"Proceed with confirmed action '{clean_request}'",
+                        desired_outcome="Executed pending user action",
+                        safety_level=SafetyLevel.SAFE,
+                    )
+                ],
+                cancellation_conditions=["User aborts action"],
+            )
+
+        if low_req in negation_words:
+            return Goal(
+                goal_id=goal_id,
+                original_request=clean_request,
+                normalized_intent="Cancellation of pending action or proposal",
+                desired_outcome="Cancel and discard the pending action",
+                request_type=GoalRequestType.INFORMATION_REQUEST,
+                risk_level=GoalRiskLevel.LOW,
+                is_ambiguous=False,
+                cancellation_conditions=["Cancellation complete"],
+            )
+
+        # Ambiguity & Underspecification Check
+        if (len(clean_request) < 4 and low_req not in ("hi", "run", "cls", "calc", "app", "log")) or clean_request in ("fix it", "run that", "open it", "start"):
             return Goal(
                 goal_id=goal_id,
                 original_request=clean_request,

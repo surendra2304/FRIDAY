@@ -88,7 +88,13 @@ class YouTubeTool(BaseTool):
                 msg = f"Searching YouTube for '{clean_q}' in your browser."
 
         try:
-            webbrowser.open(url)
+            from friday.devices.windows_friday import get_chrome_path
+            import subprocess
+            chrome = get_chrome_path()
+            if chrome:
+                subprocess.Popen([chrome, url])
+            else:
+                webbrowser.open(url)
             logger.info(f"Navigating to YouTube URL: {url}")
             return ToolResult(
                 name=self.name,

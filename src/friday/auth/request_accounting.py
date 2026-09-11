@@ -214,6 +214,7 @@ class RequestAccountant:
         estimated_output_tokens: int = 0,
         failure_category: str | None = None,
         latency_ms: float = 0.0,
+        is_fatal: bool = True,
     ) -> RequestRecord:
         """Record an accounting entry and update circuit breaker state."""
         with self.lock:
@@ -237,7 +238,7 @@ class RequestAccountant:
             self.records.append(rec)
 
             # Circuit breaker logic
-            if failure_category is not None:
+            if failure_category is not None and is_fatal:
                 # Do not count circuit/budget blocks as new provider failures
                 if failure_category not in ("circuit_block", "budget_block"):
                     if self.circuit_state == CircuitBreakerState.CLOSED:
@@ -266,6 +267,14 @@ class RequestAccountant:
                     self.circuit_cooldown_until = None
 
             return rec
+
+    def reset_circuit_breaker(self) -> None:
+        """Manually or programmatically reset circuit breaker state to CLOSED."""
+        with self.lock:
+            self.consecutive_failures = 0
+            self.circuit_state = CircuitBreakerState.CLOSED
+            self.circuit_cooldown_until = None
+            logger.info("RequestAccountant: Circuit breaker manually reset to CLOSED.")
 
     def get_summary(self) -> dict[str, Any]:
         """Return structured request accounting summary without secrets."""

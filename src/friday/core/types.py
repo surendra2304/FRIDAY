@@ -164,6 +164,10 @@ class MemorySearchResult(BaseModel):
     trust_level: TrustLevel = Field(default=TrustLevel.TRUSTED_USER, description="Trust level classification")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Provenance metadata")
 
+    def to_dict(self) -> dict[str, Any]:
+        """Convert result model to dictionary."""
+        return self.model_dump()
+
 
 class EmbeddingRecord(BaseModel):
     """Durable representation of a semantic embedding vector and source reference."""

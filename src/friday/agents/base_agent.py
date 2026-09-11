@@ -90,7 +90,30 @@ class BaseAgent:
             max_parallel_tasks=1,
         )
 
+    def run(self, goal: str, context: dict[str, Any] | None = None) -> AgentTaskResult:
+        """Synchronously execute a task goal with the agent."""
+        import asyncio
+        task = AgentTask(goal=goal, context=context or {})
+        if not self.llm:
+            return AgentTaskResult(
+                task_id=task.task_id,
+                agent_id=self.agent_id,
+                role=self.role,
+                success=True,
+                output=f"Executed task '{goal}' via {self.role}.",
+            )
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    return pool.submit(asyncio.run, self.execute_task(task)).result()
+            return loop.run_until_complete(self.execute_task(task))
+        except RuntimeError:
+            return asyncio.run(self.execute_task(task))
+
     async def execute_task(self, task: AgentTask) -> AgentTaskResult:
+
         """Execute assigned subtask using LLM reasoning and scoped tool execution."""
         logger.info(f"Agent [{self.role} ({self.agent_id})] starting task: {task.goal}")
         

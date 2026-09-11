@@ -8,7 +8,9 @@ screenshot streaming, UI hierarchy dumping, and hardware button control.
 from __future__ import annotations
 
 import io
+import os
 import re
+import shlex
 import shutil
 import subprocess
 from typing import Any
@@ -75,6 +77,19 @@ COMMON_APP_PACKAGES: dict[str, str] = {
 }
 
 
+# Blocked commands for device security
+BLOCKED_ADB_COMMANDS: set[str] = {
+    "root", "unroot", "remount", "tcpip", "install", "uninstall",
+    "pull", "push", "sideload", "recovery", "flash", "reboot", "reboot-bootloader",
+    "disable-verity", "enable-verity",
+}
+
+BLOCKED_SHELL_COMMANDS: set[str] = {
+    "su", "sh", "bash", "rm", "rmdir", "mkfs", "dd", "chmod", "chown",
+    "reboot", "format", "wipe", "factory_reset",
+}
+
+
 class AndroidDeviceController(BaseDeviceController):
     """Full-featured Android Device Controller via Android Debug Bridge (ADB)."""
 
@@ -93,7 +108,14 @@ class AndroidDeviceController(BaseDeviceController):
         return cmd
 
     def run_adb(self, args: list[str], timeout: float = 15.0) -> tuple[int, str, str]:
-        """Execute an arbitrary ADB command and return (returncode, stdout, stderr)."""
+        """Execute an ADB command safely after capability checks."""
+        if not args:
+            return 0, "", ""
+        primary_cmd = args[0].lower()
+        if primary_cmd in BLOCKED_ADB_COMMANDS:
+            logger.warning(f"ADB execution blocked dangerous command: '{primary_cmd}'")
+            return -1, "", f"Operation '{primary_cmd}' is blocked for Android device safety."
+
         cmd = self._build_cmd(args)
         try:
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
@@ -142,6 +164,11 @@ class AndroidDeviceController(BaseDeviceController):
         clean_name = name.strip().lower()
         package = COMMON_APP_PACKAGES.get(clean_name, name.strip())
 
+        # Strict validation of package name format to prevent shell injection
+        if not re.match(r"^[a-zA-Z0-9_\.]+$", package):
+            logger.warning(f"Android: Rejected invalid app package name: '{package}'")
+            return False
+
         logger.info(f"Android: Launching app package '{package}' (requested: '{name}')")
         # Try launch via monkey first (starts launcher activity automatically)
         rc, out, err = self.run_adb(["shell", "monkey", "-p", package, "-c", "android.intent.category.LAUNCHER", "1"])
@@ -156,6 +183,12 @@ class AndroidDeviceController(BaseDeviceController):
         """Force-stop an application package on the Android device."""
         clean_name = name.strip().lower()
         package = COMMON_APP_PACKAGES.get(clean_name, name.strip())
+
+        # Strict validation of package name format to prevent shell injection
+        if not re.match(r"^[a-zA-Z0-9_\.]+$", package):
+            logger.warning(f"Android: Rejected invalid app package name for close: '{package}'")
+            return False
+
         rc, _, _ = self.run_adb(["shell", "am", "force-stop", package])
         return rc == 0
 
@@ -172,13 +205,14 @@ class AndroidDeviceController(BaseDeviceController):
         return rc == 0
 
     def type_text(self, text: str) -> bool:
-        """Send text input to the currently focused Android input field."""
+        """Send text input to the currently focused Android input field safely."""
         if not text:
             return True
         logger.info(f"Android: Typing '{text}'")
-        # Escape spaces for ADB input text
-        escaped = text.replace(" ", "%s").replace("&", "\\&").replace("<", "\\<").replace(">", "\\>")
-        rc, _, _ = self.run_adb(["shell", "input", "text", escaped])
+        # Replace spaces with %s for ADB input text and safely quote for remote shell
+        safe_text = text.replace(" ", "%s")
+        quoted = shlex.quote(safe_text)
+        rc, _, _ = self.run_adb(["shell", "input", "text", quoted])
         return rc == 0
 
     def press_key(self, key: str) -> bool:
@@ -231,7 +265,27 @@ class AndroidDeviceController(BaseDeviceController):
         return "\n".join(dict.fromkeys(filtered))  # Deduplicate preserving order
 
     def shell(self, command: str) -> str:
-        """Execute an arbitrary Android shell command."""
+        """Execute a safe Android diagnostic or inspection shell command."""
+        cmd_clean = (command or "").strip()
+        if not cmd_clean:
+            return ""
+
+        # Normalize tokens: strip quotes, path prefixes, and inspect basenames
+        raw_tokens = re.split(r"[\s;|>&<`$()]+", cmd_clean.lower())
+        for raw_tok in raw_tokens:
+            tok = raw_tok.strip("\"' \t")
+            if not tok:
+                continue
+            base_tok = os.path.basename(tok)
+            if (
+                tok in BLOCKED_SHELL_COMMANDS
+                or base_tok in BLOCKED_SHELL_COMMANDS
+                or tok in BLOCKED_ADB_COMMANDS
+                or base_tok in BLOCKED_ADB_COMMANDS
+            ):
+                logger.warning(f"Blocked dangerous Android shell token: '{tok}' in command: '{command}'")
+                return f"Error: Command contains restricted token '{tok}' for safety."
+
         rc, out, err = self.run_adb(["shell", command])
         if rc != 0 and err:
             return f"Error ({rc}): {err}"
