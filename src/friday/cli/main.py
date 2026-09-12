@@ -82,6 +82,7 @@ def print_help() -> None:
     print("  /export [path]  : Export current conversation to JSON")
     print("  /purge          : Permanently delete ALL stored memory (requires confirmation)")
     print("  /friday         : View FRIDAY Windows laptop controller commands")
+    print("  /welcome        : Trigger autonomous Welcome Home workspace protocol")
     print("  /voice [on|off] : Toggle spoken voice output in PowerShell (Microsoft Zira)")
     print("  /help           : Show this help menu")
     print("  /exit           : Exit FRIDAY assistant (or /quit)")
@@ -121,6 +122,8 @@ def print_friday_guide() -> None:
     table.add_row("⚡ Hardware Telemetry", "battery, system specs, network status, what time is it, today's date")
     table.add_row("📁 System Folders", "open downloads, open desktop, open documents, open pictures, open c drive")
     table.add_row("💻 PowerShell / CLI", "powershell <cmd>, run command <cmd>, execute <cmd>")
+    table.add_row("🚀 Workspace & Welcome", "welcome home, studio mode, /welcome")
+    table.add_row("🎯 Daily Goal & Focus", "set daily goal <task>, my goal, goal done, /goal <task>")
     table.add_row("🎙️ Voice Feedback", "/voice on, /voice off, /voice (toggles spoken Microsoft Zira voice)")
     _console.print()
     _console.print(table)
@@ -723,6 +726,25 @@ Modes:
             continue
         elif cmd in ("/friday", "friday", "/control", "/laptop"):
             print_friday_guide()
+            continue
+        elif cmd in ("/welcome", "welcome", "/studio"):
+            from friday.autonomous.welcome_protocol import welcome_protocol
+            import threading
+            threading.Thread(target=welcome_protocol.run, daemon=True, name="CLIWelcome").start()
+            print("\n[+] Initiating FRIDAY Welcome Protocol (Media, Dashboards, Voice, Workspace)...\n")
+            continue
+        elif cmd.startswith("/goal") or cmd == "goal":
+            from friday.autonomous.daily_rhythm import daily_rhythm
+            parts = user_input.strip().split(maxsplit=1)
+            if len(parts) > 1:
+                g = daily_rhythm.set_daily_goal(parts[1])
+                print(f"\n[+] Daily Focus Goal Set: '{g.title}'\n")
+            else:
+                g = daily_rhythm.get_active_goal()
+                if g:
+                    print(f"\n[+] Active Goal for Today: '{g.title}' ({int(g.progress * 100)}% complete, status: {g.status})\n")
+                else:
+                    print("\n[-] No goal set for today. Type '/goal <task>' to set your primary objective.\n")
             continue
 
         # Process conversation turn or instant Windows FRIDAY directive

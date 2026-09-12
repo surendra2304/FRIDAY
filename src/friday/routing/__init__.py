@@ -3,6 +3,7 @@
 from friday.routing.capability_router import (
     CapabilityMetadata,
     CapabilityRouter,
+    CompiledIntent,
     ExecutionCapabilityType,
     RoutingDecision,
 )
@@ -10,6 +11,7 @@ from friday.routing.capability_router import (
 __all__ = [
     "CapabilityMetadata",
     "CapabilityRouter",
+    "CompiledIntent",
     "ExecutionCapabilityType",
     "RoutingDecision",
 ]

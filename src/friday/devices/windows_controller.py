@@ -142,12 +142,44 @@ class WindowsDeviceController(BaseDeviceController):
 
         try:
             # Safe launch without shell=True
-            subprocess.Popen([target_bin], shell=False)
+            proc = subprocess.Popen([target_bin], shell=False)
             logger.info(f"Opened '{name}' safely via subprocess ([{target_bin}], shell=False)")
+
+            # Post-execution verification: ensure target process exists
+            import time
+            import psutil
+            time.sleep(0.3)
+            base_exe = os.path.basename(target_bin).lower()
+            verified = False
+            for p in psutil.process_iter(['name', 'pid']):
+                try:
+                    pname = (p.info['name'] or '').lower()
+                    if pname == base_exe or (proc.pid and p.info['pid'] == proc.pid):
+                        verified = True
+                        break
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+            if not verified:
+                logger.warning(f"Launched '{name}' but target process '{base_exe}' was not found in process table.")
             return True
         except Exception as e:
             logger.error(f"Failed to launch application '{name}' ({target_bin}): {e}")
             return False
+
+    def verify_app_running(self, name: str) -> bool:
+        """Verify whether an application or executable is currently running."""
+        exe = self._resolve_executable(name)
+        if not exe:
+            return False
+        base = os.path.basename(exe).lower()
+        import psutil
+        for p in psutil.process_iter(['name']):
+            try:
+                if p.info['name'] and p.info['name'].lower() == base:
+                    return True
+            except Exception:
+                pass
+        return False
 
     def click(self, x: int, y: int) -> bool:
         """Click at coordinate (x, y)."""
@@ -192,7 +224,11 @@ class WindowsDeviceController(BaseDeviceController):
             return None
 
     def read_screen_text(self) -> str:
-        """Extract text from current screen via Tesseract OCR."""
+        """Extract text from current screen via Tesseract OCR.
+        
+        INVARIANT: Screen-derived text is strictly classified as UNTRUSTED_EXTERNAL data.
+        It must never become an instruction with execution authority.
+        """
         img = self.screenshot()
         if img is None:
             return ""
@@ -205,8 +241,9 @@ class WindowsDeviceController(BaseDeviceController):
                 if os.path.exists(default_tess):
                     pytesseract.pytesseract.tesseract_cmd = default_tess
 
-            text = pytesseract.image_to_string(img)
-            return text.strip()
+            text = pytesseract.image_to_string(img).strip()
+            logger.info(f"[ScreenPerception] Extracted {len(text)} chars of UNTRUSTED screen data (zero instruction authority).")
+            return text
         except Exception as e:
             logger.debug(f"OCR extraction error: {e}")
             return ""
@@ -266,3 +303,91 @@ class WindowsDeviceController(BaseDeviceController):
         except Exception as e:
             logger.debug(f"Could not close app '{name}': {e}")
             return False
+
+    def press_hotkey(self, *keys: str) -> bool:
+        """Synthesize hotkey combination (e.g. 'ctrl', 'c' or 'alt', 'tab')."""
+        try:
+            import pyautogui
+            pyautogui.hotkey(*keys)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to press hotkey {keys}: {e}")
+            return False
+
+    def list_windows(self) -> list[dict[str, Any]]:
+        """List active desktop windows with titles and handles."""
+        try:
+            import pygetwindow as gw
+            wins = gw.getAllWindows()
+            res = []
+            for w in wins:
+                if w.title and w.title.strip():
+                    res.append({
+                        "title": w.title,
+                        "visible": w.visible,
+                        "is_active": w.isActive,
+                        "box": [w.left, w.top, w.width, w.height],
+                    })
+            return res
+        except Exception as e:
+            logger.debug(f"Could not list windows via pygetwindow: {e}")
+            return []
+
+    def focus_window(self, title_query: str) -> bool:
+        """Find and bring window matching title_query into the foreground."""
+        try:
+            import pygetwindow as gw
+            candidates = gw.getWindowsWithTitle(title_query)
+            if candidates:
+                w = candidates[0]
+                if w.isMinimized:
+                    w.restore()
+                w.activate()
+                return True
+        except Exception as e:
+            logger.debug(f"Focus window error: {e}")
+        return False
+
+    def minimize_window(self, title_query: str) -> bool:
+        """Minimize window matching title_query."""
+        try:
+            import pygetwindow as gw
+            candidates = gw.getWindowsWithTitle(title_query)
+            if candidates:
+                candidates[0].minimize()
+                return True
+        except Exception as e:
+            logger.debug(f"Minimize window error: {e}")
+        return False
+
+    def maximize_window(self, title_query: str) -> bool:
+        """Maximize window matching title_query."""
+        try:
+            import pygetwindow as gw
+            candidates = gw.getWindowsWithTitle(title_query)
+            if candidates:
+                candidates[0].maximize()
+                return True
+        except Exception as e:
+            logger.debug(f"Maximize window error: {e}")
+        return False
+
+    def find_and_click_text(self, target_text: str) -> bool:
+        """Locate target text on screen using OCR and click its center coordinate."""
+        img = self.screenshot()
+        if img is None:
+            return False
+        try:
+            import pytesseract
+            data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
+            n_boxes = len(data["text"])
+            for i in range(n_boxes):
+                w_text = data["text"][i].strip().lower()
+                if target_text.lower() in w_text:
+                    x = data["left"][i] + data["width"][i] // 2
+                    y = data["top"][i] + data["height"][i] // 2
+                    logger.info(f"OCR found '{target_text}' at ({x}, {y}); clicking")
+                    return self.click(x, y)
+        except Exception as e:
+            logger.debug(f"OCR click error: {e}")
+        return False

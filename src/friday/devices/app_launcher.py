@@ -49,6 +49,17 @@ APP_LAUNCH_CONFIGS: dict[str, dict[str, Any]] = {
         "keywords": ["visual studio code", "code"],
         "classes": [],
     },
+    "cursor": {
+        "cim_cmd": "explorer.exe cursor:",
+        "fallback_cmd": [
+            os.path.expandvars(r"%LOCALAPPDATA%\Programs\cursor\Cursor.exe")
+            if os.path.exists(os.path.expandvars(r"%LOCALAPPDATA%\Programs\cursor\Cursor.exe"))
+            else "cursor"
+        ],
+        "keywords": ["cursor"],
+        "classes": [],
+    },
+
     "terminal": {
         "cim_cmd": "explorer.exe shell:AppsFolder\\Microsoft.WindowsTerminal_8wekyb3d8bbwe!App",
         "fallback_cmd": ["wt.exe"],
@@ -125,7 +136,9 @@ def force_window_foreground(hwnd: int) -> bool:
         fg_hwnd = user32.GetForegroundWindow()
         fg_tid = user32.GetWindowThreadProcessId(fg_hwnd, None)
         target_tid = user32.GetWindowThreadProcessId(hwnd, None)
-        cur_tid = kernel32.GetCurrentThreadId()
+        # Pulse ALT key to bypass Windows foreground lock timeout
+        user32.keybd_event(0x12, 0, 0, 0)
+        user32.keybd_event(0x12, 0, 2, 0)
 
         if fg_tid != target_tid:
             user32.AttachThreadInput(cur_tid, fg_tid, True)
@@ -209,14 +222,67 @@ def find_existing_window(keywords: list[str], classes: list[str]) -> int | None:
         return None
 
 
-def launch_desktop_app(app_name: str) -> tuple[bool, str]:
+def find_all_installations(app_name: str) -> list[str]:
+    """Discover all distinct installation paths for an application across standard Windows locations."""
+    app_key = app_name.lower().strip()
+
+    # Environment override for testing multi-installation scenarios
+    mock_env = os.getenv("FRIDAY_MOCK_INSTALLATIONS")
+    if mock_env:
+        try:
+            import json
+            data = json.loads(mock_env)
+            if app_key in data:
+                return data[app_key]
+        except Exception:
+            pass
+
+    candidates: list[str] = []
+
+    if any(k in app_key for k in ["chrome", "google chrome"]):
+        checks = [
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+            os.path.expandvars(r"%PROGRAMFILES%\Google\Chrome\Application\chrome.exe"),
+        ]
+        which_path = shutil.which("chrome.exe") or shutil.which("chrome")
+        if which_path:
+            checks.append(which_path)
+
+        for c in checks:
+            if c and os.path.exists(c) and c not in candidates:
+                candidates.append(c)
+
+    elif any(k in app_key for k in ["code", "vscode", "vs code"]):
+        checks = [
+            os.path.expandvars(r"%LOCALAPPDATA%\Programs\Microsoft VS Code\Code.exe"),
+            r"C:\Program Files\Microsoft VS Code\Code.exe",
+            r"C:\Program Files (x86)\Microsoft VS Code\Code.exe",
+        ]
+        which_path = shutil.which("code.exe") or shutil.which("code")
+        if which_path:
+            checks.append(which_path)
+
+        for c in checks:
+            if c and os.path.exists(c) and c not in candidates:
+                candidates.append(c)
+
+    return candidates
+
+
+def launch_desktop_app(app_name: str, preferred_path: str | None = None) -> tuple[bool, str]:
     """Launch a desktop application reliably on the user's interactive desktop and bring to front.
 
     If the application is already running, brings the existing window to the foreground
     to prevent opening duplicate windows or tabs.
 
+    If multiple installations of the application exist and no preferred path is specified,
+    FRIDAY asks which installation to use and DOES NOT open a random executable.
+
     Args:
         app_name: Canonical or spoken application name (e.g. 'chrome', 'explorer', 'notepad', 'calculator', 'vscode', 'terminal').
+        preferred_path: Optional explicit executable path selected by user.
 
     Returns:
         tuple of (success: bool, message: str)
@@ -266,6 +332,14 @@ def launch_desktop_app(app_name: str) -> tuple[bool, str]:
         else:
             key = app_key
             title = app_name.title()
+
+    # Ambiguity check: if multiple distinct installations exist and no preferred path is given,
+    # ask the user which installation to use without launching a random executable.
+    if not preferred_path:
+        installations = find_all_installations(key)
+        if len(installations) > 1:
+            opts = ", ".join(f"'{p}'" for p in installations)
+            return False, f"Multiple installations of {title} were found: {opts}. Which installation would you like to use?"
 
     cfg = APP_LAUNCH_CONFIGS.get(key)
     launched = False

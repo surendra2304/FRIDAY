@@ -13,10 +13,23 @@ from friday.integrations.universe_api import (
 )
 
 
+import os
+
 class MockUniverseClient(BaseUniverseAPI):
     """Mock implementation of BaseUniverseAPI returning simulated synthetic data."""
 
     def __init__(self) -> None:
+        env = os.getenv("FRIDAY_ENV", "development").lower()
+        mock_enabled = os.getenv("MOCK_UNIVERSE_ENABLED", "false").lower() in ("true", "1", "yes")
+
+        # Invariant: MockUniverseClient is strictly rejected outside test mode
+        if not (env == "test" and mock_enabled):
+            raise RuntimeError(
+                f"Security & Integrity Violation: MockUniverseClient is strictly rejected outside test mode. "
+                f"Requires FRIDAY_ENV='test' and MOCK_UNIVERSE_ENABLED='true'. "
+                f"(Current: FRIDAY_ENV='{env}', MOCK_UNIVERSE_ENABLED='{mock_enabled}')"
+            )
+
         self.active_world: WorldConfig | None = None
         self.agents: dict[str, UniverseAgentConfig] = {}
         self.is_running: bool = False

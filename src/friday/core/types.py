@@ -189,5 +189,9 @@ class SemanticSearchResult(BaseModel):
     message_id: str | None = Field(default=None, description="Optional Message ID reference")
     source_text: str = Field(..., description="Text content of the retrieved memory")
     score: float = Field(..., description="Cosine similarity score (0.0 to 1.0)")
-    created_at: datetime = Field(..., description="Timestamp when the embedding was created")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Timestamp when the embedding was created")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Metadata associated with the embedding")
+
+
+# Re-export universal TaskEnvelope models
+from friday.core.task_envelope import TaskEnvelope, TaskResult, TaskPriority, TaskStatus, ActionReceipt

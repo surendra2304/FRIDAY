@@ -27,6 +27,8 @@ from friday.tools.builtin.dev_tools import (
 )
 from friday.tools.builtin.dictionary_tool import DictionaryTool
 from friday.tools.builtin.email_tools import DraftEmailTool, SendEmailTool
+from friday.tools.builtin.gmail_tools import DraftGmailTool, ReadGmailInboxTool, SendGmailTool
+from friday.tools.builtin.whatsapp_tools import OpenWhatsAppTool, SendWhatsAppMessageTool
 from friday.tools.builtin.execute_computer_action import ExecuteComputerActionTool
 from friday.tools.builtin.face_auth import EnrollFaceIdentityTool, VerifyFaceIdentityTool
 from friday.tools.builtin.file_and_command import ExecuteCommandTool, FileOperationsTool
@@ -76,6 +78,7 @@ from friday.tools.builtin.web_research import (
     SynthesizeInformationTool,
 )
 from friday.tools.builtin.web_tools import FetchWebpageTool, WebSearchTool
+from friday.tools.builtin.webapp_knowledge_tool import LookupWebAppTemplateTool
 from friday.tools.builtin.wikipedia_tool import WikipediaTool
 from friday.tools.builtin.youtube import YouTubeTool
 from friday.vision.screen_prediction import ScreenPredictionTool
@@ -101,6 +104,7 @@ __all__ = [
     "CreateGitHubIssueTool",
     "DictionaryTool",
     "DraftEmailTool",
+    "DraftGmailTool",
     "EnrollFaceIdentityTool",
     "ExecuteCommandTool",
     "ExecuteComputerActionTool",
@@ -122,6 +126,7 @@ __all__ = [
     "LaunchApplicationTool",
     "ListGitHubIssuesTool",
     "LocationMapsTool",
+    "LookupWebAppTemplateTool",
     "ManageTasksTool",
     "ManageVolumeTool",
     "ManageWindowsTool",
@@ -130,8 +135,10 @@ __all__ = [
     "NewsTool",
     "OpenApplicationTool",
     "OpenWebsiteTool",
+    "OpenWhatsAppTool",
     "ProposeComputerActionTool",
     "ReadActiveWindowTextTool",
+    "ReadGmailInboxTool",
     "ReadOwnCodebaseTool",
     "ReadScreenTextTool",
     "RememberFactTool",
@@ -140,6 +147,8 @@ __all__ = [
     "ScreenPredictionTool",
     "ScreenSnapshotTool",
     "SendEmailTool",
+    "SendGmailTool",
+    "SendWhatsAppMessageTool",
     "SynthesizeInformationTool",
     "SystemControlTool",
     "SystemInfoTool",

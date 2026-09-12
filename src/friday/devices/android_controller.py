@@ -102,6 +102,17 @@ class AndroidDeviceController(BaseDeviceController):
 
     def _build_cmd(self, args: list[str]) -> list[str]:
         cmd = [self.adb_bin]
+        if not self.adb_device_id and args and args[0] != "devices":
+            try:
+                # Auto-discover first available connected device
+                proc = subprocess.run([self.adb_bin, "devices"], capture_output=True, text=True, timeout=2.0, check=False)
+                for line in proc.stdout.splitlines():
+                    if "\tdevice" in line:
+                        self.adb_device_id = line.split()[0]
+                        break
+            except Exception:
+                pass
+
         if self.adb_device_id:
             cmd.extend(["-s", self.adb_device_id])
         cmd.extend(args)
@@ -158,6 +169,79 @@ class AndroidDeviceController(BaseDeviceController):
                         model = p.split(":", 1)[1]
                 devices.append({"id": dev_id, "status": status, "model": model})
         return devices
+
+    def select_device(self, device_id: str) -> bool:
+        """Explicitly select an active Android device by ID."""
+        devs = self.list_devices()
+        matching = [d for d in devs if d["id"] == device_id]
+        if matching or device_id == "":
+            self.adb_device_id = device_id if device_id else None
+            logger.info(f"Android: Explicitly selected target device '{self.adb_device_id}'")
+            return True
+        logger.warning(f"Android: Device ID '{device_id}' not found in active devices: {devs}")
+        return False
+
+    def get_device_status(self) -> dict[str, Any]:
+        """Return explicit connection and authorization status for active device."""
+        devs = self.list_devices()
+        if not devs:
+            return {"connected": False, "authorized": False, "status": "no_device", "device_id": None}
+        target = None
+        if self.adb_device_id:
+            for d in devs:
+                if d["id"] == self.adb_device_id:
+                    target = d
+                    break
+        if not target:
+            target = devs[0]
+            self.adb_device_id = target["id"]
+
+        is_auth = target.get("status") == "device"
+        return {
+            "connected": True,
+            "authorized": is_auth,
+            "status": target.get("status", "unknown"),
+            "device_id": target.get("id"),
+            "model": target.get("model", "unknown"),
+        }
+
+    def discover_capabilities(self) -> dict[str, Any]:
+        """Discover Android device hardware, display, and OS capabilities."""
+        status = self.get_device_status()
+        if not status["connected"] or not status["authorized"]:
+            return {"status": status["status"], "capabilities": {}, "error": "Device not connected or unauthorized"}
+
+        # Screen resolution
+        _, wm_size, _ = self.run_adb(["shell", "wm", "size"])
+        # Android release version
+        _, os_ver, _ = self.run_adb(["shell", "getprop", "ro.build.version.release"])
+        # SDK API Level
+        _, sdk_ver, _ = self.run_adb(["shell", "getprop", "ro.build.version.sdk"])
+        # Battery level
+        batt = self.get_battery_level()
+
+        caps = {
+            "device_id": status["device_id"],
+            "model": status["model"],
+            "android_version": os_ver.strip() if os_ver else "unknown",
+            "sdk_level": int(sdk_ver.strip()) if sdk_ver and sdk_ver.strip().isdigit() else None,
+            "screen_size": wm_size.replace("Physical size: ", "").strip() if wm_size else "unknown",
+            "battery_percent": batt,
+            "touchscreen": True,
+            "hardware_keys": list(KEY_EVENT_MAP.keys()),
+        }
+        return {"status": "ok", "capabilities": caps}
+
+    def dump_ui_hierarchy(self) -> str:
+        """Dump UI XML hierarchy using 'adb shell uiautomator dump' and retrieve contents."""
+        rc, _, err = self.run_adb(["shell", "uiautomator", "dump", "/data/local/tmp/uidump.xml"])
+        if rc != 0:
+            logger.warning(f"Failed to dump UI hierarchy: {err}")
+            return ""
+        rc, out, _ = self.run_adb(["shell", "cat", "/data/local/tmp/uidump.xml"])
+        if rc == 0:
+            return out
+        return ""
 
     def open_app(self, name: str) -> bool:
         """Launch an Android application by common name or package identifier."""
@@ -290,3 +374,52 @@ class AndroidDeviceController(BaseDeviceController):
         if rc != 0 and err:
             return f"Error ({rc}): {err}"
         return out
+
+    def open_url(self, url: str) -> bool:
+        """Open web URL in default Android browser."""
+        rc, _, _ = self.run_adb(["shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", url])
+        return rc == 0
+
+    def dial_phone(self, phone_number: str) -> bool:
+        """Open phone dialer with phone number."""
+        clean = re.sub(r"[^\d+]", "", phone_number)
+        rc, _, _ = self.run_adb(["shell", "am", "start", "-a", "android.intent.action.DIAL", "-d", f"tel:{clean}"])
+        return rc == 0
+
+    def send_whatsapp_intent(self, phone_number: str, message: str) -> bool:
+        """Send WhatsApp message directly via Android deep link intent."""
+        import urllib.parse
+        clean = re.sub(r"[^\d+]", "", phone_number)
+        if clean.startswith("+"):
+            clean = clean[1:]
+        encoded = urllib.parse.quote(message)
+        wa_url = f"https://api.whatsapp.com/send?phone={clean}&text={encoded}"
+        rc, _, _ = self.run_adb(["shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", wa_url, "com.whatsapp"])
+        if rc == 0:
+            import time
+            time.sleep(2.0)
+            self.press_key("enter")
+            return True
+        return False
+
+    def get_battery_level(self) -> int:
+        """Get Android device battery percentage."""
+        rc, out, _ = self.run_adb(["shell", "dumpsys", "battery"])
+        if rc == 0:
+            match = re.search(r"level:\s*(\d+)", out)
+            if match:
+                return int(match.group(1))
+        return -1
+
+    def is_screen_on(self) -> bool:
+        """Check if Android screen is currently awake / illuminated."""
+        rc, out, _ = self.run_adb(["shell", "dumpsys", "power"])
+        if rc == 0:
+            return "mHoldingDisplaySuspendBlocker=true" in out or "Display Power: state=ON" in out
+        return False
+
+    def wake_screen(self) -> bool:
+        """Ensure Android screen is turned on."""
+        if not self.is_screen_on():
+            return self.press_key("wake") or self.press_key("power")
+        return True

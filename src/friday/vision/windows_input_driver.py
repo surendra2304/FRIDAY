@@ -45,6 +45,9 @@ VK_MAP: dict[str, int] = {
     "down": 0x28,
     "insert": 0x2D,
     "delete": 0x2E,
+    "/": 0xBF,
+    "slash": 0xBF,
+    "?": 0xBF,
     "f1": 0x70,
     "f2": 0x71,
     "f3": 0x72,
@@ -197,9 +200,21 @@ class BaseWindowsInputDriver(ABC):
 class WindowsNativeInputDriver(BaseWindowsInputDriver):
     """Real Win32 input synthesis driver using user32.SendInput and user32 cursor APIs."""
 
+    def _ensure_desktop(self) -> None:
+        """Attach current thread to interactive desktop session to prevent Win32 Error 5 (Access Denied)."""
+        if sys.platform != "win32":
+            return
+        try:
+            h_desk = self._user32.OpenDesktopW("Default", 0, False, 0x01FF)
+            if h_desk:
+                self._user32.SetThreadDesktop(h_desk)
+        except Exception:
+            pass
+
     def __init__(self) -> None:
         self._enable_dpi_awareness()
         self._user32 = ctypes.windll.user32
+        self._ensure_desktop()
         # Set function argument and return types for 64-bit safety
         self._user32.SendInput.argtypes = [wintypes.UINT, ctypes.POINTER(INPUT), ctypes.c_int]
         self._user32.SendInput.restype = wintypes.UINT
@@ -237,13 +252,19 @@ class WindowsNativeInputDriver(BaseWindowsInputDriver):
             logger.debug(f"Could not set process DPI awareness: {e}")
 
     def get_screen_dimensions(self) -> tuple[int, int]:
+        self._ensure_desktop()
         width = int(self._user32.GetSystemMetrics(SM_CXSCREEN))
         height = int(self._user32.GetSystemMetrics(SM_CYSCREEN))
         return (width, height)
 
     def get_cursor_position(self) -> tuple[int, int]:
+        self._ensure_desktop()
         pt = POINT()
         ok = self._user32.GetCursorPos(ctypes.byref(pt))
+        if not ok:
+            # Re-attempt with fresh desktop handle if first attempt failed
+            self._ensure_desktop()
+            ok = self._user32.GetCursorPos(ctypes.byref(pt))
         if not ok:
             err = ctypes.GetLastError()
             logger.warning(f"Failed to retrieve cursor position from Win32 GetCursorPos (error={err}).")
@@ -251,6 +272,7 @@ class WindowsNativeInputDriver(BaseWindowsInputDriver):
         return (int(pt.x), int(pt.y))
 
     def move_cursor(self, x: int, y: int) -> bool:
+        self._ensure_desktop()
         target_x = int(x)
         target_y = int(y)
         # First try SetCursorPos (handles multi-monitor absolute desktop coords directly)
@@ -304,6 +326,7 @@ class WindowsNativeInputDriver(BaseWindowsInputDriver):
         return abs(cur_x - target_x) <= 2 and abs(cur_y - target_y) <= 2
 
     def click(self, x: int | None = None, y: int | None = None, button: str = "left") -> bool:
+        self._ensure_desktop()
         if x is not None and y is not None:
             self.move_cursor(x, y)
 
@@ -340,6 +363,7 @@ class WindowsNativeInputDriver(BaseWindowsInputDriver):
         return ok1 and ok2
 
     def scroll(self, delta_y: int) -> bool:
+        self._ensure_desktop()
         inputs = (INPUT * 1)()
         inputs[0].type = INPUT_MOUSE
         inputs[0].mi.dwFlags = MOUSEEVENTF_WHEEL
@@ -349,11 +373,16 @@ class WindowsNativeInputDriver(BaseWindowsInputDriver):
         return sent == 1
 
     def press_key(self, key: str) -> bool:
+        self._ensure_desktop()
         k = key.lower().strip()
         vk = VK_MAP.get(k)
         if vk is None:
             if len(k) == 1:
-                vk = ord(k.upper())
+                try:
+                    scanned = self._user32.VkKeyScanW(ord(k)) & 0xFF
+                    vk = scanned if scanned != 0xFF else ord(k.upper())
+                except Exception:
+                    vk = ord(k.upper())
             else:
                 logger.error(f"Unsupported virtual key: '{key}'")
                 return False
@@ -373,6 +402,7 @@ class WindowsNativeInputDriver(BaseWindowsInputDriver):
     def type_text(self, text: str) -> bool:
         if not text:
             return True
+        self._ensure_desktop()
 
         # Send characters with short interval to allow Windows RichEdit/UIA controls to process them cleanly
         all_sent = True
@@ -391,20 +421,25 @@ class WindowsNativeInputDriver(BaseWindowsInputDriver):
             sent = self._user32.SendInput(2, inputs, ctypes.sizeof(INPUT))
             if sent != 2:
                 all_sent = False
-            time.sleep(0.015)
+            time.sleep(0.02)
 
         return all_sent
 
     def hotkey(self, keys: list[str]) -> bool:
         if not keys:
             return True
+        self._ensure_desktop()
 
         vks = []
         for k in keys:
             vk = VK_MAP.get(k.lower().strip())
             if vk is None:
                 if len(k) == 1:
-                    vk = ord(k.upper())
+                    try:
+                        scanned = self._user32.VkKeyScanW(ord(k)) & 0xFF
+                        vk = scanned if scanned != 0xFF else ord(k.upper())
+                    except Exception:
+                        vk = ord(k.upper())
                 else:
                     return False
             vks.append(vk)

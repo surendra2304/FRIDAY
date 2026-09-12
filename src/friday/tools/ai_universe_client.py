@@ -61,8 +61,6 @@ class AIUniverseClient:
             self.base_url = (
                 os.getenv("INFERENCE_URL")
                 or os.getenv("FRIDAY_INFERENCE_URL")
-                or os.getenv("FRIDAY_AI_UNIVERSE_BASE_URL")
-                or os.getenv("FRIDAY_UNIVERSE_API_URL")
                 or "https://inference-3i2b.onrender.com"
             ).rstrip("/")
 
@@ -72,7 +70,6 @@ class AIUniverseClient:
             self.api_key = (
                 os.getenv("INFERENCE_API_KEY")
                 or os.getenv("FRIDAY_INFERENCE_API_KEY")
-                or os.getenv("FRIDAY_UNIVERSE_API_KEY")
                 or "inference_api"
             ).strip()
         self.timeout = timeout
