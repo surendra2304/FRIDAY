@@ -445,8 +445,21 @@ async def test_peer_delegation_memora_live():
 
 
 @pytest.mark.asyncio
-async def test_peer_delegation_forge_local():
+async def test_peer_delegation_forge_local(monkeypatch):
     """Verify FRIDAY delegates task to local Forge daemon (:8001)."""
+    import httpx
+
+    async def mock_post(url, *args, **kwargs):
+        return httpx.Response(
+            status_code=200,
+            json={"status": "ok", "forge_version": "1.0.0"},
+            headers={"content-type": "application/json"},
+            request=httpx.Request("POST", url),
+        )
+
+    client = fleet_client.get_shared_client()
+    monkeypatch.setattr(client, "post", mock_post)
+
     env = TaskEnvelope(
         source_agent="friday",
         target_agent="forge",
@@ -459,8 +472,21 @@ async def test_peer_delegation_forge_local():
 
 
 @pytest.mark.asyncio
-async def test_peer_delegation_sentinel_policy_preservation():
+async def test_peer_delegation_sentinel_policy_preservation(monkeypatch):
     """Verify FRIDAY delegates scoped security task to Sentinel (:8003) and preserves policy."""
+    import httpx
+
+    async def mock_post(url, *args, **kwargs):
+        return httpx.Response(
+            status_code=200,
+            json={"status": "ok", "policy": "preserved", "verdict": "clean"},
+            headers={"content-type": "application/json"},
+            request=httpx.Request("POST", url),
+        )
+
+    client = fleet_client.get_shared_client()
+    monkeypatch.setattr(client, "post", mock_post)
+
     env = TaskEnvelope(
         source_agent="friday",
         target_agent="sentinel",
