@@ -49,7 +49,7 @@ def test_secret_detection():
     shield = AgentShield()
 
     sample_code = """
-GOOGLE_KEY = "AIzaSyB9z8X7w6V5u4T3s2R1q0P9o8N7m6L5k4j"
+MOCK_GOOGLE_KEY = "AIzaSyMockTestKeyB9z8X7w6V5u4T3s2R1q0P9o"
 OPENAI_KEY = "sk-1234567890abcdef1234567890abcdef"
 GROQ_KEY = "gsk_1234567890abcdef1234567890abcdef1234567890"
 GITHUB_KEY = "ghp_1234567890abcdef1234567890abcdef1234"

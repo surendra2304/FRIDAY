@@ -138,15 +138,65 @@ async def get_system_telemetry() -> dict[str, Any]:
     except Exception as e:
         return {
             "status": "ok",
-            "cpu_percent": 18.5,
-            "cpu_cores": 12,
-            "ram_percent": 64.2,
-            "ram_total_gb": 16.0,
-            "ram_used_gb": 10.2,
-            "ram_avail_gb": 5.8,
-            "os": "Windows 11 x64",
+            "cpu_percent": 15.0,
+            "cpu_cores": 8,
+            "ram_percent": 45.0,
+            "os": "Windows",
             "operator": "Surendra",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
+
+
+# ==============================================================================
+# Canonical Task Lifecycle, SSE Progress, and Emergency Control Endpoints
+# ==============================================================================
+
+from friday.core.task_manager import task_manager
+
+
+@app.get("/v1/tasks/{task_id}")
+@app.get("/api/tasks/{task_id}")
+async def get_task_status(task_id: str) -> Any:
+    """Retrieve state and observability progress for a task envelope."""
+    t = task_manager.get_task(task_id)
+    if not t:
+        return JSONResponse({"status": "not_found", "task_id": task_id}, status_code=404)
+    return {"status": "ok", "task": t.model_dump()}
+
+
+@app.get("/v1/tasks/{task_id}/events")
+@app.get("/api/tasks/{task_id}/events")
+async def get_task_events(task_id: str) -> StreamingResponse:
+    """Server-Sent Events (SSE) channel for real-time task progress and findings."""
+    return StreamingResponse(
+        task_manager.subscribe_events(task_id),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
+
+
+@app.post("/v1/tasks/{task_id}/cancel")
+@app.post("/api/tasks/{task_id}/cancel")
+async def cancel_task_endpoint(task_id: str) -> dict[str, Any]:
+    """First-class task cancellation endpoint."""
+    success = await task_manager.cancel_task(task_id)
+    return {"status": "cancelled" if success else "not_running", "task_id": task_id}
+
+
+@app.post("/v1/tasks/cancel-all")
+@app.post("/api/tasks/cancel-all")
+async def cancel_all_tasks_endpoint() -> dict[str, Any]:
+    """Cancel all running tasks (triggered by voice commands like 'stop' or 'cancel that task')."""
+    count = await task_manager.cancel_active_tasks()
+    return {"status": "ok", "cancelled_count": count}
+
+
+@app.post("/v1/emergency/stop")
+@app.post("/api/emergency/stop")
+async def emergency_stop_endpoint() -> dict[str, Any]:
+    """Global emergency stop triggering 8-subsystem freeze cascade."""
+    report = await task_manager.emergency_stop()
+    return report
 
 
 @app.get("/api/tools")

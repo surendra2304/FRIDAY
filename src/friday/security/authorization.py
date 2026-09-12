@@ -12,6 +12,7 @@ import secrets
 import threading
 import time
 import uuid
+from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -218,6 +219,46 @@ class ToolAuthorizer:
                 )
 
         return True, f"All {len(required_capabilities)} required capability(ies) permitted for skill '{skill_name}'."
+
+
+class ApprovalScope(str, Enum):
+    SESSION = "session"
+    TASK = "task"
+    CAPABILITY = "capability"
+    DEVICE = "device"
+
+
+class ApprovalProfile(BaseModel):
+    """Scoped, revocable approval profile for pre-authorized autonomy."""
+
+    profile_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    scope: ApprovalScope = Field(default=ApprovalScope.TASK)
+    target_id: str = Field(default="*", description="task_id, device_id, or capability name")
+    allowed_tools: list[str] = Field(default_factory=list, description="Explicit tools approved under profile")
+    max_safety_level: SafetyLevel = Field(default=SafetyLevel.SENSITIVE)
+    created_at: float = Field(default_factory=time.time)
+    expires_at: float = Field(default_factory=lambda: time.time() + 3600.0)
+    revoked: bool = Field(default=False)
+
+    def is_valid(self, tool_name: str, safety_level: SafetyLevel, task_id: str = "", device_id: str = "") -> bool:
+        if self.revoked:
+            return False
+        if time.time() > self.expires_at:
+            return False
+        # DANGEROUS actions can NEVER be pre-approved by a profile
+        if safety_level == SafetyLevel.DANGEROUS:
+            return False
+        # Check scope match
+        if self.scope == ApprovalScope.TASK and self.target_id != "*" and self.target_id != task_id:
+            return False
+        if self.scope == ApprovalScope.DEVICE and self.target_id != "*" and self.target_id != device_id:
+            return False
+        if self.allowed_tools and tool_name not in self.allowed_tools and "*" not in self.allowed_tools:
+            return False
+        return True
+
+    def revoke(self) -> None:
+        self.revoked = True
 
 
 # Process-level default authorizer singleton

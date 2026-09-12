@@ -29,6 +29,8 @@ from dotenv import load_dotenv
 # Ensure environment variables are loaded
 load_dotenv(r"d:\FRIDAY Universe\FRIDAY\.env")
 
+from friday.core.task_envelope import TaskEnvelope, TaskResult, TaskStatus
+
 
 @dataclass
 class AgentStatus:
@@ -763,6 +765,150 @@ class FleetClient:
             return await self.ask_memora(directive)
         else:
             return await self.ask_inference(directive)
+
+    async def dispatch_task(self, envelope: TaskEnvelope) -> TaskResult:
+        """Dispatches a structured TaskEnvelope to any peer agent in the FRIDAY Universe."""
+        t0 = time.time()
+        target = envelope.target_agent.lower().strip()
+        client = self.get_shared_client()
+
+        try:
+            if target == "inference":
+                url = f"{self.inference_url}/v1/task/execute"
+                headers = {"X-FRIDAY-API-Key": self.inference_key, "Content-Type": "application/json"}
+                resp = await client.post(url, json=envelope.model_dump(), headers=headers, timeout=20.0)
+                if resp.status_code == 404:
+                    alt_url = f"{self.inference_url}/v1/agent/assist"
+                    valid_task_types = {"code", "architecture", "security", "market", "debugging", "review"}
+                    ttype = envelope.action if envelope.action in valid_task_types else "general"
+                    alt_payload = {
+                        "caller_agent": envelope.source_agent,
+                        "task_type": ttype,
+                        "prompt": str(envelope.payload.get("prompt", envelope.payload.get("question", str(envelope.payload)))),
+                        "fast_lane": True,
+                        "max_tokens": 120,
+                    }
+                    resp = await client.post(alt_url, json=alt_payload, headers=headers, timeout=20.0)
+
+            elif target == "memora":
+                url = f"{self.memora_url}/v1/task/execute"
+                headers = {"Authorization": f"Bearer {self.memora_key}", "X-Agent-Name": envelope.source_agent, "Content-Type": "application/json"}
+                resp = await client.post(url, json=envelope.model_dump(), headers=headers, timeout=10.0)
+                if resp.status_code in (404, 405):
+                    if envelope.action in ("store", "remember", "add"):
+                        alt_url = f"{self.memora_url}/v1/memories"
+                        alt_payload = {
+                            "content_text": str(envelope.payload.get("content", envelope.payload.get("text", "FRIDAY observation"))),
+                            "memory_type": "episodic",
+                            "source": f"agent:{envelope.source_agent}",
+                        }
+                        resp = await client.post(alt_url, json=alt_payload, headers=headers, timeout=10.0)
+                    else:
+                        alt_url = f"{self.memora_url}/v1/context"
+                        alt_payload = {
+                            "task_query": str(envelope.payload.get("query", envelope.payload.get("prompt", "context"))),
+                            "token_budget": 1000,
+                        }
+                        resp = await client.post(alt_url, json=alt_payload, headers=headers, timeout=10.0)
+
+            elif target == "stratex":
+                url = f"{self.stratex_url}/v1/task/execute"
+                headers = {"X-API-Key": self.stratex_key, "Authorization": f"Bearer {self.stratex_key}", "Content-Type": "application/json"}
+                resp = await client.post(url, json=envelope.model_dump(), headers=headers, timeout=10.0)
+                if resp.status_code in (404, 405):
+                    alt_url = f"{self.stratex_url}/api/engine-health"
+                    resp = await client.get(alt_url, headers=headers, timeout=10.0)
+
+            elif target == "intelx":
+                url = f"{self.intelx_url}/v1/task/execute"
+                headers = {"Authorization": f"Bearer {self.intelx_key}", "Content-Type": "application/json"}
+                resp = await client.post(url, json=envelope.model_dump(), headers=headers, timeout=15.0)
+                if resp.status_code in (404, 405):
+                    alt_url = f"{self.intelx_url}/api/v1/friday-universe/intelligence?agent={envelope.source_agent}&limit=5"
+                    resp = await client.get(alt_url, headers=headers, timeout=15.0)
+
+            elif target == "futuris":
+                headers = {"X-API-Key": self.futuris_key, "Content-Type": "application/json"}
+                try:
+                    resp = await client.post(f"{self.futuris_local_url}/v1/task/execute", json=envelope.model_dump(), headers=headers, timeout=2.0)
+                except Exception:
+                    resp = await client.post(f"{self.futuris_url}/v1/task/execute", json=envelope.model_dump(), headers=headers, timeout=5.0)
+                if resp.status_code in (404, 405):
+                    try:
+                        resp = await client.get(f"{self.futuris_local_url}/v1/friday/calibration", headers=headers, timeout=2.0)
+                    except Exception:
+                        resp = await client.get(f"{self.futuris_url}/v1/friday/calibration", headers=headers, timeout=5.0)
+
+            elif target == "cortex":
+                alt_url = f"{self.cortex_url}/v1/friday/command"
+                headers = {"X-Friday-Api-Key": self.cortex_key, "Content-Type": "application/json"}
+                try:
+                    url = f"{self.cortex_url}/v1/task/execute"
+                    resp = await client.post(url, json=envelope.model_dump(), headers=headers, timeout=10.0)
+                except Exception:
+                    resp = None
+                if resp is None or resp.status_code in (404, 405):
+                    goal_text = envelope.payload.get("goal") or envelope.payload.get("prompt") or envelope.action
+                    alt_payload = {
+                        "goal": goal_text,
+                        "required_capability": "reliability",
+                        "requested_action": envelope.action or "status_check",
+                        "context": envelope.payload or {},
+                    }
+                    resp = await client.post(alt_url, json=alt_payload, headers=headers, timeout=10.0)
+
+            elif target == "forge":
+                url = f"{self.forge_url}/api/v1/forge/delegate"
+                headers = {"Authorization": f"Bearer {self.forge_key}", "Content-Type": "application/json"}
+                resp = await client.post(url, json=envelope.model_dump(), headers=headers, timeout=15.0)
+
+            elif target == "sentinel":
+                url = f"{self.sentinel_url}/api/v1/friday/delegate"
+                headers = {"X-API-Key": self.sentinel_key, "Authorization": f"Bearer {self.sentinel_key}", "Content-Type": "application/json"}
+                sentinel_payload = envelope.model_dump()
+                if sentinel_payload.get("capability") not in ("sentinel.security_assessment", "sentinel.reconnaissance", "sentinel.incident_investigation"):
+                    sentinel_payload["capability"] = "sentinel.security_assessment"
+                resp = await client.post(url, json=sentinel_payload, headers=headers, timeout=10.0)
+
+            else:
+                lat = int((time.time() - t0) * 1000)
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    target_agent=envelope.target_agent,
+                    status=TaskStatus.ERROR,
+                    error=f"Unknown target agent '{target}'",
+                    execution_time_ms=lat,
+                )
+
+            lat = int((time.time() - t0) * 1000)
+            if resp.status_code in (200, 201, 202):
+                res_data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {"text": resp.text}
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    target_agent=envelope.target_agent,
+                    status=TaskStatus.SUCCESS,
+                    result=res_data if isinstance(res_data, dict) else {"data": res_data},
+                    summary=f"Task '{envelope.action}' processed by {target} in {lat}ms",
+                    execution_time_ms=lat,
+                )
+            else:
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    target_agent=envelope.target_agent,
+                    status=TaskStatus.ERROR,
+                    error=f"HTTP {resp.status_code}: {resp.text[:200]}",
+                    execution_time_ms=lat,
+                )
+
+        except Exception as e:
+            lat = int((time.time() - t0) * 1000)
+            return TaskResult(
+                task_id=envelope.task_id,
+                target_agent=envelope.target_agent,
+                status=TaskStatus.ERROR,
+                error=str(e),
+                execution_time_ms=lat,
+            )
 
 
 # Global singleton instance

@@ -17,6 +17,8 @@ Invariants:
 - Never calls an external API simply because it exists.
 """
 
+from __future__ import annotations
+
 import re
 from dataclasses import dataclass
 from enum import Enum
@@ -260,3 +262,264 @@ class CapabilityRouter:
             f"(Score: {chosen.compute_selection_score():.1f}, Avoided External: {avoided_external})"
         )
         return decision
+
+    def compile_intent(
+        self,
+        user_input: str,
+        context: dict[str, Any] | None = None,
+    ) -> CompiledIntent:
+        """Compile a user command or voice instruction into a strongly-typed intent.
+        
+        Replaces regex-only routing with capability-based intent compilation across
+        all 14 standard FRIDAY Universe commands.
+        """
+        clean = user_input.strip().lower()
+
+        # 1. Open application
+        if any(clean.startswith(prefix) for prefix in ["open ", "launch ", "start app ", "run app "]):
+            app_name = clean.split(" ", 1)[1].strip()
+            # Remove filler words
+            for filler in ["the ", "application ", "app "]:
+                if app_name.startswith(filler):
+                    app_name = app_name[len(filler):].strip()
+            return CompiledIntent(
+                command="open_application",
+                capability="desktop_control",
+                target_agent="friday",
+                action="open_application",
+                parameters={"app_name": app_name},
+                safety_level=SafetyLevel.SAFE,
+                requires_authorization=False,
+                confidence=0.98,
+                rationale=f"Operator requested to open desktop application '{app_name}'",
+            )
+
+        # 2. Close application
+        if any(clean.startswith(prefix) for prefix in ["close ", "terminate ", "kill app ", "exit "]):
+            app_name = clean.split(" ", 1)[1].strip()
+            for filler in ["the ", "application ", "app "]:
+                if app_name.startswith(filler):
+                    app_name = app_name[len(filler):].strip()
+            return CompiledIntent(
+                command="close_application",
+                capability="desktop_control",
+                target_agent="friday",
+                action="close_application",
+                parameters={"app_name": app_name},
+                safety_level=SafetyLevel.SENSITIVE,
+                requires_authorization=True,
+                confidence=0.95,
+                rationale=f"Operator requested to close application '{app_name}'",
+            )
+
+        # 3. Inspect screen
+        if any(w in clean for w in ["inspect screen", "look at screen", "take screenshot", "check display", "read screen"]):
+            return CompiledIntent(
+                command="inspect_screen",
+                capability="screen_perception",
+                target_agent="friday",
+                action="inspect_screen",
+                parameters={},
+                safety_level=SafetyLevel.SAFE,
+                requires_authorization=False,
+                confidence=0.96,
+                rationale="Operator requested screen perception inspection",
+            )
+
+        # 4. Type text
+        if clean.startswith("type ") or "type text " in clean:
+            text = user_input.split(" ", 1)[1].strip().strip("'\"")
+            return CompiledIntent(
+                command="type_text",
+                capability="desktop_input",
+                target_agent="friday",
+                action="type_text",
+                parameters={"text": text},
+                safety_level=SafetyLevel.SAFE,
+                requires_authorization=False,
+                confidence=0.95,
+                rationale=f"Operator requested typing text into active window",
+            )
+
+        # 5. Click UI element
+        if clean.startswith("click ") or clean.startswith("tap "):
+            target = user_input.split(" ", 1)[1].strip()
+            return CompiledIntent(
+                command="click_ui_element",
+                capability="desktop_input",
+                target_agent="friday",
+                action="click",
+                parameters={"target": target},
+                safety_level=SafetyLevel.SAFE,
+                requires_authorization=False,
+                confidence=0.94,
+                rationale=f"Operator requested click on '{target}'",
+            )
+
+        # 6. Send email
+        if any(w in clean for w in ["send email", "draft email", "compose email"]):
+            return CompiledIntent(
+                command="send_email",
+                capability="messaging_email",
+                target_agent="friday",
+                action="send_email",
+                parameters={"raw_instruction": user_input},
+                safety_level=SafetyLevel.SENSITIVE,
+                requires_authorization=True,
+                confidence=0.97,
+                rationale="Email action modifies communications and requires explicit authorization",
+            )
+
+        # 7. Send WhatsApp message
+        if any(w in clean for w in ["send whatsapp", "whatsapp message", "message on whatsapp"]):
+            return CompiledIntent(
+                command="send_whatsapp",
+                capability="messaging_whatsapp",
+                target_agent="friday",
+                action="send_whatsapp_message",
+                parameters={"raw_instruction": user_input},
+                safety_level=SafetyLevel.SENSITIVE,
+                requires_authorization=True,
+                confidence=0.97,
+                rationale="WhatsApp dispatch requires explicit contact selection and authorization",
+            )
+
+        # 8. Ask Inference / ASTRA
+        if any(clean.startswith(prefix) for prefix in ["ask inference", "ask astra", "consult astra", "inference "]):
+            prompt_text = user_input.split(" ", 2)[-1].strip()
+            return CompiledIntent(
+                command="ask_inference",
+                capability="reasoning_consensus",
+                target_agent="inference",
+                action="reason",
+                parameters={"prompt": prompt_text},
+                safety_level=SafetyLevel.SAFE,
+                requires_authorization=False,
+                confidence=0.99,
+                rationale="Operator delegated deliberative reasoning to Inference (ASTRA)",
+            )
+
+        # 9. Retrieve memory
+        if any(w in clean for w in ["remember", "recall", "retrieve memory", "what did i say about"]):
+            return CompiledIntent(
+                command="retrieve_memory",
+                capability="memory_retrieval",
+                target_agent="memora",
+                action="remember",
+                parameters={"query": user_input},
+                safety_level=SafetyLevel.SAFE,
+                requires_authorization=False,
+                confidence=0.95,
+                rationale="Operator requested context retrieval from Memora persistent fabric",
+            )
+
+        # 10. Delegate research
+        if any(w in clean for w in ["delegate research", "research macro", "intelx", "macro intelligence"]):
+            return CompiledIntent(
+                command="delegate_research",
+                capability="evidence_research",
+                target_agent="intelx",
+                action="research",
+                parameters={"query": user_input},
+                safety_level=SafetyLevel.SAFE,
+                requires_authorization=False,
+                confidence=0.95,
+                rationale="Operator delegated macro intelligence research to IntelX",
+            )
+
+        # 11. Delegate software engineering
+        if any(w in clean for w in ["delegate software", "forge", "write code for", "synthesize software"]):
+            return CompiledIntent(
+                command="delegate_software",
+                capability="software_engineering",
+                target_agent="forge",
+                action="status",
+                parameters={"goal": user_input},
+                safety_level=SafetyLevel.SAFE,
+                requires_authorization=False,
+                confidence=0.95,
+                rationale="Operator delegated software synthesis to Forge",
+            )
+
+        # 12. Delegate security assessment
+        if any(w in clean for w in ["delegate security", "sentinel", "audit security", "scan perimeter"]):
+            return CompiledIntent(
+                command="delegate_security",
+                capability="security_assessment",
+                target_agent="sentinel",
+                action="audit",
+                parameters={"target": "localhost", "prompt": user_input},
+                safety_level=SafetyLevel.SAFE,
+                requires_authorization=False,
+                confidence=0.96,
+                rationale="Operator requested security audit delegation to Sentinel",
+            )
+
+        # 13. Retrieve forecast
+        if any(w in clean for w in ["forecast", "predict probability", "futuris"]):
+            return CompiledIntent(
+                command="retrieve_forecast",
+                capability="predictive_forecasting",
+                target_agent="futuris",
+                action="forecast",
+                parameters={"topic": user_input},
+                safety_level=SafetyLevel.SAFE,
+                requires_authorization=False,
+                confidence=0.95,
+                rationale="Operator requested predictive forecast delegation to Futuris",
+            )
+
+        # 14. Inspect trading status
+        if any(w in clean for w in ["trading status", "stratex", "trading pnl", "bot status"]):
+            return CompiledIntent(
+                command="inspect_trading",
+                capability="algorithmic_trading",
+                target_agent="stratex",
+                action="status",
+                parameters={},
+                safety_level=SafetyLevel.SAFE,
+                requires_authorization=False,
+                confidence=0.97,
+                rationale="Operator requested trading telemetry from Stratex",
+            )
+
+        # Fallback to general reasoning
+        return CompiledIntent(
+            command="general_query",
+            capability="direct_reasoning",
+            target_agent="inference",
+            action="reason",
+            parameters={"prompt": user_input},
+            safety_level=SafetyLevel.SAFE,
+            requires_authorization=False,
+            confidence=0.80,
+            rationale="General conversational or factual inquiry",
+        )
+
+
+@dataclass
+class CompiledIntent:
+    """Strongly-typed compiled intent representing a parsed operator command."""
+
+    command: str
+    capability: str
+    target_agent: str
+    action: str
+    parameters: dict[str, Any]
+    safety_level: SafetyLevel
+    requires_authorization: bool
+    confidence: float
+    rationale: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "command": self.command,
+            "capability": self.capability,
+            "target_agent": self.target_agent,
+            "action": self.action,
+            "parameters": self.parameters,
+            "safety_level": self.safety_level.value,
+            "requires_authorization": self.requires_authorization,
+            "confidence": round(self.confidence, 2),
+            "rationale": self.rationale,
+        }

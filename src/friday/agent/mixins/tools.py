@@ -54,6 +54,7 @@ from friday.tools.builtin import (
     CreateGitHubIssueTool,
     DictionaryTool,
     DraftEmailTool,
+    DraftGmailTool,
     EnrollFaceIdentityTool,
     ExecuteCommandTool,
     FetchWebpageContentTool,
@@ -82,8 +83,10 @@ from friday.tools.builtin import (
     NewsTool,
     OpenApplicationTool,
     OpenWebsiteTool,
+    OpenWhatsAppTool,
     ProposeComputerActionTool,
     ReadActiveWindowTextTool,
+    ReadGmailInboxTool,
     ReadOwnCodebaseTool,
     ReadScreenTextTool,
     RememberFactTool,
@@ -92,6 +95,8 @@ from friday.tools.builtin import (
     ScreenPredictionTool,
     ScreenSnapshotTool,
     SendEmailTool,
+    SendGmailTool,
+    SendWhatsAppMessageTool,
     SynthesizeInformationTool,
     SystemControlTool,
     SystemInfoTool,
@@ -176,6 +181,11 @@ class ToolExecutionMixin:
             registry.register(GetTodaysEventsTool())
             registry.register(SendEmailTool())
             registry.register(DraftEmailTool())
+            registry.register(ReadGmailInboxTool())
+            registry.register(DraftGmailTool())
+            registry.register(SendGmailTool())
+            registry.register(SendWhatsAppMessageTool())
+            registry.register(OpenWhatsAppTool())
             registry.register(ReadOwnCodebaseTool())
             registry.register(AIUniverseTool(memory=self.memory))
             registry.register(WeatherTool())

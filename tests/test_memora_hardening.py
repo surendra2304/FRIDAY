@@ -20,15 +20,15 @@ def test_memora_sanitizes_credentials_before_persistence():
     """Verify raw API keys and secrets are redacted before persistence."""
     client = MemoraClient(local_db_path=":memory:")
 
-    secret_key = "sk-proj-1234567890abcdef1234567890abcdef"
-    gemini_key = "AIzaSySecretTokenNeverStoreInDatabase12"
-    raw_input = f"Remember my credentials: {secret_key} and {gemini_key} and password='my_super_password'"
+    mock_secret_key = "sk-proj-1234567890abcdef1234567890abcdef"
+    mock_gemini_key = "AIzaSyMockTokenNeverStoreInDatabase1234"
+    raw_input = f"Remember my credentials: {mock_secret_key} and {mock_gemini_key} and password='my_super_password'"
 
     assert client.should_persist(raw_input) is False
 
     clean_text = client.sanitize_for_persistence(raw_input)
-    assert secret_key not in clean_text
-    assert gemini_key not in clean_text
+    assert mock_secret_key not in clean_text
+    assert mock_gemini_key not in clean_text
     assert "[REDACTED_CREDENTIAL]" in clean_text
 
 

@@ -150,6 +150,15 @@ class OpenApplicationTool(BaseTool):
                     is_error=False,
                     safety_level=self.safety_level,
                 )
+            elif "Multiple installations" in msg:
+                logger.info(f"Ambiguous application detected for '{requested}': {msg}")
+                return ToolResult(
+                    name=self.name,
+                    content=msg,
+                    is_error=False,
+                    safety_level=self.safety_level,
+                    metadata={"is_ambiguous": True},
+                )
         except Exception as e:
             logger.warning(f"app_launcher fallback for '{requested}': {e}")
 
