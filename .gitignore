@@ -69,7 +69,7 @@ ask_inference_from_friday.py
 .agents/
 
 # Local runtime data (not source)
-backups/
-memory/
-reports/
-screenshots/
+/backups/
+/memory/
+/reports/
+/screenshots/
