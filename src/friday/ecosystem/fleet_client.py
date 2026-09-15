@@ -24,10 +24,6 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
-from dotenv import load_dotenv
-
-# Ensure environment variables are loaded
-load_dotenv(r"d:\FRIDAY Universe\FRIDAY\.env")
 
 from friday.core.task_envelope import TaskEnvelope, TaskResult, TaskStatus
 
@@ -71,7 +67,7 @@ class FleetClient:
         self.futuris_local_url = os.getenv("FUTURIS_LOCAL_URL", "http://127.0.0.1:8004").rstrip("/")
         self.futuris_key = os.getenv("FUTURIS_API_KEY", "friday_secret_key_default")
 
-        self.cortex_url = os.getenv("CORTEX_URL", "https://cortex-qifr.onrender.com").rstrip("/")
+        self.cortex_url = os.getenv("CORTEX_URL", "https://cortex-0m7c.onrender.com").rstrip("/")
         self.cortex_key = os.getenv("CORTEX_API_KEY", "friday_api")
 
         self.forge_url = os.getenv("FORGE_URL", "http://127.0.0.1:8001").rstrip("/")
