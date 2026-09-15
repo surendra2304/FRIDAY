@@ -60,7 +60,7 @@ class FleetClient:
         self.stratex_url = os.getenv("STRATEX_URL", "https://stratex-ucjz.onrender.com").rstrip("/")
         self.stratex_key = os.getenv("STRATEX_API_KEY", "stratex_api")
 
-        self.intelx_url = os.getenv("INTELX_URL", "https://intelx-3cz1.onrender.com").rstrip("/")
+        self.intelx_url = os.getenv("INTELX_URL", "https://intelx-mygl.onrender.com").rstrip("/")
         self.intelx_key = os.getenv("INTELX_API_KEY", "intelx_api")
 
         self.futuris_url = os.getenv("FUTURIS_URL", "https://futuris-x4f4.onrender.com").rstrip("/")

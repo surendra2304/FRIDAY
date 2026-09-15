@@ -42,9 +42,9 @@ services:
       - key: INFERENCE_URL
         value: "https://inference-r1sn.onrender.com"
       - key: FRIDAY_INTELX_URL
-        value: "https://intelx-3cz1.onrender.com"
+        value: "https://intelx-mygl.onrender.com"
       - key: INTELX_URL
-        value: "https://intelx-3cz1.onrender.com"
+        value: "https://intelx-mygl.onrender.com"
       - key: FRIDAY_MEMORA_URL
         value: "https://memora-cavc.onrender.com"
       - key: MEMORA_URL

@@ -84,7 +84,7 @@ class ServiceRegistry:
         stratex_key = os.getenv("STRATEX_API_KEY", "stratex_api")
 
         # 4. IntelX
-        intelx_url = os.getenv("INTELX_URL", "https://intelx-3cz1.onrender.com").rstrip("/")
+        intelx_url = os.getenv("INTELX_URL", "https://intelx-mygl.onrender.com").rstrip("/")
         intelx_key = os.getenv("INTELX_API_KEY", "intelx_api")
 
         # 5. Futuris
