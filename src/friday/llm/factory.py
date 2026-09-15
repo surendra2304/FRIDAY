@@ -47,7 +47,7 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
             getattr(settings, "inference_url", None)
             or os.getenv("FRIDAY_INFERENCE_URL")
             or getattr(settings, "universe_api_url", None)
-            or "http://localhost:8001"
+            or "https://forge-u98k.onrender.com"
         )
         key = (
             getattr(settings, "inference_api_key", None)
@@ -67,7 +67,7 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
         )
         if not has_keys and not has_explicit:
             logger.info("Direct Gemini API key not configured; using live Inference Cloud Gateway (25 Keys).")
-            url = getattr(settings, "inference_url", None) or os.getenv("FRIDAY_INFERENCE_URL") or "http://localhost:8001"
+            url = getattr(settings, "inference_url", None) or os.getenv("FRIDAY_INFERENCE_URL") or "https://forge-u98k.onrender.com"
             key = getattr(settings, "inference_api_key", None) or os.getenv("FRIDAY_INFERENCE_API_KEY") or ""
             return AIUniverseLLMProvider(base_url=url, api_key=key)
 
