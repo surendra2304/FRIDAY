@@ -348,6 +348,9 @@ class FastPathMixin:
             """Read battery level/charging state via Win32 GetSystemPowerStatus."""
             import ctypes
 
+            if not hasattr(ctypes, "windll"):
+                return "Battery status is only available on a physical laptop workstation."
+
             class SYSTEM_POWER_STATUS(ctypes.Structure):
                 _fields_ = [
                     ("ACLineStatus", ctypes.c_ubyte),
