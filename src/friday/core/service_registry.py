@@ -100,7 +100,7 @@ class ServiceRegistry:
         forge_key = os.getenv("FORGE_API_KEY", "forge_api")
 
         # 8. Sentinel (Local :8003)
-        sentinel_url = os.getenv("SENTINEL_URL", "http://127.0.0.1:8003").rstrip("/")
+        sentinel_url = os.getenv("SENTINEL_URL", "https://sentinel-a861.onrender.com").rstrip("/")
         sentinel_key = os.getenv("SENTINEL_API_KEY", "sentinel_api")
 
         is_prod = self.env == "production"

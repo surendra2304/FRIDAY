@@ -136,7 +136,7 @@ class FridayDoctorEnhanced:
             # 6. Sentinel Security Engine
             subsystem_reports["sentinel"] = {
                 "status": "HEALTHY",
-                "api_endpoint": getattr(self.settings, "sentinel_base_url", "http://localhost:8003"),
+                "api_endpoint": getattr(self.settings, "sentinel_base_url", "https://sentinel-a861.onrender.com"),
                 "scope_enforcement": "ENFORCED",
                 "posture": "SECURE",
             }

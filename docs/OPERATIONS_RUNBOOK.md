@@ -94,7 +94,7 @@ This runbook serves as the authoritative operational manual for deploying, monit
 | **FORGE Engine** | `8000` | `http://localhost:8000` | Build task loop / High CPU | Cancel task via `ForgeManagerSkill.cancel_task(task_id)`; run `PLAYBOOK:forge_runaway`. |
 | **AI-Universe** | `8001` | `https://forge-u98k.onrender.com` | LLM rate limit / 500s | Multi-model failover auto-switches across 7 providers; fallback to rule advisory. |
 | **Nexus Growth** | `8002` | `http://localhost:8002` | Conversion drop / 503 error | Run `PLAYBOOK:website_down`; check deploy correlation and execute rollback. |
-| **Sentinel Security** | `8003` | `http://localhost:8003` | Scan queue timeout / Stale token | Run `PLAYBOOK:data_breach`; verify scope enforcement in `SentinelManagerSkill`. |
+| **Sentinel Security** | `8003` | `https://sentinel-a861.onrender.com` | Scan queue timeout / Stale token | Run `PLAYBOOK:data_breach`; verify scope enforcement in `SentinelManagerSkill`. |
 | **IntelX Research** | `8004` | `http://localhost:8004` | Research timeout / Stale contradiction | `ResearchSupervisorOperator` auto-alerts; prune or refresh via `ResearchLibrary.apply_retention_decay()`. |
 | **Futuris Forecaster** | `8005` | `http://localhost:8005` | Calibration degradation / High Brier score | `ForecastSupervisorOperator` triggers model recalibration and flags uncertainty bounds. |
 | **FRIDAY Core** | `9000` | `http://localhost:9000` | Voice session audio stutter | Rotate Gemini API keys in `GeminiCredentialPool`; restart `MicrophoneStream`. |
@@ -144,7 +144,7 @@ TRADING_BOT_BASE_URL=http://localhost:5000
 FORGE_BASE_URL=http://localhost:8000
 AI_UNIVERSE_BASE_URL=https://forge-u98k.onrender.com
 NEXUS_BASE_URL=http://localhost:8002
-SENTINEL_BASE_URL=http://localhost:8003
+SENTINEL_BASE_URL=https://sentinel-a861.onrender.com
 INTELX_BASE_URL=http://localhost:8004
 FUTURIS_BASE_URL=http://localhost:8005
 FRIDAY_CORE_BASE_URL=http://localhost:9000
