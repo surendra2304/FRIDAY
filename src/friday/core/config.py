@@ -615,11 +615,11 @@ class Settings(BaseSettings):
         description="Alias for IntelX API",
     )
     futuris_url: str = Field(
-        default="http://localhost:8003",
+        default="https://sentinel-a861.onrender.com",
         description="Base URL for Futuris Predictive Forecasting API",
     )
     futuris_base_url: str = Field(
-        default="http://localhost:8003",
+        default="https://sentinel-a861.onrender.com",
         description="Alias for Futuris API",
     )
     memora_url: str = Field(
@@ -631,11 +631,11 @@ class Settings(BaseSettings):
         description="Alias for Memora API",
     )
     sentinel_url: str = Field(
-        default="http://localhost:8003",
+        default="https://sentinel-a861.onrender.com",
         description="Base URL for Sentinel Security API",
     )
     sentinel_base_url: str = Field(
-        default="http://localhost:8003",
+        default="https://sentinel-a861.onrender.com",
         description="Alias for Sentinel API",
     )
     forge_url: str = Field(

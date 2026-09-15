@@ -144,7 +144,7 @@ class EcosystemRegistry:
                 icon="🛡️",
                 health_check_callable=lambda: {
                     "status": "HEALTHY",
-                    "api_url": "http://localhost:8003",
+                    "api_url": "https://sentinel-a861.onrender.com",
                     "policy_engine": "ACTIVE",
                     "scope_enforcement": "ENFORCED",
                 },

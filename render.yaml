@@ -50,9 +50,9 @@ services:
       - key: MEMORA_URL
         value: "https://memora-cavc.onrender.com"
       - key: FRIDAY_SENTINEL_URL
-        value: "http://localhost:8003"
+        value: "https://sentinel-a861.onrender.com"
       - key: SENTINEL_URL
-        value: "http://localhost:8003"
+        value: "https://sentinel-a861.onrender.com"
       - key: FRIDAY_STRATEX_URL
         value: "https://stratex-8wj1.onrender.com"
       - key: STRATEX_URL

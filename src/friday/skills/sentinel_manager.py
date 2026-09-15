@@ -124,7 +124,7 @@ class SentinelManagerSkill(BaseSkill):
 
     def __init__(
         self,
-        base_url: str = "http://localhost:8003",
+        base_url: str = "https://sentinel-a861.onrender.com",
         api_client: Callable[..., dict[str, Any]] | None = None,
         default_target_domain: str = "example.com",
     ) -> None:

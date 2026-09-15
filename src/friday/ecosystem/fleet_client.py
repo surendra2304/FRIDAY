@@ -73,7 +73,7 @@ class FleetClient:
         self.forge_url = os.getenv("FORGE_URL", "https://forge-u98k.onrender.com").rstrip("/")
         self.forge_key = os.getenv("FORGE_API_KEY", "forge_api")
 
-        self.sentinel_url = os.getenv("SENTINEL_URL", "http://127.0.0.1:8003").rstrip("/")
+        self.sentinel_url = os.getenv("SENTINEL_URL", "https://sentinel-a861.onrender.com").rstrip("/")
         self.sentinel_key = os.getenv("SENTINEL_API_KEY", "sentinel_api")
         self._shared_client: httpx.AsyncClient | None = None
 
