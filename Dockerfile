@@ -19,15 +19,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy dependency specifications first for Docker layer caching
+# Copy project specifications and source code
 COPY pyproject.toml README.md requirements.txt* ./
+COPY src/ ./src/
 
-# Install dependencies (platform markers in pyproject.toml automatically exclude win32-only libraries)
+# Install dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -e .
-
-# Copy project source code
-COPY src/ ./src/
 
 # Ensure persistent data and logs directories exist
 RUN mkdir -p /app/data /app/logs
