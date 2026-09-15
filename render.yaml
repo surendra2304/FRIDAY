@@ -11,66 +11,65 @@
         value: "0.0.0.0"
       - key: ENVIRONMENT
         value: "production"
-      # Primary LLM API Key (prompts user in Render Dashboard)
+      # Primary LLM API Key (prompts user in Render Dashboard to keep secret from public GitHub)
       - key: FRIDAY_GEMINI_API_KEY
         sync: false
       - key: FRIDAY_LLM_API_KEY
         sync: false
-      # Universe Inter-Agent Auth Key
+      # Universe Inter-Agent Auth
       - key: FRIDAY_UNIVERSE_API_KEY
         value: "friday_universe_api"
       - key: FRIDAY_API_KEY
         value: "friday_universe_api"
-      # Specialist Agent Endpoints (Clean Canonical Names)
+      - key: FRIDAY_UNIVERSE_API_URL
+        value: "http://localhost:8000"
+      # Specialist Agent Endpoints (Configured from your local .env)
       - key: FRIDAY_CORTEX_URL
-        value: "none"
+        value: "https://cortex-qifr.onrender.com"
+      - key: CORTEX_URL
+        value: "https://cortex-qifr.onrender.com"
       - key: FRIDAY_FORGE_URL
-        value: "none"
+        value: "http://localhost:8001"
+      - key: FORGE_URL
+        value: "http://localhost:8001"
       - key: FRIDAY_FUTURIS_URL
-        value: "none"
+        value: "https://futuris-x4f4.onrender.com"
+      - key: FUTURIS_URL
+        value: "https://futuris-x4f4.onrender.com"
       - key: FRIDAY_INFERENCE_URL
-        value: "none"
+        value: "https://inference-3i2b.onrender.com"
+      - key: INFERENCE_URL
+        value: "https://inference-3i2b.onrender.com"
       - key: FRIDAY_INTELX_URL
-        value: "none"
+        value: "https://intelx-3cz1.onrender.com"
+      - key: INTELX_URL
+        value: "https://intelx-3cz1.onrender.com"
       - key: FRIDAY_MEMORA_URL
-        value: "none"
+        value: "https://memora-9zr9.onrender.com"
+      - key: MEMORA_URL
+        value: "https://memora-9zr9.onrender.com"
       - key: FRIDAY_SENTINEL_URL
-        value: "none"
+        value: "http://localhost:8003"
+      - key: SENTINEL_URL
+        value: "http://localhost:8003"
       - key: FRIDAY_STRATEX_URL
-        value: "none"
+        value: "https://stratex-ucjz.onrender.com"
+      - key: STRATEX_URL
+        value: "https://stratex-ucjz.onrender.com"
       # Specialist Agent API Keys
-      - key: FRIDAY_CORTEX_API_KEY
-        value: "friday_universe_api"
-      - key: FRIDAY_FORGE_API_KEY
-        value: "friday_universe_api"
-      - key: FRIDAY_FUTURIS_API_KEY
-        value: "friday_universe_api"
-      - key: FRIDAY_INFERENCE_API_KEY
-        value: "friday_universe_api"
-      - key: FRIDAY_INTELX_API_KEY
-        value: "friday_universe_api"
-      - key: FRIDAY_MEMORA_API_KEY
-        value: "friday_universe_api"
-      - key: FRIDAY_SENTINEL_API_KEY
-        value: "friday_universe_api"
-      - key: FRIDAY_STRATEX_API_KEY
-        value: "friday_universe_api"
-      # Optional external services
-      - key: FRIDAY_GROQ_API_KEY
-        value: "none"
-      - key: FRIDAY_MISTRAL_API_KEY
-        value: "none"
-      - key: FRIDAY_OPENROUTER_API_KEY
-        value: "none"
-      - key: FRIDAY_GITHUB_TOKEN
-        value: "none"
-      - key: FRIDAY_EMAIL_APP_PASSWORD
-        value: "none"
-      - key: FRIDAY_IOT_HUB_URL
-        value: "none"
-      - key: FRIDAY_IOT_HUB_TOKEN
-        value: "none"
-      - key: FRIDAY_CALENDAR_ICS_URL
-        value: "none"
-      - key: FRIDAY_LLM_MAX_TOKENS
-        value: "4096"
+      - key: CORTEX_API_KEY
+        value: "cortex_api"
+      - key: FORGE_API_KEY
+        value: "forge_api"
+      - key: FUTURIS_API_KEY
+        value: "futuris_api"
+      - key: INFERENCE_API_KEY
+        value: "inference_api"
+      - key: INTELX_API_KEY
+        value: "intelx_api"
+      - key: MEMORA_API_KEY
+        value: "memora_api"
+      - key: SENTINEL_API_KEY
+        value: "sentinel_api"
+      - key: STRATEX_API_KEY
+        value: "stratex_api"
