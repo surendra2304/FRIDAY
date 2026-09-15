@@ -72,9 +72,9 @@ class AndroidActionRequest(BaseModel):
     params: dict[str, Any] = {}
 
 
-@app.get("/")
-@app.get("/api/health")
-@app.get("/health")
+@app.api_route("/", methods=["GET", "HEAD"])
+@app.api_route("/api/health", methods=["GET", "HEAD"])
+@app.api_route("/health", methods=["GET", "HEAD"])
 async def health_check() -> dict[str, Any]:
     """Expose system health report verified across all subsystems."""
     rep = build_health_report(["friday", "friday_deep"])
