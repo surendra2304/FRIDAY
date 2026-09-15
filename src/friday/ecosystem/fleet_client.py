@@ -70,7 +70,7 @@ class FleetClient:
         self.cortex_url = os.getenv("CORTEX_URL", "https://cortex-0m7c.onrender.com").rstrip("/")
         self.cortex_key = os.getenv("CORTEX_API_KEY", "friday_api")
 
-        self.forge_url = os.getenv("FORGE_URL", "https://forge-u98k.onrender.com").rstrip("/")
+        self.forge_url = os.getenv("FORGE_URL", "https://forge-e9kl.onrender.com").rstrip("/")
         self.forge_key = os.getenv("FORGE_API_KEY", "forge_api")
 
         self.sentinel_url = os.getenv("SENTINEL_URL", "https://sentinel-a861.onrender.com").rstrip("/")

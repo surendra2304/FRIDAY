@@ -30,6 +30,8 @@ from friday.tools.registry import ToolRegistry
 @pytest.fixture(autouse=True)
 def reset_accounting_and_pool_state():
     """Ensure clean accounting and credential pool state for every single test."""
+    from friday.core.config import get_settings
+    get_settings(reload=True)
     request_accountant.reset()
     request_accountant.limits = BudgetLimits(
         max_requests_per_task=100,
@@ -50,6 +52,8 @@ def isolate_test_environment():
     os.environ["FRIDAY_EMBEDDING_PROVIDER"] = "none"
     os.environ["FRIDAY_GEMINI_API_KEY"] = "MOCK_GEMINI_API_KEY_FOR_TESTING_ONLY"
     os.environ["FRIDAY_LLM_API_KEY"] = "MOCK_OPENAI_API_KEY_FOR_TESTING_ONLY"
+    os.environ["FRIDAY_AUTONOMOUS_MODE"] = "false"
+    os.environ["FRIDAY_FULL_ACCESS_MODE"] = "false"
     
     # Patch config so `Settings()` defaults to NOT loading `.env`
     with patch("friday.core.config.resolve_env_file") as mock_resolve:

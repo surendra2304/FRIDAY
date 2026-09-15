@@ -84,7 +84,7 @@ class EcosystemMasterDashboard:
             f"- **Daily Realized P&L:** `+${bot.get('daily_pnl_usdt'):,.2f} USDT`\n"
             f"- **Leverage / Loss Headroom:** `{risk.get('aggregate_leverage'):.2f}x` | `{100.0 - risk.get('daily_loss_limit_proximity_pct', 14.5):.1f}% loss headroom remaining`\n\n"
             f"### 🟠 2. FORGE Autonomous Software Engineering Engine\n"
-            f"- **Status:** **🟢 HEALTHY** (API: `https://forge-u98k.onrender.com` | HMAC-SHA256 Signed)\n"
+            f"- **Status:** **🟢 HEALTHY** (API: `https://forge-e9kl.onrender.com` | HMAC-SHA256 Signed)\n"
             f"- **Active Builds:** `{forge_active}` in progress | `{forge_completed}` completed\n"
             f"- **Mean Test Coverage:** **`{avg_coverage:.1f}%`** across all delivered artifacts\n"
             f"- **Latest Delivery:** `{list(forge_tasks.values())[0].delivery_package_path if forge_tasks else 'N/A'}`\n\n"

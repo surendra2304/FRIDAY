@@ -13,7 +13,7 @@ Ensure all managed subsystems are running or accessible:
 - **FRIDAY Core**: Runs locally with voice / text / REST interfaces.
 - **Algorithmic Trading Bot**: `http://localhost:5000`
 - **FORGE SWE Engine**: `http://localhost:8000`
-- **AI-Universe Core**: `https://forge-u98k.onrender.com`
+- **AI-Universe Core**: `https://forge-e9kl.onrender.com`
 
 ---
 
@@ -71,7 +71,7 @@ Ensure all managed subsystems are running or accessible:
 ECOSYSTEM_ENABLED=True
 TRADING_BOT_BASE_URL=http://localhost:5000
 FORGE_BASE_URL=http://localhost:8000
-AI_UNIVERSE_BASE_URL=https://forge-u98k.onrender.com
+AI_UNIVERSE_BASE_URL=https://forge-e9kl.onrender.com
 
 # Polling Intervals
 FORGE_SUPERVISION_INTERVAL_SECONDS=60

@@ -115,14 +115,14 @@ class FridayDoctorEnhanced:
             # 3. FORGE Engine
             subsystem_reports["forge"] = {
                 "status": "HEALTHY",
-                "api_endpoint": getattr(self.settings, "forge_base_url", "https://forge-u98k.onrender.com"),
+                "api_endpoint": getattr(self.settings, "forge_base_url", "https://forge-e9kl.onrender.com"),
                 "template_library": "LOADED",
             }
 
             # 4. AI-Universe / Inference Core
             subsystem_reports["ai_universe"] = {
                 "status": "HEALTHY",
-                "api_endpoint": getattr(self.settings, "ai_universe_base_url", "https://forge-u98k.onrender.com"),
+                "api_endpoint": getattr(self.settings, "ai_universe_base_url", "https://forge-e9kl.onrender.com"),
                 "providers_online": 7,
             }
 

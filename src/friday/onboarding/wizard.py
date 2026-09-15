@@ -198,7 +198,7 @@ class OnboardingWizard:
                 urls = user_input.get("urls", {
                     "trading_bot": "http://localhost:5000",
                     "forge": "http://localhost:8000",
-                    "ai_universe": "https://forge-u98k.onrender.com",
+                    "ai_universe": "https://forge-e9kl.onrender.com",
                     "nexus": "http://localhost:8002",
                 })
                 self.state.subsystems_configured.update(urls)

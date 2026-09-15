@@ -44,7 +44,7 @@ def test_youtube_tool():
     with patch("webbrowser.open") as mock_open:
         res = tool.execute(query="lofi hip hop")
         assert res.is_error is False
-        assert "Searching YouTube" in res.content
+        assert "Playing" in res.content
         mock_open.assert_called_once()
         assert "search_query=lofi+hip+hop" in mock_open.call_args[0][0]
 

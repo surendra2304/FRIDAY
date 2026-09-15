@@ -120,6 +120,6 @@ This runbook defines standard operating procedures (SOPs), scheduled maintenance
 | :--- | :--- | :--- |
 | `STRATEX_URL` | Base URL for Stratex Algorithmic Trading Platform REST API | `http://localhost:8000` |
 | `STRATEX_API_KEY` | Secret authentication token | `` |
-| `INFERENCE_URL` | Base URL for Inference AI Gateway | `https://forge-u98k.onrender.com` |
+| `INFERENCE_URL` | Base URL for Inference AI Gateway | `https://forge-e9kl.onrender.com` |
 | `MAX_DRAWDOWN_LIMIT_PCT` | Hardcoded maximum account drawdown | `5.0%` |
 | `MAX_LEVERAGE_LIMIT` | Hardcoded maximum testnet leverage | `5x` |
