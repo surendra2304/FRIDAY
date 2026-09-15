@@ -120,16 +120,23 @@ class Settings(BaseSettings):
             'FRIDAY_FORGE_SUPERVISION_INTERVAL_SECONDS': ['FORGE_SUPERVISION_INTERVAL_SECONDS', 'forge_supervision_interval_seconds'],
             'FRIDAY_FORGE_HEALTH_CHECK_INTERVAL_SECONDS': ['FORGE_HEALTH_CHECK_INTERVAL_SECONDS', 'forge_health_check_interval_seconds'],
             'FRIDAY_ECOSYSTEM_ENABLED': ['ECOSYSTEM_ENABLED', 'ecosystem_enabled'],
-            'FRIDAY_TRADING_BOT_BASE_URL': ['STRATEX_URL', 'TRADING_BOT_BASE_URL', 'trading_bot_base_url'],
-            'FRIDAY_STRATEX_API_KEY': ['TRADING_BOT_API_KEY', 'BOT_API_KEY'],
-            'FRIDAY_AI_UNIVERSE_BASE_URL': ['INFERENCE_URL', 'AI_UNIVERSE_BASE_URL', 'ai_universe_base_url'],
-            'FRIDAY_INTELX_URL': ['INTELX_URL', 'intelx_base_url'],
-            'FRIDAY_FUTURIS_URL': ['FUTURIS_URL', 'futuris_base_url'],
-            'FRIDAY_MEMORA_URL': ['MEMORA_URL', 'memora_base_url'],
-            'FRIDAY_SENTINEL_URL': ['SENTINEL_URL', 'sentinel_base_url'],
-            'FRIDAY_NEXUS_BASE_URL': ['CORTEX_URL', 'NEXUS_URL', 'NEXUS_BASE_URL', 'nexus_base_url'],
-            'FRIDAY_NEXUS_ENABLED': ['NEXUS_ENABLED', 'CORTEX_ENABLED', 'nexus_enabled'],
-            'FRIDAY_NEXUS_VIGILANCE_INTERVAL_SECONDS': ['NEXUS_VIGILANCE_INTERVAL_SECONDS', 'nexus_vigilance_interval_seconds'],
+            'FRIDAY_STRATEX_URL': ['STRATEX_URL', 'stratex_url', 'TRADING_BOT_BASE_URL', 'trading_bot_base_url', 'FRIDAY_TRADING_BOT_BASE_URL'],
+            'FRIDAY_STRATEX_API_KEY': ['STRATEX_API_KEY', 'stratex_api_key', 'TRADING_BOT_API_KEY', 'BOT_API_KEY'],
+            'FRIDAY_INFERENCE_URL': ['INFERENCE_URL', 'inference_url', 'AI_UNIVERSE_BASE_URL', 'ai_universe_base_url', 'FRIDAY_AI_UNIVERSE_BASE_URL'],
+            'FRIDAY_INFERENCE_API_KEY': ['INFERENCE_API_KEY', 'inference_api_key'],
+            'FRIDAY_INTELX_URL': ['INTELX_URL', 'intelx_url', 'INTELX_BASE_URL', 'intelx_base_url'],
+            'FRIDAY_INTELX_API_KEY': ['INTELX_API_KEY', 'intelx_api_key'],
+            'FRIDAY_FUTURIS_URL': ['FUTURIS_URL', 'futuris_url', 'FUTURIS_BASE_URL', 'futuris_base_url'],
+            'FRIDAY_FUTURIS_API_KEY': ['FUTURIS_API_KEY', 'futuris_api_key'],
+            'FRIDAY_MEMORA_URL': ['MEMORA_URL', 'memora_url', 'MEMORA_BASE_URL', 'memora_base_url'],
+            'FRIDAY_MEMORA_API_KEY': ['MEMORA_API_KEY', 'memora_api_key'],
+            'FRIDAY_SENTINEL_URL': ['SENTINEL_URL', 'sentinel_url', 'SENTINEL_BASE_URL', 'sentinel_base_url', 'FRIDAY_SENTINEL_BASE_URL'],
+            'FRIDAY_SENTINEL_API_KEY': ['SENTINEL_API_KEY', 'sentinel_api_key'],
+            'FRIDAY_CORTEX_URL': ['CORTEX_URL', 'cortex_url', 'NEXUS_URL', 'NEXUS_BASE_URL', 'nexus_base_url', 'FRIDAY_NEXUS_BASE_URL'],
+            'FRIDAY_CORTEX_API_KEY': ['CORTEX_API_KEY', 'cortex_api_key'],
+            'FRIDAY_CORTEX_ENABLED': ['CORTEX_ENABLED', 'NEXUS_ENABLED', 'cortex_enabled', 'nexus_enabled'],
+            'FRIDAY_FORGE_URL': ['FORGE_URL', 'forge_url', 'FORGE_BASE_URL', 'forge_base_url', 'FRIDAY_FORGE_BASE_URL'],
+            'FRIDAY_FORGE_API_KEY': ['FORGE_API_KEY', 'forge_api_key'],
             'FRIDAY_LLM_API_KEY': ['OPENAI_API_KEY', 'LLM_API_KEY', 'llm_api_key'],
             'FRIDAY_GEMINI_API_KEY': ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'gemini_api_key'],
             'FRIDAY_GROQ_API_KEY': ['GROQ_API_KEY', 'groq_api_key'],
@@ -586,35 +593,62 @@ class Settings(BaseSettings):
         default=True,
         description="Enable unified ecosystem command center across Bot, FORGE, and AI-Universe",
     )
+    # Specialist Agents in FRIDAY Universe Mesh
+    stratex_url: str = Field(
+        default="http://localhost:8000",
+        description="Base URL for Stratex Quantitative Strategy API",
+    )
     trading_bot_base_url: str = Field(
         default="http://localhost:8000",
-        description="Base URL for Algorithmic Trading Bot API (Stratex)",
+        description="Alias for Stratex API",
     )
     ai_universe_base_url: str = Field(
         default="http://localhost:8001",
-        description="Base URL for AI-Universe / Inference Core API",
+        description="Alias for Inference Core API",
     )
-    intelx_base_url: str = Field(
+    intelx_url: str = Field(
         default="http://localhost:8002",
         description="Base URL for IntelX Evidence & Research API",
     )
-    futuris_base_url: str = Field(
+    intelx_base_url: str = Field(
+        default="http://localhost:8002",
+        description="Alias for IntelX API",
+    )
+    futuris_url: str = Field(
         default="http://localhost:8003",
         description="Base URL for Futuris Predictive Forecasting API",
     )
-    memora_base_url: str = Field(
+    futuris_base_url: str = Field(
+        default="http://localhost:8003",
+        description="Alias for Futuris API",
+    )
+    memora_url: str = Field(
         default="http://localhost:8004",
         description="Base URL for Memora Universal Memory API",
     )
-    sentinel_base_url: str = Field(
+    memora_base_url: str = Field(
+        default="http://localhost:8004",
+        description="Alias for Memora API",
+    )
+    sentinel_url: str = Field(
         default="http://localhost:8003",
         description="Base URL for Sentinel Security API",
     )
-
-    # CORTEX / NEXUS (Autonomous Website & Growth Engine) Integration
+    sentinel_base_url: str = Field(
+        default="http://localhost:8003",
+        description="Alias for Sentinel API",
+    )
+    forge_url: str = Field(
+        default="http://localhost:8001",
+        description="Base URL for Forge Code Engineering API",
+    )
+    cortex_url: str = Field(
+        default="http://localhost:8005",
+        description="Base URL for Cortex Autonomous Website & Growth API",
+    )
     nexus_base_url: str = Field(
         default="http://localhost:8005",
-        description="Base URL for Cortex / Nexus Autonomous Website & Growth API",
+        description="Alias for Cortex API",
     )
     nexus_enabled: bool = Field(
         default=True,
