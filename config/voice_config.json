@@ -1,0 +1,37 @@
+{
+  "stt": {
+    "engine": "faster-whisper",
+    "model": "large-v2",
+    "language": "en",
+    "device": "cpu",
+    "sample_rate": 16000
+  },
+  "tts": {
+    "engine": "piper",
+    "model": "en_US-lessac-medium",
+    "voice": "lessac",
+    "sample_rate": 22050
+  },
+  "wake_word": {
+    "phrase": "hey friday",
+    "sensitivity": 0.7,
+    "model": "porcupine"
+  },
+  "devices": {
+    "home_assistant": {
+      "enabled": true,
+      "url": "http://localhost:8123/api"
+    },
+    "mqtt": {
+      "enabled": true,
+      "broker": "localhost",
+      "port": 1883
+    },
+    "pyautogui": {
+      "enabled": true
+    },
+    "playwright": {
+      "enabled": true
+    }
+  }
+}

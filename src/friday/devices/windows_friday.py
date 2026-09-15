@@ -116,10 +116,13 @@ class WindowsFridayController:
     """Master laptop controller providing autonomous OS control for FRIDAY on Windows."""
 
     def __init__(self) -> None:
-        self.user32 = ctypes.windll.user32
+        windll = getattr(ctypes, "windll", None)
+        self.user32 = getattr(windll, "user32", None) if windll else None
 
     def _send_key_event(self, vk: int) -> None:
         """Simulate single key press and release."""
+        if not self.user32:
+            return
         self.user32.keybd_event(vk, 0, 0, 0)
         self.user32.keybd_event(vk, 0, KEYEVENTF_KEYUP, 0)
 

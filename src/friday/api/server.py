@@ -460,18 +460,24 @@ async def execute_command(req: CommandRequest) -> dict[str, Any]:
         # Screen Perception Fast-path ("What's on my screen now")
         if any(k in cmd for k in ["what's on my screen", "what is on my screen", "whats on my screen", "read my screen", "screen content", "look at my screen", "screen now", "view my screen"]):
             import ctypes
-            user32 = ctypes.windll.user32
-            hwnd = user32.GetForegroundWindow()
-            length = user32.GetWindowTextLengthW(hwnd)
-            title = ""
-            if length > 0:
-                buff = ctypes.create_unicode_buffer(length + 1)
-                user32.GetWindowTextW(hwnd, buff, length + 1)
-                title = buff.value
+            if hasattr(ctypes, "windll"):
+                user32 = ctypes.windll.user32
+                hwnd = user32.GetForegroundWindow()
+                length = user32.GetWindowTextLengthW(hwnd)
+                title = ""
+                if length > 0:
+                    buff = ctypes.create_unicode_buffer(length + 1)
+                    user32.GetWindowTextW(hwnd, buff, length + 1)
+                    title = buff.value
+                active_summary = f"Active window: '{title}'." if title else "Desktop display active."
+                device_type = "windows"
+            else:
+                title = "Cloud Container (Render Headless)"
+                active_summary = "Running in cloud headless environment on Render."
+                device_type = "cloud"
 
-            active_summary = f"Active window: '{title}'." if title else "Desktop display active."
-            reply = f"I am perceiving your desktop. {active_summary} You are operating the FRIDAY Dual-Hand Holographic Cockpit at http://localhost:3000 with real-time optical sensor telemetry and 8 specialist agents ready."
-            return {"reply": reply, "metadata": {"fast_path": True, "device": "windows", "action": "screen_perception", "active_window": title}}
+            reply = f"I am perceiving your environment. {active_summary} Dual-Hand Holographic Cockpit telemetry active and 8 specialist agents ready."
+            return {"reply": reply, "metadata": {"fast_path": True, "device": device_type, "action": "screen_perception", "active_window": title}}
 
         # Universal Application & File Launcher Fast-path
         if cmd.startswith("open ") or cmd.startswith("launch ") or cmd.startswith("start "):
