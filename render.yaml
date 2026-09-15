@@ -1,6 +1,6 @@
-services:
+﻿services:
   - type: web
-    name: friday-friday
+    name: friday-core
     env: docker
     plan: free
     healthCheckPath: /health
@@ -11,87 +11,87 @@ services:
         value: "0.0.0.0"
       - key: ENVIRONMENT
         value: "production"
-      - key: FRIDAY_INTELX_URL
-        sync: false
-      - key: FRIDAY_STRATEX_URL
-        sync: false
-      - key: FRIDAY_EMAIL_APP_PASSWORD
-        sync: false
-      - key: FRIDAY_IOT_HUB_URL
-        sync: false
-      - key: FRIDAY_CORTEX_API_KEY
-        sync: false
-      - key: FRIDAY_INFERENCE_URL
-        sync: false
-      - key: FRIDAY_INTELX_BASE_URL
-        sync: false
-      - key: FRIDAY_INTELX_API_KEY
-        sync: false
-      - key: FRIDAY_NEXUS_BASE_URL
-        sync: false
-      - key: FRIDAY_MEMORA_API_KEY
-        sync: false
-      - key: FRIDAY_UNIVERSE_API_URL
-        sync: false
-      - key: FRIDAY_FUTURIS_BASE_URL
-        sync: false
-      - key: FRIDAY_FORGE_API_URL
-        sync: false
-      - key: FRIDAY_MEMORA_URL
-        sync: false
-      - key: FRIDAY_FORGE_BASE_URL
-        sync: false
-      - key: FRIDAY_FUTURIS_API_KEY
-        sync: false
-      - key: FRIDAY_API_KEY
+      - key: FRIDAY_GEMINI_API_KEY
         sync: false
       - key: FRIDAY_LLM_API_KEY
         sync: false
-      - key: FRIDAY_GEMINI_API_KEY
-        sync: false
+      - key: FRIDAY_INTELX_URL
+        value: "none"
+      - key: FRIDAY_STRATEX_URL
+        value: "none"
+      - key: FRIDAY_EMAIL_APP_PASSWORD
+        value: "none"
+      - key: FRIDAY_IOT_HUB_URL
+        value: "none"
+      - key: FRIDAY_CORTEX_API_KEY
+        value: "friday-secure-pass-123"
+      - key: FRIDAY_INFERENCE_URL
+        value: "none"
+      - key: FRIDAY_INTELX_BASE_URL
+        value: "none"
+      - key: FRIDAY_INTELX_API_KEY
+        value: "friday-secure-pass-123"
+      - key: FRIDAY_NEXUS_BASE_URL
+        value: "none"
+      - key: FRIDAY_MEMORA_API_KEY
+        value: "friday-secure-pass-123"
+      - key: FRIDAY_UNIVERSE_API_URL
+        value: "none"
+      - key: FRIDAY_FUTURIS_BASE_URL
+        value: "none"
+      - key: FRIDAY_FORGE_API_URL
+        value: "none"
+      - key: FRIDAY_MEMORA_URL
+        value: "none"
+      - key: FRIDAY_FORGE_BASE_URL
+        value: "none"
+      - key: FRIDAY_FUTURIS_API_KEY
+        value: "friday-secure-pass-123"
+      - key: FRIDAY_API_KEY
+        value: "friday-secure-pass-123"
       - key: FRIDAY_INFERENCE_API_KEY
-        sync: false
+        value: "friday-secure-pass-123"
       - key: FORGE_BASE_URL
-        sync: false
+        value: "none"
       - key: FRIDAY_OPENROUTER_API_KEY
-        sync: false
+        value: "none"
       - key: FRIDAY_GEMINI_FALLBACK_API_KEY_2
-        sync: false
+        value: "none"
       - key: FRIDAY_MEMORA_BASE_URL
-        sync: false
+        value: "none"
       - key: FRIDAY_MISTRAL_API_KEY
-        sync: false
+        value: "none"
       - key: FRIDAY_UNIVERSE_API_KEY
-        sync: false
+        value: "friday-secure-pass-123"
       - key: FRIDAY_GROQ_API_KEY
-        sync: false
+        value: "none"
       - key: FRIDAY_LLM_BASE_URL
-        sync: false
+        value: "none"
       - key: FRIDAY_GITHUB_TOKEN
-        sync: false
+        value: "none"
       - key: FRIDAY_STRATEX_API_KEY
-        sync: false
+        value: "friday-secure-pass-123"
       - key: FRIDAY_FORGE_API_KEY
-        sync: false
+        value: "friday-secure-pass-123"
       - key: FRIDAY_IOT_HUB_TOKEN
-        sync: false
+        value: "none"
       - key: FRIDAY_GEMINI_FALLBACK_API_KEY_3
-        sync: false
+        value: "none"
       - key: FRIDAY_LLM_MAX_TOKENS
-        sync: false
+        value: "4096"
       - key: FRIDAY_FUTURIS_URL
-        sync: false
+        value: "none"
       - key: FRIDAY_GEMINI_FALLBACK_API_KEY_4
-        sync: false
+        value: "none"
       - key: FRIDAY_AI_UNIVERSE_BASE_URL
-        sync: false
+        value: "none"
       - key: FRIDAY_CORTEX_URL
-        sync: false
+        value: "none"
       - key: FRIDAY_GEMINI_FALLBACK_API_KEY_1
-        sync: false
+        value: "none"
       - key: FRIDAY_TRADING_BOT_BASE_URL
-        sync: false
+        value: "none"
       - key: FRIDAY_SENTINEL_BASE_URL
-        sync: false
+        value: "none"
       - key: FRIDAY_CALENDAR_ICS_URL
-        sync: false
+        value: "none"
