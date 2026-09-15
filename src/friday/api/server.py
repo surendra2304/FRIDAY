@@ -72,6 +72,7 @@ class AndroidActionRequest(BaseModel):
     params: dict[str, Any] = {}
 
 
+@app.get("/")
 @app.get("/api/health")
 @app.get("/health")
 async def health_check() -> dict[str, Any]:
