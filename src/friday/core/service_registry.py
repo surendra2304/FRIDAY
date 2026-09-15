@@ -96,7 +96,7 @@ class ServiceRegistry:
         cortex_key = os.getenv("CORTEX_API_KEY", "friday_api")
 
         # 7. Forge (Local :8001)
-        forge_url = os.getenv("FORGE_URL", "https://forge-u98k.onrender.com").rstrip("/")
+        forge_url = os.getenv("FORGE_URL", "https://forge-e9kl.onrender.com").rstrip("/")
         forge_key = os.getenv("FORGE_API_KEY", "forge_api")
 
         # 8. Sentinel (Local :8003)

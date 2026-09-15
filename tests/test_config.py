@@ -87,6 +87,8 @@ def test_process_env_overrides_dotenv(tmp_path):
         encoding="utf-8",
     )
     with mock.patch.dict(os.environ, {"FRIDAY_USER_NAME": "FromProcessEnv"}):
+        if "FRIDAY_LLM_PROVIDER" in os.environ:
+            del os.environ["FRIDAY_LLM_PROVIDER"]
         settings = Settings(_env_file=str(env_file))
         assert settings.llm_provider == "gemini"
         assert settings.user_name == "FromProcessEnv"

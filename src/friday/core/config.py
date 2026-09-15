@@ -603,7 +603,7 @@ class Settings(BaseSettings):
         description="Alias for Stratex API",
     )
     ai_universe_base_url: str = Field(
-        default="https://forge-u98k.onrender.com",
+        default="https://forge-e9kl.onrender.com",
         description="Alias for Inference Core API",
     )
     intelx_url: str = Field(
@@ -639,7 +639,7 @@ class Settings(BaseSettings):
         description="Alias for Sentinel API",
     )
     forge_url: str = Field(
-        default="https://forge-u98k.onrender.com",
+        default="https://forge-e9kl.onrender.com",
         description="Base URL for Forge Code Engineering API",
     )
     cortex_url: str = Field(

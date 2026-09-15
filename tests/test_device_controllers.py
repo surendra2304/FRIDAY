@@ -40,24 +40,17 @@ def test_base_device_controller_inheritance():
 
 
 def test_android_device_controller_stub():
-    """AndroidDeviceController raises NotImplementedError with clear messages."""
+    """AndroidDeviceController returns False when ADB is missing."""
     android = AndroidDeviceController()
     assert android.device_type == "android"
 
-    with pytest.raises(NotImplementedError, match="ADB is not yet implemented"):
-        android.open_app("com.example.app")
+    # Should return False when adb is missing or fails
+    assert android.open_app("com.example.app") is False
+    assert android.click(100, 200) is False
 
-    with pytest.raises(NotImplementedError, match="ADB is not yet implemented"):
-        android.click(100, 200)
-
-    with pytest.raises(NotImplementedError, match="ADB is not yet implemented"):
-        android.type_text("hello")
-
-    with pytest.raises(NotImplementedError, match="ADB is not yet implemented"):
-        android.screenshot()
-
-    with pytest.raises(NotImplementedError, match="ADB is not yet implemented"):
-        android.read_screen_text()
+    assert android.type_text("hello") is False
+    assert android.press_key("enter") is False
+    assert android.close_app("com.example.app") is False
 
 
 def test_windows_device_controller_launch():
@@ -65,10 +58,18 @@ def test_windows_device_controller_launch():
     win = WindowsDeviceController()
     assert win.device_type == "windows"
 
-    with patch("os.startfile", create=True) as mock_startfile:
-        res = win.open_app("notepad")
-        assert res is True
-        mock_startfile.assert_called_once_with("notepad.exe")
+    with patch("subprocess.Popen") as mock_popen:
+        mock_popen.return_value.pid = 9999
+        with patch("psutil.process_iter") as mock_psutil:
+            from unittest.mock import Mock
+            mock_process = Mock()
+            mock_process.info = {"name": "notepad.exe", "pid": 9999}
+            mock_psutil.return_value = [mock_process]
+            res = win.open_app("notepad")
+            assert res is True
+            mock_popen.assert_called_once()
+            args = mock_popen.call_args[0][0]
+            assert args[0] == "notepad.exe" or args[0].endswith("\\notepad.exe")
 
 
 def test_get_device_controller_factory():
