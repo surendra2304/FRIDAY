@@ -1,8 +1,9 @@
-﻿services:
+services:
   - type: web
     name: friday-core
     env: docker
     plan: free
+    region: singapore
     healthCheckPath: /health
     envVars:
       - key: PORT
