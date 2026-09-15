@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: friday-core
+    name: friday
     env: docker
     plan: free
     region: singapore
