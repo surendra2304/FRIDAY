@@ -94,7 +94,7 @@ $$\text{Signature} = \text{HMAC-SHA256}\Big(K_{\text{FORGE}}, \text{Timestamp} +
 
 ```bash
 # ============================ FORGE (AUTONOMOUS SWE ENGINE) ==============================
-FRIDAY_FORGE_API_URL=http://localhost:8001
+FRIDAY_FORGE_API_URL=https://forge-u98k.onrender.com
 FRIDAY_FORGE_API_KEY=your_forge_api_key_here
 FRIDAY_FORGE_ENABLED=true
 FRIDAY_FORGE_MAX_CONCURRENT_TASKS=3

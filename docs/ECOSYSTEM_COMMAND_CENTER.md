@@ -82,5 +82,5 @@ This document provides the operational guide, architecture, cross-system workflo
 ECOSYSTEM_ENABLED=True
 TRADING_BOT_BASE_URL=http://localhost:5000
 FORGE_BASE_URL=http://localhost:8000
-AI_UNIVERSE_BASE_URL=http://localhost:8001
+AI_UNIVERSE_BASE_URL=https://forge-u98k.onrender.com
 ```

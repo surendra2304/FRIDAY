@@ -30,9 +30,9 @@ services:
       - key: CORTEX_URL
         value: "https://cortex-0m7c.onrender.com"
       - key: FRIDAY_FORGE_URL
-        value: "http://localhost:8001"
+        value: "https://forge-u98k.onrender.com"
       - key: FORGE_URL
-        value: "http://localhost:8001"
+        value: "https://forge-u98k.onrender.com"
       - key: FRIDAY_FUTURIS_URL
         value: "https://futuris-th6f.onrender.com"
       - key: FUTURIS_URL
