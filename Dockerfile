@@ -26,9 +26,8 @@ COPY pyproject.toml README.md requirements.txt* ./
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -e .
 
-# Copy project source code and assets
+# Copy project source code
 COPY src/ ./src/
-COPY data/ ./data/
 
 # Ensure persistent data and logs directories exist
 RUN mkdir -p /app/data /app/logs
