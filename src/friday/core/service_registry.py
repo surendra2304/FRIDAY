@@ -92,7 +92,7 @@ class ServiceRegistry:
         futuris_key = os.getenv("FUTURIS_API_KEY", "friday_secret_key_default")
 
         # 6. Cortex
-        cortex_url = os.getenv("CORTEX_URL", "https://cortex-qifr.onrender.com").rstrip("/")
+        cortex_url = os.getenv("CORTEX_URL", "https://cortex-0m7c.onrender.com").rstrip("/")
         cortex_key = os.getenv("CORTEX_API_KEY", "friday_api")
 
         # 7. Forge (Local :8001)

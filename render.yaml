@@ -26,37 +26,37 @@ services:
         value: "http://localhost:8000"
       # Specialist Agent Endpoints (Configured from your local .env)
       - key: FRIDAY_CORTEX_URL
-        value: "https://cortex-qifr.onrender.com"
+        value: "https://cortex-0m7c.onrender.com"
       - key: CORTEX_URL
-        value: "https://cortex-qifr.onrender.com"
+        value: "https://cortex-0m7c.onrender.com"
       - key: FRIDAY_FORGE_URL
         value: "http://localhost:8001"
       - key: FORGE_URL
         value: "http://localhost:8001"
       - key: FRIDAY_FUTURIS_URL
-        value: "https://futuris-x4f4.onrender.com"
+        value: "https://futuris-th6f.onrender.com"
       - key: FUTURIS_URL
-        value: "https://futuris-x4f4.onrender.com"
+        value: "https://futuris-th6f.onrender.com"
       - key: FRIDAY_INFERENCE_URL
-        value: "https://inference-3i2b.onrender.com"
+        value: "https://inference-r1sn.onrender.com"
       - key: INFERENCE_URL
-        value: "https://inference-3i2b.onrender.com"
+        value: "https://inference-r1sn.onrender.com"
       - key: FRIDAY_INTELX_URL
         value: "https://intelx-3cz1.onrender.com"
       - key: INTELX_URL
         value: "https://intelx-3cz1.onrender.com"
       - key: FRIDAY_MEMORA_URL
-        value: "https://memora-9zr9.onrender.com"
+        value: "https://memora-cavc.onrender.com"
       - key: MEMORA_URL
-        value: "https://memora-9zr9.onrender.com"
+        value: "https://memora-cavc.onrender.com"
       - key: FRIDAY_SENTINEL_URL
         value: "http://localhost:8003"
       - key: SENTINEL_URL
         value: "http://localhost:8003"
       - key: FRIDAY_STRATEX_URL
-        value: "https://stratex-ucjz.onrender.com"
+        value: "https://stratex-8wj1.onrender.com"
       - key: STRATEX_URL
-        value: "https://stratex-ucjz.onrender.com"
+        value: "https://stratex-8wj1.onrender.com"
       # Specialist Agent API Keys
       - key: CORTEX_API_KEY
         value: "cortex_api"
