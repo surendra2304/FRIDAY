@@ -61,7 +61,7 @@ class AIUniverseClient:
             self.base_url = (
                 os.getenv("INFERENCE_URL")
                 or os.getenv("FRIDAY_INFERENCE_URL")
-                or "https://inference-3i2b.onrender.com"
+                or "https://inference-r1sn.onrender.com"
             ).rstrip("/")
 
         if api_key is not None and api_key.strip():

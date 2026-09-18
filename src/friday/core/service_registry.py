@@ -72,15 +72,15 @@ class ServiceRegistry:
     def _load_standard_services(self) -> dict[str, ServiceConfig]:
         """Load standard service configurations using standardized environment variables."""
         # 1. Inference / ASTRA
-        inference_url = os.getenv("INFERENCE_URL", "https://inference-3i2b.onrender.com").rstrip("/")
+        inference_url = os.getenv("INFERENCE_URL", "https://inference-r1sn.onrender.com").rstrip("/")
         inference_key = os.getenv("INFERENCE_API_KEY", "inference_api")
 
         # 2. Memora
-        memora_url = os.getenv("MEMORA_URL", "https://memora-9zr9.onrender.com").rstrip("/")
+        memora_url = os.getenv("MEMORA_URL", "https://memora-cavc.onrender.com").rstrip("/")
         memora_key = os.getenv("MEMORA_API_KEY", "memora_api")
 
         # 3. Stratex
-        stratex_url = os.getenv("STRATEX_URL", "https://stratex-ucjz.onrender.com").rstrip("/")
+        stratex_url = os.getenv("STRATEX_URL", "https://stratex-8wj1.onrender.com").rstrip("/")
         stratex_key = os.getenv("STRATEX_API_KEY", "stratex_api")
 
         # 4. IntelX
@@ -88,7 +88,7 @@ class ServiceRegistry:
         intelx_key = os.getenv("INTELX_API_KEY", "intelx_api")
 
         # 5. Futuris
-        futuris_url = os.getenv("FUTURIS_URL", "https://futuris-x4f4.onrender.com").rstrip("/")
+        futuris_url = os.getenv("FUTURIS_URL", "https://futuris-th6f.onrender.com").rstrip("/")
         futuris_key = os.getenv("FUTURIS_API_KEY", "friday_secret_key_default")
 
         # 6. Cortex

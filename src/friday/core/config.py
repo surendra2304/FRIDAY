@@ -328,7 +328,7 @@ class Settings(BaseSettings):
         description="Base URL for external AI Universe multi-agent debate API",
     )
     inference_url: str = Field(
-        default="https://inference-3i2b.onrender.com",
+        default="https://inference-r1sn.onrender.com",
         description="Base URL for live Inference Cloud Gateway",
     )
     inference_api_key: str = Field(

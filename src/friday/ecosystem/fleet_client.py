@@ -51,19 +51,19 @@ class FleetClient:
         self._cache_ttl: float = 4.0  # 4-second cache to prevent spamming cloud services
 
         # Fleet Endpoints & Keys
-        self.inference_url = os.getenv("INFERENCE_URL", "https://inference-3i2b.onrender.com").rstrip("/")
+        self.inference_url = os.getenv("INFERENCE_URL", "https://inference-r1sn.onrender.com").rstrip("/")
         self.inference_key = os.getenv("INFERENCE_API_KEY", "inference_api")
 
-        self.memora_url = os.getenv("MEMORA_URL", "https://memora-9zr9.onrender.com").rstrip("/")
+        self.memora_url = os.getenv("MEMORA_URL", "https://memora-cavc.onrender.com").rstrip("/")
         self.memora_key = os.getenv("MEMORA_API_KEY", "memora_api")
 
-        self.stratex_url = os.getenv("STRATEX_URL", "https://stratex-ucjz.onrender.com").rstrip("/")
+        self.stratex_url = os.getenv("STRATEX_URL", "https://stratex-8wj1.onrender.com").rstrip("/")
         self.stratex_key = os.getenv("STRATEX_API_KEY", "stratex_api")
 
         self.intelx_url = os.getenv("INTELX_URL", "https://intelx-mygl.onrender.com").rstrip("/")
         self.intelx_key = os.getenv("INTELX_API_KEY", "intelx_api")
 
-        self.futuris_url = os.getenv("FUTURIS_URL", "https://futuris-x4f4.onrender.com").rstrip("/")
+        self.futuris_url = os.getenv("FUTURIS_URL", "https://futuris-th6f.onrender.com").rstrip("/")
         self.futuris_local_url = os.getenv("FUTURIS_LOCAL_URL", "http://127.0.0.1:8004").rstrip("/")
         self.futuris_key = os.getenv("FUTURIS_API_KEY", "friday_secret_key_default")
 
