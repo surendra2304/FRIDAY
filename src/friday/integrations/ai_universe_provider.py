@@ -64,7 +64,7 @@ class AIUniverseTradingConsultant:
     ) -> None:
         self.bot_operator = bot_operator or TradingBotOperator()
         self.universe_client = universe_client or AIUniverseClient(
-            base_url=os.getenv("INFERENCE_URL") or "https://inference-3i2b.onrender.com",
+            base_url=os.getenv("INFERENCE_URL") or "https://inference-r1sn.onrender.com",
             api_key=os.getenv("INFERENCE_API_KEY") or "inference_api",
         )
 

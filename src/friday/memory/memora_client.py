@@ -157,7 +157,7 @@ class MemoraClient:
             self.remote_enabled = remote_enabled
         else:
             self.remote_enabled = os.getenv("FRIDAY_MEMORA_REMOTE_ENABLED", "false").lower() in ("true", "1", "yes")
-        self.base_url = (base_url or os.getenv("MEMORA_URL", "https://memora-9zr9.onrender.com")).rstrip("/")
+        self.base_url = (base_url or os.getenv("MEMORA_URL", "https://memora-cavc.onrender.com")).rstrip("/")
         self.api_key = api_key or os.getenv("MEMORA_API_KEY", "memora_api")
         self.timeout = timeout
         self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="friday-memory")

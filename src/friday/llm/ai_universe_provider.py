@@ -45,7 +45,7 @@ class AIUniverseLLMProvider(BaseLLMProvider):
             or os.getenv("FRIDAY_INFERENCE_URL")
             or getattr(st, "inference_url", None)
             or os.getenv("FRIDAY_AI_UNIVERSE_BASE_URL")
-            or "https://inference-3i2b.onrender.com"
+            or "https://inference-r1sn.onrender.com"
         )
         final_key = (
             api_key

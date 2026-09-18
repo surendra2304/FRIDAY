@@ -12,7 +12,7 @@
 | Attribute | Production Configuration |
 | :--- | :--- |
 | **Live Production URL** | [Local Desktop Hub (d:\FRIDAY Universe\FRIDAY)](#) |
-| **Health Check Endpoint** | Local Hub (http://localhost:9000/health) |
+| **Health Check Endpoint** | Local Hub (https://friday-zw59.onrender.com/health) |
 | **Master API Key Variable** | FRIDAY_API_KEY=friday_api |
 | **Authentication Header** | Authorization: Bearer friday_api |
 | **Database Topology** | Local Voice State / Connected to Memora Cloud |
@@ -43,15 +43,15 @@ Every agent in the universe communicates using standard environment variables:
 # ============================================================================== #
 
 # 1. ⚡ Inference AI Multi-Model Gateway (25 Keys)
-INFERENCE_URL=https://inference-3i2b.onrender.com
+INFERENCE_URL=https://inference-r1sn.onrender.com
 INFERENCE_API_KEY=inference_api
 
 # 2. 🧠 Memora Cloud Persistent Memory (9 GB Turso AWS Mumbai)
-MEMORA_URL=https://memora-9zr9.onrender.com
+MEMORA_URL=https://memora-cavc.onrender.com
 MEMORA_API_KEY=memora_api
 
 # 3. 📈 Stratex 24/7 Algorithmic Trading Platform (Binance Futures)
-STRATEX_URL=https://stratex-ucjz.onrender.com
+STRATEX_URL=https://stratex-8wj1.onrender.com
 STRATEX_API_KEY=stratex_api
 
 # 4. 🧠 IntelX Evidence & Intelligence Research Engine (Turso AWS Mumbai)
@@ -59,7 +59,7 @@ INTELX_URL=https://intelx-mygl.onrender.com
 INTELX_API_KEY=intelx_api
 
 # 5. 🔮 Futuris Calibrated Predictive Forecasting Engine
-FUTURIS_URL=https://futuris-x4f4.onrender.com
+FUTURIS_URL=https://futuris-th6f.onrender.com
 FUTURIS_API_KEY=futuris_api
 
 # 6. 🌐 Cortex Autonomous Web Operations & Intelligence
@@ -75,7 +75,7 @@ SENTINEL_URL=https://sentinel-a861.onrender.com
 SENTINEL_API_KEY=sentinel_api
 
 # 9. 🤖 FRIDAY Central Desktop Operating System
-FRIDAY_URL=http://localhost:9000
+FRIDAY_URL=https://friday-zw59.onrender.com
 FRIDAY_API_KEY=friday_api
 `
 

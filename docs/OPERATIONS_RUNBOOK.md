@@ -97,7 +97,7 @@ This runbook serves as the authoritative operational manual for deploying, monit
 | **Sentinel Security** | `8003` | `https://sentinel-a861.onrender.com` | Scan queue timeout / Stale token | Run `PLAYBOOK:data_breach`; verify scope enforcement in `SentinelManagerSkill`. |
 | **IntelX Research** | `8004` | `http://localhost:8004` | Research timeout / Stale contradiction | `ResearchSupervisorOperator` auto-alerts; prune or refresh via `ResearchLibrary.apply_retention_decay()`. |
 | **Futuris Forecaster** | `8005` | `http://localhost:8005` | Calibration degradation / High Brier score | `ForecastSupervisorOperator` triggers model recalibration and flags uncertainty bounds. |
-| **FRIDAY Core** | `9000` | `http://localhost:9000` | Voice session audio stutter | Rotate Gemini API keys in `GeminiCredentialPool`; restart `MicrophoneStream`. |
+| **FRIDAY Core** | `9000` | `https://friday-zw59.onrender.com` | Voice session audio stutter | Rotate Gemini API keys in `GeminiCredentialPool`; restart `MicrophoneStream`. |
 
 ### 4.5 IntelX Autonomous Deep Research Operations Manual
 1. **Research Delegation**: Submit research via `IntelXManagerSkill.submit_research(question, domain_hint, depth)` or voice (*"Research [topic]"*, *"Deep dive into [topic]"*).
@@ -147,7 +147,7 @@ NEXUS_BASE_URL=http://localhost:8002
 SENTINEL_BASE_URL=https://sentinel-a861.onrender.com
 INTELX_BASE_URL=http://localhost:8004
 FUTURIS_BASE_URL=http://localhost:8005
-FRIDAY_CORE_BASE_URL=http://localhost:9000
+FRIDAY_CORE_BASE_URL=https://friday-zw59.onrender.com
 
 # Environment & Performance
 FRIDAY_ENV=production
