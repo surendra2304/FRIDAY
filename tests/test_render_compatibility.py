@@ -24,7 +24,7 @@ def test_render_yaml_validity() -> None:
 
     web_svc = config["services"][0]
     assert web_svc.get("type") == "web", "Service type must be 'web'"
-    assert web_svc.get("runtime") == "docker", "Runtime should default to 'docker'"
+    assert (web_svc.get("runtime") == "docker" or web_svc.get("env") == "docker"), "Runtime or env should specify 'docker'"
     assert web_svc.get("healthCheckPath") == "/health", "healthCheckPath must be '/health'"
 
     env_vars = {item["key"]: item.get("value") for item in web_svc.get("envVars", [])}

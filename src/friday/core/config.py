@@ -194,7 +194,7 @@ class Settings(BaseSettings):
 
     # LLM Settings & Cost Controls
     llm_provider: str = Field(default="gemini", description="LLM provider name: 'mock', 'openai', 'gemini'")
-    llm_model: str = Field(default="gemini-1.5-flash-latest", description="Model identifier")
+    llm_model: str = Field(default="gemini-3.6-flash", description="Model identifier")
     llm_api_key: str | None = Field(
         default=None,
         description="API Key for the provider (OpenAI or general)",

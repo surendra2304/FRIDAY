@@ -57,7 +57,7 @@ class GeminiLLMProvider(BaseLLMProvider):
         api_key: str | None = None,
         credential_pool: GeminiCredentialPool | None = credential_pool,
         base_url: str = "https://generativelanguage.googleapis.com/v1beta",
-        model: str = "gemini-1.5-flash-latest",
+        model: str = "gemini-3.6-flash",
         temperature: float = 0.7,
         max_tokens: int = 2048,
         timeout: float = 60.0,
@@ -575,7 +575,7 @@ class GeminiLLMProvider(BaseLLMProvider):
                         category == FailureCategory.QUOTA_EXHAUSTED and ("2.5" in (self.model or "") or "not_found" in err_msg.lower())
                     )
                 ):
-                    fallback_models = ["gemini-flash-latest", "gemini-2.0-flash", "gemini-1.5-flash"]
+                    fallback_models = ["gemini-3.6-flash", "gemini-flash-latest", "gemini-2.0-flash", "gemini-1.5-flash"]
                     next_model = next((m for m in fallback_models if m not in attempted_models), None)
                     if next_model:
                         logger.warning(
