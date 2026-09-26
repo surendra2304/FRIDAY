@@ -161,6 +161,21 @@ async def test_live_session_tool_config_building(mock_agent):
     assert {declaration.name for declaration in live_tools[0].function_declarations} == {"get_time"}
 
 
+def test_new_voice_turn_resets_agent_duplicate_tool_guard():
+    from friday.agent.agent import FridayAgent
+    from friday.core.config import Settings
+
+    agent = FridayAgent(settings=Settings(env="testing", llm_provider="mock"))
+    agent._processed_tool_ids.add("old-call")
+    agent._processed_tool_signatures.add('["media_control",{"action":"play_pause"}]')
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY", agent=agent)
+
+    session._reset_agent_tool_request_state()
+
+    assert not agent._processed_tool_ids
+    assert not agent._processed_tool_signatures
+
+
 @pytest.mark.anyio
 async def test_audio_sender_and_receiver_loop(mock_agent):
     """Test full-duplex send and receive loops with audio streaming, transcriptions, and barge-in."""

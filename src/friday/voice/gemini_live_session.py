@@ -239,6 +239,15 @@ class GeminiLiveVoiceSession:
             return [genai_types.Tool(function_declarations=function_declarations)]
         return None
 
+    def _reset_agent_tool_request_state(self) -> None:
+        """Start a new voice turn with a fresh duplicate-operation guard."""
+        if self.agent is None:
+            return
+        for name in ("_processed_tool_ids", "_processed_tool_signatures"):
+            seen = getattr(self.agent, name, None)
+            if hasattr(seen, "clear"):
+                seen.clear()
+
     def _build_system_instruction(self) -> genai_types.Content | None:
         """Construct system prompt embodying FRIDAY's futuristic, natural spoken persona."""
         settings = get_settings()
@@ -1093,6 +1102,7 @@ class GeminiLiveVoiceSession:
                                 # clear the previous turn's duplicate-call guard.
                                 suppress_model_until_result = False
                                 local_instant_action_pending = False
+                                self._reset_agent_tool_request_state()
                             candidate = "".join(user_transcript_accum) + incoming_text
                             if self.agent.classify_instant_command(candidate):
                                 suppress_model_until_result = True
