@@ -95,7 +95,6 @@ def test_groq_provider_uses_own_pool_when_no_explicit_key(monkeypatch):
 
 
 def test_groq_generate_success():
-    provider = GroqLLMProvider(api_key="k")
     calls = []
 
     class FakeCompletions:
@@ -104,11 +103,30 @@ def test_groq_generate_success():
             calls.append(kwargs["model"])
             return _fake_response(content="hello from groq")
 
-    provider._client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions))
+    client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions))
+    provider = GroqLLMProvider(api_key="k", client=client)
     result = provider.generate([Message(role=Role.USER, content="hi")])
     assert result.role == Role.ASSISTANT
     assert result.content == "hello from groq"
     assert calls == [GROQ_DEFAULT_MODEL]
+
+
+def test_groq_injected_client_never_constructs_network_client(monkeypatch):
+    """A fake credential plus an injected client must remain fully offline."""
+    client = SimpleNamespace(
+        chat=SimpleNamespace(
+            completions=SimpleNamespace(create=lambda **_: _fake_response("offline"))
+        )
+    )
+
+    def reject_network_client(**_kwargs):
+        raise AssertionError("Injected Groq client must not create an SDK network client")
+
+    import friday.llm.groq_provider as gp
+
+    monkeypatch.setattr(gp._openai_sdk, "OpenAI", reject_network_client)
+    provider = GroqLLMProvider(api_key="mock-key", client=client)
+    assert provider.generate([Message(role=Role.USER, content="offline test")]).content == "offline"
 
 
 def test_groq_rate_limit_falls_back_to_instant_model():

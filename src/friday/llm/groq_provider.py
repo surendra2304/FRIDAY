@@ -107,6 +107,7 @@ class GroqLLMProvider(BaseLLMProvider):
         max_tokens: int = 2048,
         timeout: float = 60.0,
         credential_pool: Any | None = None,
+        client: Any | None = None,
     ):
         super().__init__(model=model, temperature=temperature, max_tokens=max_tokens)
         self.credential_pool = credential_pool
@@ -121,6 +122,10 @@ class GroqLLMProvider(BaseLLMProvider):
         self.universal_fallback_model = universal_fallback_model
         self.timeout = timeout
         self._clients: dict[str, Any] = {}
+        # An explicitly supplied SDK-compatible client is useful for custom
+        # transports and tests. Keep it separate from keyed production clients
+        # so an injected mock can never silently fall through to the network.
+        self._client = client
 
     @property
     def provider_name(self) -> str:
@@ -137,6 +142,8 @@ class GroqLLMProvider(BaseLLMProvider):
         return self.api_key
 
     def _get_client_for_key(self, api_key: str) -> Any:
+        if self._client is not None:
+            return self._client
         if _openai_sdk is None:
             raise LLMProviderError(
                 "The 'openai' Python package is required for the Groq provider. "
