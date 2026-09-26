@@ -166,7 +166,7 @@ class FastPathMixin:
         elif re.search(r"^(?:what\s+can\s+you\s+do|what\s+are\s+your\s+capabilities|what\s+do\s+you\s+do|help\s+me\s+with\s+commands)$", low):
             reply = (
                 f"I provide full Windows laptop control and autonomous AI assistance, {user_name}. "
-                "You can ask me to play songs on YouTube, control volume/brightness, launch or close apps, "
+                "You can ask me to open or search websites, control the Windows media session, adjust volume/brightness, launch or close apps, "
                 "check battery and system telemetry, execute PowerShell commands, or answer complex questions. "
                 "Type /friday in chat for a full list of laptop commands."
             )

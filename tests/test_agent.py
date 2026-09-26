@@ -196,7 +196,12 @@ def test_media_command_uses_current_model_plan_and_not_prior_media_history(monke
                 content="Opening Spotify.",
                 tool_calls=[ToolCall(id="spotify", name="open_website", arguments={"target": "spotify"})],
             )
-        return Message(role=Role.ASSISTANT, content="Spotify is open.")
+        opened_result = next(message for message in messages if message.role == Role.TOOL)
+        assert "no action inside the website was performed" in opened_result.content.lower()
+        return Message(
+            role=Role.ASSISTANT,
+            content="I opened Spotify, but playback was not started because Spotify playback is not integrated.",
+        )
 
     memory = InMemoryConversationMemory()
     memory.add_message(Message(role=Role.ASSISTANT, content="Playing 'old video' on YouTube."))
@@ -215,6 +220,7 @@ def test_media_command_uses_current_model_plan_and_not_prior_media_history(monke
 
     assert response.is_done
     assert executed == ["https://open.spotify.com"]
+    assert "playback was not started" in response.content.lower()
     assert not any(call.name == "youtube" for call in (response.tool_calls or []))
 
 

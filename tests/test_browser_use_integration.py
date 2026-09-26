@@ -76,6 +76,8 @@ def test_browser_automation_tool_registered_in_registry():
     tool = BrowserAutomationTool()
     assert tool.name == "browser_action"
     assert tool.safety_level == SafetyLevel.SAFE
+    assert "isolated temporary browser context" in tool.description
+    assert "does not reuse" in tool.description
 
     registry = ToolRegistry()
     registry.register(tool)

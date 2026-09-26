@@ -2,7 +2,7 @@
 
 Adapted from the Jarvis welcome flow, implemented using 100% free, local,
 and open-source capabilities:
-1. Entrance media playback (Spotify / YouTube).
+1. Optional entrance media playback from an explicitly configured URI.
 2. Multi-monitor physical display layout orchestration (snaps browser windows
    across monitors with fullscreen F11).
 3. Developer workspace activation (focuses or launches Cursor / VS Code).
@@ -35,12 +35,9 @@ class WelcomeProtocolConfig:
     and free offline Windows SAPI5 voice greeting).
     """
 
-    # Entrance Media
-    media_uri: str = os.environ.get(
-        "FRIDAY_WELCOME_MEDIA_URI",
-        "https://open.spotify.com/track/39shmbIHICJ2Wxnk1fPSdz",
-    )
-    play_media: bool = True
+    # Entrance Media (opt-in; never start the same fixed track by default)
+    media_uri: str = os.environ.get("FRIDAY_WELCOME_MEDIA_URI", "")
+    play_media: bool = os.environ.get("FRIDAY_WELCOME_PLAY_MEDIA", "false").lower() in ("true", "1")
 
     # Developer IDE (Defaults to VS Code on single laptop)
     open_editor: bool = True

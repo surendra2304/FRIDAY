@@ -128,7 +128,7 @@ def print_friday_guide() -> None:
     """Print the complete catalog of Windows laptop controller commands for FRIDAY."""
     if _console is None:
         print("\n=== FRIDAY LAPTOP CONTROLLER COMMANDS ===")
-        print(" - YouTube & Music: 'play <song> on youtube', 'play Star Boy', 'pause', 'resume', 'next song'")
+        print(" - Web & media: ask naturally; FRIDAY opens/searches requested sites and controls the Windows media session")
         print(" - Applications: 'open chrome', 'open notepad', 'open calc', 'open vs code', 'close notepad', 'close chrome'")
         print(" - Running Apps: 'what apps are open', 'list running apps'")
         print(" - Audio & Volume: 'volume up', 'volume down', 'mute', 'set volume to 50%'")
@@ -145,7 +145,7 @@ def print_friday_guide() -> None:
     table = Table(title="🤖 FRIDAY OS CONTROLLER CAPABILITIES", border_style="cyan")
     table.add_column("Category", style="bold green", width=22)
     table.add_column("Voice / Chat Commands", style="bright_white")
-    table.add_row("🎵 YouTube & Music", "play <song/video> on youtube, play Star Boy, pause, resume, next song, stop")
+    table.add_row("🌐 Web & media", "Ask naturally; FRIDAY opens/searches the requested site and controls the Windows media session")
     table.add_row("🚀 App Launcher", "open chrome, open notepad, open calc, open vs code, open terminal, open settings")
     table.add_row("🛑 App Closer", "close chrome, close notepad, close calculator, kill spotify, exit <app>")
     table.add_row("📋 Running Tasks", "what apps are open, list running apps, open windows")

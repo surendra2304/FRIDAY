@@ -539,7 +539,7 @@ async def execute_command(req: CommandRequest, _: None = Depends(_require_contro
 
     if any(k in cmd for k in ["what can you do", "help", "features", "commands", "what are your capabilities", "capabilities", "what do you do"]):
         return {
-            "reply": "I can launch any Windows application like Chrome, VS Code, and Terminal; search and play music on YouTube; capture screenshots and monitor system telemetry; track dual-hand optical gestures; and orchestrate all 8 specialist agents.",
+            "reply": "I can launch Windows applications, open and search websites, control the Windows media session, capture screenshots, monitor system telemetry, and orchestrate the connected specialist agents. Website playback and account actions require a working service integration.",
             "metadata": {"fast_path": True, "conversational": True},
         }
 

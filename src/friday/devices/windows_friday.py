@@ -2,7 +2,7 @@
 
 Provides comprehensive, native Windows laptop control:
 - Instant website & media launch (YouTube, Google, GitHub, etc.)
-- YouTube video and music playback directly in Google Chrome
+- Website search and launch; media keys are system-wide and do not select or verify playback
 - Volume & multimedia controls (mute, volume up/down, exact percentage, play/pause, skip)
 - Window management (show desktop, minimize all, close window, lock pc)
 - System lock, sleep, and power operations
@@ -172,81 +172,17 @@ class WindowsFridayController:
         ok = self.open_url(url)
         return ok, f"Searching Google for '{site_name}'."
 
-    def _get_first_youtube_video(self, query: str) -> str | None:
-        """Resolve top YouTube watch URL directly from search results."""
-        try:
-            import urllib.request
-            encoded = urllib.parse.quote_plus(query)
-            search_url = f"https://www.youtube.com/results?search_query={encoded}"
-            req = urllib.request.Request(
-                search_url,
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
-            )
-            with urllib.request.urlopen(req, timeout=1.5) as resp:
-                html = resp.read().decode("utf-8", errors="ignore")
-                matches = re.findall(r"watch\?v=([a-zA-Z0-9_-]{11})", html)
-                if matches:
-                    return f"https://www.youtube.com/watch?v={matches[0]}"
-        except Exception as e:
-            logger.debug(f"Direct YouTube video resolution skipped ({e}), falling back to search URL.")
-        return None
-
     def play_youtube(self, query: str) -> Tuple[bool, str]:
-        """Search and play a video or music query directly on YouTube in Chrome."""
-        raw_q = query.strip()
-        clean_q = raw_q
-        for _ in range(3):
-            clean_q = re.sub(
-                r"^(?:please|can you|could you|would you|hey friday|friday|i want to|let\'s|lets|just)\s+",
-                "",
-                clean_q,
-                flags=re.IGNORECASE,
-            ).strip()
-            clean_q = re.sub(
-                r"^(?:open\s+(?:chrome|browser|google\s+chrome)\s+and\s+)",
-                "",
-                clean_q,
-                flags=re.IGNORECASE,
-            ).strip()
-            clean_q = re.sub(
-                r"^(?:open\s+youtube\s+and\s+)",
-                "",
-                clean_q,
-                flags=re.IGNORECASE,
-            ).strip()
-            clean_q = re.sub(
-                r"^(?:on\s+youtube\s+(?:and\s+)?)",
-                "",
-                clean_q,
-                flags=re.IGNORECASE,
-            ).strip()
-            clean_q = re.sub(
-                r"^(?:play\s+(?:the\s+)?(?:song\s+|video\s+|music\s+|track\s+)?|play\s+)",
-                "",
-                clean_q,
-                flags=re.IGNORECASE,
-            ).strip()
-            clean_q = re.sub(
-                r"\s+(?:on|in)\s+youtube[\.\!\?]*$",
-                "",
-                clean_q,
-                flags=re.IGNORECASE,
-            ).strip()
-        clean_q = clean_q.rstrip(".!? ")
-
-        if not clean_q or clean_q.lower() in ["youtube", "yt", "video"]:
+        """Open YouTube search results without selecting a video or claiming playback."""
+        clean_q = query.strip()
+        if not clean_q:
             ok = self.open_url("https://www.youtube.com")
-            return ok, "Opened YouTube in Google Chrome."
-
-        direct_url = self._get_first_youtube_video(clean_q)
-        if direct_url:
-            ok = self.open_url(direct_url)
-            return ok, f"Playing '{clean_q}' on YouTube in Google Chrome."
+            return ok, "Opened YouTube home. No video was selected or played."
 
         encoded = urllib.parse.quote_plus(clean_q)
         search_url = f"https://www.youtube.com/results?search_query={encoded}"
         ok = self.open_url(search_url)
-        return ok, f"Searching and playing '{clean_q}' on YouTube."
+        return ok, f"Opened YouTube search results for '{clean_q}'. No video was selected or played."
 
     def search_google(self, query: str) -> Tuple[bool, str]:
         """Perform a Google search in browser."""

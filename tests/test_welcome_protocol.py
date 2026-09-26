@@ -13,7 +13,8 @@ from friday.devices.windows_friday import windows_friday
 
 def test_welcome_protocol_config_defaults() -> None:
     config = WelcomeProtocolConfig()
-    assert config.play_media is True
+    assert config.play_media is False
+    assert config.media_uri == ""
     assert config.open_editor is True
     assert config.editor == "vscode"
     assert config.editor_fullscreen is False
@@ -83,6 +84,8 @@ def test_welcome_protocol_single_laptop_flow(monkeypatch: pytest.MonkeyPatch) ->
     )
 
     cfg = WelcomeProtocolConfig(
+        media_uri="https://open.spotify.com/track/test123",
+        play_media=True,
         speech_delay_s=0.0,
     )
 
@@ -141,6 +144,7 @@ def test_welcome_protocol_execution_flow(monkeypatch: pytest.MonkeyPatch) -> Non
 
     cfg = WelcomeProtocolConfig(
         media_uri="https://test.media/welcome.mp3",
+        play_media=True,
         open_browser=True,
         browser_url="https://dashboard.primary.test",
         browser_monitor=1,

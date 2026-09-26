@@ -58,11 +58,14 @@ class TestWindowsFridayController:
         if restored is not None:
             assert abs(restored - initial_vol) <= 2
 
-    def test_youtube_resolution(self) -> None:
-        """Verify direct YouTube watch URL retrieval."""
-        url = windows_friday._get_first_youtube_video("Star Boy")
-        assert url is not None
-        assert "https://www.youtube.com/watch?v=" in url
+    def test_youtube_search_does_not_claim_playback(self, monkeypatch) -> None:
+        """Verify explicit YouTube search does not select a result or claim playback."""
+        opened = []
+        monkeypatch.setattr(windows_friday, "open_url", lambda url: opened.append(url) or True)
+        ok, message = windows_friday.play_youtube("Star Boy")
+        assert ok is True
+        assert opened == ["https://www.youtube.com/results?search_query=Star+Boy"]
+        assert "No video was selected or played" in message
 
     def test_powershell_execution(self) -> None:
         """Verify arbitrary PowerShell command execution."""

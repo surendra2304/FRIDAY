@@ -128,11 +128,11 @@ SEED_TEMPLATES: list[WebAppTemplate] = [
         app_name="YouTube",
         domains=["youtube.com", "youtu.be"],
         keywords=["youtube", "play video", "watch youtube", "search youtube"],
-        description="YouTube — search videos, play tracks, control playback, playlists",
+        description="YouTube — open the site and search for videos or tracks",
         url="https://www.youtube.com",
         rules=[
             "Search input: input element with name='search_query' or id='search'.",
-            "Direct play shortcut: https://www.youtube.com/results?search_query={query}",
+            "Search results URL: https://www.youtube.com/results?search_query={query}",
             "Playback shortcuts: Space or 'k' = play/pause, 'f' = fullscreen, 'm' = mute, Left/Right arrow = seek 5s.",
         ],
         url_patterns={
@@ -142,8 +142,8 @@ SEED_TEMPLATES: list[WebAppTemplate] = [
         },
         instructions=(
             "1. Search query: navigate to https://www.youtube.com/results?search_query={encoded_query}.\n"
-            "2. Click the first video title link (role='link' with ytd-video-renderer).\n"
-            "3. Control playback with spacebar or 'k'."
+            "2. Do not select the first result automatically; only open a video when the user explicitly identifies it.\n"
+            "3. Opening a result does not verify playback. Playback control needs an authenticated browser or desktop integration."
         ),
     ),
     WebAppTemplate(

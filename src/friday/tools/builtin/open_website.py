@@ -36,7 +36,8 @@ class OpenWebsiteTool(BaseTool):
 
     name = "open_website"
     description = (
-        "Open any website or web service in the user's default web browser. "
+        "Open any website or web service in the user's default web browser. This only opens a page; "
+        "it does not complete actions inside that site (such as playing media, sending messages, or submitting forms). "
         "Supports popular site names (e.g. 'youtube', 'google', 'github', 'amazon', 'spotify') "
         "or full URLs (e.g. 'https://example.com')."
     )
@@ -83,13 +84,25 @@ class OpenWebsiteTool(BaseTool):
                 url = f"https://www.google.com/search?q={urllib_quote(target)}"
 
         try:
-            webbrowser.open(url)
+            opened = webbrowser.open(url)
+            if not opened:
+                return ToolResult(
+                    name=self.name,
+                    content=f"Could not open {url}: the system browser did not confirm launch.",
+                    is_error=True,
+                    safety_level=self.safety_level,
+                    metadata={"url": url, "opened": False},
+                )
             logger.info(f"Opened website '{url}' in default browser.")
             return ToolResult(
                 name=self.name,
-                content=f"Opened {url} in your web browser.",
+                content=(
+                    f"Opened {url} in your web browser. This confirms only that the page was opened; "
+                    "no action inside the website was performed."
+                ),
                 is_error=False,
                 safety_level=self.safety_level,
+                metadata={"url": url, "opened": True, "website_action_completed": False},
             )
         except Exception as e:
             logger.error(f"Failed to open website '{url}': {e}")

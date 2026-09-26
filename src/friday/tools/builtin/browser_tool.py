@@ -26,8 +26,10 @@ class BrowserAutomationTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Automates browser actions: navigate to a URL, extract page content, "
-            "inspect page state, capture screenshots, or click/type on web elements."
+            "Use an isolated temporary browser context to navigate to a URL, extract page content, "
+            "inspect page state, capture screenshots, or click/type on web elements. It does not reuse "
+            "the user's open Chrome/Edge profile, cookies, or signed-in sessions. Do not claim an action "
+            "in an authenticated account was completed based on this tool alone."
         )
 
     @property

@@ -31,6 +31,7 @@ def test_open_website_tool():
     with patch("webbrowser.open") as mock_open:
         res = tool.execute(target="youtube")
         assert res.is_error is False
+        assert "no action inside the website was performed" in res.content
         mock_open.assert_called_once_with("https://www.youtube.com")
 
         mock_open.reset_mock()
@@ -38,15 +39,28 @@ def test_open_website_tool():
         assert res2.is_error is False
         mock_open.assert_called_once_with("https://github.com/trending")
 
+    with patch("webbrowser.open", return_value=False):
+        failed = tool.execute(target="spotify")
+    assert failed.is_error is True
+    assert failed.metadata["opened"] is False
+
 
 def test_youtube_tool():
     tool = YouTubeTool()
+    assert "only when the user explicitly requests YouTube" in tool.description
+    assert "play" not in tool.parameters["properties"]
     with patch("webbrowser.open") as mock_open:
         res = tool.execute(query="lofi hip hop")
         assert res.is_error is False
-        assert "Playing" in res.content
+        assert "No video was selected or played" in res.content
+        assert res.metadata["playback_started"] is False
         mock_open.assert_called_once()
         assert "search_query=lofi+hip+hop" in mock_open.call_args[0][0]
+
+    with patch("webbrowser.open", return_value=False):
+        failed = tool.execute(query="lofi hip hop")
+    assert failed.is_error is True
+    assert failed.metadata["playback_started"] is False
 
 
 def test_location_and_maps_tool():
@@ -66,6 +80,18 @@ def test_media_control_tool():
 
         res_next = tool.execute(action="next")
         assert res_next.is_error is False
+
+
+def test_media_control_reports_unavailable_operations_instead_of_claiming_success():
+    tool = MediaControlTool()
+    with patch("friday.tools.builtin.media_control._send_windows_media_key", return_value=False):
+        result = tool.execute(action="play_pause")
+    assert result.is_error is True
+    assert "No playback or volume change is confirmed" in result.content
+
+    unsupported = tool.execute(action="play_track")
+    assert unsupported.is_error is True
+    assert "No action was performed" in unsupported.content
 
 
 def test_dictionary_tool():
