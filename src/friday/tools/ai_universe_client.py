@@ -70,7 +70,7 @@ class AIUniverseClient:
             self.api_key = (
                 os.getenv("INFERENCE_API_KEY")
                 or os.getenv("FRIDAY_INFERENCE_API_KEY")
-                or "inference_api"
+                or ""
             ).strip()
         self.timeout = timeout
         self._shared_client: httpx.AsyncClient | None = None

@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from friday.core.logging import get_logger
 from friday.core.types import TrustLevel
 from friday.ecosystem.registry import EcosystemRegistry
+from friday.observability.proactive_engine import SystemSnapshot, capture_snapshot
 
 logger = get_logger("workflows.master_briefing")
 
@@ -43,63 +44,72 @@ class MasterDailyBriefingWorkflow:
         self._history: list[MasterBriefingSnapshot] = []
         self._lock = threading.RLock()
 
+    def _collect_status(self) -> tuple[dict[str, object], SystemSnapshot]:
+        """Collect local OS measurements and configured subsystem callback results."""
+        return self.registry.get_ecosystem_status(), capture_snapshot()
+
+    @staticmethod
+    def _local_status(snapshot: SystemSnapshot) -> str:
+        if snapshot.measurement_error:
+            return f"Measurements unavailable: {snapshot.measurement_error}."
+        cpu = f"{snapshot.cpu_percent:.1f}%" if snapshot.cpu_percent is not None else "unavailable"
+        memory = f"{snapshot.ram_percent:.1f}%" if snapshot.ram_percent is not None else "unavailable"
+        disk = f"{snapshot.disk_percent:.1f}%" if snapshot.disk_percent is not None else "unavailable"
+        battery = (
+            f"{snapshot.battery_percent:.0f}%"
+            if snapshot.battery_percent is not None
+            else "unavailable"
+        )
+        return (
+            f"CPU {cpu}, memory {memory}, disk {disk}, battery {battery}."
+        )
+
+    @staticmethod
+    def _service_status_lines(subsystems: dict[str, object]) -> list[str]:
+        lines = []
+        for info in subsystems.values():
+            if not isinstance(info, dict):
+                continue
+            name = str(info.get("display_name", info.get("name", "Unknown service")))
+            data = info.get("data", {})
+            data = data if isinstance(data, dict) else {}
+            status = str(info.get("status", data.get("status", "UNVERIFIED")))
+            evidence = data.get("evidence")
+            line = f"- **{name}:** `{status}`"
+            if evidence:
+                line += f" — {evidence}"
+            lines.append(line)
+        return lines
+
     def generate_morning_briefing(self) -> MasterBriefingSnapshot:
         """Compiles morning strategic briefing across all 8 subsystems."""
         with self._lock:
             bid = f"mb-morn-{len(self._history)+1:03d}"
             try:
-                status = self.registry.get_ecosystem_status()
+                status, local = self._collect_status()
                 subs = status.get("subsystems", {})
-
-                trade = subs.get("trading_bot", {})
-                forge = subs.get("forge", {})
-                nexus = subs.get("nexus", {})
-                sentinel = subs.get("sentinel", {})
-                intelx = subs.get("intelx", {})
-                futuris = subs.get("futuris", {})
-                ai_uni = subs.get("ai_universe", {})
-
-                spoken = (
-                    f"Good morning, Operator. Here is your 8-system strategic briefing: "
-                    f"Trading Bot is {trade.get('status', 'RUNNING')} with ${trade.get('equity_usdt', 10450.0):,.2f} USDT equity. "
-                    f"Forge is {forge.get('status', 'IDLE')} with 3 builds delivered. "
-                    f"Nexus website has 1,420 visitors at 4.2% conversion. "
-                    f"Sentinel security posture is 94/100 with 0 critical findings. "
-                    f"IntelX holds 42 verified research findings. "
-                    f"Futuris forecasts nominal system loads with 89.2% calibration accuracy. "
-                    f"All 8 subsystems are nominal."
+                service_lines = self._service_status_lines(subs)
+                unverified = sum(
+                    1 for info in subs.values()
+                    if isinstance(info, dict) and str(info.get("status", "UNVERIFIED")).upper() == "UNVERIFIED"
                 )
-
+                spoken = (
+                    f"Good morning. Your local computer check shows {self._local_status(local)} "
+                    f"I checked {len(subs)} registered Friday Universe services; "
+                    f"{unverified} are unverified because no live probe is configured. "
+                    "I have no verified trading, lead, research, or forecast figures to report."
+                )
                 lines = [
-                    f"# 🌅 FRIDAY Master Morning Executive Briefing — {datetime.now(timezone.utc).strftime('%Y-%m-%d')}",
+                    f"# 🌅 FRIDAY Morning Briefing — {datetime.now(timezone.utc).strftime('%Y-%m-%d')}",
                     "",
-                    "## 1. Quantitative Trading Overview",
-                    f"- **Equity:** `${trade.get('equity_usdt', 10450.0):,.2f} USDT` | **Status:** `{trade.get('status', 'RUNNING')}`",
+                    "## Local computer (measured now)",
+                    f"- {self._local_status(local)}",
                     "",
-                    "## 2. FORGE Software Engineering Status",
-                    f"- **Builds Delivered:** `{forge.get('completed_today_count', 3)}` | **Status:** `{forge.get('status', 'IDLE')}`",
+                    "## Friday Universe service status",
+                    *service_lines,
                     "",
-                    "## 3. Nexus Website & Growth Intelligence (Nexus Website Traffic & Lead Performance)",
-                    f"- **Unique Visitors:** `{nexus.get('daily_visitors', 1420)}` | **Conversion:** `{nexus.get('conversion_rate_pct', 4.2)}%`",
                     "",
-                    "## 4. Sentinel Autonomous Security & Vulnerability Posture (Sentinel Autonomous Cybersecurity Posture)",
-                    f"- **Posture Score:** `{sentinel.get('posture_score', 94)}/100` | **Critical Risks:** `{sentinel.get('critical_findings_count', 0)}`",
-                    "",
-                    "## 5. IntelX Autonomous Deep Research & Knowledge Posture",
-                    f"- **Verified Findings:** `{intelx.get('verified_findings_count', 42)}` | **Disputed Contradictions:** `{intelx.get('detected_contradictions_count', 3)}`",
-                    "",
-                    "## 6. AI-Universe Intelligence & Advisory",
-                    f"- **Primary LLM:** `{ai_uni.get('primary_provider', 'Gemini 3.1 Pro Preview')}` | **Advisory:** `BULLISH_TREND_FOLLOWING`",
-                    "",
-                    "## 6. Futuris Probabilistic Forecasting & Risk Outlook",
-                    f"- **Calibration Status:** `{futuris.get('calibration_status', 'WELL_CALIBRATED')}` (Brier Score: `{futuris.get('brier_score', 0.082):.3f}`)",
-                    f"- **Active Forecasts:** `{futuris.get('active_forecasts_count', 12)}` | **90% CI Empirical Accuracy:** `{futuris.get('empirical_accuracy_90ci', 89.2):.1f}%`",
-                    "",
-                    "## 7. AI-Universe Intelligence & Advisory",
-                    f"- **Primary LLM:** `{ai_uni.get('primary_provider', 'Gemini 3.1 Pro Preview')}`",
-                    "",
-                    "## 8. FRIDAY Multimodal OS Health & Memory Consolidation",
-                    "- **Voice Engine Latency:** `412.0ms` | **Memory Records:** `165` active entities",
+                    "No agent metrics or completed work are inferred from health status. Service state is shown only as returned by the configured registry callback.",
                 ]
 
                 snapshot = MasterBriefingSnapshot(
@@ -123,29 +133,24 @@ class MasterDailyBriefingWorkflow:
         import uuid
         bid = f"mb-eve-{uuid.uuid4().hex[:6]}"
         try:
-            status = self.registry.get_ecosystem_status()
+            status, local = self._collect_status()
             subs = status.get("subsystems", {})
-
+            service_lines = self._service_status_lines(subs)
             spoken = (
-                "Good evening, Operator. Here is your evening wrap-up: "
-                "All 8 subsystems executed nominally today. Daily trading PnL was +$245.50 USDT. "
-                "Nexus conversion held at 4.2%. Sentinel verified zero critical exploits. "
-                "Futuris calibrated predictions with 89.2% accuracy. Memory consolidation scheduled for 03:00 UTC."
+                f"Good evening. Your local computer check shows {self._local_status(local)} "
+                f"I checked {len(subs)} registered Friday Universe services. "
+                "Their returned status is listed in the report; I have no verified daily activity or performance totals to report."
             )
-
             lines = [
-                f"# 🌃 FRIDAY Master Evening Performance Wrap-Up — {datetime.now(timezone.utc).strftime('%Y-%m-%d')}",
+                f"# 🌃 FRIDAY Evening Briefing — {datetime.now(timezone.utc).strftime('%Y-%m-%d')}",
                 "",
-                "## 1. Daily Ecosystem Accomplishments & Daily Performance Summary",
-                "- Trading Bot closed daily PnL at `+$245.50 USDT` across 2 positions.",
-                "- FORGE completed 3 software compilation pipelines.",
+                "## Local computer (measured now)",
+                f"- {self._local_status(local)}",
                 "",
-                "## 2. Website Traffic & Leads",
-                "- Nexus served 1,420 unique visitors with zero downtime incidents.",
-                "- Sentinel completed 2 automated infrastructure audits.",
-                "- IntelX synthesized 42 verified factual findings.",
-                "- Futuris calibrated 12 active probabilistic forecasts.",
-                "- AI-Universe maintained 100% provider availability across 7 models.",
+                "## Friday Universe service status",
+                *service_lines,
+                "",
+                "Daily accomplishments and performance totals are omitted because no verified event feed is connected.",
             ]
 
             snapshot = MasterBriefingSnapshot(

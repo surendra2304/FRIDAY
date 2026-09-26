@@ -13,14 +13,16 @@ import asyncio
 import base64
 import ctypes
 import json
+import ipaddress
 import logging
 import os
 import re
 import subprocess
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
@@ -38,10 +40,60 @@ from friday_deep.health import build as build_health_report
 
 logger = get_logger("api.server")
 
+try:
+    FLEET_SUPERVISION_INTERVAL_SECONDS = max(
+        30, int(os.getenv("FRIDAY_FLEET_SUPERVISION_INTERVAL_SECONDS", "300"))
+    )
+except ValueError:
+    FLEET_SUPERVISION_INTERVAL_SECONDS = 300
+
+fleet_supervision_state: dict[str, Any] = {
+    "running": False,
+    "interval_seconds": FLEET_SUPERVISION_INTERVAL_SECONDS,
+    "last_started_at": None,
+    "last_completed_at": None,
+    "last_error": None,
+    "agents": [],
+}
+
+
+async def _fleet_supervision_loop() -> None:
+    """Continuously refresh peer reachability while the cloud FRIDAY process is alive."""
+    fleet_supervision_state["running"] = True
+    try:
+        while True:
+            fleet_supervision_state["last_started_at"] = datetime.now(timezone.utc).isoformat()
+            try:
+                statuses = await fleet_client.get_all_statuses(force_refresh=True)
+                fleet_supervision_state["agents"] = [status.__dict__ for status in statuses]
+                fleet_supervision_state["last_completed_at"] = datetime.now(timezone.utc).isoformat()
+                fleet_supervision_state["last_error"] = None
+            except Exception as exc:
+                # Keep the last known snapshot, but make the failed poll visible.
+                fleet_supervision_state["last_error"] = type(exc).__name__
+                logger.exception("FRIDAY fleet supervision cycle failed")
+            await asyncio.sleep(FLEET_SUPERVISION_INTERVAL_SECONDS)
+    finally:
+        fleet_supervision_state["running"] = False
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    supervision_task = asyncio.create_task(_fleet_supervision_loop(), name="friday-fleet-supervision")
+    try:
+        yield
+    finally:
+        supervision_task.cancel()
+        try:
+            await supervision_task
+        except asyncio.CancelledError:
+            pass
+
 app = FastAPI(
     title="FRIDAY Holographic Core & FastMCP Server",
     description="Multi-modal AI assistant server supporting WebGL Hologram, MediaPipe gestures, Android ADB control, and FastMCP.",
     version="2.0.0",
+    lifespan=lifespan,
 )
 
 # Allow WebGL frontend (Next.js / Vite / Electron) to connect
@@ -54,6 +106,31 @@ app.add_middleware(
 )
 
 settings = get_settings()
+
+
+async def _require_control_access(request: Request) -> None:
+    """Require a configured secret for control APIs exposed beyond localhost."""
+    client_host = request.client.host if request.client else ""
+    client_is_remote = False
+    try:
+        client_is_remote = not ipaddress.ip_address(client_host).is_loopback
+    except ValueError:
+        pass
+    remotely_exposed = bool(os.getenv("RENDER") or client_is_remote)
+    if not remotely_exposed:
+        return
+
+    expected = (getattr(settings, "api_key", None) or os.getenv("FRIDAY_API_KEY") or os.getenv("FRIDAY_UNIVERSE_API_KEY") or "").strip()
+    if not expected or expected.lower() in {"friday_universe_api", "changeme", "change-me", "your_api_key"}:
+        raise HTTPException(status_code=503, detail="Remote control is disabled until a non-example FRIDAY_API_KEY is configured.")
+
+    provided = request.headers.get("x-friday-api-key", "")
+    authorization = request.headers.get("authorization", "")
+    if not provided and authorization.lower().startswith("bearer "):
+        provided = authorization[7:].strip()
+    import hmac
+    if not provided or not hmac.compare_digest(provided, expected):
+        raise HTTPException(status_code=401, detail="A valid FRIDAY control API key is required.")
 
 # Initialize global agent and Android controller
 agent = FridayAgent(
@@ -95,16 +172,14 @@ async def get_telemetry() -> dict[str, Any]:
         cpu = psutil.cpu_percent(interval=None)
         mem = psutil.virtual_memory().percent
         batt = psutil.sensors_battery()
-        battery_pct = batt.percent if batt else 100.0
-        power_plugged = batt.power_plugged if batt else True
-    except Exception:
-        cpu = 24.5
-        mem = 54.2
-        battery_pct = 100.0
-        power_plugged = True
+        battery_pct = batt.percent if batt is not None else None
+        power_plugged = batt.power_plugged if batt is not None else None
+    except Exception as exc:
+        return {"status": "unavailable", "error": type(exc).__name__, "timestamp": datetime.now(timezone.utc).isoformat()}
 
     return {
         "status": "ok",
+        "battery_available": batt is not None,
         "cpu_usage": cpu,
         "cpu_percent": cpu,
         "ram_usage": mem,
@@ -138,12 +213,8 @@ async def get_system_telemetry() -> dict[str, Any]:
         }
     except Exception as e:
         return {
-            "status": "ok",
-            "cpu_percent": 15.0,
-            "cpu_cores": 8,
-            "ram_percent": 45.0,
-            "os": "Windows",
-            "operator": "Surendra",
+            "status": "unavailable",
+            "error": type(e).__name__,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
@@ -178,7 +249,7 @@ async def get_task_events(task_id: str) -> StreamingResponse:
 
 @app.post("/v1/tasks/{task_id}/cancel")
 @app.post("/api/tasks/{task_id}/cancel")
-async def cancel_task_endpoint(task_id: str) -> dict[str, Any]:
+async def cancel_task_endpoint(task_id: str, _: None = Depends(_require_control_access)) -> dict[str, Any]:
     """First-class task cancellation endpoint."""
     success = await task_manager.cancel_task(task_id)
     return {"status": "cancelled" if success else "not_running", "task_id": task_id}
@@ -186,7 +257,7 @@ async def cancel_task_endpoint(task_id: str) -> dict[str, Any]:
 
 @app.post("/v1/tasks/cancel-all")
 @app.post("/api/tasks/cancel-all")
-async def cancel_all_tasks_endpoint() -> dict[str, Any]:
+async def cancel_all_tasks_endpoint(_: None = Depends(_require_control_access)) -> dict[str, Any]:
     """Cancel all running tasks (triggered by voice commands like 'stop' or 'cancel that task')."""
     count = await task_manager.cancel_active_tasks()
     return {"status": "ok", "cancelled_count": count}
@@ -194,7 +265,7 @@ async def cancel_all_tasks_endpoint() -> dict[str, Any]:
 
 @app.post("/v1/emergency/stop")
 @app.post("/api/emergency/stop")
-async def emergency_stop_endpoint() -> dict[str, Any]:
+async def emergency_stop_endpoint(_: None = Depends(_require_control_access)) -> dict[str, Any]:
     """Global emergency stop triggering 8-subsystem freeze cascade."""
     report = await task_manager.emergency_stop()
     return report
@@ -236,12 +307,62 @@ async def list_agents() -> list[dict[str, Any]]:
 
 @app.get("/api/agents/status")
 async def get_agents_status() -> dict[str, Any]:
-    """Return real-time ping latency and health telemetry of all 8 specialist agents."""
+    """Return a fresh peer endpoint reachability snapshot, not task-level verification."""
     statuses = await fleet_client.get_all_statuses(force_refresh=True)
+    status_counts = {
+        status: sum(1 for agent_status in statuses if agent_status.status == status)
+        for status in ("ONLINE", "DEGRADED", "OFFLINE")
+    }
+    all_agents_reported = len(statuses) == 8
+    overall_ok = all_agents_reported and status_counts["ONLINE"] == 8
     return {
-        "status": "ok",
+        "status": "ok" if overall_ok else "degraded",
+        "scope": "peer_endpoint_reachability_only",
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "agent_count": len(statuses),
+        "status_counts": status_counts,
         "agents": [s.__dict__ for s in statuses],
+        "note": "HTTP health responses do not verify agent task execution, data persistence, or event delivery.",
+    }
+
+
+@app.get("/api/agents/supervision")
+async def get_agents_supervision() -> dict[str, Any]:
+    """Report the background peer poll snapshot without implying task-level health."""
+    now = datetime.now(timezone.utc)
+    completed = fleet_supervision_state.get("last_completed_at")
+    age_seconds = None
+    if completed:
+        try:
+            completed_at = datetime.fromisoformat(completed)
+            age_seconds = max(0, int((now - completed_at).total_seconds()))
+        except (TypeError, ValueError):
+            age_seconds = None
+    agents = fleet_supervision_state.get("agents", [])
+    status_counts = {
+        status: sum(1 for agent_status in agents if agent_status.get("status") == status)
+        for status in ("ONLINE", "DEGRADED", "OFFLINE")
+    }
+    snapshot_is_fresh = age_seconds is not None and age_seconds <= FLEET_SUPERVISION_INTERVAL_SECONDS * 2
+    all_agents_reported = len(agents) == 8
+    overall_ok = (
+        fleet_supervision_state.get("running")
+        and snapshot_is_fresh
+        and all_agents_reported
+        and status_counts["ONLINE"] == 8
+        and fleet_supervision_state.get("last_error") is None
+    )
+    return {
+        "status": "ok" if overall_ok else "degraded",
+        "scope": "peer_endpoint_reachability_only",
+        "checked_at": completed,
+        "snapshot_age_seconds": age_seconds,
+        "interval_seconds": FLEET_SUPERVISION_INTERVAL_SECONDS,
+        "last_error": fleet_supervision_state.get("last_error"),
+        "agent_count": len(agents),
+        "status_counts": status_counts,
+        "agents": agents,
+        "note": "HTTP health responses do not verify agent task execution, data persistence, or event delivery.",
     }
 
 
@@ -252,20 +373,20 @@ async def get_autonomous_status() -> dict[str, Any]:
 
 
 @app.post("/api/autonomous/toggle")
-async def toggle_autonomous_mode() -> dict[str, Any]:
+async def toggle_autonomous_mode(_: None = Depends(_require_control_access)) -> dict[str, Any]:
     """Toggle Autonomous Mode on or off."""
     new_state = autonomous_controller.toggle()
     return {"status": "ok", "autonomous_mode": new_state}
 
 
 @app.post("/api/autonomous/repair")
-async def trigger_autonomous_repair() -> dict[str, Any]:
+async def trigger_autonomous_repair(_: None = Depends(_require_control_access)) -> dict[str, Any]:
     """Trigger an immediate autonomous self-healing and diagnostic sweep."""
     return await autonomous_controller.execute_self_repair()
 
 
 @app.post("/api/android")
-async def handle_android_action(req: AndroidActionRequest) -> dict[str, Any]:
+async def handle_android_action(req: AndroidActionRequest, _: None = Depends(_require_control_access)) -> dict[str, Any]:
     """Execute Android ADB action or get device connection status."""
     try:
         if req.action == "info":
@@ -282,22 +403,22 @@ async def handle_android_action(req: AndroidActionRequest) -> dict[str, Any]:
             return {"success": ok, "action": "app", "app": app_name}
         elif req.action == "key":
             key_name = req.params.get("key", "home")
-            android.press_key(key_name)
-            return {"success": True, "action": "key", "key": key_name}
+            ok = android.press_key(key_name)
+            return {"success": ok, "action": "key", "key": key_name}
         elif req.action == "tap":
             x = req.params.get("x", 0)
             y = req.params.get("y", 0)
-            android.tap(x, y)
-            return {"success": True, "action": "tap", "x": x, "y": y}
+            ok = android.click(x, y)
+            return {"success": ok, "action": "tap", "x": x, "y": y}
         elif req.action == "swipe":
-            android.swipe(
+            ok = android.swipe(
                 req.params.get("x1", 0),
                 req.params.get("y1", 0),
                 req.params.get("x2", 0),
                 req.params.get("y2", 0),
                 req.params.get("duration", 300),
             )
-            return {"success": True, "action": "swipe"}
+            return {"success": ok, "action": "swipe"}
         return {"success": False, "error": f"Unknown action '{req.action}'"}
     except Exception as e:
         logger.warning(f"Android endpoint error: {e}")
@@ -305,7 +426,7 @@ async def handle_android_action(req: AndroidActionRequest) -> dict[str, Any]:
 
 
 @app.post("/api/command")
-async def execute_command(req: CommandRequest) -> dict[str, Any]:
+async def execute_command(req: CommandRequest, _: None = Depends(_require_control_access)) -> dict[str, Any]:
     """Execute a text command with PC, Android, and live 8-Agent execution."""
     raw_cmd = req.command.strip()
     cmd = raw_cmd.lower()
@@ -450,7 +571,6 @@ async def execute_command(req: CommandRequest) -> dict[str, Any]:
     try:
         # Media / YouTube fast-path (must be evaluated before generic chrome launcher)
         if "play " in cmd:
-            import re
             m = re.search(r"(?:open\s+(?:chrome|browser|youtube)\s+and\s+)?play\s+(?:the\s+)?(?:song\s+|video\s+|music\s+|track\s+)?(?P<query>.+?)(?:\s+(?:on|in)\s+youtube[\.\!\?]*)?$", cmd, re.IGNORECASE)
             query_val = m.group("query").strip().rstrip(".!?") if m else cmd.split("play ", 1)[1].replace("on youtube", "").replace("in youtube", "").strip().rstrip(".!?")
             if query_val:
@@ -607,13 +727,13 @@ async def execute_command(req: CommandRequest) -> dict[str, Any]:
             repair_report = await autonomous_controller.execute_self_repair(context=str(exc))
             return {
                 "reply": f"⚠️ An execution anomaly occurred ('{exc}').\n\n{repair_report['reply']}",
-                "metadata": {"autonomous": True, "self_repaired": True, "error": str(exc)},
+                "metadata": {"autonomous": True, "self_repair_attempted": False, "error": type(exc).__name__},
             }
         return {"reply": f"Understood, Surendra. Awaiting your directive: '{req.command}'.", "metadata": {"fallback": True}}
 
 
 @app.post("/api/android")
-async def execute_android(req: AndroidActionRequest) -> dict[str, Any]:
+async def execute_android(req: AndroidActionRequest, _: None = Depends(_require_control_access)) -> dict[str, Any]:
     """Direct Android execution endpoint for mobile automation."""
     act = req.action.lower()
     p = req.params
@@ -635,7 +755,7 @@ async def execute_android(req: AndroidActionRequest) -> dict[str, Any]:
             return {"success": ok, "action": act}
         elif act == "info":
             devices = android.list_devices()
-            return {"success": True, "devices": devices}
+            return {"success": bool(devices), "devices": devices}
         else:
             return {"success": False, "error": f"Unknown Android action '{act}'"}
     except Exception as e:
@@ -683,19 +803,19 @@ async def telemetry_alias() -> dict[str, Any]:
             "storage_usage": round(disk.percent),
             "network_usage": 120,
         }
-    except Exception:
-        return {"status": "ok", "cpu_usage": 28, "ram_usage": 46, "storage_usage": 61, "network_usage": 120}
+    except Exception as exc:
+        return {"status": "unavailable", "error": type(exc).__name__}
 
 
 @app.post("/api/chat")
-async def chat_endpoint(req: ChatRequest) -> dict[str, Any]:
+async def chat_endpoint(req: ChatRequest, _: None = Depends(_require_control_access)) -> dict[str, Any]:
     """Compatibility endpoint for chat/command execution."""
     return await execute_command(CommandRequest(command=req.message))
 
 
 @app.get("/api/screenshot")
 @app.post("/api/screenshot")
-async def screenshot_endpoint() -> dict[str, Any]:
+async def screenshot_endpoint(_: None = Depends(_require_control_access)) -> dict[str, Any]:
     """Compatibility endpoint for capturing desktop screenshot."""
     return await execute_command(CommandRequest(command="screenshot"))
 
@@ -706,6 +826,11 @@ async def voice_endpoint(websocket: WebSocket):
     WebSocket endpoint for bidirectional audio, waveform telemetry, and MediaPipe hand gestures.
     Supports real-time gesture control and instant desktop/mobile actions.
     """
+    try:
+        await _require_control_access(websocket)
+    except HTTPException:
+        await websocket.close(code=1008, reason="FRIDAY control authentication required")
+        return
     await websocket.accept()
     logger.info("WebSocket connected from Holographic UI")
     try:
@@ -738,15 +863,21 @@ async def voice_endpoint(websocket: WebSocket):
                         ok, msg = launch_desktop_app("chrome")
                         await websocket.send_json({"type": "status", "message": f"Right Gesture: {msg}"})
                     elif gesture == "swipe_up_android":
-                        android.swipe(500, 1500, 500, 500, 250)
-                        await websocket.send_json({"type": "status", "message": "Android Action: Swiped Up"})
+                        if not android.is_connected():
+                            await websocket.send_json({"type": "status", "message": "Android Action unavailable: no ADB device is connected."})
+                        else:
+                            ok = android.swipe(500, 1500, 500, 500, 250)
+                            await websocket.send_json({"type": "status", "message": "Android Action: Swiped Up" if ok else "Android Action failed; ADB did not confirm the swipe."})
                     elif gesture == "swipe_down_android":
-                        android.swipe(500, 500, 500, 1500, 250)
-                        await websocket.send_json({"type": "status", "message": "Android Action: Swiped Down"})
+                        if not android.is_connected():
+                            await websocket.send_json({"type": "status", "message": "Android Action unavailable: no ADB device is connected."})
+                        else:
+                            ok = android.swipe(500, 500, 500, 1500, 250)
+                            await websocket.send_json({"type": "status", "message": "Android Action: Swiped Down" if ok else "Android Action failed; ADB did not confirm the swipe."})
                     elif gesture == "pinch":
-                        await websocket.send_json({"type": "status", "message": "Gesture: Singularity Pinch Active"})
+                        await websocket.send_json({"type": "status", "message": "Pinch gesture recognized; no action is configured."})
                     elif gesture == "open_palm":
-                        await websocket.send_json({"type": "status", "message": "Gesture: Holographic Shield Expanded"})
+                        await websocket.send_json({"type": "status", "message": "Open-palm gesture recognized; no action is configured."})
                 except Exception as ge:
                     logger.error(f"Gesture execution failed: {ge}")
                     await websocket.send_json({"type": "status", "message": f"Error: {ge}"})
@@ -772,7 +903,7 @@ async def voice_endpoint(websocket: WebSocket):
 # =========================================================================
 
 @app.get("/sse")
-async def mcp_sse_endpoint(request: Request):
+async def mcp_sse_endpoint(request: Request, _: None = Depends(_require_control_access)):
     """
     Model Context Protocol (MCP) Server-Sent Events endpoint.
     Allows external agents, Cursor, Claude Desktop, or any MCP-compatible client to consume FRIDAY's tools.
@@ -820,7 +951,7 @@ async def proactive_endpoint() -> dict[str, Any]:
 
 
 @app.post("/api/proactive/dismiss")
-async def dismiss_proactive() -> dict[str, Any]:
+async def dismiss_proactive(_: None = Depends(_require_control_access)) -> dict[str, Any]:
     """Clear all pending proactive notifications."""
     try:
         agent.notifications.clear()
@@ -843,7 +974,7 @@ start_proactive_monitoring()
 
 
 @app.post("/messages")
-async def mcp_messages_endpoint(request: Request) -> JSONResponse:
+async def mcp_messages_endpoint(request: Request, _: None = Depends(_require_control_access)) -> JSONResponse:
     """
     Model Context Protocol (MCP) JSON-RPC 2.0 message handler.
     Implements tools/list and tools/call protocols.

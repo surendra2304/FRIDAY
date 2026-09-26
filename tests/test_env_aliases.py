@@ -55,12 +55,42 @@ LEGACY_ALIASES = {
 }
 
 @pytest.mark.parametrize("canonical, aliases", LEGACY_ALIASES.items())
-def test_deprecation_warnings_for_aliases(canonical, aliases, monkeypatch):
+def test_deprecation_warnings_for_aliases(canonical, aliases, monkeypatch, tmp_path):
+    isolated_env_file = tmp_path / "empty.env"
+    isolated_env_file.write_text("", encoding="utf-8")
+    for name in list(os.environ):
+        if name.startswith("FRIDAY_") or name.endswith("_API_KEY"):
+            monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("FRIDAY_ENV_FILE", str(isolated_env_file))
+    for name, legacy_names in LEGACY_ALIASES.items():
+        monkeypatch.delenv(name, raising=False)
+        for legacy_name in legacy_names:
+            monkeypatch.delenv(legacy_name, raising=False)
     for alias in [aliases[0]]:
-        monkeypatch.delenv(canonical, raising=False)
         monkeypatch.setenv(alias, "1")
         with pytest.warns(DeprecationWarning, match=f"Environment variable '{alias}' is deprecated"):
             try:
                 Settings(_env_file=None)
             except Exception:
                 pass
+
+
+def test_peer_api_keys_are_loaded_without_defaults(monkeypatch, tmp_path):
+    isolated_env_file = tmp_path / "empty.env"
+    isolated_env_file.write_text("", encoding="utf-8")
+    monkeypatch.setenv("FRIDAY_ENV_FILE", str(isolated_env_file))
+    for name in ("INFERENCE", "MEMORA", "STRATEX", "INTELX", "FUTURIS", "CORTEX", "FORGE", "SENTINEL"):
+        monkeypatch.setenv(f"FRIDAY_{name}_API_KEY", "")
+    empty = Settings(_env_file=None)
+    assert empty.inference_api_key is None
+    assert empty.memora_api_key is None
+    assert empty.stratex_api_key is None
+    assert empty.intelx_api_key is None
+    assert empty.futuris_api_key is None
+    assert empty.cortex_api_key is None
+    assert empty.forge_api_key is None
+    assert empty.sentinel_api_key is None
+
+    monkeypatch.setenv("FRIDAY_MEMORA_API_KEY", "test-memora-key")
+    configured = Settings(_env_file=None)
+    assert configured.memora_api_key == "test-memora-key"

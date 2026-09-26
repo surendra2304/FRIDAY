@@ -252,18 +252,18 @@ class AutonomousController:
                     target=agent_name,
                     directive=directive,
                     result=failover_result["reply"],
-                    success=True,
-                    details={"failover": True, "original_error": reply_text},
+                    success=bool(failover_result.get("metadata", {}).get("success", False)),
+                    details={"failover": False, "advisory_only": True, "task_completion_verified": False, "original_error": reply_text},
                 )
                 self.active_agent = None
                 self.active_directive = None
                 return failover_result
 
-            # Verified successful response
+            # The current ask_* methods mostly query health/status endpoints;
+            # their HTTP response is not proof that the requested work ran.
             formatted_reply = (
-                f"🤖 [AUTONOMOUS CONTROL: {agent_name}]\n"
-                f"{reply_text}\n\n"
-                f"⚡ Directive executed & verified in {duration_ms}ms."
+                f"[AGENT RESPONSE: {agent_name}]\n{reply_text}\n\n"
+                f"The agent endpoint responded in {duration_ms} ms. Requested task completion is not verified."
             )
 
             self._log_action(
@@ -271,8 +271,8 @@ class AutonomousController:
                 target=agent_name,
                 directive=directive,
                 result=reply_text,
-                success=True,
-                details={"latency_ms": duration_ms},
+                success=False,
+                details={"latency_ms": duration_ms, "endpoint_response_received": True, "task_completion_verified": False},
             )
 
             self.active_agent = None
@@ -284,7 +284,9 @@ class AutonomousController:
                     "agent": agent_id,
                     "agent_name": agent_name,
                     "latency_ms": duration_ms,
-                    "success": True,
+                    "success": False,
+                    "endpoint_response_received": True,
+                    "task_completion_verified": False,
                 },
             }
 
@@ -305,8 +307,8 @@ class AutonomousController:
 
     async def autonomous_failover(self, failed_agent: str, directive: str) -> dict[str, Any]:
         """
-        When a designated agent fails or is offline, FRIDAY's autonomous mode
-        resolves the task via multi-model Inference or internal tools.
+        When a designated agent fails, optionally request an advisory response
+        from Inference. This does not execute the failed agent's task.
         """
         logger.info(f"[AUTONOMOUS FAILOVER] Resolving directive autonomously for failed agent '{failed_agent}'")
         try:
@@ -316,23 +318,22 @@ class AutonomousController:
                 f"Please provide an authoritative, direct execution answer."
             )
             reply = res.get("reply", "")
+            if res.get("metadata", {}).get("error") or not reply:
+                raise RuntimeError("Inference returned no usable response")
             return {
                 "reply": (
-                    f"🛡️ [AUTONOMOUS RECOVERY & FAILOVER]\n"
-                    f"Specialist agent '{failed_agent.upper()}' was unreachable. "
-                    f"FRIDAY autonomously rerouted the directive through the Unified Multi-Model Gateway:\n\n"
-                    f"{reply}"
+                    f"Inference provided an advisory response after {failed_agent.upper()} did not complete the request:\n\n"
+                    f"{reply}\n\nThe original task remains incomplete; no retry or external action was performed."
                 ),
-                "metadata": {"autonomous": True, "failover": True, "fallback_provider": "inference"},
+                "metadata": {"autonomous": True, "failover": False, "advisory_only": True, "task_completion_verified": False, "fallback_provider": "inference", "success": False},
             }
         except Exception as e:
             return {
                 "reply": (
-                    f"🛡️ [AUTONOMOUS RESOLUTION]\n"
-                    f"Specialist '{failed_agent.upper()}' unreachable. FRIDAY executed autonomous fallback: "
-                    f"Directive recorded and scheduled for retry upon service reconnection."
+                    f"Specialist '{failed_agent.upper()}' did not complete the request, and the Inference fallback was unavailable. "
+                    "The request was not scheduled for retry."
                 ),
-                "metadata": {"autonomous": True, "failover": True, "error": str(e)},
+                "metadata": {"autonomous": True, "failover": False, "task_completion_verified": False, "success": False, "error": type(e).__name__},
             }
 
     # =========================================================================
@@ -340,80 +341,44 @@ class AutonomousController:
     # =========================================================================
 
     async def execute_self_repair(self, context: str = "general") -> dict[str, Any]:
-        """
-        Perform a thorough self-diagnostic scan and automatically repair detected anomalies:
-        - Zombie/stuck processes (Chrome, Python subprocesses)
-        - Memory consumption / high swap
-        - Port health (3000, 8001)
-        - Stale cache / temp files
-        - Specialist microservice ping reachability
+        """Run a bounded diagnostic and report only observations with evidence.
+
+        This routine deliberately does not kill processes, clear caches, or edit
+        source code. Those actions require a concrete repair plan and verification.
         """
         async with self._repair_lock:
-            repaired_items: list[str] = []
-            checks_passed: list[str] = []
-
-            # 1. Inspect & Clean Zombie Processes
+            checks: list[dict[str, Any]] = []
             try:
-                zombies_terminated = 0
-                for proc in psutil.process_iter(["pid", "name", "status"]):
-                    try:
-                        if proc.info["status"] == psutil.STATUS_ZOMBIE:
-                            proc.terminate()
-                            zombies_terminated += 1
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        pass
-                if zombies_terminated > 0:
-                    repaired_items.append(f"Terminated {zombies_terminated} zombie process(es)")
-                else:
-                    checks_passed.append("Process table nominal (0 zombies)")
-            except Exception as pe:
-                logger.debug(f"Process check: {pe}")
+                zombie_count = sum(
+                    1 for proc in psutil.process_iter(["status"])
+                    if proc.info.get("status") == psutil.STATUS_ZOMBIE
+                )
+                checks.append({"name": "zombie_processes", "status": "PASS" if zombie_count == 0 else "DEGRADED", "evidence": f"Observed {zombie_count} zombie process(es); no processes were changed."})
+            except Exception as exc:
+                checks.append({"name": "zombie_processes", "status": "ERROR", "evidence": type(exc).__name__})
 
-            # 2. Inspect RAM & Headroom
             try:
                 vm = psutil.virtual_memory()
-                if vm.percent > 90:
-                    import gc
-                    gc.collect()
-                    repaired_items.append(f"High RAM pressure ({vm.percent}%). Ran garbage collection & cache flush")
-                else:
-                    checks_passed.append(f"Memory healthy ({vm.percent}% used, {round(vm.available / 1024**3, 1)} GB free)")
-            except Exception:
-                pass
+                checks.append({"name": "memory", "status": "DEGRADED" if vm.percent >= 90 else "PASS", "evidence": f"{vm.percent:.1f}% used; {vm.available / 1024**3:.2f} GiB available."})
+            except Exception as exc:
+                checks.append({"name": "memory", "status": "ERROR", "evidence": type(exc).__name__})
 
-            # 3. Check Local & Cloud Fleet Reachability
             try:
-                fleet_statuses = await fleet_client.get_all_statuses(force_refresh=False)
-                online_agents = [s.name for s in fleet_statuses if s.status == "ONLINE"]
-                checks_passed.append(f"Specialist Fleet: {len(online_agents)}/8 agents online ({', '.join(online_agents[:4])}...)")
-            except Exception as fe:
-                repaired_items.append(f"Fleet connectivity re-initialized ({fe})")
+                fleet_statuses = await fleet_client.get_all_statuses(force_refresh=True)
+                counts: dict[str, int] = {}
+                for item in fleet_statuses:
+                    state = str(item.status).upper()
+                    counts[state] = counts.get(state, 0) + 1
+                checks.append({"name": "peer_health_endpoints", "status": "OBSERVED" if fleet_statuses else "UNAVAILABLE", "evidence": {"responses": len(fleet_statuses), "status_counts": counts, "scope": "HTTP health/status endpoint responses only; task execution and inter-agent delivery are not verified."}})
+            except Exception as exc:
+                checks.append({"name": "peer_health_endpoints", "status": "UNAVAILABLE", "evidence": type(exc).__name__})
 
-            # 4. Check Port Health
-            try:
-                connections = psutil.net_connections(kind="inet")
-                ports_open = {c.laddr.port for c in connections if c.laddr}
-                p3000 = 3000 in ports_open
-                p8001 = 8001 in ports_open
-                if p3000 and p8001:
-                    checks_passed.append("Dual-stack network ports 3000 (UI) & 8001 (Core) verified active")
-                else:
-                    checks_passed.append("Core services responding on internal channels")
-            except Exception:
-                checks_passed.append("Core network interfaces nominal")
-
-            success = True
-            repair_summary = ""
-            if repaired_items:
-                repair_summary = "Issues autonomously resolved:\n" + "\n".join(f"  • {item}" for item in repaired_items) + "\n\n"
-
-            checks_summary = "System Health Checks:\n" + "\n".join(f"  ✓ {c}" for c in checks_passed)
-
+            observed = [item["status"] for item in checks]
+            overall = "DEGRADED" if any(s in {"ERROR", "DEGRADED", "UNAVAILABLE"} for s in observed) else "UNVERIFIED"
+            passed = sum(s == "PASS" for s in observed)
             full_report = (
-                f"⚡ [AUTONOMOUS SELF-HEAL & REPAIR COMPLETE]\n\n"
-                f"{repair_summary}"
-                f"{checks_summary}\n\n"
-                f"🛡️ Core Status: 100% NOMINAL. FRIDAY is operating with full autonomous protection."
+                f"FRIDAY diagnostic: {overall}. {passed}/{len(checks)} local checks passed. "
+                "No repair was attempted. A passing HTTP health endpoint does not prove agent task execution or data delivery."
             )
 
             self._log_action(
@@ -421,17 +386,18 @@ class AutonomousController:
                 target="LOCAL_SYSTEM",
                 directive="System self-healing & diagnostic sweep",
                 result=full_report,
-                success=True,
-                details={"repaired_count": len(repaired_items)},
+                success=overall == "HEALTHY",
+                details={"status": overall, "checks": checks, "repairs_attempted": []},
             )
 
             return {
                 "reply": full_report,
                 "metadata": {
                     "autonomous": True,
-                    "repaired_items": repaired_items,
-                    "checks_passed": checks_passed,
-                    "success": True,
+                    "status": overall,
+                    "checks": checks,
+                    "repairs_attempted": [],
+                    "success": overall == "HEALTHY",
                 },
             }
 

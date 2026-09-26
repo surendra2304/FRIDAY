@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 import json
+import hashlib
+import hmac
 import logging
 import os
 from pathlib import Path
@@ -156,9 +158,14 @@ class MemoraClient:
         if remote_enabled is not None:
             self.remote_enabled = remote_enabled
         else:
-            self.remote_enabled = os.getenv("FRIDAY_MEMORA_REMOTE_ENABLED", "false").lower() in ("true", "1", "yes")
+            configured = os.getenv("FRIDAY_MEMORA_REMOTE_ENABLED")
+            self.remote_enabled = (
+                configured.lower() in ("true", "1", "yes")
+                if configured is not None
+                else bool(os.getenv("FRIDAY_API_KEY"))
+            )
         self.base_url = (base_url or os.getenv("MEMORA_URL", "https://memora-cavc.onrender.com")).rstrip("/")
-        self.api_key = api_key or os.getenv("MEMORA_API_KEY", "memora_api")
+        self.api_key = api_key or os.getenv("MEMORA_API_KEY")
         self.timeout = timeout
         self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="friday-memory")
 
@@ -178,6 +185,126 @@ class MemoraClient:
         ]
         self.local_db_path = next((p for p in candidates if p and (p == ":memory:" or os.path.exists(p))), default_local)
         self._ensure_tables()
+
+    def _remote_headers(self, agent_name: str, *, json_body: bool = False, api_key: Optional[str] = None) -> dict[str, str]:
+        headers = {"X-Agent-Name": agent_name.lower()}
+        if json_body:
+            headers["Content-Type"] = "application/json"
+        credential = api_key or os.getenv(f"{agent_name.upper()}_API_KEY") or self.api_key
+        if credential:
+            headers["Authorization"] = f"Bearer {credential}"
+        return headers
+
+    def poll_events(self, agent_name: str = "friday", after_id: int = 0, limit: int = 100) -> Dict[str, Any]:
+        """Fetch durable shared Memora notifications after a caller-owned cursor."""
+        if after_id < 0 or not 1 <= limit <= 500:
+            return {"status": "error", "error": "after_id must be non-negative and limit must be 1..500"}
+        if not self.remote_enabled:
+            return {"status": "disabled", "events": [], "next_after_id": after_id}
+        agent = agent_name.lower().strip()
+        agent_key = os.getenv(f"{agent.upper()}_API_KEY")
+        if not agent_key:
+            return {"status": "error", "error": f"{agent.upper()}_API_KEY is not configured"}
+        query = urllib.parse.urlencode({"after_id": after_id, "limit": limit})
+        url = f"{self.base_url}/v1/events?{query}"
+        try:
+            req = urllib.request.Request(url, headers=self._remote_headers(agent, api_key=agent_key), method="GET")
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+                if response.status != 200:
+                    return {"status": "error", "error": f"Memora returned HTTP {response.status}"}
+                result = json.loads(response.read().decode("utf-8"))
+                if not isinstance(result, dict) or not isinstance(result.get("events"), list):
+                    return {"status": "error", "error": "Memora returned an invalid event feed"}
+                return {"status": "ok", **result}
+        except Exception as exc:
+            logger.debug("Memora event feed unavailable (%s)", type(exc).__name__)
+            return {"status": "error", "error": type(exc).__name__}
+
+    def read_event_cursor(self, agent_name: str = "friday", consumer_id: str = "default") -> Dict[str, Any]:
+        """Read FRIDAY's independent server-persisted feed cursor."""
+        agent = agent_name.lower().strip()
+        key = os.getenv(f"{agent.upper()}_API_KEY")
+        if not self.remote_enabled or not key:
+            return {"status": "error", "error": f"{agent.upper()}_API_KEY is not configured or Memora remote is disabled"}
+        try:
+            req = urllib.request.Request(
+                f"{self.base_url}/v1/events/cursor?{urllib.parse.urlencode({'consumer_id': consumer_id})}",
+                headers=self._remote_headers(agent, api_key=key),
+                method="GET",
+            )
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+                data = json.loads(response.read().decode("utf-8"))
+                return {"status": "ok", **data} if response.status == 200 and isinstance(data, dict) else {"status": "error", "error": f"Memora returned HTTP {response.status}"}
+        except Exception as exc:
+            logger.warning("Memora cursor read failed (%s)", type(exc).__name__)
+            return {"status": "error", "error": type(exc).__name__}
+
+    def acknowledge_event(self, agent_name: str, event_id: int, consumer_id: str = "default") -> Dict[str, Any]:
+        """Persist an event acknowledgement after successful local handling."""
+        agent = agent_name.lower().strip()
+        key = os.getenv(f"{agent.upper()}_API_KEY")
+        if not self.remote_enabled or not key:
+            return {"status": "error", "error": f"{agent.upper()}_API_KEY is not configured or Memora remote is disabled"}
+        try:
+            req = urllib.request.Request(
+                f"{self.base_url}/v1/events/ack",
+                data=json.dumps({"event_id": int(event_id), "consumer_id": consumer_id}).encode("utf-8"),
+                headers=self._remote_headers(agent, json_body=True, api_key=key),
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+                data = json.loads(response.read().decode("utf-8"))
+                return {"status": "ok", **data} if response.status == 200 and isinstance(data, dict) else {"status": "error", "error": f"Memora returned HTTP {response.status}"}
+        except Exception as exc:
+            logger.warning("Memora event acknowledgement failed (%s)", type(exc).__name__)
+            return {"status": "error", "error": type(exc).__name__}
+
+    def publish_event(
+        self,
+        source_agent: str,
+        target_agent: str,
+        intent: str,
+        payload: Dict[str, Any],
+        *,
+        priority: str = "normal",
+        ttl: int = 300,
+        message_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Sign and persist an idempotent agent notification through Memora."""
+        source = source_agent.lower().strip()
+        key = os.getenv(f"{source.upper()}_API_KEY")
+        if not key:
+            return {"status": "error", "error": f"{source.upper()}_API_KEY is not configured"}
+        if not (1 <= ttl <= 86400):
+            return {"status": "error", "error": "ttl must be in the range 1..86400 seconds"}
+        envelope = {
+            "message_id": message_id or f"msg_{uuid.uuid4().hex}",
+            "correlation_id": f"corr_{uuid.uuid4().hex[:16]}",
+            "from_agent": source,
+            "to_agent": target_agent.lower().strip(),
+            "intent": intent,
+            "priority": priority,
+            "ttl": ttl,
+            "auth_token": None,
+            "payload": payload,
+            "created_at": time.time(),
+        }
+        raw = json.dumps(envelope, sort_keys=True, separators=(",", ":"), default=str).encode()
+        envelope["signature"] = hmac.new(key.encode(), raw, hashlib.sha256).hexdigest()
+        headers = self._remote_headers(source, json_body=True, api_key=key)
+        try:
+            req = urllib.request.Request(
+                f"{self.base_url}/mesh/envelope",
+                data=json.dumps(envelope).encode(),
+                headers=headers,
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+                result = json.loads(response.read().decode("utf-8"))
+                return {"status": "ok", **result} if response.status == 202 else {"status": "error", "error": f"HTTP {response.status}"}
+        except Exception as exc:
+            logger.debug("Memora event publish failed (%s)", type(exc).__name__)
+            return {"status": "error", "error": type(exc).__name__}
 
     def _ensure_tables(self) -> None:
         """Ensure SQLite schema exists in local database."""
@@ -248,17 +375,10 @@ class MemoraClient:
         event_type: str = "dialogue",
         tags: Optional[List[str]] = None,
     ) -> None:
-        """Instantly record to local database, and perform remote sync asynchronously if enabled."""
+        """Write to cloud asynchronously when configured; otherwise save locally."""
         user_clean = self.sanitize_for_persistence(user_input)
         agent_clean = self.sanitize_for_persistence(agent_output)
 
-        # Instant local commit so next turns have immediate access to updated memories
-        try:
-            self._record_locally(agent_name, user_clean, agent_clean)
-        except Exception as e:
-            logger.debug(f"Memora local synchronous record failed: {e}")
-
-        # Non-blocking remote sync if enabled
         if self.remote_enabled:
             try:
                 self._executor.submit(
@@ -271,6 +391,11 @@ class MemoraClient:
                 )
             except Exception as e:
                 logger.debug(f"Memora async interaction record failed to submit: {e}")
+        else:
+            try:
+                self._record_locally(agent_name, user_clean, agent_clean)
+            except Exception as e:
+                logger.debug(f"Memora local-only interaction record failed: {type(e).__name__}")
 
     def record_interaction(
         self,
@@ -284,10 +409,6 @@ class MemoraClient:
         user_clean = self.sanitize_for_persistence(user_input)
         agent_clean = self.sanitize_for_persistence(agent_output)
 
-        # 1. Local Persistence (synchronous, instant, zero latency commit)
-        local_result = self._record_locally(agent_name, user_clean, agent_clean)
-
-        # 2. Remote Memora API sync if explicitly enabled
         if self.remote_enabled:
             payload = {
                 "agent_name": agent_name.lower(),
@@ -298,19 +419,16 @@ class MemoraClient:
             }
             try:
                 url = f"{self.base_url}/v1/memories/record-interaction"
-                headers = {
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {self.api_key}",
-                    "X-Agent-Name": agent_name.lower(),
-                }
+                headers = self._remote_headers(agent_name, json_body=True)
                 req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
                 with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                     if resp.status in (200, 201):
                         return json.loads(resp.read().decode("utf-8"))
             except Exception as e:
-                logger.debug(f"Memora remote write error: {e}")
+                logger.debug(f"Memora remote write error: {type(e).__name__}")
 
-        return local_result
+        local_result = self._record_locally(agent_name, user_clean, agent_clean)
+        return {**local_result, "status": "local_only" if local_result.get("status") == "success" else local_result.get("status"), "cloud": False}
 
     def record_fact(
         self,
@@ -321,8 +439,6 @@ class MemoraClient:
     ) -> Dict[str, Any]:
         """Directly store an explicit fact into Memora after credential sanitization."""
         fact_clean = self.sanitize_for_persistence(fact_text)
-        local_result = self._record_fact_locally(agent_name, fact_clean, category, importance)
-
         if self.remote_enabled:
             payload = {
                 "content_text": fact_clean,
@@ -334,19 +450,16 @@ class MemoraClient:
             }
             try:
                 url = f"{self.base_url}/v1/memories"
-                headers = {
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {self.api_key}",
-                    "X-Agent-Name": agent_name.lower(),
-                }
+                headers = self._remote_headers(agent_name, json_body=True)
                 req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
                 with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                     if resp.status in (200, 201):
                         return json.loads(resp.read().decode("utf-8"))
             except Exception as e:
-                logger.debug(f"Memora remote record_fact error: {e}")
+                logger.debug(f"Memora remote record_fact error: {type(e).__name__}")
 
-        return local_result
+        local_result = self._record_fact_locally(agent_name, fact_clean, category, importance)
+        return {**local_result, "status": "local_only" if local_result.get("status") == "success" else local_result.get("status"), "cloud": False}
 
     def recall_memories(
         self,
@@ -358,24 +471,11 @@ class MemoraClient:
         if not query or not query.strip():
             return []
 
-        # 1. Fast-Lane: Query local SQLite fabric first (0.5ms latency)
-        if os.path.exists(self.local_db_path):
-            try:
-                local_results = self._recall_locally(agent_name, query, limit)
-                if local_results:
-                    return local_results
-            except Exception as e:
-                logger.debug(f"Memora local recall error: {e}")
-
-        # 2. Remote Memora API fallback only when explicitly enabled
         if self.remote_enabled and self.base_url and not self.base_url.startswith("http://localhost"):
             try:
                 encoded_q = urllib.parse.quote(query.strip())
                 url = f"{self.base_url}/v1/memories/search?q={encoded_q}&limit={limit}&min_score=0.2"
-                headers = {
-                    "Authorization": f"Bearer {self.api_key}",
-                    "X-Agent-Name": agent_name.lower(),
-                }
+                headers = self._remote_headers(agent_name)
                 req = urllib.request.Request(url, headers=headers, method="GET")
                 with urllib.request.urlopen(req, timeout=0.8) as resp:
                     if resp.status == 200:
@@ -383,8 +483,13 @@ class MemoraClient:
                         if results:
                             return results
             except Exception as e:
-                logger.debug(f"Memora remote recall error: {e}")
+                logger.debug(f"Memora remote recall error: {type(e).__name__}")
 
+        if os.path.exists(self.local_db_path):
+            try:
+                return self._recall_locally(agent_name, query, limit)
+            except Exception as e:
+                logger.debug(f"Memora local recall error: {type(e).__name__}")
         return []
 
     def build_context_block(self, agent_name: str, query: str) -> str:
@@ -462,11 +567,7 @@ class MemoraClient:
         if self.remote_enabled:
             try:
                 url = f"{self.base_url}/v1/memories/learn-outcome"
-                headers = {
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {self.api_key}",
-                    "X-Agent-Name": agent_name.lower(),
-                }
+                headers = self._remote_headers(agent_name, json_body=True)
                 req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
                 with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                     if resp.status in (200, 201):
@@ -474,7 +575,8 @@ class MemoraClient:
             except Exception as e:
                 logger.debug(f"Memora learn-outcome API write failed ({e}), using local fallback.")
 
-        return self._learn_locally(agent_name, task_name, status, error_clean, actions_clean, context_clean, domain)
+        local = self._learn_locally(agent_name, task_name, status, error_clean, actions_clean, context_clean, domain)
+        return {**local, "status": "local_only" if local.get("status") == "success" else local.get("status"), "cloud": False}
 
     def recall_experience(
         self,
@@ -487,26 +589,13 @@ class MemoraClient:
         if not task_query or not task_query.strip():
             return []
 
-        # 1. Fast-Lane: Query local SQLite fabric first (0.5ms latency)
-        if os.path.exists(self.local_db_path):
-            try:
-                local_exp = self._recall_experience_locally(agent_name, task_query, domain, limit)
-                if local_exp:
-                    return local_exp
-            except Exception as e:
-                logger.debug(f"Memora local experience error: {e}")
-
-        # 2. Remote Memora API fallback only when explicitly enabled
         if self.remote_enabled and self.base_url and not self.base_url.startswith("http://localhost"):
             encoded_domain = urllib.parse.quote(domain.strip()) if domain else ""
             url = f"{self.base_url}/v1/memories/experience?limit={limit}"
             if encoded_domain:
                 url += f"&domain={encoded_domain}"
 
-            headers = {
-                "Authorization": f"Bearer {self.api_key}",
-                "X-Agent-Name": agent_name.lower(),
-            }
+            headers = self._remote_headers(agent_name)
 
             try:
                 req = urllib.request.Request(url, headers=headers, method="GET")
@@ -516,8 +605,13 @@ class MemoraClient:
                         if results:
                             return results
             except Exception as e:
-                logger.debug(f"Memora recall_experience API failed ({e})")
+                logger.debug(f"Memora recall_experience API failed ({type(e).__name__})")
 
+        if os.path.exists(self.local_db_path):
+            try:
+                return self._recall_experience_locally(agent_name, task_query, domain, limit)
+            except Exception as e:
+                logger.debug(f"Memora local experience error: {type(e).__name__}")
         return []
 
     def build_self_upgrade_context(

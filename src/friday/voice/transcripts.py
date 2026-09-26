@@ -9,6 +9,21 @@ streams missed. Shared by the CLI voice mode and the interactive diagnostic.
 
 from collections.abc import Callable
 from typing import Any
+import re
+
+
+def speakable_action_receipt(text: str) -> str:
+    """Reduce a controller result to a short, user-facing spoken receipt."""
+    clean = re.sub(r"\s+", " ", (text or "")).strip()
+    if not clean:
+        return ""
+    if "always-on-top" in clean.casefold() or "kept it in front" in clean.casefold():
+        return "Chrome opened, but another window stayed in front."
+    if "remained focused" in clean.casefold() or "confirmed its window remained focused" in clean.casefold():
+        return "Chrome is open and in front." if "chrome" in clean.casefold() else "The app is open and in front."
+    if any(token in clean.casefold() for token in ("could not", "couldn't", "failed", "did not", "didn't", "unable")):
+        return clean[:220]
+    return clean[:220]
 
 
 class LiveTranscriptPrinter:
@@ -27,6 +42,8 @@ class LiveTranscriptPrinter:
             "friday_turn_streamed": False,
             "friday_last": False,
         }
+        self._turn_started_at: float | None = None
+        self._last_latency_ms: float | None = None
 
     # -- internal helpers ---------------------------------------------------
 
@@ -60,6 +77,8 @@ class LiveTranscriptPrinter:
         # 1. User speech (input transcription) — streams while the user talks
         in_tx = getattr(server_content, "input_transcription", None)
         if in_tx and getattr(in_tx, "text", None):
+            if self._turn_started_at is None:
+                self._turn_started_at = self._time()
             if not self._state["user_streaming"]:
                 self._print("\nYou: ", end="", flush=True)
                 self._state["user_streaming"] = True
@@ -89,16 +108,30 @@ class LiveTranscriptPrinter:
 
     def on_turn_complete(self, user_text: str, agent_text: str) -> None:
         """Log the turn and print fallbacks only for content the streams missed."""
-        self.turn_log.append((self._time(), user_text, agent_text))
+        completed_at = self._time()
+        self.turn_log.append((completed_at, user_text, agent_text))
+        elapsed_ms = (completed_at - self._turn_started_at) * 1000 if self._turn_started_at is not None else None
+        self._turn_started_at = None
+        if elapsed_ms is not None:
+            self._last_latency_ms = elapsed_ms
         if user_text and not self._state["user_last"]:
             self._print(f"\nYou: {user_text or '(untranscribed)'}")
         if agent_text and not self._state["friday_last"]:
             self._print(f"FRIDAY: {(agent_text or '').strip() or '(untranscribed)'}")
+        self._state["user_last"] = False
+        self._state["friday_last"] = False
+        self._state["friday_streaming"] = False
+        self._state["user_streaming"] = False
         if user_text or agent_text:
             try:
                 from friday.cli.main import _console, render_status_panel
                 from friday.observability.timeline import global_timeline
-                global_timeline.update_status(cognitive_phase="LIVE_VOICE", active_agent="VoiceAgent", selected_provider="GeminiLive")
+                global_timeline.update_status(
+                    cognitive_phase="LIVE_VOICE",
+                    active_agent="VoiceAgent",
+                    selected_provider="GeminiLive",
+                    last_latency_ms=self._last_latency_ms,
+                )
                 if _console is not None:
                     _console.print(render_status_panel())
             except Exception:

@@ -50,19 +50,18 @@ def test_ecosystem_registry_aggregation_and_health(ecosystem_center_setup):
     # Status aggregation
     status = registry.get_ecosystem_status()
     assert status["subsystems_count"] >= 3
-    assert status["subsystems"]["trading_bot"]["status"] == "RUNNING"
-    assert status["subsystems"]["forge"]["status"] == "IDLE"
+    assert status["subsystems"]["trading_bot"]["status"] == "UNVERIFIED"
+    assert status["subsystems"]["forge"]["status"] == "UNVERIFIED"
 
     # Health checks
     health = registry.get_ecosystem_health()
-    assert health["overall_health"] == "HEALTHY"
-    assert health["all_healthy"] is True
-    assert health["subsystems"]["trading_bot"]["status"] == "HEALTHY"
+    assert health["overall_health"] == "UNVERIFIED"
+    assert health["all_healthy"] is None
+    assert health["subsystems"]["trading_bot"]["status"] == "UNVERIFIED"
 
     # Last known good
     lkg = registry.get_last_known_good("trading_bot")
-    assert lkg is not None
-    assert lkg["equity_usdt"] == 10450.0
+    assert lkg is None
 
 
 # =========================================================================
@@ -76,32 +75,30 @@ def test_unified_status_skill_commands(ecosystem_center_setup):
     # 1. Status of everything
     res_all = status_skill.execute("Status of everything")
     assert res_all.success is True
-    assert "Unified Ecosystem Master Status Report" in res_all.output
-    assert "Trading Bot:" in res_all.output
-    assert "Forge:" in res_all.output
-    assert "AI-Universe:" in res_all.output
+    assert "# FRIDAY Universe Status" in res_all.output
+    assert "UNVERIFIED" in res_all.output
 
     # 2. Trading status
     res_trade = status_skill.execute("Trading status")
     assert res_trade.success is True
-    assert "Trading Bot Status: RUNNING" in res_trade.output
-    assert "$10,450.00 USDT" in res_trade.output
+    assert "UNVERIFIED" in res_trade.output
+    assert "$10,450.00" not in res_trade.output
 
     # 3. Forge status
     res_forge = status_skill.execute("Forge status")
     assert res_forge.success is True
-    assert "FORGE Status: IDLE" in res_forge.output
-    assert "portfolio website" in res_forge.output
+    assert "UNVERIFIED" in res_forge.output
+    assert "portfolio website" not in res_forge.output
 
     # 4. Health audit
     res_health = status_skill.execute("What's the health of my systems?")
     assert res_health.success is True
-    assert "Ecosystem Health Audit:" in res_health.output
+    assert "does not verify background jobs" in res_health.output
 
     # 5. Brief me
     res_brief = status_skill.execute("Brief me")
     assert res_brief.success is True
-    assert "ecosystem briefing" in res_brief.output
+    assert "# FRIDAY Universe Status" in res_brief.output
 
 
 # =========================================================================
@@ -115,16 +112,16 @@ def test_master_daily_briefing_workflow(ecosystem_center_setup):
     # Morning briefing
     morning = briefing_wf.generate_morning_briefing()
     assert morning.briefing_type == "MORNING"
-    assert "Good morning, Operator." in morning.spoken_summary
-    assert "# 🌅 FRIDAY Master Morning Executive Briefing" in morning.markdown_report
-    assert "Quantitative Trading Overview" in morning.markdown_report
-    assert "FORGE Software Engineering Status" in morning.markdown_report
+    assert "Good morning." in morning.spoken_summary
+    assert "# 🌅 FRIDAY Morning Briefing" in morning.markdown_report
+    assert "no verified trading, lead, research, or forecast figures" in morning.spoken_summary
 
     # Evening briefing
     evening = briefing_wf.generate_evening_briefing()
     assert evening.briefing_type == "EVENING"
-    assert "Good evening, Operator." in evening.spoken_summary
-    assert "# 🌃 FRIDAY Master Evening Performance Wrap-Up" in evening.markdown_report
+    assert "Good evening." in evening.spoken_summary
+    assert "# 🌃 FRIDAY Evening Briefing" in evening.markdown_report
+    assert "no verified event feed is connected" in evening.markdown_report
 
 
 # =========================================================================

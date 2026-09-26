@@ -33,7 +33,7 @@ class ExecutionTimeline:
             "active_agent": "General",
             "selected_provider": "Default",
             "active_tool": "None",
-            "last_latency_ms": 0.0,
+            "last_latency_ms": None,
         }
 
     def record_event(

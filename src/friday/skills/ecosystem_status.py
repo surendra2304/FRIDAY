@@ -1,34 +1,68 @@
-"""Unified Ecosystem Master Status Skill for FRIDAY.
+"""Live, evidence-labelled status for FRIDAY Universe services."""
 
-Synthesizes multi-tier health, operational metrics, and active workloads across all 8 subsystems:
-1. Trading Bot (Algorithmic Trading & Risk Engine)
-2. FORGE (Software Engineering & Compilation Engine)
-3. Nexus (Autonomous Website, Visitor & Conversion Engine)
-4. Sentinel (Autonomous Security & Vulnerability Assessment Shield)
-5. IntelX (Autonomous Deep Research & Knowledge Engine)
-6. Futuris (Autonomous Probabilistic Forecasting & Simulation Engine)
-7. AI-Universe (Multi-LLM Intelligence & Strategic Advisory Core)
-8. FRIDAY Core (Multimodal AI Operating System & Local Device Orchestration)
-"""
-
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from typing import Any
 
 from friday.core.logging import get_logger
+from friday.ecosystem.fleet_client import AgentStatus, FleetClient, fleet_client
 from friday.ecosystem.registry import EcosystemRegistry
 from friday.skills.base_skill import BaseSkill, SkillExecutionResult
 
 logger = get_logger("skills.ecosystem_status")
 
+_AGENT_NAMES = {
+    "inference": "Inference",
+    "memora": "Memora",
+    "stratex": "Stratex",
+    "intelx": "IntelX",
+    "futuris": "Futuris",
+    "cortex": "Cortex",
+    "forge": "Forge",
+    "sentinel": "Sentinel",
+}
+
 
 class EcosystemStatusSkill(BaseSkill):
-    """Generates unified, high-density status and health reports across all 8 subsystems."""
+    """Report live endpoint reachability without inventing task or business metrics."""
 
     name = "ecosystem_status"
-    description = "Provides unified status and health audit reports across all 8 subsystems in the FRIDAY ecosystem."
+    description = "Checks the configured FRIDAY Universe service health endpoints and labels what was verified."
 
-    def __init__(self, registry: EcosystemRegistry | None = None) -> None:
+    def __init__(
+        self,
+        registry: EcosystemRegistry | None = None,
+        fleet: FleetClient | None = None,
+    ) -> None:
         super().__init__()
-        self.registry = registry or EcosystemRegistry()
+        # A supplied registry is useful for offline diagnostics and tests. The
+        # default command uses actual configured service probes.
+        self.registry = registry
+        self.fleet = fleet or fleet_client
+
+    @staticmethod
+    def _run_probe(coro) -> list[AgentStatus]:
+        """Run an async fleet probe from both sync CLI and async server callers."""
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
+        with ThreadPoolExecutor(max_workers=1, thread_name_prefix="friday-fleet-status") as pool:
+            return pool.submit(asyncio.run, coro).result(timeout=20)
+
+    def _registry_statuses(self) -> dict[str, tuple[str, str, str]]:
+        result: dict[str, tuple[str, str, str]] = {}
+        if self.registry is None:
+            return result
+        snapshot = self.registry.get_ecosystem_status()
+        for key, row in snapshot.get("subsystems", {}).items():
+            display = row.get("display_name") or _AGENT_NAMES.get(key, key.title())
+            data = row.get("data") or {}
+            status = str(data.get("status", row.get("status", "UNVERIFIED")))
+            evidence = str(data.get("evidence", "Local registry value; no live service probe was run."))
+            result[key] = (display, status, evidence)
+        return result
 
     def execute(
         self,
@@ -39,144 +73,57 @@ class EcosystemStatusSkill(BaseSkill):
         authorizer: Any | None = None,
         **kwargs: Any,
     ) -> SkillExecutionResult:
-        """Processes status requests and generates comprehensive markdown reports."""
-        clean = user_request.strip().lower()
-
+        """Probe all configured peers, or show an explicitly unverified local registry snapshot."""
         try:
-            # 1. Specific Subsystem Queries
-            if "trading status" in clean or "trading bot status" in clean:
-                trade_status = self.registry.get_subsystem_status("trading_bot")
-                return SkillExecutionResult(
-                    skill_name=self.name,
-                    success=True,
-                    output=(
-                        f"📈 **Trading Bot Status: {trade_status.get('status', 'RUNNING')}**\n"
-                        f"- Equity: `${trade_status.get('equity_usdt', 10450.0):,.2f} USDT`\n"
-                        f"- Daily PnL: `+{trade_status.get('daily_pnl_usdt', 245.50):,.2f} USDT`\n"
-                        f"- Active Positions: `{trade_status.get('active_positions_count', 2)}`\n"
-                        f"- Mode: `{trade_status.get('mode', 'TESTNET')}`"
-                    ),
-                )
+            checked_at = datetime.now(timezone.utc).isoformat()
+            if self.registry is not None:
+                rows = self._registry_statuses()
+                evidence_mode = "local registry snapshot; live reachability was not tested"
+            else:
+                statuses = self._run_probe(self.fleet.get_all_statuses(force_refresh=True))
+                rows = {
+                    item.id: (
+                        item.name,
+                        "HEALTH_ENDPOINT_OK" if item.status == "ONLINE" else item.status,
+                        item.details,
+                    )
+                    for item in statuses
+                }
+                evidence_mode = "live HTTP health-endpoint probes"
 
-            if "forge status" in clean or "build status" in clean:
-                forge_status = self.registry.get_subsystem_status("forge")
-                return SkillExecutionResult(
-                    skill_name=self.name,
-                    success=True,
-                    output=(
-                        f"🛠️ **FORGE Status: {forge_status.get('status', 'IDLE')}**\n"
-                        f"- Active Tasks: `{forge_status.get('active_tasks_count', 0)}`\n"
-                        f"- Completed Today: `{forge_status.get('completed_today_count', 3)}`\n"
-                        f"- Last Built: `{forge_status.get('last_delivered_project', 'portfolio website')}`"
-                    ),
-                )
-
-            if "futuris status" in clean or "forecast status" in clean or "predictions status" in clean:
-                fut_status = self.registry.get_subsystem_status("futuris")
-                return SkillExecutionResult(
-                    skill_name=self.name,
-                    success=True,
-                    output=(
-                        f"🔮 **Futuris Status: {fut_status.get('status', 'HEALTHY')}**\n"
-                        f"- Active Forecasts: `{fut_status.get('active_forecasts_count', 12)}`\n"
-                        f"- Calibration: `{fut_status.get('calibration_status', 'WELL_CALIBRATED')}` (Brier: `{fut_status.get('brier_score', 0.082):.3f}`)\n"
-                        f"- 90% CI Empirical Accuracy: `{fut_status.get('empirical_accuracy_90ci', 89.2):.1f}%`"
-                    ),
-                )
-
-            if "brief" in clean or "brief me" in clean:
-                return SkillExecutionResult(
-                    skill_name=self.name,
-                    success=True,
-                    output="Here is your ecosystem briefing: All 8 subsystems are nominal.",
-                )
-
-            # 2. Health Audit
-            if "health" in clean:
-                health = self.registry.get_ecosystem_health()
-                lines = [
-                    f"🏥 **Ecosystem Health Audit: {health.get('overall_health', 'HEALTHY')}**",
-                    f"- All Systems Healthy: `{health.get('all_healthy', True)}`",
-                    "",
-                    "| Subsystem | Status | Latency | Last Check |",
-                    "| :--- | :---: | :---: | :--- |",
-                ]
-                for name, data in health.get("subsystems", {}).items():
-                    disp = name.replace("_", " ").title()
-                    lines.append(f"| **{disp}** | `{data.get('status', 'UNKNOWN')}` | `{data.get('latency_ms', 1.0)}ms` | Just now |")
-
-                return SkillExecutionResult(
-                    skill_name=self.name,
-                    success=True,
-                    output="\n".join(lines),
-                    step_results=[{"action": "health_audit", "data": health}],
-                )
-
-            # 3. Full Ecosystem Status Report (Default / "Status of everything")
-            status = self.registry.get_ecosystem_status()
-            subs = status.get("subsystems", {})
-
-            trade = subs.get("trading_bot", {})
-            forge = subs.get("forge", {})
-            nexus = subs.get("nexus", {})
-            sentinel = subs.get("sentinel", {})
-            intelx = subs.get("intelx", {})
-            futuris = subs.get("futuris", {})
-            ai_uni = subs.get("ai_universe", {})
-            friday = subs.get("friday", {})
-
-            report = [
-                "# 🌐 Unified Ecosystem Master Status Report (8 Subsystems)",
+            lines = [
+                "# FRIDAY Universe Status",
+                f"Checked at (UTC): {checked_at}",
+                f"Evidence: {evidence_mode}",
                 "",
-                f"**Overall Ecosystem Health:** `{status.get('overall_health', 'HEALTHY')}` | **Active Subsystems:** `{len(subs)}/8`",
-                "",
-                "### 1. 📈 Trading Bot: Algorithmic Trading Bot (Stratex: 24/7 Algorithmic Trading Platform)",
-                f"- **Status:** `{trade.get('status', 'RUNNING')}` | **Mode:** `{trade.get('mode', 'TESTNET')}`",
-                f"- **Account Equity:** `${trade.get('equity_usdt', 10450.0):,.2f} USDT` (Daily PnL: `+{trade.get('daily_pnl_usdt', 245.50):,.2f}`)",
-                f"- **Active Positions:** `{trade.get('active_positions_count', 2)}` open positions",
-                "",
-                "### 2. 🛠️ Forge: FORGE Software Engineering Engine",
-                f"- **Status:** `{forge.get('status', 'IDLE')}` | **Active Tasks:** `{forge.get('active_tasks_count', 0)}`",
-                f"- **Deliveries Today:** `{forge.get('completed_today_count', 3)}` builds completed",
-                "",
-                "### 3. 🚀 Nexus Autonomous Growth & Website Engine",
-                f"- **Status:** `{nexus.get('status', 'ACTIVE')}` | **Active Workflows:** `{nexus.get('active_workflows_count', 3)}`",
-                f"- **Daily Unique Visitors:** `{nexus.get('daily_visitors', 1420)}` (Conversion: `{nexus.get('conversion_rate_pct', 4.2)}%`)",
-                "",
-                "### 4. 🛡️ Sentinel Autonomous Security Shield",
-                f"- **Status:** `{sentinel.get('status', 'VIGILANT')}` | **Posture Score:** `{sentinel.get('posture_score', 94)}/100`",
-                f"- **Active Findings:** `{sentinel.get('open_findings_count', 3)}` (Critical: `{sentinel.get('critical_findings_count', 0)}`, High: `{sentinel.get('high_findings_count', 1)}`)",
-                "",
-                "### 5. 🧠 IntelX Autonomous Deep Research Engine",
-                f"- **Status:** `{intelx.get('status', 'HEALTHY')}` | **Verified Findings:** `{intelx.get('verified_findings_count', 42)}`",
-                f"- **Active Research Tasks:** `{intelx.get('active_research_runs', 0)}` in flight | **Contradictions:** `{intelx.get('detected_contradictions_count', 3)}`",
-                "",
-                "### 6. 🔮 Futuris Probabilistic Forecasting Engine",
-                f"- **Status:** `{futuris.get('status', 'HEALTHY')}` | **Active Forecasts:** `{futuris.get('active_forecasts_count', 12)}`",
-                f"- **Calibration Status:** `{futuris.get('calibration_status', 'WELL_CALIBRATED')}` (Brier Score: `{futuris.get('brier_score', 0.082):.3f}`)",
-                f"- **90% CI Accuracy:** `{futuris.get('empirical_accuracy_90ci', 89.2):.1f}%` empirical coverage",
-                "",
-                "### 7. 🌌 AI-Universe: Multi-LLM Intelligence Core (AI-Universe Multi-LLM)",
-                f"- **Status:** `{ai_uni.get('status', 'HEALTHY')}` | **Active Providers:** `{ai_uni.get('active_providers_count', 7)}`",
-                f"- **Primary Routing:** `{ai_uni.get('primary_provider', 'Gemini 3.1 Pro Preview')}`",
-                "",
-                "### 8. 🤖 FRIDAY Central Multimodal Operating System",
-                f"- **Status:** `{friday.get('status', 'HEALTHY')}` | **Active Operators:** `{friday.get('active_operators_count', 15)}`",
-                f"- **Voice Engine Latency:** `{friday.get('voice_latency_ms', 412.0):.1f}ms` | **Memory Records:** `{friday.get('memory_entries_count', 165)}`",
+                "| Agent | Status | Evidence |",
+                "|---|---|---|",
             ]
+            for key, name in _AGENT_NAMES.items():
+                if key in rows:
+                    display, status, evidence = rows[key]
+                else:
+                    display, status = name, "UNVERIFIED"
+                    evidence = "No configured probe result is available."
+                evidence = " ".join(str(evidence).split()).replace("|", "\\|")
+                lines.append(f"| {display} | {status} | {evidence} |")
 
+            lines.append("| FRIDAY (local) | RUNNING | This status request is executing in the local FRIDAY process. |")
+            lines.extend([
+                "",
+                "A successful HTTP health check confirms only that endpoint responded. It does not verify background jobs, memory synchronization, agent-to-agent delivery, or completed tasks.",
+            ])
             return SkillExecutionResult(
                 skill_name=self.name,
                 success=True,
-                output="\n".join(report),
-                step_results=[{"action": "ecosystem_master_status", "data": status}],
+                output="\n".join(lines),
+                step_results=[{"action": "fleet_health_probe", "checked_at": checked_at, "probe_count": len(rows)}],
             )
-
-        except Exception as e:
-            logger.error(f"[ECOSYSTEM_STATUS_SKILL] Execution error: {e}", exc_info=True)
+        except Exception as exc:
+            logger.error("Ecosystem status probe failed: %s", type(exc).__name__)
             return SkillExecutionResult(
                 skill_name=self.name,
                 success=False,
-                output=f"Error generating ecosystem status: {e}",
-                error=str(e),
+                output=f"FRIDAY could not complete the Universe status check: {type(exc).__name__}.",
+                error=type(exc).__name__,
             )

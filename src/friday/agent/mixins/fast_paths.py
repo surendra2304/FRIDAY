@@ -154,7 +154,7 @@ class FastPathMixin:
             )
 
     def _conversational_fast_path(self, clean_input: str) -> AgentResponse | None:
-        """Return an instant zero-latency response for common conversational inquiries."""
+        """Return a local fast response for common conversational inquiries."""
         low = clean_input.lower().strip().rstrip(".!? ")
         user_name = getattr(self.settings, "user_name", "Surendra")
 
@@ -185,7 +185,7 @@ class FastPathMixin:
         if not reply:
             return None
 
-        logger.info(f"Conversational fast-path matched: '{low}' -> instant response (0ms)")
+        logger.info(f"Conversational fast-path matched locally: '{low}'")
         self.state_machine.transition_to(TaskState.UNDERSTANDING, reason="Conversational query recognized")
         self.state_machine.transition_to(TaskState.PLANNING, reason="Synthesizing conversational response")
         self.state_machine.transition_to(TaskState.VERIFYING, reason="Validating conversational response")
@@ -706,33 +706,36 @@ class FastPathMixin:
                             },
                         )
 
+            if self._CLOSE_TAB_PATTERN.match(clean_input):
+                self.memory.add_message(Message(role=Role.USER, content=clean_input))
+                self.state_machine.transition_to(TaskState.PLANNING, reason="Direct close active Chrome tab command")
+                self.state_machine.transition_to(TaskState.EXECUTING, reason="Closing active Chrome tab")
+                from friday.devices.app_launcher import close_active_chrome_tab
+                ok, content = close_active_chrome_tab()
+                self.state_machine.transition_to(TaskState.VERIFYING, reason="Checking active Chrome tab state")
+                self.state_machine.transition_to(TaskState.COMPLETED if ok else TaskState.FAILED, reason=content)
+                self.memory.add_message(Message(role=Role.ASSISTANT, content=content))
+                return AgentResponse(
+                    content=content,
+                    is_done=True,
+                    metadata={
+                        "fast_path": True,
+                        "direct_desktop_action": "close_chrome_tab",
+                        "success": ok,
+                        "duration_seconds": time.perf_counter() - start_time,
+                        "task_state": self.state_machine.current_state.value,
+                    },
+                )
+
             if self._CLOSE_CHROME_PATTERN.match(clean_input):
                 self.memory.add_message(Message(role=Role.USER, content=clean_input))
                 self.state_machine.transition_to(TaskState.PLANNING, reason="Direct close Chrome command")
                 self.state_machine.transition_to(TaskState.EXECUTING, reason="Closing Chrome")
-                ok = False
-                try:
-                    result = subprocess.run(
-                        ["taskkill.exe", "/IM", "chrome.exe", "/T"],
-                        capture_output=True,
-                        text=True,
-                        timeout=10,
-                    )
-                    combined = f"{result.stdout}\n{result.stderr}".lower()
-                    ok = result.returncode == 0 or "not found" in combined
-                    if not ok:
-                        result = subprocess.run(
-                            ["taskkill.exe", "/F", "/IM", "chrome.exe", "/T"],
-                            capture_output=True,
-                            text=True,
-                            timeout=10,
-                        )
-                        combined = f"{result.stdout}\n{result.stderr}".lower()
-                        ok = result.returncode == 0 or "not found" in combined or "success" in combined
-                except Exception as e:
-                    logger.warning(f"Closing Chrome failed: {e}")
+                from friday.tools.builtin.close_application import CloseApplicationTool
+                result = CloseApplicationTool().execute(window_title="Chrome")
+                ok = not result.is_error
+                content = result.content
                 self.state_machine.transition_to(TaskState.VERIFYING, reason="Checking Chrome close request")
-                content = "Done." if ok else "I could not close Chrome."
                 self.state_machine.transition_to(TaskState.COMPLETED if ok else TaskState.FAILED, reason=content)
                 self.memory.add_message(Message(role=Role.ASSISTANT, content=content))
                 return AgentResponse(
@@ -852,37 +855,27 @@ class FastPathMixin:
                     try:
                         from friday.devices.app_launcher import launch_desktop_app
                         ok, msg = launch_desktop_app(app_raw)
-                        if not ok:
-                            if "Multiple installations" in msg:
-                                self.state_machine.transition_to(TaskState.VERIFYING, reason="Checking ambiguity")
-                                self.state_machine.transition_to(TaskState.COMPLETED, reason="Multiple installations detected; requesting user clarification")
-                                self.memory.add_message(Message(role=Role.ASSISTANT, content=msg))
-                                return AgentResponse(
-                                    content=msg,
-                                    is_done=True,
-                                    metadata={
-                                        "fast_path": True,
-                                        "direct_desktop_action": f"open_{app_raw}",
-                                        "is_ambiguous": True,
-                                        "success": False,
-                                        "duration_seconds": time.perf_counter() - start_time,
-                                        "task_state": self.state_machine.current_state.value,
-                                    },
-                                )
-                            elif exe.startswith("http"):
-                                import webbrowser
-                                webbrowser.open(exe)
-                                ok = True
-                            elif exe.startswith("ms-"):
-                                self._launch_process("explorer.exe", exe)
-                                ok = True
-                            else:
-                                self._launch_process(exe)
-                                ok = True
                     except Exception as e:
                         logger.warning(f"Opening '{app_raw}' failed: {e}")
+                        msg = f"Could not open {app_raw}: {e}"
+                    if not ok and "Multiple installations" in msg:
+                        self.state_machine.transition_to(TaskState.VERIFYING, reason="Checking ambiguity")
+                        self.state_machine.transition_to(TaskState.COMPLETED, reason="Multiple installations detected; requesting user clarification")
+                        self.memory.add_message(Message(role=Role.ASSISTANT, content=msg))
+                        return AgentResponse(
+                            content=msg,
+                            is_done=True,
+                            metadata={
+                                "fast_path": True,
+                                "direct_desktop_action": f"open_{app_raw}",
+                                "is_ambiguous": True,
+                                "success": False,
+                                "duration_seconds": time.perf_counter() - start_time,
+                                "task_state": self.state_machine.current_state.value,
+                            },
+                        )
                     self.state_machine.transition_to(TaskState.VERIFYING, reason=f"Checking {app_raw} launch")
-                    content = msg if ok and msg else ("Done." if ok else f"I could not open {app_raw}.")
+                    content = msg if msg else (f"Opened {app_raw}." if ok else f"I could not open {app_raw}.")
                     self.state_machine.transition_to(TaskState.COMPLETED if ok else TaskState.FAILED, reason=content)
                     self.memory.add_message(Message(role=Role.ASSISTANT, content=content))
                     return AgentResponse(
@@ -1237,6 +1230,8 @@ class FastPathMixin:
                 return "notepad_type"
             if self._CHROME_SEARCH_PATTERN.match(clean):
                 return "chrome_search"
+            if self._CLOSE_TAB_PATTERN.match(clean):
+                return "close_chrome_tab"
             if self._CLOSE_CHROME_PATTERN.match(clean):
                 return "close_chrome"
             if self._PLAY_MEDIA_PATTERN.match(clean):

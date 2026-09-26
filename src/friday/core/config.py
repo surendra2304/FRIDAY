@@ -135,6 +135,7 @@ class Settings(BaseSettings):
             'FRIDAY_CORTEX_URL': ['CORTEX_URL', 'cortex_url', 'NEXUS_URL', 'NEXUS_BASE_URL', 'nexus_base_url', 'FRIDAY_NEXUS_BASE_URL'],
             'FRIDAY_CORTEX_API_KEY': ['CORTEX_API_KEY', 'cortex_api_key'],
             'FRIDAY_CORTEX_ENABLED': ['CORTEX_ENABLED', 'NEXUS_ENABLED', 'cortex_enabled', 'nexus_enabled'],
+            'FRIDAY_NEXUS_VIGILANCE_INTERVAL_SECONDS': ['NEXUS_VIGILANCE_INTERVAL_SECONDS', 'nexus_vigilance_interval_seconds'],
             'FRIDAY_FORGE_URL': ['FORGE_URL', 'forge_url', 'FORGE_BASE_URL', 'forge_base_url', 'FRIDAY_FORGE_BASE_URL'],
             'FRIDAY_FORGE_API_KEY': ['FORGE_API_KEY', 'forge_api_key'],
             'FRIDAY_LLM_API_KEY': ['OPENAI_API_KEY', 'LLM_API_KEY', 'llm_api_key'],
@@ -172,20 +173,20 @@ class Settings(BaseSettings):
 
     # General
     env: str = Field(default="development", description="Environment (development, production, testing)")
-    # UI Automation flag – enabled by default on Windows, disabled otherwise
+    # UI Automation flag – opt in after choosing which local UI actions to expose
     ui_automation_enabled: bool = Field(
-        default=bool(os.name == "nt"),
-        description="Enable Windows UI Automation provider (default true on Windows).",
+        default=False,
+        description="Enable the Windows UI Automation provider; disabled until explicitly configured.",
     )
     # Autonomous laptop execution mode – execute user directives without interactive confirmation prompts
     autonomous_mode: bool = Field(
-        default=True,
-        description="Enable autonomous execution without interactive confirmation prompts for owner.",
+        default=False,
+        description="Enable owner-requested actions without confirmation prompts; disabled by default.",
     )
     # Full access mode – give complete control to owner over laptop actions
     full_access_mode: bool = Field(
-        default=True,
-        description="Allow complete laptop control and tool execution when commanded by owner.",
+        default=False,
+        description="Compatibility setting for sensitive actions; dangerous actions always require explicit confirmation.",
     )
     
     # Logging
@@ -331,10 +332,16 @@ class Settings(BaseSettings):
         default="https://inference-r1sn.onrender.com",
         description="Base URL for live Inference Cloud Gateway",
     )
-    inference_api_key: str = Field(
-        default="inference_api",
-        description="API Key for live Inference Cloud Gateway",
+    inference_api_key: str | None = Field(
+        default=None,
+        description="Configured API key for the Inference gateway; absent credentials remain absent.",
     )
+    stratex_api_key: str | None = Field(default=None, description="Configured Stratex peer API key")
+    memora_api_key: str | None = Field(default=None, description="Configured Memora peer API key")
+    intelx_api_key: str | None = Field(default=None, description="Configured IntelX peer API key")
+    futuris_api_key: str | None = Field(default=None, description="Configured Futuris peer API key")
+    cortex_api_key: str | None = Field(default=None, description="Configured Cortex peer API key")
+    sentinel_api_key: str | None = Field(default=None, description="Configured Sentinel peer API key")
     api_key: str | None = Field(
         default=None,
         description="API Key for authenticating FRIDAY with external AI Universe services",
@@ -615,11 +622,11 @@ class Settings(BaseSettings):
         description="Alias for IntelX API",
     )
     futuris_url: str = Field(
-        default="https://sentinel-a861.onrender.com",
+        default="https://futuris-th6f.onrender.com",
         description="Base URL for Futuris Predictive Forecasting API",
     )
     futuris_base_url: str = Field(
-        default="https://sentinel-a861.onrender.com",
+        default="https://futuris-th6f.onrender.com",
         description="Alias for Futuris API",
     )
     memora_url: str = Field(

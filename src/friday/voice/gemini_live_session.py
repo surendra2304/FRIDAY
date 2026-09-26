@@ -106,6 +106,7 @@ class GeminiLiveVoiceSession:
             )
             live_model = getattr(settings, "voice_live_model", "gemini-3.1-flash-live-preview")
         self.model = live_model
+        self.user_name = getattr(settings, "user_name", "Surendra")
         self.agent = agent
         self.voice_name = voice_name or getattr(settings, "voice_name", "Kore")
         self.sample_rate_in = sample_rate_in
@@ -128,7 +129,7 @@ class GeminiLiveVoiceSession:
         self.local_barge_in_during_playback = (
             local_barge_in_during_playback
             if local_barge_in_during_playback is not None
-            else getattr(settings, "voice_local_barge_in_during_playback", False)
+            else getattr(settings, "voice_local_barge_in_during_playback", True)
         )
         self.headphones_mode = (
             headphones_mode if headphones_mode is not None else getattr(settings, "voice_headphones_mode", False)
@@ -142,7 +143,7 @@ class GeminiLiveVoiceSession:
         # while the speaker plays, frames below the interrupt threshold are dropped
         # as speaker echo; louder frames pass through so server VAD hears real interruptions.
         self._echo_suppression = False
-        self.echo_interrupt_rms_threshold = getattr(settings, "voice_echo_interrupt_rms_threshold", 4000.0)
+        self.echo_interrupt_rms_threshold = getattr(settings, "voice_echo_interrupt_rms_threshold", 1000.0)
         self.echo_suppressed_frames = 0
 
         # Speaker recognition (voice biometrics): when enabled AND a profile is
@@ -253,6 +254,17 @@ class GeminiLiveVoiceSession:
         """Construct system prompt embodying FRIDAY's futuristic, natural spoken persona."""
         settings = get_settings()
         user_name = getattr(settings, "user_name", "Surendra")
+        if str(user_name).strip().casefold() == "surendra":
+            name_pronunciation = (
+                "The user's name is spelled Surendra and pronounced 'soo-REN-dhra' "
+                "in three syllables, with stress on REN and an aspirated 'dhra' ending (dhra, not dra). Say the name using that pronunciation, "
+                "not as a shortened or different name. If unsure, leave the name out rather than guessing."
+            )
+        else:
+            name_pronunciation = (
+                f"The user's name is {user_name}. Use this exact name; if unsure how to pronounce it, "
+                "leave it out rather than guessing."
+            )
         try:
             local_tz = datetime.now().astimezone().tzname() or "the user's local timezone"
         except Exception:
@@ -281,8 +293,9 @@ class GeminiLiveVoiceSession:
             f"- The current local time at session start is {now_str} ({local_tz}).\n"
             f"- CRITICAL CONVERSATION RULES:\n"
             f"  * You are the real-time speech interface. The local FRIDAY controller executes commands after transcripts complete.\n"
-            f"  * When the user gives a command to open apps, type text, search the web, check settings, or control the laptop, acknowledge concisely or remain quiet and let the controller execute the action.\n"
-            f"  * NEVER repeat greetings ('Hi Surendra', 'Hello', etc.). NEVER greet the user again after the session has started.\n"
+            f"  * For laptop actions, do not announce success or claim an action has started. The local controller will execute and verify it, then provide the actual result for you to report.\n"
+            f"  * If asked how to pronounce the user's name, say it as 'soo-REN-dhra' with the final aspirated 'dhra'; do not answer only with the spelling. If unsure, do not say the name aloud.\n"
+            f"  * Give one brief opening greeting when the session first connects; after that, do not repeat greetings or reintroduce yourself.\n"
             f"  * NEVER state the time or date unless explicitly asked in the immediate query.\n"
             f"  * Respond ONLY to the user's immediate query or command without repeating previous responses.\n"
             f"  * NEVER summarize or recite past tool executions, past actions (like opening or closing apps), or previous conversation history unless explicitly asked.\n"
@@ -295,6 +308,8 @@ class GeminiLiveVoiceSession:
             f"  * Speech Optimization: Never speak raw JSON, code symbols, markdown formatting (*, #, `), internal tool IDs, or debugging metadata.\n"
             f"- ADDRESSING THE USER:\n"
             f"  * The user is {user_name}. Use their name naturally and sparingly, but do NOT prepend or repeat it on every response.\n"
+            f"  * NAME PRONUNCIATION: {name_pronunciation}\n"
+            f"  * If the user corrects how you address them, acknowledge briefly without repeating the mispronounced name.\n"
             f"  * Never use sycophantic titles like 'Boss' or fake catchphrases.\n"
             f"  * Never use customer-service filler ('Certainly!', 'I would be happy to assist you with that.').\n"
             f"- INTERRUPTION RECOVERY:\n"
@@ -374,8 +389,10 @@ class GeminiLiveVoiceSession:
         except Exception as e:
             logger.debug(f"Realtime VAD config error: {e}")
 
-        # Thinking configuration (Gemini 3.1 Live uses thinking_level)
-        if self.thinking_level is not None:
+        # Gemini 3.1 Live accepts thinking_level. Other Live models can reject
+        # the entire WebSocket setup with code 1007 if this field is included.
+        supports_thinking_config = self.model == "gemini-3.1-flash-live-preview"
+        if supports_thinking_config and self.thinking_level is not None:
             try:
                 level_str = str(self.thinking_level).upper()
                 if hasattr(genai_types, "ThinkingLevel") and hasattr(genai_types.ThinkingLevel, level_str):
@@ -384,7 +401,7 @@ class GeminiLiveVoiceSession:
                     config_kwargs["thinking_config"] = genai_types.ThinkingConfig(thinking_level=level_str)
             except Exception as e:
                 logger.debug(f"ThinkingConfig thinking_level error: {e}")
-        elif self.thinking_budget is not None:
+        elif supports_thinking_config and self.thinking_budget is not None:
             try:
                 config_kwargs["thinking_config"] = genai_types.ThinkingConfig(thinking_budget=self.thinking_budget)
             except Exception as e:
@@ -602,16 +619,6 @@ class GeminiLiveVoiceSession:
         if not text:
             return ""
 
-        from friday.devices.windows_friday import windows_friday
-
-        handled, friday_reply, friday_meta = windows_friday.handle_directive(text)
-        if handled:
-            try:
-                await self.send_text(f"FRIDAY, acknowledge briefly that you completed: {friday_reply}")
-            except Exception as e:
-                logger.warning(f"Could not send typed result to Live model: {e}")
-            return friday_reply
-
         # Check if the typed text is an instant device command
         instant_key = None
         if self.agent is not None and type(self.agent).__name__ == "FridayAgent":
@@ -634,6 +641,18 @@ class GeminiLiveVoiceSession:
             except Exception as e:
                 logger.warning(f"Could not send typed result to Live model: {e}")
             return answer
+
+        # Keep the legacy directive handler for catalog commands that are not
+        # currently classified as instant, but never let it preempt a verified
+        # FridayAgent action (for example close Chrome or close the active tab).
+        from friday.devices.windows_friday import windows_friday
+        handled, friday_reply, _friday_meta = windows_friday.handle_directive(text)
+        if handled:
+            try:
+                await self.send_text(f"FRIDAY, acknowledge briefly that you completed: {friday_reply}")
+            except Exception as e:
+                logger.warning(f"Could not send typed result to Live model: {e}")
+            return friday_reply
 
         # Pure conversational input: forward directly to the Live session
         try:
@@ -795,9 +814,14 @@ class GeminiLiveVoiceSession:
                         break
 
                     err_str = str(e).lower()
+                    if "1007" in err_str or "not supported for this model" in err_str:
+                        self._set_state(LiveSessionState.FAILED)
+                        raise LLMProviderError(
+                            f"Gemini Live rejected the session configuration for model '{self.model}': {e}"
+                        ) from e
                     # Safe credential failover for access denials, quota, auth, and
                     # server GoAway events without leaking keys
-                    is_access_denial = "1008" in err_str or "denied access" in err_str or "not supported" in err_str
+                    is_access_denial = "1008" in err_str or "denied access" in err_str
                     is_credential_error = (
                         "429" in err_str or "quota" in err_str or "401" in err_str
                         or "403" in err_str or "unauthorized" in err_str or "goaway" in err_str
@@ -865,6 +889,10 @@ class GeminiLiveVoiceSession:
             while self._active and not stop_event.is_set():
                 now = time.time()
                 is_speaker_active = getattr(spk, "is_playing", False) or getattr(spk, "queue_size", 0) > 0
+                if is_speaker_active and self._friday_speaking_start_time <= 0:
+                    self._friday_speaking_start_time = now
+                elif not is_speaker_active:
+                    self._friday_speaking_start_time = 0.0
 
                 # 2. Hard timeout: If speaker has been playing longer than speaker_timeout_ms (default 10s, up to 60s), force stop & unmute
                 timeout_sec = max(1.0, float(self.speaker_timeout_ms) / 1000.0)
@@ -907,12 +935,20 @@ class GeminiLiveVoiceSession:
                     # mic) but pass loud frames so the server VAD can detect a
                     # genuine human interruption.
                     if self._echo_suppression and is_speaker_active:
-                        if rms < self.echo_interrupt_rms_threshold:
+                        # Let the barge-in detector set a floor relative to the
+                        # configured speech threshold; a fixed 4000 RMS gate can
+                        # discard ordinary nearby speech before it reaches VAD.
+                        echo_gate = min(
+                            self.echo_interrupt_rms_threshold,
+                            max(self.barge_in_rms_threshold, self._ambient_noise_floor * self.adaptive_noise_multiplier)
+                            * self.barge_in_playback_factor,
+                        )
+                        if rms < echo_gate:
                             self.echo_suppressed_frames += 1
                             continue
                         logger.info(
                             f"Loud local audio during playback (RMS {rms:.0f} >= "
-                            f"{self.echo_interrupt_rms_threshold:.0f}): passing frame to server VAD for interruption."
+                            f"{echo_gate:.0f}): passing frame to server VAD for interruption."
                         )
 
                     # 1. Candidate speech threshold calculation
@@ -935,10 +971,32 @@ class GeminiLiveVoiceSession:
                         self._consecutive_speech_frames += 1
                     else:
                         self._consecutive_speech_frames = 0
+                        self._local_interruption_active = False
 
-                    # 3. Interruption Handling: Local client-side RMS interruption disabled to prevent
-                    # acoustic self-interruption mid-sentence. Interruption authority relies 100% on Google Server-Side VAD.
-                    self._local_interruption_active = False
+                    # 3. Local barge-in purges audio immediately, while server VAD
+                    # remains responsible for recognizing the new user turn. The
+                    # echo gate drops low-energy speaker audio before this detector.
+                    local_barge_in_allowed = (
+                        not is_speaker_active
+                        or self.headphones_mode
+                        or self.local_barge_in_during_playback
+                    )
+                    cooldown_over = now - self._last_interruption_time >= self.barge_in_cooldown_seconds
+                    local_interrupt = (
+                        is_speaker_active
+                        and local_barge_in_allowed
+                        and cooldown_over
+                        and self._consecutive_speech_frames >= max(1, self.barge_in_consecutive_frames)
+                    )
+                    self._local_interruption_active = local_interrupt
+                    if local_interrupt:
+                        spk.stop()
+                        is_speaker_active = False
+                        self.speaker_playback_interruptions += 1
+                        self.user_interruptions += 1
+                        self._last_interruption_time = now
+                        self._consecutive_speech_frames = 0
+                        self._set_state(LiveSessionState.USER_SPEAKING)
                     if not is_speaker_active:
                         if rms > candidate_threshold and self._state == LiveSessionState.CONNECTED:
                             self._set_state(LiveSessionState.USER_SPEAKING)
@@ -980,6 +1038,8 @@ class GeminiLiveVoiceSession:
         agent_text_parts = []
         agent_output_tx = []
         turn_interrupted = False
+        suppress_model_until_result = False
+        local_instant_action_pending = False
 
         try:
             async for message in session.receive():
@@ -1000,58 +1060,11 @@ class GeminiLiveVoiceSession:
                     logger.warning("Gemini Live server sent GoAway signal; preparing for reconnection.")
                     break
 
-                # 3. Live Tool Calls (Function Calling Execution & Response)
-                tool_call = getattr(message, "tool_call", None)
-                if tool_call and getattr(tool_call, "function_calls", None):
-                    from friday.devices.windows_friday import windows_friday
-                    responses = []
-                    for fc in tool_call.function_calls:
-                        fn_name = getattr(fc, "name", "")
-                        call_id = getattr(fc, "id", "")
-                        args = getattr(fc, "args", {}) or {}
-                        logger.info(f"Gemini Live received tool call: {fn_name}({args})")
-                        res_str = "Done."
-                        try:
-                            if fn_name == "youtube":
-                                q = args.get("query", "")
-                                _, res_str = windows_friday.play_youtube(q)
-                            elif fn_name == "open_application":
-                                app = args.get("app_name", "")
-                                _, res_str = windows_friday.launch_app(app)
-                            elif fn_name == "close_application":
-                                app = args.get("app_name", "")
-                                _, res_str = windows_friday.close_app(app)
-                            elif fn_name == "manage_volume":
-                                act = args.get("action", "")
-                                if "up" in act:
-                                    res_str = windows_friday.volume_up()
-                                elif "down" in act:
-                                    res_str = windows_friday.volume_down()
-                                elif "mute" in act:
-                                    res_str = windows_friday.volume_mute()
-                            elif fn_name == "get_system_info":
-                                res_str = windows_friday.get_system_specs()
-                            elif fn_name == "get_screen_snapshot":
-                                _, res_str, _ = windows_friday.take_screenshot()
-                            elif self.agent and hasattr(self.agent, "tools"):
-                                tool = self.agent.tools.get(fn_name)
-                                if tool:
-                                    res = tool.execute(**args)
-                                    res_str = res.content
-                        except Exception as e:
-                            logger.error(f"Error executing live tool {fn_name}: {e}")
-                            res_str = f"Error: {e}"
-
-                        responses.append(genai_types.FunctionResponse(name=fn_name, id=call_id, response={"result": res_str}))
-
-                    try:
-                        await session.send_tool_response(function_responses=responses)
-                    except Exception as e:
-                        logger.warning(f"send_tool_response failed: {e}")
-
-                # 4. Server content (Audio, Transcriptions, Interruption)
+                # 3. Server content (Audio, Transcriptions, Interruption)
                 server_content = getattr(message, "server_content", None)
                 if server_content:
+                    if turn_interrupted:
+                        self._set_state(LiveSessionState.INTERRUPTED)
                     # Instant barge-in / Interruption from Live API
                     # Strictly verify that interrupted is boolean True on serverContent
                     if getattr(server_content, "interrupted", False) is True:
@@ -1072,6 +1085,7 @@ class GeminiLiveVoiceSession:
                         self._set_state(LiveSessionState.INTERRUPTED)
                         turn_interrupted = True
                         spk.stop()
+                        self._consecutive_speech_frames = 0
                         user_transcript_accum.clear()
                         agent_text_parts.clear()
                         agent_output_tx.clear()
@@ -1081,22 +1095,52 @@ class GeminiLiveVoiceSession:
                     # pass 2 extracts text. Text extraction can therefore never
                     # sit between a received chunk and the speaker queue.
                     model_turn = getattr(server_content, "model_turn", None)
+                    incoming_tx = getattr(server_content, "input_transcription", None)
+                    incoming_text = getattr(incoming_tx, "text", "") if incoming_tx else ""
+                    if incoming_text and self.agent is not None and type(self.agent).__name__ == "FridayAgent":
+                        try:
+                            if not user_transcript_accum:
+                                # A fresh transcription starts a new user turn;
+                                # clear the previous turn's duplicate-call guard.
+                                suppress_model_until_result = False
+                                local_instant_action_pending = False
+                            candidate = "".join(user_transcript_accum) + incoming_text
+                            if self.agent.classify_instant_command(candidate):
+                                suppress_model_until_result = True
+                                local_instant_action_pending = True
+                        except Exception:
+                            pass
                     if model_turn and getattr(model_turn, "parts", None):
-                        if not turn_interrupted:
+                        if suppress_model_until_result and not turn_interrupted:
+                            # Don't play or display a speculative model response for a command;
+                            # the local controller will provide the verified result to speak.
+                            pass
+                        elif not turn_interrupted:
                             self._set_state(LiveSessionState.FRIDAY_SPEAKING)
-                        for part in model_turn.parts:
-                            inline_data = getattr(part, "inline_data", None)
-                            if inline_data and getattr(inline_data, "data", None):
-                                spk.play_chunk(inline_data.data)
-                        for part in model_turn.parts:
-                            if getattr(part, "text", None):
-                                agent_text_parts.append(part.text)
+                            for part in model_turn.parts:
+                                inline_data = getattr(part, "inline_data", None)
+                                if inline_data and getattr(inline_data, "data", None):
+                                    spk.play_chunk(inline_data.data)
+                            for part in model_turn.parts:
+                                if getattr(part, "text", None):
+                                    agent_text_parts.append(part.text)
+                        else:
+                            self._set_state(LiveSessionState.INTERRUPTED)
 
                     # Notify observers AFTER audio is enqueued so they can never
                     # delay playback (transcript extraction, diagnostics, etc.)
                     if on_server_content is not None:
                         try:
-                            on_server_content(server_content)
+                            if suppress_model_until_result:
+                                from types import SimpleNamespace
+                                on_server_content(SimpleNamespace(
+                                    input_transcription=getattr(server_content, "input_transcription", None),
+                                    output_transcription=None,
+                                    model_turn=None,
+                                    turn_complete=getattr(server_content, "turn_complete", False),
+                                ))
+                            else:
+                                on_server_content(server_content)
                         except Exception as e:
                             logger.debug(f"on_server_content callback error: {e}")
 
@@ -1106,18 +1150,20 @@ class GeminiLiveVoiceSession:
                         user_transcript_accum.append(in_tx.text)
 
                     out_tx = getattr(server_content, "output_transcription", None)
-                    if out_tx and getattr(out_tx, "text", None):
+                    if out_tx and getattr(out_tx, "text", None) and not suppress_model_until_result:
                         agent_output_tx.append(out_tx.text)
 
                     # Turn completion
                     if getattr(server_content, "turn_complete", False):
                         if hasattr(spk, "flush"):
                             spk.flush()
-                        self._set_state(LiveSessionState.CONNECTED)
+                        if not turn_interrupted:
+                            self._set_state(LiveSessionState.CONNECTED)
                         user_text = "".join(user_transcript_accum).strip()
                         raw_agent_text = ("".join(agent_output_tx).strip() or "".join(agent_text_parts).strip())
                         agent_text = f"{raw_agent_text} [interrupted]" if (turn_interrupted and raw_agent_text) else raw_agent_text
                         local_agent_handled = False
+                        defer_turn_callback = False
 
                         # Check if user input is an instant command that requires deterministic local execution
                         instant_key = None
@@ -1133,17 +1179,26 @@ class GeminiLiveVoiceSession:
                                 instant_key = None
 
                         if instant_key:
+                            local_instant_action_pending = True
+                            suppress_model_until_result = True
                             try:
                                 local_response = await asyncio.to_thread(self.agent.process_message, user_text)
                                 if local_response.content:
                                     agent_text = local_response.content
                                 local_agent_handled = True
-                                # Only request spoken confirmation if the Live model was silent
-                                if not raw_agent_text:
+                                # The local controller is authoritative. The Live
+                                # model's speculative audio was suppressed, so print
+                                # the verified receipt and speak it locally instead
+                                # of waiting for an unreliable extra Live turn.
+                                if not turn_interrupted and agent_text:
                                     try:
-                                        await self.send_text(f"FRIDAY, acknowledge briefly that you completed: {agent_text}")
-                                    except Exception:
-                                        pass
+                                        from friday.cli.main import native_tts
+                                        from friday.voice.transcripts import speakable_action_receipt
+                                        receipt = speakable_action_receipt(agent_text)
+                                        if receipt:
+                                            native_tts.speak(receipt)
+                                    except Exception as e:
+                                        logger.debug(f"Could not speak local action receipt: {e}")
                             except Exception as e:
                                 logger.warning(f"Local voice agent processing failed: {e}")
 
@@ -1206,13 +1261,36 @@ class GeminiLiveVoiceSession:
                         agent_output_tx.clear()
                         turn_interrupted = False
 
-                # 4. Server tool execution requests
+                # 4. Server tool execution requests through the canonical agent
+                # path, which enforces authorization and records a single receipt.
                 tool_call = getattr(message, "tool_call", None)
+                server_content = getattr(message, "server_content", None)
+                server_model_turn = getattr(server_content, "model_turn", None) if server_content else None
+                legacy_tool_call = getattr(server_model_turn, "tool_call", None) if server_model_turn else None
+                if tool_call is None:
+                    tool_call = legacy_tool_call
                 if tool_call and getattr(tool_call, "function_calls", None):
                     self._set_state(LiveSessionState.TOOL_CALL)
                     func_responses = []
                     for fc in tool_call.function_calls:
-                        resp = await self._execute_tool_call(fc)
+                        if local_instant_action_pending:
+                            tool_name = getattr(fc, "name", "")
+                            tool_id = getattr(fc, "id", None) or f"call_{tool_name}"
+                            logger.info(
+                                "Suppressing duplicate Live tool call for locally handled turn [name: %s, call_id: %s]",
+                                tool_name,
+                                tool_id,
+                            )
+                            resp = genai_types.FunctionResponse(
+                                name=tool_name,
+                                id=tool_id,
+                                response={
+                                    "status": "handled_locally",
+                                    "message": "FRIDAY handled this user command locally once. Do not repeat the desktop action.",
+                                },
+                            )
+                        else:
+                            resp = await self._execute_tool_call(fc)
                         func_responses.append(resp)
 
                     if func_responses:
@@ -1220,10 +1298,13 @@ class GeminiLiveVoiceSession:
                         await session.send_tool_response(function_responses=func_responses)
                     self._set_state(LiveSessionState.CONNECTED)
 
-                # 5. Tool call cancellation
+                # 6. Tool call cancellation
                 tool_cancel = getattr(message, "tool_call_cancellation", None)
                 if tool_cancel:
                     logger.info(f"Gemini Live cancelled tool calls: {getattr(tool_cancel, 'ids', [])}")
+
+            if turn_interrupted:
+                self._set_state(LiveSessionState.INTERRUPTED)
 
         except asyncio.CancelledError:
             pass

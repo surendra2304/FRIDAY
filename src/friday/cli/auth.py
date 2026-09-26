@@ -38,16 +38,19 @@ class CLIAuthorizer(BaseAuthorizer):
     def __init__(self, authorizer: Any | None = None, auto_approve_all: bool | None = None) -> None:
         super().__init__(authorizer=authorizer)
         from friday.core.config import get_settings
-        settings = get_settings()
+        self.settings = get_settings()
         if auto_approve_all is not None:
             self.auto_approve_all = auto_approve_all
         else:
-            self.auto_approve_all = getattr(settings, "autonomous_mode", True)
-        self.full_access = getattr(settings, "full_access_mode", True)
+            self.auto_approve_all = getattr(self.settings, "autonomous_mode", False)
+        self.full_access = getattr(self.settings, "full_access_mode", False)
 
     def authorize(self, request: AuthorizationRequest) -> AuthorizationResponse:
-        # 1. Automatic approval for SAFE tools or when autonomous/full-access mode is enabled
-        if request.safety_level == SafetyLevel.SAFE or self.auto_approve_all or self.full_access:
+        # Only safe tools auto-approve by default. Consequential actions require a
+        # prompt unless the owner explicitly opts into autonomous/full-access mode.
+        if request.safety_level == SafetyLevel.SAFE or (
+            request.safety_level == SafetyLevel.SENSITIVE and (self.auto_approve_all or self.full_access)
+        ):
             return AuthorizationResponse(
                 decision=AuthorizationDecision.APPROVED,
                 reason="Autonomous laptop controller execution approved.",
@@ -92,6 +95,8 @@ class CLIAuthorizer(BaseAuthorizer):
 
         # 3. Handle DANGEROUS confirmation (requires typing 'CONFIRM')
         if request.safety_level == SafetyLevel.DANGEROUS:
+            if self.auto_approve_all or self.full_access:
+                print("DANGEROUS actions always require explicit confirmation, even in autonomous mode.")
             print("WARNING: [DANGEROUS OPERATION REQUESTED]")
             print(f"Tool      : {request.tool_name}")
             if request.affected_resource:

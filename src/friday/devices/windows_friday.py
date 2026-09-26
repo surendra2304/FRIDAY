@@ -1147,41 +1147,28 @@ class WindowsFridayController:
         return launch_desktop_app(app_name)
 
     def close_app(self, app_name: str) -> Tuple[bool, str]:
-        """Gracefully close or terminate an application by name or process."""
+        """Gracefully close a visible application window and verify it is gone."""
         clean = app_name.lower().strip()
-        exe = APP_PROCESS_MAP.get(clean)
-
-        # Fuzzy match in map
-        if not exe:
-            for k, v in APP_PROCESS_MAP.items():
-                if k in clean:
-                    exe = v
+        title_aliases = {
+            "chrome": "Chrome", "google chrome": "Chrome", "notepad": "Notepad",
+            "calculator": "Calculator", "calc": "Calculator", "vs code": "Visual Studio Code",
+            "vscode": "Visual Studio Code", "code": "Visual Studio Code", "spotify": "Spotify",
+            "terminal": "Windows Terminal", "windows terminal": "Windows Terminal",
+            "paint": "Paint", "explorer": "File Explorer", "file explorer": "File Explorer",
+            "word": "Word", "excel": "Excel", "discord": "Discord", "whatsapp": "WhatsApp",
+        }
+        title = title_aliases.get(clean)
+        if title is None:
+            for alias, display in title_aliases.items():
+                if alias in clean:
+                    title = display
                     break
+        if not title:
+            return False, f"I could not map '{app_name}' to a visible application window."
 
-        if exe:
-            try:
-                cmd = ["taskkill.exe", "/IM", exe, "/T", "/F"]
-                res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-                if res.returncode == 0 or "not found" in res.stderr.lower():
-                    return True, f"Closed {clean.title()}."
-            except Exception as e:
-                logger.warning(f"taskkill failed for {exe}: {e}")
-
-        # Process iteration search
-        terminated_count = 0
-        for proc in psutil.process_iter(["name", "pid"]):
-            try:
-                pname = (proc.info.get("name") or "").lower()
-                if clean in pname or (exe and exe.lower() in pname):
-                    proc.terminate()
-                    terminated_count += 1
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
-
-        if terminated_count > 0:
-            return True, f"Closed {clean.title()} ({terminated_count} process instances terminated)."
-
-        return False, f"Could not find running process for '{app_name}'."
+        from friday.tools.builtin.close_application import CloseApplicationTool
+        result = CloseApplicationTool().execute(window_title=title)
+        return (not result.is_error), result.content
 
     def list_running_apps(self) -> list[str]:
         """Enumerate visible desktop application windows."""
@@ -1799,6 +1786,8 @@ class WindowsFridayController:
             return True
         if re.search(r"^(?:please\s+|could you\s+|can you\s+)?(?:close|shut|dismiss|hide|minimi[sz]e|shrink|collapse|maximi[sz]e|expand|fullscreen|full[\s-]screen|restore|unminimi[sz]e|reopen)\s+(?:the\s+)?(?:active\s+|this\s+)?window\b", cmd):
             return True
+        if re.search(r"^(?:please\s+)?(?:close|shut|dismiss)\s+(?:(?:the|this|that|current)\s+)?(?:(?:active|current)\s+)?(?:chrome\s+)?tab(?:\s+(?:in|on)\s+(?:google\s+)?chrome)?\b", cmd):
+            return True
         if cmd.startswith("set daily goal ") or cmd.startswith("daily goal ") or cmd in ["my goal", "what is my goal", "today's goal", "show goal", "goal done", "finish goal", "complete goal", "morning briefing", "morning focus", "evening review", "evening checkin", "evening check-in"]:
             return True
         if cmd.startswith("close ") or cmd.startswith("kill ") or cmd.startswith("exit "):
@@ -1826,6 +1815,11 @@ class WindowsFridayController:
 
         # Clean trailing punctuation
         cmd_clean = cmd.rstrip(".!? ")
+
+        if re.match(r"^(?:please\s+)?(?:close|shut|dismiss)\s+(?:(?:the|this|that|current)\s+)?(?:(?:active|current)\s+)?(?:chrome\s+)?tab(?:\s+(?:in|on)\s+(?:google\s+)?chrome)?$", cmd_clean):
+            from friday.devices.app_launcher import close_active_chrome_tab
+            ok, reply = close_active_chrome_tab()
+            return True, reply, {"action": "close_chrome_tab", "success": ok}
 
         # 0. Welcome Protocol Directives
         if cmd_clean in ["welcome home", "welcome home sir", "run welcome protocol", "welcome protocol", "studio mode", "jarvis mode"]:

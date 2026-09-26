@@ -7,6 +7,7 @@ The implementation deliberately avoids logging or exposing raw API keys.
 """
 
 import enum
+import hashlib
 import json
 import os
 import threading
@@ -68,6 +69,11 @@ class Credential:
     last_failure_category: FailureCategory = FailureCategory.HEALTHY
     last_success_at: datetime | None = None
 
+    @property
+    def key_fingerprint(self) -> str:
+        """Stable, non-secret identity used to bind persisted health to this key."""
+        return hashlib.sha256(self.api_key.encode("utf-8")).hexdigest()
+
 
     def is_healthy(self, max_failures: int, default_cooldown: int = 60) -> bool:
         """Return True if the credential can be used."""
@@ -93,6 +99,7 @@ class Credential:
         is_in_cooldown = bool(cd and now < cd)
         return {
             "project_label": self.project_label,
+            "key_fingerprint": self.key_fingerprint,
             "is_primary": self.is_primary,
             "is_healthy": not is_in_cooldown and (self.failure_count == 0 or (cd and now >= cd)),
             "status": "COOLDOWN" if is_in_cooldown else ("HEALTHY" if self.failure_count == 0 else "DEGRADED"),
@@ -143,7 +150,12 @@ class GeminiCredentialPool:
             self.lock = threading.Lock()
         self.max_failures = max_failures
         self.cooldown_seconds = cooldown_seconds
-        self.state_file = state_file or Path("data/gemini_pool_state.json")
+        # Pools constructed with explicit credentials are commonly short-lived
+        # test/diagnostic pools. Keep them from overwriting the app's persisted
+        # production health state unless a state file was explicitly supplied.
+        self.state_file = state_file if state_file is not None else (
+            Path("data/gemini_pool_state.json") if keys is None else None
+        )
         self.credentials: list[Credential] = []
         self._session_active_key: str | None = None
         self._preflight_done: bool = False
@@ -232,7 +244,9 @@ class GeminiCredentialPool:
             now = datetime.utcnow()
             for label, meta in data.items():
                 cred = self._find_by_label(label)
-                if cred:
+                # Legacy state had only labels. It may describe a different key
+                # after rotation, so never transfer its failures to new credentials.
+                if cred and meta.get("key_fingerprint") == cred.key_fingerprint:
                     if meta.get("cooldown_until"):
                         try:
                             cooldown = datetime.fromisoformat(meta["cooldown_until"])
@@ -365,6 +379,10 @@ class GeminiCredentialPool:
     def classify_error(error: Exception) -> FailureCategory:
         """Classify an exception into a FailureCategory for intelligent cooldown."""
         err_str = str(error).lower()
+        # WebSocket 1007 indicates an invalid session payload/configuration, not
+        # a bad API key. Avoid cooling down credentials for model config errors.
+        if "1007" in err_str or "invalid_argument" in err_str or "not supported for this model" in err_str:
+            return FailureCategory.INVALID_REQUEST
         if (
             "401" in err_str
             or "403" in err_str
@@ -389,6 +407,11 @@ class GeminiCredentialPool:
             ):
                 return FailureCategory.QUOTA_EXHAUSTED
             return FailureCategory.RATE_LIMIT
+        if any(
+            marker in err_str
+            for marker in ("500", "502", "503", "504", "internal server error", "service unavailable", "bad gateway", "gateway timeout")
+        ):
+            return FailureCategory.SERVICE_ERROR
         if (
             "connect" in err_str
             or "timeout" in err_str

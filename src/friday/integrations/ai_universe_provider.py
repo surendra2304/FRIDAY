@@ -65,7 +65,7 @@ class AIUniverseTradingConsultant:
         self.bot_operator = bot_operator or TradingBotOperator()
         self.universe_client = universe_client or AIUniverseClient(
             base_url=os.getenv("INFERENCE_URL") or "https://inference-r1sn.onrender.com",
-            api_key=os.getenv("INFERENCE_API_KEY") or "inference_api",
+            api_key=os.getenv("INFERENCE_API_KEY") or os.getenv("FRIDAY_INFERENCE_API_KEY") or "",
         )
 
     async def consult_on_bot_performance(

@@ -182,7 +182,7 @@ def test_trivial_turns_skip_memory_retrieval_and_embedding():
 # -----------------------------------------------------------------------------
 # TEST 15 & 16: CLI Mode Selection (--voice and --text)
 # -----------------------------------------------------------------------------
-def test_cli_voice_mode_flag_triggers_live_session(monkeypatch):
+def test_cli_voice_mode_flag_triggers_live_session(monkeypatch, capsys):
     """Verify that --voice flag launches the real GeminiLiveVoiceSession."""
     import sys
 
@@ -191,6 +191,8 @@ def test_cli_voice_mode_flag_triggers_live_session(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["friday", "--voice"])
 
     voice_session_inst = mock.MagicMock()
+    voice_session_inst._connected_event = __import__("asyncio").Event()
+    voice_session_inst._connected_event.set()
     voice_session_inst.run_live_loop = mock.AsyncMock(return_value=None)
     mock_live_session_cls = mock.MagicMock(return_value=voice_session_inst)
 
@@ -202,10 +204,10 @@ def test_cli_voice_mode_flag_triggers_live_session(monkeypatch):
             kwargs = voice_session_inst.run_live_loop.await_args.kwargs
             assert kwargs.get("echo_mute") is True
             assert "on_server_content" in kwargs and "on_turn_complete" in kwargs
-            # Local RMS barge-in disabled in favor of authoritative server VAD
             ctor_kwargs = mock_live_session_cls.call_args.kwargs
-            assert ctor_kwargs.get("barge_in_rms_threshold") == float("inf")
-            assert ctor_kwargs.get("local_barge_in_during_playback") is False
+            assert "barge_in_rms_threshold" not in ctor_kwargs
+            assert ctor_kwargs.get("local_barge_in_during_playback") is True
+            assert "FRIDAY is starting..." in capsys.readouterr().out
 
 
 def test_cli_text_mode_override_suppresses_voice_mode(monkeypatch):

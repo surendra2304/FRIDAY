@@ -41,192 +41,36 @@ class EcosystemRegistry:
         self._init_default_subsystems()
 
     def _init_default_subsystems(self) -> None:
-        """Initializes default subsystem entries for Trading Bot, FORGE, and AI-Universe."""
-        # 1. Stratex Algorithmic Trading Platform
-        self.register(
-            SubsystemEntry(
-                name="trading_bot",
-                display_name="Stratex",
-                category="trading",
-                icon="📈",
-                health_check_callable=lambda: {
-                    "status": "HEALTHY",
-                    "latency_ms": 32.4,
-                    "connected_venues": ["Binance Futures", "Bybit", "OKX"],
-                },
-                status_callable=lambda: {
-                    "status": "RUNNING",
-                    "equity_usdt": 10450.00,
-                    "active_positions_count": 3,
-                    "daily_pnl_usdt": 420.50,
-                    "advisory_status": "ACTIVE",
-                    "aggregate_leverage": 0.85,
-                },
-            )
+        """Register known identities without inventing their runtime state."""
+        entries = (
+            ("trading_bot", "Stratex", "trading", "📈"),
+            ("forge", "Forge", "engineering", "🛠️"),
+            ("ai_universe", "Inference", "intelligence", "🧠"),
+            ("nexus", "Cortex", "growth", "🌐"),
+            ("sentinel", "Sentinel", "security", "🛡️"),
+            ("intelx", "IntelX", "intelligence", "🔬"),
+            ("friday", "FRIDAY Core", "core", "🤖"),
+            ("futuris", "Futuris", "forecasting", "🔮"),
         )
+        for name, display_name, category, icon in entries:
+            def unverified(name: str = name) -> dict[str, Any]:
+                return {
+                    "status": "UNVERIFIED",
+                    "evidence": "No live health/status probe is configured for this service.",
+                    "service": name,
+                    "checked_at": datetime.now(timezone.utc).isoformat(),
+                }
 
-        # 2. FORGE Software Engineering Engine
-        self.register(
-            SubsystemEntry(
-                name="forge",
-                display_name="Forge",
-                category="engineering",
-                icon="🛠️",
-                health_check_callable=lambda: {
-                    "status": "HEALTHY",
-                    "api_url": "http://localhost:8000",
-                    "inference_bridge": "CONNECTED",
-                },
-                status_callable=lambda: {
-                    "status": "IDLE",
-                    "active_tasks_count": 0,
-                    "total_completed": 2,
-                    "last_completed_task": "Build a responsive portfolio website",
-                    "last_completed_time": "2 hours ago",
-                    "mean_test_coverage_pct": 96.0,
-                },
+            self.register(
+                SubsystemEntry(
+                    name=name,
+                    display_name=display_name,
+                    category=category,
+                    icon=icon,
+                    health_check_callable=unverified,
+                    status_callable=unverified,
+                )
             )
-        )
-
-        # 3. Inference Intelligence Gateway
-        self.register(
-            SubsystemEntry(
-                name="ai_universe",
-                display_name="Inference",
-                category="intelligence",
-                icon="🧠",
-                health_check_callable=lambda: {
-                    "status": "HEALTHY",
-                    "configured_providers_count": 7,
-                    "debate_engine": "ONLINE",
-                },
-                status_callable=lambda: {
-                    "status": "HEALTHY",
-                    "configured_providers_count": 7,
-                    "consultations_today": 128,
-                    "model_confidence_pct": 84.0,
-                    "active_predictions_count": 3,
-                },
-            )
-        )
-
-        # 4. CORTEX Autonomous Operations & Growth Engine
-        self.register(
-            SubsystemEntry(
-                name="nexus",
-                display_name="Cortex",
-                category="growth",
-                icon="🌐",
-                health_check_callable=lambda: {
-                    "status": "HEALTHY",
-                    "api_url": "http://localhost:8002",
-                    "tracking_pipeline": "OPERATIONAL",
-                    "policy_engine": "ACTIVE",
-                },
-                status_callable=lambda: {
-                    "status": "HEALTHY",
-                    "health_score": 98.4,
-                    "visitors_today": 4280,
-                    "conversion_rate_pct": 3.65,
-                    "leads_detected_today": 14,
-                    "active_incidents_count": 0,
-                    "pending_approvals_count": 1,
-                },
-            )
-        )
-
-        # 5. Sentinel Autonomous Security & Vulnerability Engine
-        self.register(
-            SubsystemEntry(
-                name="sentinel",
-                display_name="Sentinel",
-                category="security",
-                icon="🛡️",
-                health_check_callable=lambda: {
-                    "status": "HEALTHY",
-                    "api_url": "https://sentinel-a861.onrender.com",
-                    "policy_engine": "ACTIVE",
-                    "scope_enforcement": "ENFORCED",
-                },
-                status_callable=lambda: {
-                    "status": "HEALTHY",
-                    "overall_posture": "SECURE",
-                    "active_scans_count": 0,
-                    "critical_vulnerabilities": 0,
-                    "high_vulnerabilities": 0,
-                    "pending_approvals_count": 0,
-                },
-            )
-        )
-
-        # 6. IntelX Autonomous Deep Research Engine
-        self.register(
-            SubsystemEntry(
-                name="intelx",
-                display_name="IntelX",
-                category="intelligence",
-                icon="🔬",
-                health_check_callable=lambda: {
-                    "status": "HEALTHY",
-                    "api_url": "http://localhost:8004",
-                    "search_pipeline": "ONLINE",
-                    "synthesis_engine": "ACTIVE",
-                },
-                status_callable=lambda: {
-                    "status": "HEALTHY",
-                    "active_research_runs": 0,
-                    "completed_runs_today": 8,
-                    "verified_findings_count": 42,
-                    "detected_contradictions_count": 3,
-                },
-            )
-        )
-
-        # 7. FRIDAY Core Operating System & Multimodal Engine
-        self.register(
-            SubsystemEntry(
-                name="friday",
-                display_name="FRIDAY Core",
-                category="core",
-                icon="🤖",
-                health_check_callable=lambda: {
-                    "status": "HEALTHY",
-                    "event_loop": "RUNNING",
-                    "memory_vault": "ONLINE",
-                    "voice_pipeline": "ACTIVE",
-                },
-                status_callable=lambda: {
-                    "status": "HEALTHY",
-                    "version": "0.4.6",
-                    "active_operators_count": 14,
-                    "voice_latency_ms": 412.0,
-                    "memory_entries_count": 158,
-                },
-            )
-        )
-
-        # 8. Futuris Autonomous Probabilistic Forecasting Engine
-        self.register(
-            SubsystemEntry(
-                name="futuris",
-                display_name="Futuris",
-                category="forecasting",
-                icon="🔮",
-                health_check_callable=lambda: {
-                    "status": "HEALTHY",
-                    "api_url": "http://localhost:8005",
-                    "probabilistic_engine": "ONLINE",
-                    "calibration_monitor": "ACTIVE",
-                },
-                status_callable=lambda: {
-                    "status": "HEALTHY",
-                    "brier_score": 0.082,
-                    "active_forecasts_count": 12,
-                    "calibration_status": "WELL_CALIBRATED",
-                    "empirical_accuracy_90ci": 89.2,
-                },
-            )
-        )
 
     def register(self, entry: SubsystemEntry) -> None:
         """Registers a subsystem in the ecosystem registry."""
@@ -248,7 +92,8 @@ class EcosystemRegistry:
             return {"status": "UNKNOWN", "error": f"Subsystem '{name}' not found"}
         try:
             data = entry.status_callable()
-            entry.last_known_good = data
+            if str(data.get("status", "")).upper() not in {"UNVERIFIED", "UNKNOWN"}:
+                entry.last_known_good = data
             return data
         except Exception as e:
             logger.warning(f"[ECOSYSTEM_REGISTRY] Status error for {name}: {e}")
@@ -266,7 +111,8 @@ class EcosystemRegistry:
             for name, entry in self._subsystems.items():
                 try:
                     data = entry.status_callable()
-                    entry.last_known_good = data
+                    if str(data.get("status", "")).upper() not in {"UNVERIFIED", "UNKNOWN"}:
+                        entry.last_known_good = data
                     aggregated[name] = {
                         "name": name,
                         "display_name": entry.display_name,
@@ -297,22 +143,21 @@ class EcosystemRegistry:
         """Executes health checks across all subsystems and reports overall status."""
         with self._lock:
             health_results = {}
-            all_healthy = True
+            observed_statuses: list[str] = []
 
             for name, entry in self._subsystems.items():
                 try:
                     res = entry.health_check_callable()
-                    is_ok = res.get("status") in ("HEALTHY", "AVAILABLE", "RUNNING", "IDLE")
-                    if not is_ok:
-                        all_healthy = False
+                    status = str(res.get("status", "UNVERIFIED")).upper()
+                    observed_statuses.append(status)
                     health_results[name] = {
                         "display_name": entry.display_name,
                         "icon": entry.icon,
-                        "status": res.get("status", "HEALTHY"),
+                        "status": status,
                         "details": res,
                     }
                 except Exception as e:
-                    all_healthy = False
+                    observed_statuses.append("UNAVAILABLE")
                     health_results[name] = {
                         "display_name": entry.display_name,
                         "icon": entry.icon,
@@ -320,9 +165,13 @@ class EcosystemRegistry:
                         "error": str(e),
                     }
 
+            healthy_states = {"HEALTHY", "AVAILABLE", "RUNNING", "IDLE"}
+            all_healthy = bool(observed_statuses) and all(status in healthy_states for status in observed_statuses)
+            has_unknown = any(status in {"UNVERIFIED", "UNKNOWN"} for status in observed_statuses)
+            overall = "HEALTHY" if all_healthy else ("UNVERIFIED" if has_unknown and all(status in healthy_states | {"UNVERIFIED", "UNKNOWN"} for status in observed_statuses) else "DEGRADED")
             return {
-                "overall_health": "HEALTHY" if all_healthy else "DEGRADED",
-                "all_healthy": all_healthy,
+                "overall_health": overall,
+                "all_healthy": all_healthy if not has_unknown else None,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "subsystems": health_results,
             }

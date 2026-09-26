@@ -20,9 +20,9 @@ services:
         sync: false
       # Universe Inter-Agent Auth
       - key: FRIDAY_UNIVERSE_API_KEY
-        value: "friday_universe_api"
+        sync: false
       - key: FRIDAY_API_KEY
-        value: "friday_universe_api"
+        sync: false
       - key: FRIDAY_UNIVERSE_API_URL
         value: "http://localhost:8000"
       # Specialist Agent Endpoints (Configured from your local .env)
@@ -60,18 +60,18 @@ services:
         value: "https://stratex-8wj1.onrender.com"
       # Specialist Agent API Keys
       - key: CORTEX_API_KEY
-        value: "cortex_api"
+        sync: false
       - key: FORGE_API_KEY
-        value: "forge_api"
+        sync: false
       - key: FUTURIS_API_KEY
-        value: "futuris_api"
+        sync: false
       - key: INFERENCE_API_KEY
-        value: "inference_api"
+        sync: false
       - key: INTELX_API_KEY
-        value: "intelx_api"
+        sync: false
       - key: MEMORA_API_KEY
-        value: "memora_api"
+        sync: false
       - key: SENTINEL_API_KEY
-        value: "sentinel_api"
+        sync: false
       - key: STRATEX_API_KEY
-        value: "stratex_api"
+        sync: false

@@ -137,11 +137,7 @@ class ToolExecutionMixin:
             registry.register(FileListingTool())
             registry.register(MemorySearchTool(self.memory))
             registry.register(ScreenSnapshotTool())
-            is_auto = bool(
-                (getattr(self.settings, "autonomous_mode", True) or getattr(self.settings, "full_access_mode", True))
-                and getattr(self.settings, "env", "") != "testing"
-            )
-            registry.register(ProposeComputerActionTool(autonomous=is_auto))
+            registry.register(ProposeComputerActionTool(autonomous=False))
             registry.register(OpenApplicationTool())
             registry.register(TypeTextTool())
             registry.register(CloseApplicationTool())

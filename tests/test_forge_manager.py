@@ -166,12 +166,12 @@ def test_forge_supervisor_and_health_operator(forge_manager_setup):
 
     # FridayDoctor diagnose_forge
     diag = doctor.diagnose_forge()
-    assert diag.status == DiagnosticStatus.AVAILABLE
+    assert diag.status == DiagnosticStatus.CONFIGURED
     assert "http://localhost:8000" in diag.message
 
     full_report = doctor.run_full_diagnostics()
     assert "forge_engine" in full_report.components
-    assert full_report.components["forge_engine"].status == DiagnosticStatus.AVAILABLE
+    assert full_report.components["forge_engine"].status == DiagnosticStatus.CONFIGURED
 
 
 # =========================================================================

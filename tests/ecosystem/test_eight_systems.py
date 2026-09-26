@@ -40,9 +40,10 @@ def test_eight_system_registry_registration_and_health():
         assert expected in names
 
     health = registry.get_ecosystem_health()
-    assert health["overall_health"] == "HEALTHY"
+    assert health["overall_health"] == "UNVERIFIED"
+    assert health["all_healthy"] is None
     assert "futuris" in health["subsystems"]
-    assert health["subsystems"]["futuris"]["status"] == "HEALTHY"
+    assert health["subsystems"]["futuris"]["status"] == "UNVERIFIED"
 
 
 def test_unified_status_skill_eight_systems_report():
@@ -52,15 +53,10 @@ def test_unified_status_skill_eight_systems_report():
     res = skill.execute("Status of everything")
     assert res.success is True
     out = res.output
-    assert "Unified Ecosystem Master Status Report (8 Subsystems)" in out
-    assert "Algorithmic Trading Bot" in out
-    assert "FORGE Software Engineering Engine" in out
-    assert "Nexus Autonomous Growth" in out
-    assert "Sentinel Autonomous Security" in out
-    assert "IntelX Autonomous Deep Research" in out
-    assert "Futuris Probabilistic Forecasting" in out
-    assert "AI-Universe Multi-LLM" in out
-    assert "FRIDAY Central Multimodal" in out
+    assert "# FRIDAY Universe Status" in out
+    assert "UNVERIFIED" in out
+    assert "live reachability was not tested" in out
+    assert "does not verify background jobs" in out
 
 
 def test_master_daily_briefing_workflow_eight_systems():
@@ -69,8 +65,9 @@ def test_master_daily_briefing_workflow_eight_systems():
 
     snap = workflow.generate_morning_briefing()
     assert len(snap.subsystems_included) == 8
-    assert "Futuris forecasts nominal system loads" in snap.spoken_summary
-    assert "6. Futuris Probabilistic Forecasting & Risk Outlook" in snap.markdown_report
+    assert "no verified trading, lead, research, or forecast figures" in snap.spoken_summary
+    assert "## Friday Universe service status" in snap.markdown_report
+    assert "No live health/status probe is configured" in snap.markdown_report
 
 
 def test_cross_system_predictive_scaling_and_risk_workflows():

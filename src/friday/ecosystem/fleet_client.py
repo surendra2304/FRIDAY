@@ -11,12 +11,14 @@ microservices in the FRIDAY Universe:
 7. Forge      (Autonomous Software Engineering Engine)
 8. Sentinel   (Zero-Trust Cybersecurity & Threat Defense)
 
-All data is queried directly from live services without mock or hardcoded numbers.
+Live probes and task receipts are evidence-labelled; reachability is not treated as
+agent health, and HTTP acceptance is not treated as task completion.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import time
 from dataclasses import dataclass
@@ -28,13 +30,40 @@ import httpx
 from friday.core.task_envelope import TaskEnvelope, TaskResult, TaskStatus
 
 
+def _classify_health_response(response: httpx.Response) -> str:
+    if response.status_code in (401, 403):
+        return "REACHABLE"
+    if response.status_code not in (200, 201, 204):
+        return "DEGRADED"
+    if response.status_code == 204:
+        return "REACHABLE"
+    try:
+        body = response.json()
+    except (ValueError, json.JSONDecodeError):
+        body = None
+    if isinstance(body, dict):
+        for name in ("status", "health", "state"):
+            value = body.get(name)
+            if isinstance(value, str):
+                normalized = value.strip().lower()
+                if normalized in {"healthy", "ok", "online", "up", "ready"}:
+                    return "ONLINE"
+                if normalized in {"unhealthy", "degraded", "down", "error", "unavailable", "critical"}:
+                    return "DEGRADED"
+            elif value is True:
+                return "ONLINE"
+            elif value is False:
+                return "DEGRADED"
+    return "REACHABLE"
+
+
 @dataclass
 class AgentStatus:
     id: str
     name: str
     role: str
     icon: str
-    status: str  # "ONLINE", "DEGRADED", "OFFLINE"
+    status: str  # ONLINE, REACHABLE, DEGRADED, or OFFLINE
     latency_ms: int
     endpoint: str
     details: str
@@ -44,37 +73,43 @@ class AgentStatus:
 class FleetClient:
     """Unified client for live communication with all FRIDAY Universe specialist agents."""
 
-    def __init__(self, timeout_sec: float = 12.0) -> None:
+    def __init__(self, timeout_sec: float = 12.0, settings: Any | None = None) -> None:
         self.timeout = timeout_sec
         self._status_cache: dict[str, AgentStatus] = {}
         self._last_cache_time: float = 0.0
         self._cache_ttl: float = 4.0  # 4-second cache to prevent spamming cloud services
 
-        # Fleet Endpoints & Keys
-        self.inference_url = os.getenv("INFERENCE_URL", "https://inference-r1sn.onrender.com").rstrip("/")
-        self.inference_key = os.getenv("INFERENCE_API_KEY", "inference_api")
+        # Resolve actual configured values. Never send example credentials to
+        # cloud peers; an absent key stays absent and auth failures stay visible.
+        if settings is None:
+            from friday.core.config import get_settings
+            settings = get_settings()
 
-        self.memora_url = os.getenv("MEMORA_URL", "https://memora-cavc.onrender.com").rstrip("/")
-        self.memora_key = os.getenv("MEMORA_API_KEY", "memora_api")
+        def configured_url(setting_name: str, fallback: str) -> str:
+            env_name = f"FRIDAY_{setting_name.upper()}"
+            legacy_name = setting_name.upper()
+            return (os.getenv(env_name) or os.getenv(legacy_name) or getattr(settings, setting_name, None) or fallback).rstrip("/")
 
-        self.stratex_url = os.getenv("STRATEX_URL", "https://stratex-8wj1.onrender.com").rstrip("/")
-        self.stratex_key = os.getenv("STRATEX_API_KEY", "stratex_api")
+        def configured_key(setting_name: str) -> str:
+            return getattr(settings, setting_name, None) or ""
 
-        self.intelx_url = os.getenv("INTELX_URL", "https://intelx-mygl.onrender.com").rstrip("/")
-        self.intelx_key = os.getenv("INTELX_API_KEY", "intelx_api")
-
-        self.futuris_url = os.getenv("FUTURIS_URL", "https://futuris-th6f.onrender.com").rstrip("/")
-        self.futuris_local_url = os.getenv("FUTURIS_LOCAL_URL", "http://127.0.0.1:8004").rstrip("/")
-        self.futuris_key = os.getenv("FUTURIS_API_KEY", "friday_secret_key_default")
-
-        self.cortex_url = os.getenv("CORTEX_URL", "https://cortex-0m7c.onrender.com").rstrip("/")
-        self.cortex_key = os.getenv("CORTEX_API_KEY", "friday_api")
-
-        self.forge_url = os.getenv("FORGE_URL", "https://forge-e9kl.onrender.com").rstrip("/")
-        self.forge_key = os.getenv("FORGE_API_KEY", "forge_api")
-
-        self.sentinel_url = os.getenv("SENTINEL_URL", "https://sentinel-a861.onrender.com").rstrip("/")
-        self.sentinel_key = os.getenv("SENTINEL_API_KEY", "sentinel_api")
+        self.inference_url = configured_url("inference_url", "")
+        self.inference_key = configured_key("inference_api_key")
+        self.memora_url = configured_url("memora_url", "")
+        self.memora_key = configured_key("memora_api_key")
+        self.stratex_url = configured_url("stratex_url", "")
+        self.stratex_key = configured_key("stratex_api_key")
+        self.intelx_url = configured_url("intelx_url", "")
+        self.intelx_key = configured_key("intelx_api_key")
+        self.futuris_url = configured_url("futuris_url", "")
+        self.futuris_local_url = os.getenv("FRIDAY_FUTURIS_LOCAL_URL", "").rstrip("/")
+        self.futuris_key = configured_key("futuris_api_key")
+        self.cortex_url = configured_url("cortex_url", "")
+        self.cortex_key = configured_key("cortex_api_key")
+        self.forge_url = configured_url("forge_url", "")
+        self.forge_key = configured_key("forge_api_key")
+        self.sentinel_url = configured_url("sentinel_url", "")
+        self.sentinel_key = configured_key("sentinel_api_key")
         self._shared_client: httpx.AsyncClient | None = None
 
     def get_shared_client(self) -> httpx.AsyncClient:
@@ -89,16 +124,15 @@ class FleetClient:
     async def probe_inference(self, client: httpx.AsyncClient) -> AgentStatus:
         t0 = time.time()
         try:
-            r = await client.get(f"{self.inference_url}/health", timeout=3.5)
+            headers = {"Authorization": f"Bearer {self.inference_key}"} if self.inference_key else {}
+            r = await client.get(f"{self.inference_url}/health", headers=headers, timeout=3.5)
             lat = int((time.time() - t0) * 1000)
-            if r.status_code == 200:
-                data = r.json()
-                active = data.get("active_specialist_agents", 10)
-                ver = data.get("version", "2.0.0")
+            status = _classify_health_response(r)
+            if status in {"ONLINE", "REACHABLE"}:
                 return AgentStatus(
                     id="inference", name="Inference", role="Cloud AI Gateway", icon="⚡",
-                    status="ONLINE", latency_ms=lat, endpoint=self.inference_url,
-                    details=f"Consensus engine healthy v{ver} ({lat}ms). Active agents: {active}",
+                    status=status, latency_ms=lat, endpoint=self.inference_url,
+                    details=f"{status}: HTTP health response received ({lat}ms). Model completion was not checked.",
                     last_checked=datetime.now(timezone.utc).isoformat(),
                 )
         except Exception as e:
@@ -118,17 +152,17 @@ class FleetClient:
     async def probe_memora(self, client: httpx.AsyncClient) -> AgentStatus:
         t0 = time.time()
         try:
-            headers = {"Authorization": f"Bearer {self.memora_key}", "X-Agent-Name": "friday"}
+            headers = {"X-Agent-Name": "friday"}
+            if self.memora_key:
+                headers["Authorization"] = f"Bearer {self.memora_key}"
             r = await client.get(f"{self.memora_url}/health", headers=headers, timeout=3.5)
             lat = int((time.time() - t0) * 1000)
-            if r.status_code == 200:
-                data = r.json()
-                db_st = data.get("database", "healthy")
-                ver = data.get("version", "2.0.0")
+            status = _classify_health_response(r)
+            if status in {"ONLINE", "REACHABLE"}:
                 return AgentStatus(
                     id="memora", name="Memora", role="Persistent Memory", icon="🧠",
-                    status="ONLINE", latency_ms=lat, endpoint=self.memora_url,
-                    details=f"Turso AWS Mumbai {db_st} v{ver} ({lat}ms). Vector fabric online.",
+                    status=status, latency_ms=lat, endpoint=self.memora_url,
+                    details=f"{status}: HTTP health response received ({lat}ms). Memory write/read was not checked.",
                     last_checked=datetime.now(timezone.utc).isoformat(),
                 )
         except Exception as e:
@@ -141,25 +175,26 @@ class FleetClient:
             )
         return AgentStatus(
             id="memora", name="Memora", role="Persistent Memory", icon="🧠",
-            status="ONLINE", latency_ms=int((time.time() - t0) * 1000), endpoint=self.memora_url,
-            details="Turso 9GB cloud vector storage active.", last_checked=datetime.now(timezone.utc).isoformat(),
+            status="DEGRADED", latency_ms=int((time.time() - t0) * 1000), endpoint=self.memora_url,
+            details=f"Health endpoint returned HTTP {r.status_code}; memory access was not verified.",
+            last_checked=datetime.now(timezone.utc).isoformat(),
         )
 
     async def probe_stratex(self, client: httpx.AsyncClient) -> AgentStatus:
         t0 = time.time()
         try:
-            headers = {"X-API-Key": self.stratex_key, "Authorization": f"Bearer {self.stratex_key}"}
-            r = await client.get(f"{self.stratex_url}/api/engine-health", headers=headers, timeout=3.5)
+            headers = {}
+            if self.stratex_key:
+                headers = {"X-API-Key": self.stratex_key, "Authorization": f"Bearer {self.stratex_key}"}
+            health_path = os.getenv("FRIDAY_STRATEX_HEALTH_PATH", "/api/status")
+            r = await client.get(f"{self.stratex_url}{health_path}", headers=headers, timeout=3.5)
             lat = int((time.time() - t0) * 1000)
-            if r.status_code == 200:
-                data = r.json()
-                eng_st = data.get("engine_status", "ONLINE")
-                strat = data.get("active_strategy", "adx_ema")
-                binance = "Connected" if data.get("binance_connected") else "Simulated"
+            status = _classify_health_response(r)
+            if status in {"ONLINE", "REACHABLE"}:
                 return AgentStatus(
                     id="stratex", name="Stratex", role="Algorithmic Trading", icon="📈",
-                    status="ONLINE", latency_ms=lat, endpoint=self.stratex_url,
-                    details=f"24/7 Futures engine {eng_st} ({lat}ms). Strategy: {strat} | Binance: {binance}",
+                    status=status, latency_ms=lat, endpoint=self.stratex_url,
+                    details=f"{status}: HTTP health response received ({lat}ms). Trading mode and order execution were not checked.",
                     last_checked=datetime.now(timezone.utc).isoformat(),
                 )
         except Exception as e:
@@ -172,24 +207,24 @@ class FleetClient:
             )
         return AgentStatus(
             id="stratex", name="Stratex", role="Algorithmic Trading", icon="📈",
-            status="ONLINE", latency_ms=int((time.time() - t0) * 1000), endpoint=self.stratex_url,
-            details="Binance algorithmic trading execution ready.", last_checked=datetime.now(timezone.utc).isoformat(),
+            status="DEGRADED", latency_ms=int((time.time() - t0) * 1000), endpoint=self.stratex_url,
+            details=f"Health endpoint returned HTTP {r.status_code}; trading functionality was not verified.",
+            last_checked=datetime.now(timezone.utc).isoformat(),
         )
 
     async def probe_intelx(self, client: httpx.AsyncClient) -> AgentStatus:
         t0 = time.time()
         try:
-            headers = {"Authorization": f"Bearer {self.intelx_key}"}
-            r = await client.get(f"{self.intelx_url}/api/v1/healthz", headers=headers, timeout=3.5)
+            headers = {"Authorization": f"Bearer {self.intelx_key}"} if self.intelx_key else {}
+            health_path = os.getenv("FRIDAY_INTELX_HEALTH_PATH", "/api/v1/healthz")
+            r = await client.get(f"{self.intelx_url}{health_path}", headers=headers, timeout=3.5)
             lat = int((time.time() - t0) * 1000)
-            if r.status_code == 200:
-                data = r.json()
-                ver = data.get("version", "2.0.0")
-                db = data.get("database", "ok")
+            status = _classify_health_response(r)
+            if status in {"ONLINE", "REACHABLE"}:
                 return AgentStatus(
                     id="intelx", name="IntelX", role="Macro Research", icon="🔍",
-                    status="ONLINE", latency_ms=lat, endpoint=self.intelx_url,
-                    details=f"Evidence intelligence online v{ver} ({lat}ms). Database: {db}",
+                    status=status, latency_ms=lat, endpoint=self.intelx_url,
+                    details=f"{status}: HTTP health response received ({lat}ms). Source ingestion and research were not checked.",
                     last_checked=datetime.now(timezone.utc).isoformat(),
                 )
         except Exception as e:
@@ -202,23 +237,23 @@ class FleetClient:
             )
         return AgentStatus(
             id="intelx", name="IntelX", role="Macro Research", icon="🔍",
-            status="ONLINE", latency_ms=int((time.time() - t0) * 1000), endpoint=self.intelx_url,
-            details="Evidence intelligence & market search active.", last_checked=datetime.now(timezone.utc).isoformat(),
+            status="DEGRADED", latency_ms=int((time.time() - t0) * 1000), endpoint=self.intelx_url,
+            details=f"Health endpoint returned HTTP {r.status_code}; research functionality was not verified.",
+            last_checked=datetime.now(timezone.utc).isoformat(),
         )
 
     async def probe_futuris(self, client: httpx.AsyncClient) -> AgentStatus:
         t0 = time.time()
         # 1. Local daemon first (:8004)
         try:
-            r_loc = await client.get(f"{self.futuris_local_url}/health", timeout=0.8)
+            r_loc = await client.get(f"{self.futuris_local_url}/health", timeout=0.8) if self.futuris_local_url else None
             lat_loc = int((time.time() - t0) * 1000)
-            if r_loc.status_code == 200:
-                data_loc = r_loc.json()
-                ver_loc = data_loc.get("version", "2.0.0")
+            if r_loc is not None and _classify_health_response(r_loc) in {"ONLINE", "REACHABLE"}:
+                local_status = _classify_health_response(r_loc)
                 return AgentStatus(
                     id="futuris", name="Futuris", role="Predictive Forecaster", icon="🔮",
-                    status="ONLINE", latency_ms=lat_loc, endpoint=self.futuris_local_url,
-                    details=f"Local forecaster daemon online v{ver_loc} ({lat_loc}ms). Calibration pipeline active.",
+                    status=local_status, latency_ms=lat_loc, endpoint=self.futuris_local_url,
+                    details=f"{local_status}: HTTP health response received ({lat_loc}ms). Forecasting was not checked.",
                     last_checked=datetime.now(timezone.utc).isoformat(),
                 )
         except Exception:
@@ -226,15 +261,16 @@ class FleetClient:
 
         # 2. Cloud fallback
         try:
-            r = await client.get(f"{self.futuris_url}/health", timeout=1.5)
+            headers = {"Authorization": f"Bearer {self.futuris_key}"} if self.futuris_key else {}
+            health_path = os.getenv("FRIDAY_FUTURIS_HEALTH_PATH", "/health")
+            r = await client.get(f"{self.futuris_url}{health_path}", headers=headers, timeout=1.5)
             lat = int((time.time() - t0) * 1000)
-            if r.status_code == 200:
-                data = r.json()
-                ver = data.get("version", "2.0.0")
+            status = _classify_health_response(r)
+            if status in {"ONLINE", "REACHABLE"}:
                 return AgentStatus(
                     id="futuris", name="Futuris", role="Predictive Forecaster", icon="🔮",
-                    status="ONLINE", latency_ms=lat, endpoint=self.futuris_url,
-                    details=f"Cloud forecaster online v{ver} ({lat}ms). Calibration pipeline active.",
+                    status=status, latency_ms=lat, endpoint=self.futuris_url,
+                    details=f"{status}: HTTP health response received ({lat}ms). Forecasting was not checked.",
                     last_checked=datetime.now(timezone.utc).isoformat(),
                 )
             return AgentStatus(
@@ -255,17 +291,16 @@ class FleetClient:
     async def probe_cortex(self, client: httpx.AsyncClient) -> AgentStatus:
         t0 = time.time()
         try:
-            headers = {"X-Friday-Api-Key": self.cortex_key}
-            r = await client.get(f"{self.cortex_url}/v1/friday/health_summary", headers=headers, timeout=3.5)
+            headers = {"X-Friday-Api-Key": self.cortex_key} if self.cortex_key else {}
+            health_path = os.getenv("FRIDAY_CORTEX_HEALTH_PATH", "/health")
+            r = await client.get(f"{self.cortex_url}{health_path}", headers=headers, timeout=3.5)
             lat = int((time.time() - t0) * 1000)
-            if r.status_code == 200:
-                data = r.json()
-                uptime = data.get("uptime_indicator", "healthy")
-                agents = len(data.get("active_agents", []))
+            status = _classify_health_response(r)
+            if status in {"ONLINE", "REACHABLE"}:
                 return AgentStatus(
                     id="cortex", name="Cortex", role="Web Operations", icon="🌐",
-                    status="ONLINE", latency_ms=lat, endpoint=self.cortex_url,
-                    details=f"Web Operations {uptime} ({lat}ms). {agents} active worker agents.",
+                    status=status, latency_ms=lat, endpoint=self.cortex_url,
+                    details=f"{status}: HTTP health response received ({lat}ms). CRM, outreach, and worker activity were not checked.",
                     last_checked=datetime.now(timezone.utc).isoformat(),
                 )
         except Exception as e:
@@ -278,23 +313,24 @@ class FleetClient:
             )
         return AgentStatus(
             id="cortex", name="Cortex", role="Web Operations", icon="🌐",
-            status="ONLINE", latency_ms=int((time.time() - t0) * 1000), endpoint=self.cortex_url,
-            details="Autonomous web crawler & growth engine online.", last_checked=datetime.now(timezone.utc).isoformat(),
+            status="DEGRADED", latency_ms=int((time.time() - t0) * 1000), endpoint=self.cortex_url,
+            details=f"Health summary returned HTTP {r.status_code}; Cortex workflows were not verified.",
+            last_checked=datetime.now(timezone.utc).isoformat(),
         )
 
     async def probe_forge(self, client: httpx.AsyncClient) -> AgentStatus:
         t0 = time.time()
         try:
-            r = await client.get(f"{self.forge_url}/health", timeout=5.0)
+            headers = {"Authorization": f"Bearer {self.forge_key}"} if self.forge_key else {}
+            health_path = os.getenv("FRIDAY_FORGE_HEALTH_PATH", "/health")
+            r = await client.get(f"{self.forge_url}{health_path}", headers=headers, timeout=5.0)
             lat = int((time.time() - t0) * 1000)
-            if r.status_code == 200:
-                data = r.json()
-                ver = data.get("version", "2.0.0")
-                uptime = data.get("uptime_seconds", 0)
+            status = _classify_health_response(r)
+            if status in {"ONLINE", "REACHABLE"}:
                 return AgentStatus(
                     id="forge", name="Forge", role="Software Engineering", icon="🛠️",
-                    status="ONLINE", latency_ms=lat, endpoint=self.forge_url,
-                    details=f"Autonomous SWE Engine online v{ver} ({lat}ms). Uptime: {uptime:.1f}s",
+                    status=status, latency_ms=lat, endpoint=self.forge_url,
+                    details=f"{status}: HTTP health response received ({lat}ms). Build execution was not checked.",
                     last_checked=datetime.now(timezone.utc).isoformat(),
                 )
         except Exception as e:
@@ -307,22 +343,24 @@ class FleetClient:
             )
         return AgentStatus(
             id="forge", name="Forge", role="Software Engineering", icon="🛠️",
-            status="ONLINE", latency_ms=int((time.time() - t0) * 1000), endpoint=self.forge_url,
-            details="Local software synthesis engine ready.", last_checked=datetime.now(timezone.utc).isoformat(),
+            status="DEGRADED", latency_ms=int((time.time() - t0) * 1000), endpoint=self.forge_url,
+            details=f"Health endpoint returned HTTP {r.status_code}; build functionality was not verified.",
+            last_checked=datetime.now(timezone.utc).isoformat(),
         )
 
     async def probe_sentinel(self, client: httpx.AsyncClient) -> AgentStatus:
         t0 = time.time()
         try:
-            r = await client.get(f"{self.sentinel_url}/health", timeout=5.0)
+            headers = {"X-API-Key": self.sentinel_key} if self.sentinel_key else {}
+            health_path = os.getenv("FRIDAY_SENTINEL_HEALTH_PATH", "/health")
+            r = await client.get(f"{self.sentinel_url}{health_path}", headers=headers, timeout=5.0)
             lat = int((time.time() - t0) * 1000)
-            if r.status_code == 200:
-                data = r.json()
-                audit = "Valid" if data.get("audit_chain_valid") else "Pending"
+            status = _classify_health_response(r)
+            if status in {"ONLINE", "REACHABLE"}:
                 return AgentStatus(
                     id="sentinel", name="Sentinel", role="Cybersecurity Shield", icon="🛡️",
-                    status="ONLINE", latency_ms=lat, endpoint=self.sentinel_url,
-                    details=f"Cybersecurity Platform online ({lat}ms). Audit chain: {audit}",
+                    status=status, latency_ms=lat, endpoint=self.sentinel_url,
+                    details=f"{status}: HTTP health response received ({lat}ms). Audit integrity and scanning were not checked.",
                     last_checked=datetime.now(timezone.utc).isoformat(),
                 )
         except Exception as e:
@@ -335,8 +373,9 @@ class FleetClient:
             )
         return AgentStatus(
             id="sentinel", name="Sentinel", role="Cybersecurity Shield", icon="🛡️",
-            status="ONLINE", latency_ms=int((time.time() - t0) * 1000), endpoint=self.sentinel_url,
-            details="Zero-trust defense shield active.", last_checked=datetime.now(timezone.utc).isoformat(),
+            status="DEGRADED", latency_ms=int((time.time() - t0) * 1000), endpoint=self.sentinel_url,
+            details=f"Health endpoint returned HTTP {r.status_code}; security functionality was not verified.",
+            last_checked=datetime.now(timezone.utc).isoformat(),
         )
 
     async def get_all_statuses(self, force_refresh: bool = False) -> list[AgentStatus]:
@@ -434,9 +473,11 @@ class FleetClient:
                 timeout=4.0,
             )
 
-            ctx_data = r_ctx.json() if hasattr(r_ctx, "status_code") and r_ctx.status_code == 200 else {}
-            bundle_id = ctx_data.get("bundle_id", "untracked")
-            summary = ctx_data.get("summary", "Context bundle retrieved.")
+            if r_ctx.status_code != 200:
+                return {"reply": f"Memora context request failed with HTTP {r_ctx.status_code}.", "metadata": {"agent_id": "memora", "error": f"HTTP {r_ctx.status_code}", "success": False}}
+            ctx_data = r_ctx.json()
+            bundle_id = ctx_data.get("bundle_id")
+            summary = ctx_data.get("summary") or "Memora did not include a summary in its response."
             search_data = ctx_data.get("memories", [])
 
             recalled_lines = []
@@ -449,16 +490,17 @@ class FleetClient:
             recalled_text = "\n".join(recalled_lines) if recalled_lines else "  • No specific memory match found."
 
             formatted_reply = (
-                f"🧠 [MEMORA PERSISTENT MEMORY // 9GB TURSO AWS MUMBAI]\n"
-                f"Bundle ID: {bundle_id}\n"
+                f"🧠 [MEMORA RESPONSE // HTTP {r_ctx.status_code}]\n"
+                f"Bundle ID: {bundle_id or 'not supplied'}\n"
                 f"Recalled Knowledge & Preferences:\n{recalled_text}\n\n"
-                f"Context Telemetry:\n{summary}"
+                f"Memora response:\n{summary}"
             )
             return {
                 "reply": formatted_reply,
                 "metadata": {
                     "agent_id": "memora", "agent_name": "Memora",
                     "bundle_id": bundle_id, "recalled_memories": search_data,
+                    "endpoint_response_received": True, "task_completion_verified": False,
                 },
             }
         except Exception as e:
@@ -473,30 +515,33 @@ class FleetClient:
         try:
             client = self.get_shared_client()
             r_health = await client.get(f"{self.stratex_url}/api/engine-health", headers=headers, timeout=3.0)
-            h_data = r_health.json() if hasattr(r_health, "status_code") and r_health.status_code == 200 else {}
+            if r_health.status_code != 200:
+                return {"reply": f"Stratex engine health request failed with HTTP {r_health.status_code}.", "metadata": {"agent_id": "stratex", "error": f"HTTP {r_health.status_code}", "success": False}}
+            h_data = r_health.json()
 
-            eng_status = h_data.get("engine_status", "ONLINE")
-            strat = h_data.get("active_strategy", "adx_ema")
-            binance_conn = h_data.get("binance_connected", False)
-            heartbeat = h_data.get("heartbeat_age_seconds", 0.0)
+            eng_status = h_data.get("engine_status", "not reported")
+            strat = h_data.get("active_strategy", "not reported")
+            binance_conn = h_data.get("binance_connected")
+            heartbeat = h_data.get("heartbeat_age_seconds", "not reported")
             symbols = h_data.get("symbols", [])
-            symbol_count = h_data.get("symbol_count", len(symbols))
-            timeframes = ", ".join(h_data.get("timeframes", ["1m", "5m", "15m", "1h", "4h"])[:3])
+            symbol_count = h_data.get("symbol_count", len(symbols) if "symbols" in h_data else "not reported")
+            timeframes = ", ".join(h_data.get("timeframes", [])[:3]) or "not reported"
 
             formatted_reply = (
-                f"📈 [STRATEX 24/7 ALGORITHMIC TRADING // LIVE ENGINE]\n"
+                f"📈 [STRATEX ENGINE HEALTH RESPONSE]\n"
                 f"Engine Status: {eng_status} (Heartbeat: {heartbeat}s) | Active Strategy: {strat}\n"
-                f"Binance Connected: {'YES (Live)' if binance_conn else 'NO (Simulated)'}\n\n"
+                f"Binance Connected: {'YES' if binance_conn is True else ('NO' if binance_conn is False else 'not reported')}\n\n"
                 f"Market Execution Telemetry:\n"
                 f"• Active Trading Pairs: {symbol_count} symbols monitored ({timeframes})\n"
                 f"• Engine Worker: {'HEALTHY' if h_data.get('healthy') else 'STANDBY'} | Supervisor: {h_data.get('paper_runner_status', 'ONLINE')}\n"
-                f"• Risk & Strategy Controller: Real-time risk gate ACTIVE, ADX/EMA trend scanner ONLINE"
+                f"• Risk and strategy details are shown only when returned by the endpoint. No trade was requested or verified."
             )
             return {
                 "reply": formatted_reply,
                 "metadata": {
                     "agent_id": "stratex", "agent_name": "Stratex",
                     "engine_status": eng_status, "strategy": strat, "symbol_count": symbol_count,
+                    "endpoint_response_received": True, "task_completion_verified": False,
                 },
             }
         except Exception as e:
@@ -511,24 +556,24 @@ class FleetClient:
         try:
             client = self.get_shared_client()
             r_health = await client.get(f"{self.intelx_url}/api/v1/healthz", headers=headers, timeout=8.0)
-            h_data = r_health.json() if r_health.status_code == 200 else {}
-            ver = h_data.get("version", "2.0.0")
-            db_st = h_data.get("database", "ok")
-            mock_mode = h_data.get("mock_mode", False)
+            if r_health.status_code != 200:
+                return {"reply": f"IntelX health request failed with HTTP {r_health.status_code}.", "metadata": {"agent_id": "intelx", "error": f"HTTP {r_health.status_code}", "success": False}}
+            h_data = r_health.json()
+            ver = h_data.get("version", "not reported")
+            db_st = h_data.get("database", "not reported")
+            mock_mode = h_data.get("mock_mode")
 
             formatted_reply = (
-                f"🔍 [INTELX EVIDENCE & MACRO RESEARCH ENGINE v{ver}]\n"
-                f"Research Database: {db_st.upper()} | Live Production: {'YES' if not mock_mode else 'MOCK'}\n\n"
-                f"Evidence Intelligence Pipeline:\n"
-                f"• Status: Receptive for research directives\n"
-                f"• Directive Received: '{query}'\n"
-                f"• Capability: Automated multi-source extraction, contradiction detection, and citation anchoring."
+                f"🔍 [INTELX HEALTH RESPONSE]\n"
+                f"Version: {ver} | Database: {str(db_st).upper()} | Mock mode: {mock_mode if mock_mode is not None else 'not reported'}\n\n"
+                "This call checked the health endpoint only. It did not submit a research query or verify news delivery."
             )
             return {
                 "reply": formatted_reply,
                 "metadata": {
                     "agent_id": "intelx", "agent_name": "IntelX",
                     "version": ver, "database": db_st,
+                    "endpoint_response_received": True, "research_completed": False,
                 },
             }
         except Exception as e:
@@ -552,27 +597,35 @@ class FleetClient:
                 r_cal = await client.get(target_url, headers=headers, timeout=timeout_val)
                 if r_cal.status_code == 200:
                     cal_data = r_cal.json()
-                    ece = cal_data.get("overall_ece", 0.0)
-                    trend = cal_data.get("trend", "stable")
+                    ece = cal_data.get("overall_ece")
+                    trend = cal_data.get("trend")
                     targets_dict = cal_data.get("per_target_type_calibration", {})
                     acc = cal_data.get("recent_accuracy_summary", {})
-                    brier = acc.get("brier_score", 0.0)
-                    samples = acc.get("resolved_samples", 0)
+                    brier = acc.get("brier_score")
+                    samples = acc.get("resolved_samples")
 
-                    target_lines = "\n".join([f"• {k}: ECE {v:.4f}" for k, v in targets_dict.items()])
+                    values = []
+                    if ece is not None:
+                        values.append(f"Overall ECE: {ece}")
+                    if trend is not None:
+                        values.append(f"Trend: {trend}")
+                    if brier is not None:
+                        values.append(f"Brier score: {brier}")
+                    if samples is not None:
+                        values.append(f"Resolved samples: {samples}")
+                    values.extend(f"{k} calibration: {v}" for k, v in targets_dict.items())
 
                     formatted_reply = (
-                        f"🔮 [FUTURIS CALIBRATED PREDICTIVE FORECASTER // {origin}]\n"
-                        f"Calibration Status: ECE {ece:.4f} | Trend: {trend.upper()}\n"
-                        f"Brier Score: {brier} across {samples} resolved sample horizons\n\n"
-                        f"Domain Reliability Indices:\n"
-                        f"{target_lines}"
+                        f"🔮 [FUTURIS CALIBRATION RESPONSE // {origin}]\n"
+                        + ("\n".join(values) if values else "No calibration metrics were included in the response.")
+                        + "\nThis was a calibration query, not a forecast for the requested topic."
                     )
                     return {
                         "reply": formatted_reply,
                         "metadata": {
                             "agent_id": "futuris", "agent_name": "Futuris",
                             "overall_ece": ece, "brier_score": brier, "trend": trend,
+                            "endpoint_response_received": True, "forecast_completed": False,
                         },
                     }
                 else:
@@ -592,29 +645,22 @@ class FleetClient:
         try:
             client = self.get_shared_client()
             r_summary = await client.get(f"{self.cortex_url}/v1/friday/health_summary", headers=headers, timeout=8.0)
-            data = r_summary.json() if r_summary.status_code == 200 else {}
-
-            uptime = data.get("uptime_indicator", "healthy")
-            incidents = data.get("active_incidents", 0)
-            agents = data.get("active_agents", [])
-            agent_names = ", ".join([a.get("id", "agent") for a in agents])
-            loops = data.get("cognitive_loops_today", 0)
-            recent_errs = data.get("recent_errors_24h", 0)
+            if r_summary.status_code != 200:
+                return {"reply": f"Cortex health summary request failed with HTTP {r_summary.status_code}.", "metadata": {"agent_id": "cortex", "error": f"HTTP {r_summary.status_code}", "success": False}}
+            data = r_summary.json()
+            if not isinstance(data, dict):
+                return {"reply": "Cortex returned an unexpected health-summary format.", "metadata": {"agent_id": "cortex", "error": "unexpected_response_format", "success": False}}
 
             formatted_reply = (
-                f"🌐 [CORTEX AUTONOMOUS WEB OPERATIONS // LIVE TELEMETRY]\n"
-                f"Site Telemetry: {uptime.upper()} | Active Incidents: {incidents}\n"
-                f"Autonomous Agents Active: {len(agents)} ({agent_names})\n\n"
-                f"Operational Signals:\n"
-                f"• Cognitive Loops Today: {loops}\n"
-                f"• Recent Errors (24h): {recent_errs}\n"
-                f"• Web Scraping & Lead Qualification Pipeline: ONLINE"
+                "🌐 [CORTEX HEALTH SUMMARY RESPONSE]\n"
+                + json.dumps(data, ensure_ascii=False, default=str)[:2000]
+                + "\nThis was a status query; no lead, outreach, or SaaS task was performed."
             )
             return {
                 "reply": formatted_reply,
                 "metadata": {
                     "agent_id": "cortex", "agent_name": "Cortex",
-                    "uptime": uptime, "incidents": incidents, "agents_count": len(agents),
+                    "endpoint_response_received": True, "task_completion_verified": False,
                 },
             }
         except Exception as e:
@@ -634,14 +680,19 @@ class FleetClient:
                 return_exceptions=True,
             )
 
-            ana_data = r_analytics.json() if hasattr(r_analytics, "status_code") and r_analytics.status_code == 200 else {}
-            tasks_data = r_tasks.json() if hasattr(r_tasks, "status_code") and r_tasks.status_code == 200 else []
+            if not hasattr(r_analytics, "status_code") or not hasattr(r_tasks, "status_code") or r_analytics.status_code != 200 or r_tasks.status_code != 200:
+                return {"reply": "Forge analytics/tasks query did not receive HTTP 200 from both endpoints.", "metadata": {"agent_id": "forge", "error": "one_or_more_status_endpoints_unavailable", "success": False}}
 
-            total = ana_data.get("total_tasks", len(tasks_data))
-            completed = ana_data.get("completed_tasks", 0)
-            active = ana_data.get("active_tasks", 0)
-            rate = ana_data.get("success_rate_percentage", 0.0)
-            avg_dur = ana_data.get("average_duration_seconds", 0.0)
+            ana_data = r_analytics.json()
+            tasks_data = r_tasks.json()
+            if not isinstance(ana_data, dict) or not isinstance(tasks_data, list):
+                return {"reply": "Forge returned an unexpected analytics/tasks format.", "metadata": {"agent_id": "forge", "error": "unexpected_response_format", "success": False}}
+
+            total = ana_data.get("total_tasks", len(tasks_data) if isinstance(tasks_data, list) else "not reported")
+            completed = ana_data.get("completed_tasks", "not reported")
+            active = ana_data.get("active_tasks", "not reported")
+            rate = ana_data.get("success_rate_percentage", "not reported")
+            avg_dur = ana_data.get("average_duration_seconds", "not reported")
 
             top_tasks = tasks_data[:2] if isinstance(tasks_data, list) else []
             task_summaries = []
@@ -650,17 +701,19 @@ class FleetClient:
             task_text = "\n".join(task_summaries) if task_summaries else "• No active task queues"
 
             formatted_reply = (
-                f"🛠️ [FORGE SOFTWARE ENGINEERING ENGINE // LOCAL PORT 8002]\n"
-                f"Engine Status: ONLINE | Pipeline Success Rate: {rate}%\n"
+                f"🛠️ [FORGE STATUS RESPONSE]\n"
+                f"Pipeline Success Rate: {rate}\n"
                 f"Tasks Overview: Total: {total} | Completed: {completed} | Active: {active}\n"
-                f"Average Task Duration: {avg_dur:.1f}s\n\n"
+                f"Average Task Duration: {avg_dur}\n\n"
                 f"Current Task Queue:\n{task_text}"
+                "\nThis was an analytics/status query; no code task was executed or verified."
             )
             return {
                 "reply": formatted_reply,
                 "metadata": {
                     "agent_id": "forge", "agent_name": "Forge",
                     "total_tasks": total, "completed": completed, "active": active,
+                    "endpoint_response_received": True, "task_completion_verified": False,
                 },
             }
         except Exception as e:
@@ -683,26 +736,28 @@ class FleetClient:
             p_data = r_posture.json() if hasattr(r_posture, "status_code") and r_posture.status_code == 200 else {}
             h_data = r_health.json() if hasattr(r_health, "status_code") and r_health.status_code == 200 else {}
 
-            score = p_data.get("overall_posture_score", 100.0)
+            score = p_data.get("overall_posture_score", "not reported")
             findings = p_data.get("open_findings_by_severity", {})
             domains = p_data.get("per_domain_scores", {})
-            trend = p_data.get("trend", "stable")
-            audit_valid = h_data.get("audit_chain_valid", True)
+            trend = p_data.get("trend")
+            audit_valid = h_data.get("audit_chain_valid")
 
             formatted_reply = (
-                f"🛡️ [SENTINEL CYBERSECURITY SHIELD // LOCAL PORT 8003]\n"
-                f"Overall Posture Score: {score}/100 | Trend: {trend.upper()}\n"
-                f"Tamper-Proof Audit Chain: {'VERIFIED' if audit_valid else 'DEGRADED'}\n\n"
+                f"🛡️ [SENTINEL STATUS RESPONSE]\n"
+                f"Overall Posture Score: {score} | Trend: {trend if trend is not None else 'not reported'}\n"
+                f"Audit Chain: {'valid' if audit_valid is True else ('invalid' if audit_valid is False else 'not reported')}\n\n"
                 f"Domain Security Breakdown:\n"
-                f"• Web Defense: {domains.get('web', 100.0)}/100 | API Security: {domains.get('api', 100.0)}/100\n"
-                f"• Network Surface: {domains.get('network', 100.0)}/100 | Cloud Infrastructure: {domains.get('cloud', 100.0)}/100\n"
-                f"• Open Vulnerabilities: Critical: {findings.get('critical', 0)}, High: {findings.get('high', 0)}, Medium: {findings.get('medium', 0)}"
+                f"• Web Defense: {domains.get('web', 'not reported')} | API Security: {domains.get('api', 'not reported')}\n"
+                f"• Network Surface: {domains.get('network', 'not reported')} | Cloud Infrastructure: {domains.get('cloud', 'not reported')}\n"
+                f"• Open Vulnerabilities: {json.dumps(findings, ensure_ascii=False, default=str)}\n"
+                "This was a status query; no security assessment was performed."
             )
             return {
                 "reply": formatted_reply,
                 "metadata": {
                     "agent_id": "sentinel", "agent_name": "Sentinel",
                     "posture_score": score, "audit_chain_valid": audit_valid,
+                    "endpoint_response_received": True, "assessment_completed": False,
                 },
             }
         except Exception as e:
@@ -767,6 +822,7 @@ class FleetClient:
         t0 = time.time()
         target = envelope.target_agent.lower().strip()
         client = self.get_shared_client()
+        contract_endpoint_used = True
 
         try:
             if target == "inference":
@@ -792,14 +848,15 @@ class FleetClient:
                 resp = await client.post(url, json=envelope.model_dump(), headers=headers, timeout=10.0)
                 if resp.status_code in (404, 405):
                     if envelope.action in ("store", "remember", "add"):
-                        alt_url = f"{self.memora_url}/v1/memories"
-                        alt_payload = {
-                            "content_text": str(envelope.payload.get("content", envelope.payload.get("text", "FRIDAY observation"))),
-                            "memory_type": "episodic",
-                            "source": f"agent:{envelope.source_agent}",
-                        }
-                        resp = await client.post(alt_url, json=alt_payload, headers=headers, timeout=10.0)
+                        return TaskResult(
+                            task_id=envelope.task_id,
+                            target_agent=envelope.target_agent,
+                            status=TaskStatus.BLOCKED,
+                            error="Memora task endpoint is unavailable; refusing an unscoped legacy memory write.",
+                            execution_time_ms=int((time.time() - t0) * 1000),
+                        )
                     else:
+                        contract_endpoint_used = False
                         alt_url = f"{self.memora_url}/v1/context"
                         alt_payload = {
                             "task_query": str(envelope.payload.get("query", envelope.payload.get("prompt", "context"))),
@@ -812,6 +869,7 @@ class FleetClient:
                 headers = {"X-API-Key": self.stratex_key, "Authorization": f"Bearer {self.stratex_key}", "Content-Type": "application/json"}
                 resp = await client.post(url, json=envelope.model_dump(), headers=headers, timeout=10.0)
                 if resp.status_code in (404, 405):
+                    contract_endpoint_used = False
                     alt_url = f"{self.stratex_url}/api/engine-health"
                     resp = await client.get(alt_url, headers=headers, timeout=10.0)
 
@@ -820,6 +878,7 @@ class FleetClient:
                 headers = {"Authorization": f"Bearer {self.intelx_key}", "Content-Type": "application/json"}
                 resp = await client.post(url, json=envelope.model_dump(), headers=headers, timeout=15.0)
                 if resp.status_code in (404, 405):
+                    contract_endpoint_used = False
                     alt_url = f"{self.intelx_url}/api/v1/friday-universe/intelligence?agent={envelope.source_agent}&limit=5"
                     resp = await client.get(alt_url, headers=headers, timeout=15.0)
 
@@ -830,28 +889,16 @@ class FleetClient:
                 except Exception:
                     resp = await client.post(f"{self.futuris_url}/v1/task/execute", json=envelope.model_dump(), headers=headers, timeout=5.0)
                 if resp.status_code in (404, 405):
+                    contract_endpoint_used = False
                     try:
                         resp = await client.get(f"{self.futuris_local_url}/v1/friday/calibration", headers=headers, timeout=2.0)
                     except Exception:
                         resp = await client.get(f"{self.futuris_url}/v1/friday/calibration", headers=headers, timeout=5.0)
 
             elif target == "cortex":
-                alt_url = f"{self.cortex_url}/v1/friday/command"
                 headers = {"X-Friday-Api-Key": self.cortex_key, "Content-Type": "application/json"}
-                try:
-                    url = f"{self.cortex_url}/v1/task/execute"
-                    resp = await client.post(url, json=envelope.model_dump(), headers=headers, timeout=10.0)
-                except Exception:
-                    resp = None
-                if resp is None or resp.status_code in (404, 405):
-                    goal_text = envelope.payload.get("goal") or envelope.payload.get("prompt") or envelope.action
-                    alt_payload = {
-                        "goal": goal_text,
-                        "required_capability": "reliability",
-                        "requested_action": envelope.action or "status_check",
-                        "context": envelope.payload or {},
-                    }
-                    resp = await client.post(alt_url, json=alt_payload, headers=headers, timeout=10.0)
+                url = f"{self.cortex_url}/v1/task/execute"
+                resp = await client.post(url, json=envelope.model_dump(), headers=headers, timeout=10.0)
 
             elif target == "forge":
                 url = f"{self.forge_url}/api/v1/forge/delegate"
@@ -879,12 +926,45 @@ class FleetClient:
             lat = int((time.time() - t0) * 1000)
             if resp.status_code in (200, 201, 202):
                 res_data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {"text": resp.text}
+                if resp.status_code == 202:
+                    return TaskResult(
+                        task_id=envelope.task_id,
+                        target_agent=envelope.target_agent,
+                        status=TaskStatus.PENDING,
+                        result=res_data if isinstance(res_data, dict) else {"data": res_data},
+                        summary=f"{target} accepted the request; completion is pending verification.",
+                        execution_time_ms=lat,
+                    )
+                if not contract_endpoint_used:
+                    return TaskResult(
+                        task_id=envelope.task_id,
+                        target_agent=envelope.target_agent,
+                        status=TaskStatus.DEGRADED,
+                        result=res_data if isinstance(res_data, dict) else {"data": res_data},
+                        summary=f"A legacy status/context endpoint responded for {target}; task execution was not confirmed.",
+                        error="task_completion_unverified",
+                        execution_time_ms=lat,
+                    )
+                state = str(res_data.get("state", res_data.get("status", ""))).strip().lower() if isinstance(res_data, dict) else ""
+                if state in {"pending", "queued", "running", "waiting_approval", "awaiting_approval"}:
+                    result_status = TaskStatus.PENDING
+                elif state in {"success", "succeeded", "complete", "completed", "done"} or (isinstance(res_data, dict) and res_data.get("completed") is True):
+                    result_status = TaskStatus.SUCCESS
+                elif target == "inference" and isinstance(res_data, dict) and (res_data.get("response") or res_data.get("reply")):
+                    result_status = TaskStatus.SUCCESS
+                else:
+                    result_status = TaskStatus.DEGRADED
                 return TaskResult(
                     task_id=envelope.task_id,
                     target_agent=envelope.target_agent,
-                    status=TaskStatus.SUCCESS,
+                    status=result_status,
                     result=res_data if isinstance(res_data, dict) else {"data": res_data},
-                    summary=f"Task '{envelope.action}' processed by {target} in {lat}ms",
+                    summary=(
+                        f"Task '{envelope.action}' completed by {target} in {lat}ms"
+                        if result_status == TaskStatus.SUCCESS
+                        else f"{target} accepted the request, but did not provide evidence of task completion."
+                    ),
+                    error=None if result_status in {TaskStatus.SUCCESS, TaskStatus.PENDING} else "task_completion_unverified",
                     execution_time_ms=lat,
                 )
             else:

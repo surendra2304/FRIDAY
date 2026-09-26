@@ -68,7 +68,7 @@ def test_missing_credentials_detected_as_unavailable():
         health = doctor.diagnose_credential_pool()
 
         assert health.status == DiagnosticStatus.UNAVAILABLE
-        assert "Zero API credentials" in health.message
+        assert "No Gemini credentials" in health.message
         assert health.remediation is not None
 
 
@@ -88,7 +88,56 @@ def test_exhausted_credentials_in_cooldown():
 
         health = doctor.diagnose_credential_pool()
         assert health.status == DiagnosticStatus.COOLDOWN
-        assert "exhausted or in cooldown" in health.message
+        assert "provider connectivity was not tested" in health.message
+        assert health.details["local_cooldown_count"] == 1
+
+
+def test_doctor_counts_all_configured_gemini_pool_slots_without_reporting_them(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    for index in range(1, 10):
+        monkeypatch.delenv(f"FRIDAY_GEMINI_FALLBACK_API_KEY_{index}", raising=False)
+        monkeypatch.delenv(f"GEMINI_FALLBACK_API_KEY_{index}", raising=False)
+    monkeypatch.setenv("FRIDAY_GEMINI_API_KEY", "gemini-test-one,gemini-test-two")
+    monkeypatch.setenv("FRIDAY_GEMINI_FALLBACK_API_KEY_9", "gemini-test-three,gemini-test-four")
+    settings = Settings(
+        env="testing",
+        gemini_api_key="",
+        gemini_fallback_api_key_1="",
+        gemini_fallback_api_key_2="",
+        gemini_fallback_api_key_3="",
+        gemini_fallback_api_key_4="",
+    )
+
+    health = FridayDoctor(settings=settings).diagnose_credential_pool()
+
+    assert health.status == DiagnosticStatus.CONFIGURED
+    assert health.details["configured"] == 4
+    assert health.details["provider_connectivity_checked"] is False
+    assert "gemini-test" not in health.message
+    assert "gemini-test" not in str(health.details)
+
+
+def test_configured_provider_and_forge_are_not_reported_live_available():
+    doctor = FridayDoctor(settings=Settings(env="testing", llm_provider="groq", groq_api_key="test-only"))
+
+    provider = doctor.diagnose_llm_provider()
+    forge = doctor.diagnose_forge()
+
+    assert provider.status == DiagnosticStatus.CONFIGURED
+    assert "connectivity was not tested" in provider.message
+    assert forge.status == DiagnosticStatus.CONFIGURED
+    assert "reachability was not probed" in forge.message
+
+
+def test_selected_provider_without_credentials_is_unavailable(monkeypatch):
+    monkeypatch.delenv("FRIDAY_GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    doctor = FridayDoctor(settings=Settings(env="testing", llm_provider="groq", groq_api_key=""))
+
+    health = doctor.diagnose_llm_provider()
+
+    assert health.status == DiagnosticStatus.UNAVAILABLE
+    assert "no configured credential" in health.message
 
 
 # ============================================================================

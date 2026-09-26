@@ -15,21 +15,39 @@ from friday.memory.memora_client import MemoraClient, PreferenceExtractor
 from friday.tools.builtin.action_proposal import ProposeComputerActionTool
 from friday.tools.builtin.open_application import OpenApplicationTool
 from friday.vision.actions import ActionType
+from friday.core.config import Settings
 
 
-def test_cli_authorizer_autonomous_auto_approval():
-    """CLIAuthorizer in autonomous mode auto-approves SAFE, SENSITIVE, and DANGEROUS operations without prompt."""
+def test_cli_authorizer_autonomous_still_requires_dangerous_confirmation(monkeypatch):
+    """Autonomous mode may skip routine prompts, but never the dangerous-action prompt."""
     auth = CLIAuthorizer(auto_approve_all=True)
 
-    for level in [SafetyLevel.SAFE, SafetyLevel.SENSITIVE, SafetyLevel.DANGEROUS]:
-        req = AuthorizationRequest(
-            tool_name="test_tool",
-            safety_level=level,
-            arguments={"cmd": "test"},
-        )
-        resp = auth.authorize(req)
-        assert resp.decision == AuthorizationDecision.APPROVED
-        assert resp.capability is not None
+    req = AuthorizationRequest(tool_name="test_tool", safety_level=SafetyLevel.SAFE, arguments={"cmd": "test"})
+    assert auth.authorize(req).decision == AuthorizationDecision.APPROVED
+
+    req = AuthorizationRequest(tool_name="test_tool", safety_level=SafetyLevel.SENSITIVE, arguments={"cmd": "test"})
+    assert auth.authorize(req).decision == AuthorizationDecision.APPROVED
+
+    req = AuthorizationRequest(tool_name="test_tool", safety_level=SafetyLevel.DANGEROUS, arguments={"cmd": "test"})
+    monkeypatch.setattr("friday.cli.auth._prompt_user", lambda _: "no")
+    assert auth.authorize(req).decision == AuthorizationDecision.DENIED
+
+    monkeypatch.setattr("friday.cli.auth._prompt_user", lambda _: "CONFIRM")
+    assert auth.authorize(req).decision == AuthorizationDecision.APPROVED
+
+
+def test_cli_authorizer_defaults_to_confirmation_for_sensitive_actions():
+    """Owner-selected work is direct; consequential actions retain the normal confirmation gate."""
+    with patch("friday.core.config.get_settings") as mock_settings:
+        settings = MagicMock()
+        settings.autonomous_mode = False
+        settings.full_access_mode = False
+        mock_settings.return_value = settings
+        auth = CLIAuthorizer()
+
+    req = AuthorizationRequest(tool_name="test_tool", safety_level=SafetyLevel.SENSITIVE, arguments={"cmd": "test"})
+    with patch("friday.cli.auth._prompt_user", return_value="no"):
+        assert auth.authorize(req).decision == AuthorizationDecision.DENIED
 
 
 def test_default_secure_authorizer_autonomous_mode():
@@ -50,6 +68,25 @@ def test_default_secure_authorizer_autonomous_mode():
         assert resp.decision == AuthorizationDecision.APPROVED
 
 
+def test_personal_assistant_defaults_keep_privileged_modes_disabled():
+    """Fresh local setup does not silently enable autonomous/full access modes."""
+    settings = Settings(_env_file=None, autonomous_mode=False, full_access_mode=False)
+    assert settings.autonomous_mode is False
+    assert settings.full_access_mode is False
+
+
+def test_legacy_local_voice_flag_uses_supported_gemini_live_mode(capsys):
+    """Retired flag selects the voice mode quietly; FRIDAY branding is shown by CLI startup."""
+    from argparse import Namespace
+    from friday.cli.main import _normalize_voice_mode
+
+    args = Namespace(local_voice=True, voice=False)
+    used_alias = _normalize_voice_mode(args)
+    assert args.voice is True
+    assert used_alias is True
+    assert capsys.readouterr().out == ""
+
+
 def test_open_application_typo_tolerance():
     """OpenApplicationTool resolves common typos like 'whatsaapp' to 'whatsapp'."""
     tool = OpenApplicationTool()
@@ -67,8 +104,8 @@ def test_open_application_web_url_launch():
         mock_open.assert_called_once_with("https://web.whatsapp.com")
 
 
-def test_action_proposal_direct_execution_autonomous():
-    """ProposeComputerActionTool executes actions natively in autonomous mode."""
+def test_action_proposal_autonomous_flag_never_executes_without_authorization():
+    """The proposal helper does not synthesize OS input outside an authorization flow."""
     tool = ProposeComputerActionTool(autonomous=True)
 
     with patch("friday.vision.windows_input_driver.WindowsNativeInputDriver") as mock_driver_cls:
@@ -78,23 +115,27 @@ def test_action_proposal_direct_execution_autonomous():
         mock_driver.press_key.return_value = True
         mock_driver_cls.return_value = mock_driver
 
-        # Click
+        # Click remains a proposal until a reviewed authorization path exists.
         res_click = tool.execute(action_type="click", intent="open chat", x=122, y=158)
         assert res_click.is_error is False
-        assert "clicked" in res_click.content.lower() or "dispatched" in res_click.content.lower()
-        assert tool.last_proposal.is_executed is True
+        assert "PROPOSED (NOT EXECUTED)" in res_click.content
+        assert tool.last_proposal.is_executed is False
 
         # Type
         res_type = tool.execute(action_type="type", intent="type text", text="hello")
         assert res_type.is_error is False
-        assert "typed" in res_type.content.lower() or "dispatched" in res_type.content.lower()
-        assert tool.last_proposal.is_executed is True
+        assert "PROPOSED (NOT EXECUTED)" in res_type.content
+        assert tool.last_proposal.is_executed is False
 
         # Key press
         res_key = tool.execute(action_type="key_press", intent="press enter", key="enter")
         assert res_key.is_error is False
-        assert "pressed" in res_key.content.lower() or "dispatched" in res_key.content.lower()
-        assert tool.last_proposal.is_executed is True
+        assert "PROPOSED (NOT EXECUTED)" in res_key.content
+        assert tool.last_proposal.is_executed is False
+
+        mock_driver.click.assert_not_called()
+        mock_driver.type_text.assert_not_called()
+        mock_driver.press_key.assert_not_called()
 
 
 def test_preference_extractor_directives():

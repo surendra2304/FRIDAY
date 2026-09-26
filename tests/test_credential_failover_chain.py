@@ -184,6 +184,45 @@ def test_cooldown_expiry_restores_primary(tmp_path):
     assert pool.get_active_label() == "PRIMARY"
 
 
+def test_persisted_health_is_bound_to_key_identity(tmp_path):
+    """A replacement key must not inherit a previous key's cooldown by label."""
+    state_file = tmp_path / "pool_state.json"
+    old = GeminiCredentialPool(keys=["OLD_PRIMARY"], state_file=state_file)
+    old.report_failure("OLD_PRIMARY", Exception("401 API key not valid"))
+
+    replacement = GeminiCredentialPool(keys=["NEW_PRIMARY"], state_file=state_file)
+
+    assert replacement.credentials[0].is_healthy(1)
+    assert replacement.credentials[0].failure_count == 0
+
+
+def test_persisted_health_restores_for_same_key(tmp_path):
+    """Health state remains persistent for the same credential."""
+    state_file = tmp_path / "pool_state.json"
+    original = GeminiCredentialPool(keys=["SAME_PRIMARY"], state_file=state_file)
+    original.report_failure("SAME_PRIMARY", Exception("401 API key not valid"))
+
+    reloaded = GeminiCredentialPool(keys=["SAME_PRIMARY"], state_file=state_file)
+    reloaded._load_persisted_state()
+
+    assert reloaded.credentials[0].failure_count == 1
+    assert not reloaded.credentials[0].is_healthy(1)
+
+
+def test_explicit_key_pool_does_not_write_production_state_by_default():
+    """Ad hoc explicit-key pools must not persist test health into app state."""
+    pool = GeminiCredentialPool(keys=["ISOLATED_KEY"])
+
+    assert pool.state_file is None
+
+
+def test_websocket_1007_is_classified_as_request_error():
+    """A rejected Live config must not be treated as an invalid API key."""
+    assert GeminiCredentialPool.classify_error(
+        Exception("1007 None. Thinking level is not supported for this model.")
+    ) == FailureCategory.INVALID_REQUEST
+
+
 
 def test_mark_key_unhealthy_rotates_active_key():
     """mark_key_unhealthy() must cooldown the key so get_active_key() rotates."""

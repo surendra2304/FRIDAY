@@ -159,6 +159,16 @@ class OpenApplicationTool(BaseTool):
                     safety_level=self.safety_level,
                     metadata={"is_ambiguous": True},
                 )
+            elif msg.startswith(("Chrome started;", "A launch request for")):
+                # The OS accepted the launch; don't run a second launcher just
+                # because focus/visibility verification failed.
+                return ToolResult(
+                    name=self.name,
+                    content=msg,
+                    is_error=True,
+                    safety_level=self.safety_level,
+                    metadata={"launch_requested": True, "verified_visible": False},
+                )
         except Exception as e:
             logger.warning(f"app_launcher fallback for '{requested}': {e}")
 

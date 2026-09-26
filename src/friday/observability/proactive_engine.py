@@ -32,29 +32,30 @@ class SystemSnapshot:
     """A single point-in-time reading of system health."""
 
     timestamp: datetime
-    cpu_percent: float
-    ram_percent: float
-    ram_used_gb: float
-    ram_total_gb: float
+    cpu_percent: float | None
+    ram_percent: float | None
+    ram_used_gb: float | None
+    ram_total_gb: float | None
     battery_percent: float | None
     battery_plugged: bool | None
-    disk_percent: float
-    network_up_kbps: float
-    network_down_kbps: float
+    disk_percent: float | None
+    network_up_kbps: float | None
+    network_down_kbps: float | None
     active_window: str = ""
     top_processes: list[str] = field(default_factory=list)
+    measurement_error: str | None = None
 
     def cpu_hot(self) -> bool:
-        return self.cpu_percent >= 85
+        return self.cpu_percent is not None and self.cpu_percent >= 85
 
     def ram_critical(self) -> bool:
-        return self.ram_percent >= 90
+        return self.ram_percent is not None and self.ram_percent >= 90
 
     def battery_low(self) -> bool:
         return self.battery_percent is not None and self.battery_percent <= 20 and not self.battery_plugged
 
     def disk_full(self) -> bool:
-        return self.disk_percent >= 90
+        return self.disk_percent is not None and self.disk_percent >= 90
 
 
 def capture_snapshot() -> SystemSnapshot:
@@ -94,9 +95,10 @@ def capture_snapshot() -> SystemSnapshot:
         logger.warning(f"System snapshot failed: {exc}")
         return SystemSnapshot(
             timestamp=datetime.now(timezone.utc),
-            cpu_percent=0, ram_percent=0, ram_used_gb=0, ram_total_gb=0,
+            cpu_percent=None, ram_percent=None, ram_used_gb=None, ram_total_gb=None,
             battery_percent=None, battery_plugged=None,
-            disk_percent=0, network_up_kbps=0, network_down_kbps=0,
+            disk_percent=None, network_up_kbps=None, network_down_kbps=None,
+            measurement_error=str(exc),
         )
 
 
@@ -208,7 +210,13 @@ class ProactiveEngine:
                 f"Disk is {current.disk_percent}% full. Running low on space.",
                 "warning",
             ))
-        if previous and current.cpu_percent < 30 and previous.cpu_percent >= 85:
+        if (
+            previous
+            and current.cpu_percent is not None
+            and previous.cpu_percent is not None
+            and current.cpu_percent < 30
+            and previous.cpu_percent >= 85
+        ):
             announcements.append(("CPU has cooled down. Crisis averted.", "info"))
         for fn in self._custom_checks:
             try:

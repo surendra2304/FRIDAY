@@ -61,6 +61,8 @@ FRIDAY is a modular, extensible, **Autonomous Multi-Agent AI Operating System** 
 
 ## 📊 Capability & Verification Matrix
 
+> **Operational truth:** This table is a static repository capability inventory. Its historical `PASS` and `PRODUCTION` labels are not current live-deployment evidence. `/api/agents/supervision` reports background peer endpoint reachability only; HTTP 200 does not prove task execution, memory persistence, or event delivery. Use dated, reproducible workflow receipts for those claims.
+
 | Subsystem / Capability | Module Path | Test Status | Operational State |
 | :--- | :--- | :---: | :---: |
 | **Skills System & Capability Gating** | `src/friday/skills/` | ✅ PASS | **PRODUCTION** |
@@ -90,6 +92,10 @@ FRIDAY is a modular, extensible, **Autonomous Multi-Agent AI Operating System** 
 | **FridayDoctor System Health Diagnostics** | `src/friday/core/doctor.py` | ✅ PASS | **PRODUCTION** |
 | **HMAC-SHA256 Authorization & Safety Gating** | `src/friday/core/auth.py` | ✅ PASS | **PRODUCTION** |
 | **Trading Bot Operator (Binance Futures Testnet)** | `src/friday/skills/trading_bot_operator.py` | ✅ PASS | **PRODUCTION** |
+
+### Cloud Fleet Supervision
+
+The cloud FRIDAY API starts a background peer reachability poll while its process is running. By default it refreshes every five minutes; set `FRIDAY_FLEET_SUPERVISION_INTERVAL_SECONDS` to change the interval (minimum 30 seconds). `GET /api/agents/supervision` reports the latest snapshot age, per-agent HTTP status, and whether all eight configured peer endpoints responded. This snapshot is held in process memory and resets when the service restarts. It does not run tasks for peers, verify Memora writes, deliver IntelX events, or alert Surendra. Those capabilities are not implemented by this monitor.
 
 ---
 
@@ -121,7 +127,7 @@ copy .env.example .env
 # Interactive text terminal mode (with Split-View UI)
 friday
 
-# Full-duplex real-time voice mode (Gemini Live with Server-Side VAD)
+# Full-duplex real-time voice mode (Gemini Live with local laptop tools)
 friday --voice
 
 # System health inspection & diagnostics
@@ -130,6 +136,8 @@ friday --doctor
 # Run multi-provider performance benchmark laboratory
 friday --run-lab
 ```
+
+`--voice` and `--local-voice` start FRIDAY's microphone and speaker pipeline with Gemini Live for speech recognition and conversation; audio is sent to the configured Gemini provider and provider quota/terms apply. Laptop tools execute on the local machine through FRIDAY's authorization path. Use `Ctrl+C` to stop voice mode.
 
 ---
 

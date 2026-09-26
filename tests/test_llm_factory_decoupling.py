@@ -18,6 +18,7 @@ def test_chain_mode_decouples_gemini_from_other_providers():
     settings = Settings(
         llm_provider="chain",
         llm_model="gemini-2.5-flash",
+        gemini_model="gemini-2.5-flash",
         gemini_api_key="mock_key",
         groq_api_key="mock_key",
         mistral_api_key="mock_key",

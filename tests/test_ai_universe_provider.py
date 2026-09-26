@@ -74,13 +74,15 @@ def test_ai_universe_provider_low_confidence_raises_error():
 
 
 def test_fallback_chain_includes_ai_universe_provider_as_last_resort():
-    """Factory constructs fallback chain: Groq -> Mistral -> OpenRouter -> AIUniverse."""
+    """Factory preserves peer fallback order and may prepend configured Gemini."""
     settings = Settings(
         env="testing",
         llm_provider="chain",
         groq_api_key="gsk-test",
         mistral_api_key="msk-test",
         openrouter_api_key="sk-or-test",
+        gemini_api_key="",
+        llm_api_key="",
         inference_url="http://localhost:8000",
         inference_api_key="friday-universe-key",
     )
@@ -88,4 +90,8 @@ def test_fallback_chain_includes_ai_universe_provider_as_last_resort():
     provider = create_llm_provider(settings)
     assert isinstance(provider, FallbackChainLLMProvider)
     provider_names = [p.provider_name for p in provider.providers]
-    assert provider_names == ["groq", "mistral", "openrouter", "ai_universe"]
+    assert provider_names[-4:] == ["groq", "mistral", "openrouter", "ai_universe"]
+    assert provider_names in (
+        ["groq", "mistral", "openrouter", "ai_universe"],
+        ["gemini", "groq", "mistral", "openrouter", "ai_universe"],
+    )

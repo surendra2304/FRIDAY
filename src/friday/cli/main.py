@@ -1,10 +1,12 @@
 import argparse
 import json
 import logging
+import os
 import sys
 import warnings
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 # Suppress noisy upstream Google GenAI SDK AFC warnings and COM threading warnings
 warnings.filterwarnings("ignore", message=".*automatic function calling.*")
@@ -34,6 +36,25 @@ import shutil
 
 logger = get_logger("cli")
 
+
+def _read_user_input(settings: Any) -> str:
+    """Read one interactive chat turn with clean Ctrl+C/EOF handling."""
+    try:
+        if _console is not None:
+            return _console.input(f"[bold green]{settings.user_name} > [/]").strip()
+        return input(f"{settings.user_name} > ").strip()
+    except (KeyboardInterrupt, EOFError):
+        raise
+
+
+def _normalize_voice_mode(args: argparse.Namespace) -> bool:
+    """Keep the legacy flag working as a quiet alias for the FRIDAY voice mode."""
+    if getattr(args, "local_voice", False):
+        args.voice = True
+        return True
+    return False
+
+
 FRIDAY_LOGO_LINES = [
     r"______ _____  _____ ______   ___  __   __",
     r"|  ___| ___ \|_   _||  _  \ / _ \ \ \ / /",
@@ -58,6 +79,13 @@ def render_friday_banner(version: str = "2.0.0") -> str:
     lines.append(f"Version {version}".center(width))
     lines.append("")
 
+    return "\n".join(lines)
+
+
+def render_voice_banner() -> str:
+    """Show FRIDAY's logo without version, tagline, or provider startup clutter."""
+    width = max(shutil.get_terminal_size((80, 20)).columns, 48)
+    lines = ["", *(line.center(width) for line in FRIDAY_LOGO_LINES), ""]
     return "\n".join(lines)
 
 
@@ -269,10 +297,10 @@ _active_status = {"obj": None}
 def render_status_panel() -> Text:
     """Generate clean latency text without any box or provider clutter."""
     st = global_timeline.get_status()
-    latency = st.get("last_latency_ms", 0.0)
+    latency = st.get("last_latency_ms")
 
     content = Text()
-    content.append(f"⏱ {latency:.1f}ms", style="dim green")
+    content.append(f"⏱ {latency:.1f}ms" if latency is not None else "⏱ —", style="dim green")
 
     return content
 
@@ -303,6 +331,8 @@ def main() -> None:
 Modes:
   python -m friday           Start in default interactive text conversation mode
   python -m friday --voice   Start direct Gemini Live real-time bidirectional voice mode
+  python -m friday --local-voice  Start FRIDAY voice mode
+                             Deprecated alias for --voice; audio is processed by Gemini Live
   python -m friday --doctor  Run system diagnostics and exit
   python -m friday --action-audit
                              List and validate registered safe action surface
@@ -310,7 +340,8 @@ Modes:
   python -m friday --debug   Enable verbose diagnostic logs in the console
 """,
     )
-    parser.add_argument("--voice", action="store_true", help="Start in real-time Gemini Live bidirectional voice mode")
+    parser.add_argument("--voice", action="store_true", help="Start in real-time Gemini Live bidirectional voice mode (uses configured provider/quota)")
+    parser.add_argument("--local-voice", action="store_true", help="Start FRIDAY voice mode")
     parser.add_argument("--doctor", action="store_true", help="Run FRIDAY system diagnostics and exit")
     parser.add_argument("--desktop", action="store_true", help="Launch the FRIDAY desktop UI overlay")
     parser.add_argument("--action-audit", action="store_true", help="List and validate FRIDAY's registered action surface")
@@ -324,6 +355,8 @@ Modes:
     parser.add_argument("--text", action="store_true", help="Start explicitly in interactive text conversation mode")
     parser.add_argument("--debug", action="store_true", help="Enable verbose debug logging in terminal console")
     args, unknown = parser.parse_known_args()
+
+    _normalize_voice_mode(args)
 
 
     if hasattr(sys.stdout, "reconfigure"):
@@ -429,9 +462,12 @@ Modes:
         uvicorn.run(app, host=host, port=port)
         return
 
-    # Perform one-time startup preflight check on Gemini pool if available
-    from friday.auth.credential_pool import credential_pool
-    credential_pool.preflight_check(model=settings.llm_model)
+    # Perform provider preflight only for Gemini Live voice. The configured text
+    # provider owns text request validation; a Gemini pool warning should not
+    # prevent an otherwise valid local text session from starting.
+    if voice_requested:
+        from friday.auth.credential_pool import credential_pool
+        credential_pool.preflight_check(model=settings.voice_live_model)
 
     agent = FridayAgent(
         settings=settings,
@@ -458,32 +494,24 @@ Modes:
     # Voice interface initialization
     # Activated either by --voice CLI flag or FRIDAY_VOICE_ENABLED=true in config (without --text override)
     is_voice_mode = voice_requested
-    if is_voice_mode and args.voice and not getattr(settings, "voice_enabled", False):
-        print("Voice mode enabled via CLI override (--voice; FRIDAY_VOICE_ENABLED is false).")
     if is_voice_mode:
         import asyncio
         import threading
 
-        print(render_friday_banner("0.4.6"))
-        print("  Starting Gemini Live Real-Time Voice Session...")
-        print("  Model: gemini-3.1-flash-live-preview | Input: 16kHz PCM | Output: 24kHz PCM")
-        if _console is not None:
-            _console.print("[bold green]Listening...[/bold green] speak naturally; transcripts print live. "
-                           "You can also TYPE a message")
-        else:
-            print("  Speak naturally; transcripts print live. You can also TYPE a message")
-        print("  and press Enter to send it to the session. Press Ctrl+C to end.\n")
+        print(render_voice_banner())
+        print("FRIDAY is starting...")
         try:
             from friday.voice.gemini_live_session import GeminiLiveVoiceSession
             from friday.voice.transcripts import LiveTranscriptPrinter
 
-            # Client-side RMS barge-in disabled completely; relying 100% on Google Server-Side VAD
             voice_session = GeminiLiveVoiceSession(
                 agent=agent,
                 credential_pool=credential_pool,
-                barge_in_rms_threshold=float("inf"),
-                local_barge_in_during_playback=False,
+                local_barge_in_during_playback=True,
             )
+            # Use the already-initialized Windows SAPI voice for concise local
+            # action receipts. Conversational audio remains Gemini Live audio.
+            native_tts.enabled = True
             printer = LiveTranscriptPrinter()
 
             loop = asyncio.new_event_loop()
@@ -516,10 +544,32 @@ Modes:
                 """Make FRIDAY speak first with a brief opening greeting."""
                 await voice_session._connected_event.wait()
                 try:
+                    await asyncio.sleep(0.15)
                     await voice_session.send_text("Start the conversation by greeting me briefly.")
-                    logger.info("Sent initial voice greeting prompt.")
+                    print("Connected. FRIDAY is listening; say ‘stop’ or press Ctrl+C to exit.")
                 except Exception as e:
-                    logger.warning(f"Could not send initial greeting prompt: {e}")
+                    print(f"Connected, but FRIDAY could not start its greeting: {e}")
+                    logger.warning(f"Could not send initial voice greeting prompt: {e}")
+
+            async def _proactive_notification_listener() -> None:
+                """Speak verified local alerts only while FRIDAY is ready for a new turn."""
+                from friday.voice.gemini_live_session import LiveSessionState
+
+                await voice_session._connected_event.wait()
+                while not voice_task.done():
+                    await asyncio.sleep(1.0)
+                    if voice_session.state != LiveSessionState.CONNECTED:
+                        continue
+                    summary = agent.get_proactive_announcement()
+                    if not summary:
+                        continue
+                    try:
+                        await voice_session.send_text(
+                            "Give the user a brief spoken update based only on this verified local system notification. "
+                            f"Do not add facts: {summary}"
+                        )
+                    except Exception as e:
+                        logger.warning(f"Could not deliver a local system notification: {e}")
 
             # Graceful shutdown: run the live loop as a task so Ctrl+C can
             # cancel-and-drain it, letting the session's finally blocks close
@@ -530,7 +580,9 @@ Modes:
                 on_server_content=printer.on_server_content,
                 echo_mute=True,
             ))
+            agent.start_proactive_monitoring()
             greeting_task = loop.create_task(_greet_on_connect())
+            notification_task = loop.create_task(_proactive_notification_listener())
             try:
                 loop.run_until_complete(voice_task)
                 logger.info("Live Voice session ended.")
@@ -538,18 +590,20 @@ Modes:
                 print("\nVoice session stopped. Good day, Surendra.")
                 voice_task.cancel()
                 greeting_task.cancel()
+                notification_task.cancel()
                 try:
                     loop.run_until_complete(voice_task)
                 except BaseException:
                     pass
             finally:
-                for t in (greeting_task, voice_task):
+                for t in (notification_task, greeting_task, voice_task):
                     if not t.done():
                         t.cancel()
                         try:
                             loop.run_until_complete(t)
                         except BaseException:
                             pass
+                agent.stop_proactive_monitoring()
                 try:
                     loop.run_until_complete(loop.shutdown_asyncgens())
                 except Exception:
@@ -570,10 +624,7 @@ Modes:
 
     while True:
         try:
-            if _console is not None:
-                user_input = _console.input(f"[bold green]{settings.user_name} > [/]").strip()
-            else:
-                user_input = input(f"{settings.user_name} > ").strip()
+            user_input = _read_user_input(settings)
         except (KeyboardInterrupt, EOFError):
             print(f"\nShutting down FRIDAY. Good day, {settings.user_name}.")
             break
@@ -755,7 +806,7 @@ Modes:
         try:
             start_t = datetime.now()
 
-            # 1. Fast-Path: Master Windows FRIDAY Laptop Directive (0ms native OS execution)
+            # 1. Fast-Path: Master Windows FRIDAY Laptop Directive (local OS execution)
             handled, friday_reply, friday_meta = windows_friday.handle_directive(user_input)
             if handled:
                 elapsed_ms = (datetime.now() - start_t).total_seconds() * 1000.0

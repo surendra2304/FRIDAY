@@ -39,7 +39,12 @@ class SendWhatsAppMessageTool(BaseTool):
         "a connected Android phone via ADB intent dispatch if available, or launches "
         "WhatsApp Web/Desktop on Windows."
     )
-    safety_level = SafetyLevel.SAFE
+    # Sending is an external side effect; the registry must require a scoped
+    # authorization capability before Android can press Send or a URL is opened.
+    safety_level = SafetyLevel.SENSITIVE
+    risk_level = "SENSITIVE"
+    auth_requirement = "USER"
+    side_effects = ["external_message"]
     parameters = {
         "type": "object",
         "properties": {

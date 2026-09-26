@@ -56,7 +56,9 @@ class ProposeComputerActionTool(BaseTool):
 
     def __init__(self, autonomous: bool = False) -> None:
         super().__init__()
-        self.autonomous = autonomous
+        # Kept for constructor compatibility; direct screen I/O remains disabled
+        # until the tool is wired through an explicit authorization boundary.
+        self.autonomous = False
         self.last_proposal: ComputerActionProposal | None = None
 
     def execute(

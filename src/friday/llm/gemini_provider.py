@@ -564,7 +564,12 @@ class GeminiLLMProvider(BaseLLMProvider):
 
                 # Report failure to credential pool if using pool
                 failed_key = active_key or self._current_key
-                if use_pool and self.credential_pool and failed_key:
+                if (
+                    use_pool
+                    and self.credential_pool
+                    and failed_key
+                    and category not in (FailureCategory.MODEL_NOT_FOUND, FailureCategory.INVALID_REQUEST)
+                ):
                     self.credential_pool.report_failure(failed_key, error=e)
 
                 # 1. Model Fallback Handling:

@@ -41,7 +41,8 @@ def test_seven_system_registry_registration_and_health():
         assert sub in health["subsystems"], f"Subsystem {sub} missing in health check!"
         assert sub in status["subsystems"], f"Subsystem {sub} missing in status report!"
 
-    assert health["overall_health"] == "HEALTHY"
+    assert health["overall_health"] == "UNVERIFIED"
+    assert health["all_healthy"] is None
 
 
 def test_unified_status_skill_seven_systems_report():
@@ -52,18 +53,14 @@ def test_unified_status_skill_seven_systems_report():
     res_everything = skill.execute("Status of everything")
     assert res_everything.success is True
     out_all = res_everything.output
-    assert "Algorithmic Trading Bot" in out_all
-    assert "FORGE Software Engineering Engine" in out_all
-    assert "AI-Universe Multi-LLM" in out_all
-    assert "Nexus Autonomous Growth" in out_all
-    assert "Sentinel Autonomous Security" in out_all
-    assert "IntelX Autonomous Deep Research" in out_all
-    assert "FRIDAY Central Multimodal" in out_all
+    assert "# FRIDAY Universe Status" in out_all
+    assert "UNVERIFIED" in out_all
+    assert "live reachability was not tested" in out_all
 
     # 2. "Health of my systems"
     res_health = skill.execute("Health of my systems")
     assert res_health.success is True
-    assert "Ecosystem Health Audit" in res_health.output
+    assert "# FRIDAY Universe Status" in res_health.output
 
     # 3. "Brief me"
     res_brief = skill.execute("Brief me")
@@ -77,13 +74,14 @@ def test_master_daily_briefing_workflow_seven_systems():
     # Morning briefing
     morning = briefing_wf.generate_morning_briefing()
     assert morning.briefing_type == "MORNING"
-    assert "IntelX holds 42 verified research findings" in morning.spoken_summary
-    assert "5. IntelX Autonomous Deep Research" in morning.markdown_report
+    assert "no verified trading, lead, research, or forecast figures" in morning.spoken_summary
+    assert "## Friday Universe service status" in morning.markdown_report
+    assert "No live health/status probe is configured" in morning.markdown_report
 
     # Evening briefing
     evening = briefing_wf.generate_evening_briefing()
     assert evening.briefing_type == "EVENING"
-    assert "Daily Ecosystem Accomplishments" in evening.markdown_report
+    assert "no verified event feed is connected" in evening.markdown_report
 
 
 def test_cross_system_research_and_trading_workflows():

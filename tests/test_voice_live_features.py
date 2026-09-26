@@ -33,8 +33,9 @@ def test_type_text_sends_escaped_literal(monkeypatch):
         captured["kwargs"] = kwargs
 
     monkeypatch.setattr(tt, "_get_send_keys", lambda: fake_send_keys)
+    monkeypatch.setattr(tt, "_focus_window", lambda title: True)
     tool = TypeTextTool()
-    result = tool.execute(text="Hello (world) + more")
+    result = tool.execute(text="Hello (world) + more", window_title="Notepad")
     assert result.is_error is False
     assert captured["sequence"] == "Hello {(}world{)} {+} more"
     assert captured["kwargs"]["with_spaces"] is True
@@ -51,7 +52,7 @@ def test_type_text_empty_and_unavailable(monkeypatch):
         raise ImportError("no pywinauto")
 
     monkeypatch.setattr(tt, "_get_send_keys", broken)
-    unavailable = tool.execute(text="hi")
+    unavailable = tool.execute(text="hi", window_title="Notepad")
     assert unavailable.is_error is True
     assert "unavailable" in unavailable.content
 
@@ -103,6 +104,34 @@ def test_printer_streams_both_sides_in_order(capsys):
     # No duplicate fallback lines (both sides streamed live)
     assert out.count("You:") == 1
     assert out.count("FRIDAY:") == 1
+
+
+def test_live_voice_latency_is_measured_from_transcript_to_completed_turn(monkeypatch):
+    from friday.observability.timeline import global_timeline
+    from friday.voice.transcripts import LiveTranscriptPrinter
+
+    ticks = iter((10.0, 10.275))
+    printer = LiveTranscriptPrinter(clock=lambda: next(ticks))
+    global_timeline.update_status(last_latency_ms=None)
+    printer.on_server_content(_sc(input_tx="Open Chrome."))
+    printer.on_turn_complete("Open Chrome.", "Could not open Chrome.")
+    assert global_timeline.get_status()["last_latency_ms"] == pytest.approx(275.0)
+
+
+def test_status_panel_does_not_fake_zero_latency_before_a_measured_turn():
+    from friday.observability.timeline import ExecutionTimeline
+    import importlib
+    cli_main = importlib.import_module("friday.cli.main")
+
+    timeline_module = __import__("friday.observability.timeline", fromlist=["global_timeline"])
+    original = timeline_module.global_timeline
+    timeline_module.global_timeline = ExecutionTimeline()
+    cli_main.global_timeline = timeline_module.global_timeline
+    try:
+        assert "⏱ —" in cli_main.render_status_panel().plain
+    finally:
+        timeline_module.global_timeline = original
+        cli_main.global_timeline = original
 
 
 def test_printer_fallback_when_nothing_streamed(capsys):
@@ -248,9 +277,9 @@ def test_type_text_focus_failure_types_into_current_focus(monkeypatch):
 
     monkeypatch.setattr(tt, "_get_send_keys", lambda: fake_send_keys)
     result = tt.TypeTextTool().execute(text="hello", window_title="Missing App")
-    assert result.is_error is False
-    assert events, "typing still happens when focus fails (best effort)"
-    assert "current focus" in result.content
+    assert result.is_error is True
+    assert not events, "keystrokes must be aborted when the intended window cannot be focused"
+    assert "aborted for security" in result.content
 
 
 def test_focus_window_matches_title_substring_and_sleeps(monkeypatch):
@@ -314,14 +343,24 @@ class _FakeWin:
 
 
 def test_close_application_finds_and_closes(monkeypatch):
+    import sys
+    from types import SimpleNamespace
     from friday.tools.builtin import close_application as ca
 
-    notepad = _FakeWin("Untitled - Notepad")
-    monkeypatch.setattr(ca, "_find_window", lambda t: notepad if "notepad" == t else None)
+    state = {"open": True}
+
+    def matching(_title):
+        return [100] if state["open"] else []
+
+    def post_message(_hwnd, _message, _wparam, _lparam):
+        state["open"] = False
+
+    monkeypatch.setattr(ca, "_native_matching_windows", matching)
+    monkeypatch.setitem(sys.modules, "win32gui", SimpleNamespace(PostMessage=post_message))
+    monkeypatch.setitem(sys.modules, "win32con", SimpleNamespace(WM_CLOSE=16))
     result = ca.CloseApplicationTool().execute(window_title="notepad")
     assert result.is_error is False
-    assert result.content == "Closed notepad."
-    assert notepad.closed is True
+    assert "Windows confirmed no matching visible window remains" in result.content
 
 
 def test_close_application_not_found():
@@ -354,7 +393,11 @@ def test_close_application_registered_and_declared():
     names = {s.get("function", s).get("name") for s in agent.tools.get_schemas()}
     assert "close_application" in names
     session = GeminiLiveVoiceSession(api_key="TEST", agent=agent)
-    assert session._build_tools_config() is None
+    config = session._build_tools_config()
+    assert config
+    declared = {fn.name for tool in config for fn in tool.function_declarations}
+    assert "open_application" in declared
+    assert "close_application" in declared
 
 
 def test_console_logging_error_only_by_default():
@@ -414,8 +457,8 @@ def test_missing_env_vars_fall_back_to_safe_defaults(monkeypatch):
     assert s.groq_api_key is None and s.mistral_api_key is None
 
 
-def test_cli_voice_override_message(monkeypatch, capsys):
-    """--voice with FRIDAY_VOICE_ENABLED=false prints the override explanation."""
+def test_cli_voice_override_message_is_omitted_from_startup(monkeypatch, capsys):
+    """--voice starts with FRIDAY branding, without config/deprecation notices."""
     import sys as _sys
     from unittest import mock as _mock
 
@@ -435,7 +478,12 @@ def test_cli_voice_override_message(monkeypatch, capsys):
         main()
 
     out = capsys.readouterr().out
-    assert "Voice mode enabled via CLI override" in out
+    assert "FRIDAY" in out
+    assert "______ _____" in out  # Keep the FRIDAY logo as the visual startup identity.
+    assert "fully responsive" not in out.casefold()
+    assert "Microphone audio is sent" not in out
+    assert "Voice mode enabled via CLI override" not in out
+    assert "deprecated" not in out
 
 
 # ---------------------------------------------------------------------------

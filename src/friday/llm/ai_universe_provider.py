@@ -52,7 +52,7 @@ class AIUniverseLLMProvider(BaseLLMProvider):
             or os.getenv("INFERENCE_API_KEY")
             or os.getenv("FRIDAY_INFERENCE_API_KEY")
             or getattr(st, "inference_api_key", None)
-            or "inference_api"
+            or ""
         )
         self.api_key = final_key
         self.client = AIUniverseClient(base_url=final_url, api_key=final_key)

@@ -150,56 +150,66 @@ class FridayDoctor:
             )
 
     def diagnose_credential_pool(self) -> ComponentHealth:
-        """Audit primary and fallback credential availability and cooldown statuses."""
+        """Report configured Gemini credentials without implying they were network-tested."""
         try:
             from friday.auth.credential_pool import GeminiCredentialPool
-            pool = GeminiCredentialPool()
-            
-            configured_keys = [
+
+            raw_configured_keys = [
                 self.settings.gemini_api_key,
                 getattr(self.settings, "gemini_fallback_api_key_1", None),
                 getattr(self.settings, "gemini_fallback_api_key_2", None),
                 getattr(self.settings, "gemini_fallback_api_key_3", None),
+                getattr(self.settings, "gemini_fallback_api_key_4", None),
             ]
-            valid_keys = [k for k in configured_keys if k and str(k).strip()]
-            
-            # If nothing in settings, check environment
-            if not valid_keys:
-                env_keys = [
-                    os.getenv("FRIDAY_GEMINI_API_KEY", ""),
-                    os.getenv("FRIDAY_GEMINI_API_KEY", ""),
-                    os.getenv("FRIDAY_GEMINI_FALLBACK_API_KEY_1", ""),
-                ]
-                valid_keys = [k for k in env_keys if k and str(k).strip()]
+            env_names = ["FRIDAY_GEMINI_API_KEY", "GEMINI_API_KEY"]
+            env_names.extend(
+                name
+                for index in range(1, 10)
+                for name in (f"FRIDAY_GEMINI_FALLBACK_API_KEY_{index}", f"GEMINI_FALLBACK_API_KEY_{index}")
+            )
+            raw_configured_keys.extend(os.getenv(name) for name in env_names)
+            configured_keys = {
+                item.strip()
+                for raw_value in raw_configured_keys
+                if raw_value
+                for item in str(raw_value).split(",")
+                if item.strip()
+            }
 
-            if not valid_keys:
+            # The runtime pool reads every configured fallback slot (and the
+            # resolved local env file), rather than stopping at four settings.
+            pool = (
+                GeminiCredentialPool(keys=sorted(configured_keys))
+                if self.settings.env == "testing"
+                else GeminiCredentialPool()
+            )
+            configured_keys.update(credential.api_key for credential in pool.credentials)
+
+            if not configured_keys:
                 return ComponentHealth(
                     name="credential_pool",
                     status=DiagnosticStatus.UNAVAILABLE,
-                    message="Zero API credentials configured.",
-                    remediation="Set GEMINI_API_KEY in environment or .env file.",
+                    message="No Gemini credentials are configured.",
+                    remediation="Configure the Gemini provider pool in the local environment.",
                 )
 
-            pool.load_keys(valid_keys)
-            total = len(pool.credentials)
-            available = sum(1 for c in pool.credentials if c.is_healthy(max_failures=3))
-            in_cooldown = sum(1 for c in pool.credentials if not c.is_healthy(max_failures=3))
-
-            if available == 0:
-                return ComponentHealth(
-                    name="credential_pool",
-                    status=DiagnosticStatus.COOLDOWN,
-                    message=f"All {total} credentials exhausted or in cooldown.",
-                    details={"total": total, "available": 0, "cooldown": in_cooldown},
-                    remediation="Wait for cooldown expiry or configure additional fallback keys.",
-                )
-
-            status = DiagnosticStatus.AVAILABLE if available == total else DiagnosticStatus.DEGRADED
+            cooldown_count = sum(
+                1 for credential in pool.credentials if not credential.is_healthy(max_failures=3)
+            )
             return ComponentHealth(
                 name="credential_pool",
-                status=status,
-                message=f"{available}/{total} credentials active.",
-                details={"total": total, "available": available, "cooldown": in_cooldown},
+                status=(
+                    DiagnosticStatus.COOLDOWN
+                    if cooldown_count and pool.credentials and cooldown_count == len(pool.credentials)
+                    else DiagnosticStatus.CONFIGURED
+                ),
+                message=f"{len(configured_keys)} Gemini credentials configured; provider connectivity was not tested.",
+                details={
+                    "configured": len(configured_keys),
+                    "local_cooldown_count": cooldown_count,
+                    "provider_connectivity_checked": False,
+                },
+                remediation="Run a metered provider preflight to verify credentials and current quota." if cooldown_count else None,
             )
         except Exception as e:
             return ComponentHealth(
@@ -216,31 +226,49 @@ class FridayDoctor:
                 return ComponentHealth(
                     name="llm_provider",
                     status=DiagnosticStatus.CONFIGURED,
-                    message="Mock LLM provider active (Offline testing mode).",
+                    message="Mock LLM provider configured (offline testing mode).",
                     details={"provider": "mock", "model": getattr(self.settings, "gemini_model", None) or self.settings.llm_model},
                 )
 
             if provider == "gemini":
-                has_key = bool(self.settings.gemini_api_key or os.getenv("FRIDAY_GEMINI_API_KEY"))
+                gemini_pool = self.diagnose_credential_pool()
+                if gemini_pool.status == DiagnosticStatus.UNAVAILABLE:
+                    return ComponentHealth(
+                        name="llm_provider",
+                        status=DiagnosticStatus.UNAVAILABLE,
+                        message="Gemini provider selected but no credentials are configured.",
+                        remediation="Configure the Gemini provider pool in the local environment.",
+                    )
+                return ComponentHealth(
+                    name="llm_provider",
+                    status=DiagnosticStatus.CONFIGURED,
+                    message=f"Gemini LLM provider configured ({self.settings.llm_model}); live connectivity was not tested.",
+                    details={"provider": "gemini", "model": self.settings.llm_model, "credentials": gemini_pool.details.get("configured", 0)},
+                )
+
+            provider_key_envs = {
+                "groq": ("groq_api_key", ("FRIDAY_GROQ_API_KEY", "GROQ_API_KEY")),
+                "openrouter": ("openrouter_api_key", ("FRIDAY_OPENROUTER_API_KEY", "OPENROUTER_API_KEY")),
+                "mistral": ("mistral_api_key", ("FRIDAY_MISTRAL_API_KEY", "MISTRAL_API_KEY")),
+                "openai": ("llm_api_key", ("FRIDAY_OPENAI_API_KEY", "OPENAI_API_KEY")),
+                "inference": ("inference_api_key", ("FRIDAY_INFERENCE_API_KEY", "INFERENCE_API_KEY")),
+            }
+            if provider in provider_key_envs:
+                setting_name, env_names = provider_key_envs[provider]
+                has_key = bool(getattr(self.settings, setting_name, None)) or any(os.getenv(name) for name in env_names)
                 if not has_key:
                     return ComponentHealth(
                         name="llm_provider",
                         status=DiagnosticStatus.UNAVAILABLE,
-                        message="Gemini provider configured but API key is missing.",
-                        remediation="Set GEMINI_API_KEY in environment.",
+                        message=f"LLM provider '{provider}' is selected but has no configured credential.",
+                        remediation=f"Configure credentials for the {provider} provider.",
                     )
-                return ComponentHealth(
-                    name="llm_provider",
-                    status=DiagnosticStatus.AVAILABLE,
-                    message=f"Gemini LLM Provider ready ({self.settings.llm_model}).",
-                    details={"provider": "gemini", "model": self.settings.llm_model},
-                )
 
             return ComponentHealth(
                 name="llm_provider",
-                status=DiagnosticStatus.AVAILABLE,
-                message=f"LLM Provider '{provider}' configured.",
-                details={"provider": provider},
+                status=DiagnosticStatus.CONFIGURED,
+                message=f"LLM provider '{provider}' configured; live connectivity was not tested.",
+                details={"provider": provider, "connectivity_checked": False},
             )
         except Exception as e:
             return ComponentHealth(
@@ -286,8 +314,8 @@ class FridayDoctor:
 
             return ComponentHealth(
                 name="voice_audio",
-                status=DiagnosticStatus.AVAILABLE,
-                message="Microphone and Speaker hardware detected and ready.",
+                status=DiagnosticStatus.CONFIGURED,
+                message="Microphone and speaker devices detected; audio capture/playback was not tested.",
                 details=info,
             )
         except Exception as e:
@@ -307,8 +335,8 @@ class FridayDoctor:
             h = user32.GetSystemMetrics(1) or 1080
             return ComponentHealth(
                 name="screen_capture",
-                status=DiagnosticStatus.AVAILABLE,
-                message=f"{monitor_count} monitor(s) detected ({w}x{h} virtual screen).",
+                status=DiagnosticStatus.CONFIGURED,
+                message=f"{monitor_count} monitor(s) detected ({w}x{h}); frame capture was not tested.",
                 details={"monitor_count": monitor_count, "primary_width": w, "primary_height": h},
             )
         except Exception as e:
@@ -322,17 +350,24 @@ class FridayDoctor:
     def diagnose_vision_provider(self) -> ComponentHealth:
         """Audit multimodal vision perception provider."""
         try:
-            has_gemini = bool(self.settings.gemini_api_key or os.getenv("FRIDAY_GEMINI_API_KEY"))
-            if self.settings.env == "testing" or not has_gemini:
+            if self.settings.env == "testing":
                 return ComponentHealth(
                     name="vision_provider",
                     status=DiagnosticStatus.CONFIGURED,
-                    message="Offline / Mock multimodal perception provider active.",
+                    message="Offline / mock multimodal perception mode configured; no live model check was run.",
+                )
+            gemini_pool = self.diagnose_credential_pool()
+            if gemini_pool.status == DiagnosticStatus.UNAVAILABLE:
+                return ComponentHealth(
+                    name="vision_provider",
+                    status=DiagnosticStatus.UNAVAILABLE,
+                    message="Gemini Vision selected but no Gemini credentials are configured.",
+                    remediation="Configure the Gemini provider pool in the local environment.",
                 )
             return ComponentHealth(
                 name="vision_provider",
-                status=DiagnosticStatus.AVAILABLE,
-                message="Gemini Vision Provider active.",
+                status=DiagnosticStatus.CONFIGURED,
+                message="Gemini Vision credentials configured; live model connectivity was not tested.",
             )
         except Exception as e:
             return ComponentHealth(
@@ -374,8 +409,8 @@ class FridayDoctor:
         """Audit background task manager and execution worker pool."""
         return ComponentHealth(
             name="task_manager",
-            status=DiagnosticStatus.AVAILABLE,
-            message="Background execution engine and checkpoint store operational.",
+            status=DiagnosticStatus.CONFIGURED,
+            message="Task manager component is available; no background job or checkpoint round-trip was tested.",
         )
 
     def diagnose_safety_system(self) -> ComponentHealth:
@@ -400,9 +435,9 @@ class FridayDoctor:
                 )
             return ComponentHealth(
                 name="forge_engine",
-                status=DiagnosticStatus.AVAILABLE,
-                message=f"FORGE Software Engineering Engine active ({forge_url}).",
-                details={"api_url": forge_url, "hmac_signing": "ENABLED"},
+                status=DiagnosticStatus.CONFIGURED,
+                message=f"FORGE endpoint configured ({forge_url}); reachability was not probed.",
+                details={"api_url": forge_url, "reachability_checked": False},
             )
         except Exception as e:
             return ComponentHealth(
@@ -418,8 +453,8 @@ class FridayDoctor:
             shield = AgentShield()
             return ComponentHealth(
                 name="agent_shield",
-                status=DiagnosticStatus.AVAILABLE,
-                message="AgentShield security engine active (prompt injection defense & secret scanning).",
+                status=DiagnosticStatus.CONFIGURED,
+                message="AgentShield component initialized; no prompt-injection or secret-scan test was run.",
             )
         except Exception as e:
             return ComponentHealth(
@@ -471,8 +506,10 @@ class FridayDoctor:
             overall = DiagnosticStatus.ERROR
         elif DiagnosticStatus.COOLDOWN in statuses or DiagnosticStatus.DEGRADED in statuses or DiagnosticStatus.UNAVAILABLE in statuses:
             overall = DiagnosticStatus.DEGRADED
-        elif all(s in (DiagnosticStatus.AVAILABLE, DiagnosticStatus.CONFIGURED) for s in statuses):
+        elif all(s == DiagnosticStatus.AVAILABLE for s in statuses):
             overall = DiagnosticStatus.AVAILABLE
+        elif all(s in (DiagnosticStatus.AVAILABLE, DiagnosticStatus.CONFIGURED) for s in statuses):
+            overall = DiagnosticStatus.CONFIGURED
         else:
             overall = DiagnosticStatus.CONFIGURED
 

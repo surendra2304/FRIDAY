@@ -57,7 +57,8 @@ class NativeTTS:
             return cls._instance
 
     def _init_tts(self) -> None:
-        self.enabled = False
+        if not hasattr(self, "enabled"):
+            self.enabled = False
         self._speech_queue: queue.Queue[tuple[str, bool]] = queue.Queue()
         self._stop_event = threading.Event()
         self._worker_thread = threading.Thread(

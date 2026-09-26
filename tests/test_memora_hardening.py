@@ -16,6 +16,72 @@ def test_memora_remote_disabled_by_default():
         assert client.remote_enabled is False
 
 
+def test_memora_cloud_is_default_when_friday_agent_key_is_configured(monkeypatch):
+    monkeypatch.setenv("FRIDAY_API_KEY", "friday-test-key")
+    monkeypatch.delenv("FRIDAY_MEMORA_REMOTE_ENABLED", raising=False)
+    assert MemoraClient(local_db_path=":memory:").remote_enabled is True
+
+
+def test_memora_interaction_writes_cloud_before_local_fallback(monkeypatch):
+    import json
+
+    captured = {}
+
+    class Response:
+        status = 201
+        def __enter__(self):
+            return self
+        def __exit__(self, *_):
+            return False
+        def read(self):
+            return b'{"status":"success","recorded_count":1}'
+
+    def fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        captured["headers"] = request.headers
+        captured["payload"] = json.loads(request.data.decode())
+        return Response()
+
+    monkeypatch.setenv("FRIDAY_API_KEY", "friday-test-key")
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    client = MemoraClient(local_db_path=":memory:")
+    client._record_locally = lambda *_args, **_kwargs: pytest.fail("local storage ran before cloud write")
+
+    result = client.record_interaction("friday", "hello", "hi")
+
+    assert result["status"] == "success"
+    assert captured["url"].endswith("/v1/memories/record-interaction")
+    assert captured["headers"]["Authorization"] == "Bearer friday-test-key"
+    assert captured["payload"]["user_text"] == "hello"
+
+
+def test_memora_event_poll_uses_friday_key_and_cursor(monkeypatch):
+    captured = {}
+
+    class Response:
+        status = 200
+        def __enter__(self):
+            return self
+        def __exit__(self, *_):
+            return False
+        def read(self):
+            return b'{"events":[],"next_after_id":7,"has_more":false}'
+
+    def fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        captured["headers"] = request.headers
+        captured["timeout"] = timeout
+        return Response()
+
+    monkeypatch.setenv("FRIDAY_API_KEY", "friday-test-key")
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    client = MemoraClient(base_url="https://memora.invalid", api_key="memora-server-key", remote_enabled=True)
+    result = client.poll_events("friday", after_id=6)
+    assert result["status"] == "ok"
+    assert "after_id=6" in captured["url"]
+    assert captured["headers"]["Authorization"] == "Bearer friday-test-key"
+
+
 def test_memora_sanitizes_credentials_before_persistence():
     """Verify raw API keys and secrets are redacted before persistence."""
     client = MemoraClient(local_db_path=":memory:")

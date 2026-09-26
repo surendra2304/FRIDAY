@@ -48,6 +48,10 @@ class TestClassifyInstantCommand:
         assert agent.classify_instant_command("open notepad and type hello world") == "notepad_type"
         assert agent.classify_instant_command("search telugu movies in chrome") == "chrome_search"
         assert agent.classify_instant_command("close chrome") == "close_chrome"
+        assert agent.classify_instant_command("close the tab") == "close_chrome_tab"
+        assert agent.classify_instant_command("close the Chrome tab") == "close_chrome_tab"
+        assert agent.classify_instant_command("close that tab in Chrome") == "close_chrome_tab"
+        assert agent.classify_instant_command("close the Chrome") == "close_chrome"
         assert agent.classify_instant_command("open settings") in ("open_settings", "semantic_ui")
         assert agent.classify_instant_command("open calculator") in ("open_calculator", "semantic_ui", None)
         assert agent.classify_instant_command("move mouse cursor to center of screen") == "deterministic"
@@ -157,7 +161,7 @@ class TestTypedInputRouting:
 
 
 @pytest.mark.anyio
-async def test_instant_command_executes_locally_and_sends_result():
+async def test_instant_command_executes_locally_without_second_model_turn(monkeypatch):
     agent = _make_agent()
     agent.process_message = mock.MagicMock(
         return_value=mock.MagicMock(content="It is 3:30 PM.")
@@ -166,6 +170,9 @@ async def test_instant_command_executes_locally_and_sends_result():
     session._active = True
     session._session = mock.MagicMock()
     session._session.send_realtime_input = mock.AsyncMock()
+    speech = mock.Mock()
+    from friday.cli.main import native_tts
+    monkeypatch.setattr(native_tts, "speak", speech)
 
     spk = MockSpeakerStream()
     turns = []
@@ -177,11 +184,53 @@ async def test_instant_command_executes_locally_and_sends_result():
     )
 
     agent.process_message.assert_called_once_with("what time is it")
-    # Result sent back to Live model for speaking
-    session._session.send_realtime_input.assert_called_once()
-    sent_text = session._session.send_realtime_input.call_args.kwargs.get("text", "")
-    assert "It is 3:30 PM." in sent_text
+    # FRIDAY speaks the verified local result directly; it must not wait on a
+    # second Gemini turn that may never arrive.
+    session._session.send_realtime_input.assert_not_called()
+    speech.assert_called_once()
     assert turns == [("what time is it", "It is 3:30 PM.")]
+
+
+@pytest.mark.anyio
+async def test_live_tool_call_for_instant_command_is_not_executed_twice(monkeypatch):
+    from types import SimpleNamespace
+
+    agent = _make_agent()
+    agent.process_message = mock.MagicMock(return_value=mock.MagicMock(content="Closed the tab."))
+    agent._execute_single_tool_call = mock.MagicMock(side_effect=AssertionError("duplicate desktop action"))
+    session = GeminiLiveVoiceSession(api_key="TEST_KEY", agent=agent)
+    session._active = True
+    session._session = mock.MagicMock()
+    session._session.send_tool_response = mock.AsyncMock()
+    from friday.cli.main import native_tts
+    monkeypatch.setattr(native_tts, "speak", mock.Mock())
+
+    function_call = SimpleNamespace(name="close_application", id="model-call-1", args={"window_title": "Chrome"})
+    message = MockGenAIServerMessage(
+        server_content=mock.MagicMock(
+            turn_complete=True,
+            input_transcription=_MsgTx("close the tab"),
+            output_transcription=None,
+            interrupted=False,
+            model_turn=None,
+        )
+    )
+    message.tool_call = SimpleNamespace(function_calls=[function_call])
+
+    class ToolCallSession:
+        send_tool_response = mock.AsyncMock()
+
+        async def receive(self):
+            yield message
+
+    await session._audio_receiver_loop(
+        ToolCallSession(), MockSpeakerStream(), lambda *_: None, asyncio.Event()
+    )
+
+    agent.process_message.assert_called_once_with("close the tab")
+    agent._execute_single_tool_call.assert_not_called()
+    response = ToolCallSession.send_tool_response.call_args.kwargs["function_responses"][0]
+    assert response.response["status"] == "handled_locally"
 
 
 @pytest.mark.anyio
@@ -344,3 +393,33 @@ async def test_interrupted_turn_does_not_commit_to_memory():
     )
 
     assert turns == [], "interrupted turn must not produce a turn callback"
+
+
+def test_close_tab_uses_local_handler_and_returns_verified_receipt(monkeypatch):
+    from friday.devices import app_launcher
+
+    monkeypatch.setattr(
+        app_launcher,
+        "close_active_chrome_tab",
+        lambda: (True, "Closed the active Chrome tab; Windows confirmed its window closed."),
+    )
+    result = _make_agent().process_message("close the tab")
+
+    assert result.metadata["direct_desktop_action"] == "close_chrome_tab"
+    assert result.metadata["success"] is True
+    assert "Windows confirmed" in result.content
+
+
+def test_close_tab_failure_is_reported_without_false_success(monkeypatch):
+    from friday.devices import app_launcher
+
+    monkeypatch.setattr(
+        app_launcher,
+        "close_active_chrome_tab",
+        lambda: (False, "Chrome is not the active window; I left the current tab unchanged."),
+    )
+    result = _make_agent().process_message("close the tab")
+
+    assert result.metadata["direct_desktop_action"] == "close_chrome_tab"
+    assert result.metadata["success"] is False
+    assert "left the current tab unchanged" in result.content

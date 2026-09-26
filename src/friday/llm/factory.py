@@ -66,7 +66,7 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
             or (credential_pool and len(getattr(credential_pool, "credentials", [])) > 0)
         )
         if not has_keys and not has_explicit:
-            logger.info("Direct Gemini API key not configured; using live Inference Cloud Gateway (25 Keys).")
+            logger.info("Direct Gemini API key not configured; using the configured Inference Gateway provider pool.")
             url = getattr(settings, "inference_url", None) or os.getenv("FRIDAY_INFERENCE_URL") or "https://forge-e9kl.onrender.com"
             key = getattr(settings, "inference_api_key", None) or os.getenv("FRIDAY_INFERENCE_API_KEY") or ""
             return AIUniverseLLMProvider(base_url=url, api_key=key)
@@ -196,7 +196,7 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
             getattr(settings, "inference_api_key", None)
             or os.getenv("INFERENCE_API_KEY")
             or os.getenv("FRIDAY_INFERENCE_API_KEY")
-            or "inference_api"
+            or ""
         )
         
         chain_providers.append(

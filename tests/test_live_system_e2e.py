@@ -100,13 +100,15 @@ def test_e2e_android_api_endpoints(client):
     res = client.post("/api/android", json={"action": "info"})
     assert res.status_code == 200
     data = res.json()
-    assert data.get("success") is True
     assert "devices" in data
+    assert data.get("success") is bool(data["devices"])
 
     # Test key event dispatch
     key_res = client.post("/api/android", json={"action": "key", "params": {"key": "home"}})
     assert key_res.status_code == 200
     assert "success" in key_res.json()
+    if not android.is_connected():
+        assert key_res.json()["success"] is False
 
 
 def test_e2e_command_fastpaths(client):
@@ -134,13 +136,16 @@ def test_e2e_websocket_hand_gestures(client):
         ws.send_json({"type": "gesture", "gesture": "swipe_left"})
         resp = ws.receive_json()
         assert resp["type"] == "status"
-        assert "PC Action" in resp["message"]
+        assert "Left Gesture:" in resp["message"]
 
         # Swipe Up (Android Mobile)
         ws.send_json({"type": "gesture", "gesture": "swipe_up_android"})
         resp_android = ws.receive_json()
         assert resp_android["type"] == "status"
-        assert "Android Action" in resp_android["message"]
+        if not android.is_connected():
+            assert "no ADB device is connected" in resp_android["message"]
+        else:
+            assert "Android Action" in resp_android["message"]
 
         # Ping
         ws.send_json({"type": "ping"})

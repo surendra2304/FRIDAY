@@ -12,6 +12,7 @@ clear cache corruption) and pre-flight startup configuration verification.
 """
 
 import os
+import importlib.util
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -59,16 +60,17 @@ class FridayDoctorEnhanced:
     # =========================================================================
 
     def run_preflight_check(self) -> PreFlightCheckResult:
-        """Audits environment and configurations prior to system boot."""
+        """Check actual local configuration; do not mark unprobed services ready."""
+        writable = os.access(os.getcwd(), os.W_OK)
         checks: dict[str, bool] = {
-            "python_runtime_valid": True,
-            "security_encryption_available": True,
-            "reports_directory_writable": os.access(".", os.W_OK),
-            "trading_bot_url_configured": True,
-            "forge_url_configured": True,
-            "ai_universe_url_configured": True,
-            "nexus_url_configured": True,
-            "sentinel_url_configured": True,
+            "python_runtime_valid": bool(os.sys.version_info >= (3, 10)),
+            "security_encryption_available": importlib.util.find_spec("cryptography") is not None,
+            "reports_directory_writable": writable,
+            "trading_bot_url_configured": bool(getattr(self.settings, "stratex_url", None) or os.getenv("FRIDAY_STRATEX_URL") or os.getenv("STRATEX_URL")),
+            "forge_url_configured": bool(getattr(self.settings, "forge_url", None) or os.getenv("FRIDAY_FORGE_URL") or os.getenv("FORGE_URL")),
+            "inference_url_configured": bool(getattr(self.settings, "inference_url", None) or os.getenv("FRIDAY_INFERENCE_URL") or os.getenv("INFERENCE_URL")),
+            "cortex_url_configured": bool(getattr(self.settings, "cortex_url", None) or os.getenv("FRIDAY_CORTEX_URL") or os.getenv("CORTEX_URL")),
+            "sentinel_url_configured": bool(getattr(self.settings, "sentinel_url", None) or os.getenv("FRIDAY_SENTINEL_URL") or os.getenv("SENTINEL_URL")),
         }
 
         passed = sum(1 for v in checks.values() if v)
@@ -77,7 +79,7 @@ class FridayDoctorEnhanced:
 
         recommendations = []
         if not is_ready:
-            recommendations.append("Configure missing environment variables in .env.")
+            recommendations.append("Configure the missing local prerequisite(s); cloud reachability is not checked by preflight.")
 
         return PreFlightCheckResult(
             is_ready_for_startup=is_ready,
@@ -88,87 +90,20 @@ class FridayDoctorEnhanced:
         )
 
     # =========================================================================
-    # 2. 6-Subsystem Diagnostics & Automated Healing
+    # 2. Runtime diagnostics (read-only)
     # =========================================================================
 
     def diagnose_and_heal(self) -> DoctorDiagnosticReport:
-        """Runs health audit across all 6 components and executes automated healing."""
+        """Return registered subsystem observations without inventing health or repairs."""
         with self._lock:
-            subsystem_reports: dict[str, dict[str, Any]] = {}
-            healing_actions: list[str] = []
-
-            # 1. FRIDAY Core
-            subsystem_reports["friday_core"] = {
-                "status": "HEALTHY",
-                "memory_db": "ONLINE",
-                "skills_registry": "LOADED",
-                "security_vault": "ACTIVE",
-            }
-
-            # 2. Trading Bot (Stratex)
-            subsystem_reports["trading_bot"] = {
-                "status": "HEALTHY",
-                "api_endpoint": getattr(self.settings, "trading_bot_base_url", "http://localhost:8000"),
-                "advisory_bridge": "ONLINE",
-            }
-
-            # 3. FORGE Engine
-            subsystem_reports["forge"] = {
-                "status": "HEALTHY",
-                "api_endpoint": getattr(self.settings, "forge_base_url", "https://forge-e9kl.onrender.com"),
-                "template_library": "LOADED",
-            }
-
-            # 4. AI-Universe / Inference Core
-            subsystem_reports["ai_universe"] = {
-                "status": "HEALTHY",
-                "api_endpoint": getattr(self.settings, "ai_universe_base_url", "https://forge-e9kl.onrender.com"),
-                "providers_online": 7,
-            }
-
-            # 5. Nexus Growth Engine
-            subsystem_reports["nexus"] = {
-                "status": "HEALTHY",
-                "api_endpoint": getattr(self.settings, "nexus_base_url", "http://localhost:8002"),
-                "policy_engine": "ACTIVE",
-            }
-
-            # 6. Sentinel Security Engine
-            subsystem_reports["sentinel"] = {
-                "status": "HEALTHY",
-                "api_endpoint": getattr(self.settings, "sentinel_base_url", "https://sentinel-a861.onrender.com"),
-                "scope_enforcement": "ENFORCED",
-                "posture": "SECURE",
-            }
-
-            # Automated Healing Actions
-            # Healing rule 1: Stale connection check
-            healed_conn = self.heal_stale_connections()
-            if healed_conn:
-                healing_actions.append(healed_conn)
-
-            # Healing rule 2: Failed operator check
-            healed_op = self.restart_failed_operators()
-            if healed_op:
-                healing_actions.append(healed_op)
-
-            # Healing rule 3: Cache corruption check
-            healed_cache = self.clear_corrupted_cache()
-            if healed_cache:
-                healing_actions.append(healed_cache)
-
-            overall_status = "HEALTHY"
-            for report in subsystem_reports.values():
-                if report.get("status") == "CRITICAL":
-                    overall_status = "CRITICAL"
-                    break
-                if report.get("status") == "WARNING" and overall_status != "CRITICAL":
-                    overall_status = "WARNING"
+            health = self.registry.get_ecosystem_health()
+            subsystem_reports = health.get("subsystems", {})
+            overall_status = str(health.get("overall_health", "UNVERIFIED"))
 
             return DoctorDiagnosticReport(
                 overall_status=overall_status,
                 subsystem_reports=subsystem_reports,
-                healing_actions_taken=healing_actions,
+                healing_actions_taken=[],
             )
 
     # =========================================================================
@@ -176,22 +111,19 @@ class FridayDoctorEnhanced:
     # =========================================================================
 
     def heal_stale_connections(self) -> str | None:
-        """Refreshes HTTP/gRPC client pools for idle subsystem sockets."""
-        self._stale_connections_healed += 1
-        logger.info("[FRIDAY_DOCTOR] Refreshed idle subsystem connection pools.")
-        return "Refreshed idle HTTP sockets across all 4 managed subsystems."
+        """No-op until a concrete stale connection can be identified and verified."""
+        logger.info("[FRIDAY_DOCTOR] No connection repair performed: no verified stale connection was provided.")
+        return None
 
     def restart_failed_operators(self) -> str | None:
-        """Detects stalled operators and re-initializes event loops."""
-        self._operators_restarted += 1
-        logger.info("[FRIDAY_DOCTOR] Verified and restarted any degraded persistent operators.")
-        return "Audited all 12 persistent operators; confirmed active event loops."
+        """No-op until a specific failed operator and safe restart procedure exist."""
+        logger.info("[FRIDAY_DOCTOR] No operator restart performed: operator state is not instrumented.")
+        return None
 
     def clear_corrupted_cache(self) -> str | None:
-        """Cleanses expired or corrupted memory caches."""
-        self._cache_purges += 1
-        logger.info("[FRIDAY_DOCTOR] Purged expired TTL caches.")
-        return "Cleared expired entries from in-memory query cache."
+        """No-op until cache ownership and corruption evidence are available."""
+        logger.info("[FRIDAY_DOCTOR] No cache purge performed: corruption was not verified.")
+        return None
 
 
 # Global singleton instance

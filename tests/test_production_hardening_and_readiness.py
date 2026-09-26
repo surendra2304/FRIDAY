@@ -187,23 +187,24 @@ def test_production_optimizer_and_lazy_loading(production_setup):
 # 4. Friday Doctor Enhanced 5-Subsystem Diagnostics Tests
 # =========================================================================
 
-def test_friday_doctor_enhanced_and_self_healing(production_setup):
-    """Verify 5-subsystem health diagnostics, pre-flight checks, and automated healing."""
+def test_friday_doctor_enhanced_reports_unverified_services_without_fake_healing(production_setup):
+    """Unprobed services must stay unverified and must not claim repairs."""
     vault, biometric, limiter, intrusion, backup_mgr, optimizer, doctor, temp_dir = production_setup
 
     # 1. Pre-Flight Startup Check
     preflight = doctor.run_preflight_check()
-    assert preflight.is_ready_for_startup is True
-    assert preflight.checks_passed == preflight.checks_total
+    assert preflight.checks_total == len(preflight.details)
+    assert preflight.checks_passed == sum(preflight.details.values())
 
     # 2. 6-Subsystem Diagnostics and Automated Healing
     report = doctor.diagnose_and_heal()
-    assert report.overall_status == "HEALTHY"
-    assert len(report.subsystem_reports) == 6
-    assert "friday_core" in report.subsystem_reports
+    assert report.overall_status == "UNVERIFIED"
+    assert len(report.subsystem_reports) == 8
+    assert "friday" in report.subsystem_reports
     assert "trading_bot" in report.subsystem_reports
     assert "forge" in report.subsystem_reports
     assert "ai_universe" in report.subsystem_reports
     assert "nexus" in report.subsystem_reports
     assert "sentinel" in report.subsystem_reports
-    assert len(report.healing_actions_taken) == 3
+    assert report.healing_actions_taken == []
+    assert all(item["status"] == "UNVERIFIED" for item in report.subsystem_reports.values())

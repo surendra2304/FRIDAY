@@ -285,6 +285,8 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
         tool_results: list[ToolResult] = []
         tool_calls: list[ToolCall] = []
         last_error = ""
+        tool_failure_counts: dict[str, int] = {}
+        stop_after_failure = False
 
         iterations = 0
         for _ in range(self.max_tool_iterations):
@@ -337,6 +339,13 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
                 if result.is_error:
                     if "Duplicate tool call ID" not in result.content:
                         last_error = result.content
+                    tool_failure_counts[call.name] = tool_failure_counts.get(call.name, 0) + 1
+                    normalized_error = result.content.lower()
+                    non_retryable = any(marker in normalized_error for marker in (
+                        "401", "unauthorized", "403", "forbidden", "permission denied",
+                        "missing api key", "invalid api key", "authentication failed",
+                    ))
+                    retries_exhausted = tool_failure_counts[call.name] > 3
                     messages.append(
                         Message(
                             role=Role.SYSTEM,
@@ -346,6 +355,11 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
                             ),
                         )
                     )
+                    if non_retryable or retries_exhausted:
+                        stop_after_failure = True
+                        break
+            if stop_after_failure:
+                break
 
         content = (
             f"I encountered persistent errors while completing the request: {last_error}"
@@ -421,7 +435,11 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
         re.IGNORECASE,
     )
     _CLOSE_CHROME_PATTERN = re.compile(
-        r"^\s*(?:please\s+)?(?:close|quit|exit)\s+(?:google\s+)?chrome\.?\s*$",
+        r"^\s*(?:please\s+)?(?:close|quit|exit)\s+(?:(?:the|my)\s+)?(?:google\s+)?chrome(?:\s+(?:browser|window))?\.?\s*$",
+        re.IGNORECASE,
+    )
+    _CLOSE_TAB_PATTERN = re.compile(
+        r"^\s*(?:please\s+)?(?:close|shut|dismiss)\s+(?:(?:the|this|that|current)\s+)?(?:(?:active|current)\s+)?(?:chrome\s+)?tab(?:\s+(?:in|on)\s+(?:google\s+)?chrome)?\.?\s*$",
         re.IGNORECASE,
     )
     _SETTINGS_PATTERN = re.compile(
@@ -589,6 +607,7 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
             "network_down_kbps": snap.network_down_kbps,
             "top_processes": snap.top_processes,
             "active_window": snap.active_window,
+            "measurement_error": snap.measurement_error,
             "timestamp": snap.timestamp.isoformat(),
         }
 

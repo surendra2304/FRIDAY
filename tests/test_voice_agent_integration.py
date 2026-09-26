@@ -449,21 +449,25 @@ def test_open_application_tool_in_default_registry_and_live_decl():
 
 
 def test_open_application_launch_and_safety(monkeypatch):
-    from types import SimpleNamespace
+    import os
+    import subprocess
 
     from friday.tools.builtin.open_application import OpenApplicationTool
 
     tool = OpenApplicationTool()
     started = {}
     launched = []
+    from friday.devices import app_launcher
+    from friday.tools.builtin import open_application
+
+    monkeypatch.setattr(app_launcher, "launch_desktop_app", lambda name: (False, "Could not start."))
     monkeypatch.setattr(
-        "friday.tools.builtin.open_application.os",
-        SimpleNamespace(startfile=lambda exe: (launched.append(exe), started.setdefault("exe", exe))[1]),
+        open_application.os,
+        "startfile",
+        lambda exe: (launched.append(exe), started.setdefault("exe", exe))[1],
+        raising=False,
     )
-    monkeypatch.setattr(
-        "friday.tools.builtin.open_application.subprocess",
-        SimpleNamespace(Popen=lambda *a, **kw: launched.append("POPEN")),
-    )
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: launched.append("POPEN"))
 
     ok = tool.execute(application="notepad")
     assert ok.is_error is False and ok.content == "Opened notepad."
@@ -478,7 +482,8 @@ def test_open_application_launch_and_safety(monkeypatch):
     assert launched == ["notepad.exe", "calc.exe"]  # shells never launched
 
     unknown = tool.execute(application="spotify")
-    assert unknown.is_error is True and "Unknown application" in unknown.content
+    assert unknown.is_error is False and "Opened spotify" in unknown.content
+    assert launched == ["notepad.exe", "calc.exe", "Spotify.exe"]
 
 
 @pytest.mark.anyio

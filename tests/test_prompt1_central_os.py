@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import urllib.parse
 import pytest
 import time
 
@@ -35,6 +36,19 @@ from friday.core.types import SafetyLevel
 from friday.devices.android_controller import AndroidDeviceController
 from friday.devices.windows_controller import WindowsDeviceController
 from friday.ecosystem.fleet_client import fleet_client
+
+
+def _local_contract_stack_available() -> bool:
+    if os.getenv("FRIDAY_ENABLE_LIVE_CONTRACT_TESTS", "").lower() != "true":
+        return False
+    urls = [fleet_client.inference_url, fleet_client.memora_url]
+    return all(urllib.parse.urlparse(url).hostname in {"127.0.0.1", "localhost", "::1"} for url in urls)
+
+
+requires_local_contract_stack = pytest.mark.skipif(
+    not _local_contract_stack_available(),
+    reason="Requires explicit local-only Inference and Memora test services; production endpoints are not test fixtures.",
+)
 from friday.integrations.mock_universe import MockUniverseClient
 from friday.routing.capability_router import CapabilityRouter, CompiledIntent
 from friday.security.authorization import (
@@ -114,6 +128,34 @@ async def test_service_registry_production_fail_closed(monkeypatch):
     with pytest.raises(RuntimeError) as excinfo:
         await reg.validate_startup()
     assert "Production Startup Failure: Required service 'inference'" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_service_registry_distinguishes_http_reachability_from_health():
+    import httpx
+
+    registry = ServiceRegistry(env="development")
+    registry.services["inference"].url = "http://127.0.0.1:9000"
+    registry.services["inference"].health_path = "/health"
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(200, json={"version": "test"})
+    )
+    async with httpx.AsyncClient(transport=transport) as client:
+        status, _latency, detail = await registry.probe_service("inference", client)
+
+    assert status is ServiceHealth.REACHABLE
+    assert "no explicit health state" in detail
+
+
+def test_service_registry_prefers_explicit_friday_peer_configuration(monkeypatch):
+    monkeypatch.setenv("FRIDAY_MEMORA_URL", "http://127.0.0.1:9200")
+    monkeypatch.setenv("FRIDAY_MEMORA_HEALTH_PATH", "/healthz")
+
+    registry = ServiceRegistry(env="development")
+    memora = registry.get("memora")
+
+    assert memora.url == "http://127.0.0.1:9200"
+    assert memora.health_path == "/healthz"
 
 
 # ==============================================================================
@@ -370,7 +412,7 @@ def test_whatsapp_adapter_workflow():
     """Verify WhatsApp message adapter safety level and non-scraping bridge execution."""
     wa_tool = SendWhatsAppMessageTool()
     # Invariant: Must be SENSITIVE
-    assert wa_tool.safety_level == SafetyLevel.SAFE or wa_tool.safety_level == SafetyLevel.SENSITIVE
+    assert wa_tool.safety_level == SafetyLevel.SENSITIVE
 
     # Missing recipient should fail fast
     res_err = wa_tool.execute(recipient="", message="Test")
@@ -416,6 +458,7 @@ async def test_task_manager_async_and_voice_cancellation():
 # ==============================================================================
 
 @pytest.mark.asyncio
+@requires_local_contract_stack
 async def test_peer_delegation_inference_live():
     """Verify FRIDAY delegates to Inference and returns structured response."""
     env = TaskEnvelope(
@@ -431,6 +474,7 @@ async def test_peer_delegation_inference_live():
 
 
 @pytest.mark.asyncio
+@requires_local_contract_stack
 async def test_peer_delegation_memora_live():
     """Verify FRIDAY stores and queries task memory in Memora."""
     env = TaskEnvelope(
@@ -440,8 +484,8 @@ async def test_peer_delegation_memora_live():
         payload={"memory_type": "episodic", "content": "Master acceptance test execution record."},
     )
     res = await fleet_client.dispatch_task(env)
-    assert res.status == TaskStatus.SUCCESS
-    assert "memora" in res.summary.lower()
+    assert res.status == TaskStatus.BLOCKED
+    assert "unscoped legacy memory write" in (res.error or "")
 
 
 @pytest.mark.asyncio
@@ -467,7 +511,8 @@ async def test_peer_delegation_forge_local(monkeypatch):
         payload={"goal": "Verify software engineering engine status"},
     )
     res = await fleet_client.dispatch_task(env)
-    assert res.status == TaskStatus.SUCCESS
+    assert res.status == TaskStatus.DEGRADED
+    assert res.error == "task_completion_unverified"
     assert "forge" in res.summary.lower()
 
 
@@ -494,7 +539,8 @@ async def test_peer_delegation_sentinel_policy_preservation(monkeypatch):
         payload={"objective": "Perimeter defense audit", "target": "localhost"},
     )
     res = await fleet_client.dispatch_task(env)
-    assert res.status == TaskStatus.SUCCESS
+    assert res.status == TaskStatus.DEGRADED
+    assert res.error == "task_completion_unverified"
     assert "sentinel" in res.summary.lower()
 
 

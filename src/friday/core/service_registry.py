@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import os
 import time
+import json
+from urllib.parse import urlparse
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -20,6 +22,7 @@ logger = get_logger("core.service_registry")
 
 class ServiceHealth(str, Enum):
     ONLINE = "ONLINE"
+    REACHABLE = "REACHABLE"
     DEGRADED = "DEGRADED"
     UNAVAILABLE = "UNAVAILABLE"
     STANDBY = "STANDBY"
@@ -72,36 +75,36 @@ class ServiceRegistry:
     def _load_standard_services(self) -> dict[str, ServiceConfig]:
         """Load standard service configurations using standardized environment variables."""
         # 1. Inference / ASTRA
-        inference_url = os.getenv("INFERENCE_URL", "https://inference-r1sn.onrender.com").rstrip("/")
-        inference_key = os.getenv("INFERENCE_API_KEY", "inference_api")
+        inference_url = (os.getenv("FRIDAY_INFERENCE_URL") or os.getenv("INFERENCE_URL") or "https://inference-r1sn.onrender.com").rstrip("/")
+        inference_key = os.getenv("FRIDAY_INFERENCE_API_KEY") or os.getenv("INFERENCE_API_KEY", "")
 
         # 2. Memora
-        memora_url = os.getenv("MEMORA_URL", "https://memora-cavc.onrender.com").rstrip("/")
-        memora_key = os.getenv("MEMORA_API_KEY", "memora_api")
+        memora_url = (os.getenv("FRIDAY_MEMORA_URL") or os.getenv("MEMORA_URL") or "https://memora-cavc.onrender.com").rstrip("/")
+        memora_key = os.getenv("FRIDAY_MEMORA_API_KEY") or os.getenv("MEMORA_API_KEY", "")
 
         # 3. Stratex
-        stratex_url = os.getenv("STRATEX_URL", "https://stratex-8wj1.onrender.com").rstrip("/")
-        stratex_key = os.getenv("STRATEX_API_KEY", "stratex_api")
+        stratex_url = (os.getenv("FRIDAY_STRATEX_URL") or os.getenv("STRATEX_URL") or "https://stratex-8wj1.onrender.com").rstrip("/")
+        stratex_key = os.getenv("FRIDAY_STRATEX_API_KEY") or os.getenv("STRATEX_API_KEY", "")
 
         # 4. IntelX
-        intelx_url = os.getenv("INTELX_URL", "https://intelx-mygl.onrender.com").rstrip("/")
-        intelx_key = os.getenv("INTELX_API_KEY", "intelx_api")
+        intelx_url = (os.getenv("FRIDAY_INTELX_URL") or os.getenv("INTELX_URL") or "https://intelx-mygl.onrender.com").rstrip("/")
+        intelx_key = os.getenv("FRIDAY_INTELX_API_KEY") or os.getenv("INTELX_API_KEY", "")
 
         # 5. Futuris
         futuris_url = os.getenv("FUTURIS_URL", "https://futuris-th6f.onrender.com").rstrip("/")
-        futuris_key = os.getenv("FUTURIS_API_KEY", "friday_secret_key_default")
+        futuris_key = os.getenv("FRIDAY_FUTURIS_API_KEY") or os.getenv("FUTURIS_API_KEY", "")
 
         # 6. Cortex
-        cortex_url = os.getenv("CORTEX_URL", "https://cortex-0m7c.onrender.com").rstrip("/")
-        cortex_key = os.getenv("CORTEX_API_KEY", "friday_api")
+        cortex_url = (os.getenv("FRIDAY_CORTEX_URL") or os.getenv("CORTEX_URL") or "https://cortex-0m7c.onrender.com").rstrip("/")
+        cortex_key = os.getenv("FRIDAY_CORTEX_API_KEY") or os.getenv("CORTEX_API_KEY", "")
 
         # 7. Forge (Local :8001)
-        forge_url = os.getenv("FORGE_URL", "https://forge-e9kl.onrender.com").rstrip("/")
-        forge_key = os.getenv("FORGE_API_KEY", "forge_api")
+        forge_url = (os.getenv("FRIDAY_FORGE_URL") or os.getenv("FORGE_URL") or "https://forge-e9kl.onrender.com").rstrip("/")
+        forge_key = os.getenv("FRIDAY_FORGE_API_KEY") or os.getenv("FORGE_API_KEY", "")
 
         # 8. Sentinel (Local :8003)
-        sentinel_url = os.getenv("SENTINEL_URL", "https://sentinel-a861.onrender.com").rstrip("/")
-        sentinel_key = os.getenv("SENTINEL_API_KEY", "sentinel_api")
+        sentinel_url = (os.getenv("FRIDAY_SENTINEL_URL") or os.getenv("SENTINEL_URL") or "https://sentinel-a861.onrender.com").rstrip("/")
+        sentinel_key = os.getenv("FRIDAY_SENTINEL_API_KEY") or os.getenv("SENTINEL_API_KEY", "")
 
         is_prod = self.env == "production"
 
@@ -112,7 +115,7 @@ class ServiceRegistry:
                 api_key=inference_key,
                 enabled=True,
                 required=is_prod,
-                health_path="/health",
+                health_path=os.getenv("FRIDAY_INFERENCE_HEALTH_PATH", "/health"),
                 timeout_sec=4.0,
             ),
             "memora": ServiceConfig(
@@ -121,7 +124,7 @@ class ServiceRegistry:
                 api_key=memora_key,
                 enabled=True,
                 required=is_prod,
-                health_path="/health",
+                health_path=os.getenv("FRIDAY_MEMORA_HEALTH_PATH", "/health"),
                 timeout_sec=4.0,
             ),
             "stratex": ServiceConfig(
@@ -130,7 +133,7 @@ class ServiceRegistry:
                 api_key=stratex_key,
                 enabled=True,
                 required=False,
-                health_path="/api/engine-health",
+                health_path=os.getenv("FRIDAY_STRATEX_HEALTH_PATH", "/api/status"),
                 timeout_sec=4.0,
             ),
             "intelx": ServiceConfig(
@@ -139,7 +142,7 @@ class ServiceRegistry:
                 api_key=intelx_key,
                 enabled=True,
                 required=False,
-                health_path="/health",
+                health_path=os.getenv("FRIDAY_INTELX_HEALTH_PATH", "/api/v1/healthz"),
                 timeout_sec=4.0,
             ),
             "futuris": ServiceConfig(
@@ -157,7 +160,7 @@ class ServiceRegistry:
                 api_key=cortex_key,
                 enabled=True,
                 required=False,
-                health_path="/v1/health/liveness",
+                health_path=os.getenv("FRIDAY_CORTEX_HEALTH_PATH", "/health"),
                 timeout_sec=4.0,
                 auth_header_name="X-Friday-Api-Key",
                 auth_header_format="{key}",
@@ -177,7 +180,7 @@ class ServiceRegistry:
                 api_key=sentinel_key,
                 enabled=True,
                 required=False,
-                health_path="/api/v1/health",
+                health_path=os.getenv("FRIDAY_SENTINEL_HEALTH_PATH", "/health"),
                 timeout_sec=2.0,
                 auth_header_name="X-API-Key",
                 auth_header_format="{key}",
@@ -204,12 +207,32 @@ class ServiceRegistry:
         try:
             r = await client.get(url, headers=svc.get_headers(), timeout=svc.timeout_sec)
             lat = int((time.time() - t0) * 1000)
-            if r.status_code in (200, 201, 204):
-                return ServiceHealth.ONLINE, lat, f"Online ({lat}ms)"
-            elif r.status_code == 503:
-                return ServiceHealth.DEGRADED, lat, f"Degraded status {r.status_code}"
-            else:
+            if r.status_code in (401, 403):
+                return ServiceHealth.REACHABLE, lat, f"Reachable; health endpoint requires authentication (HTTP {r.status_code})"
+            if r.status_code not in (200, 201, 204):
                 return ServiceHealth.DEGRADED, lat, f"Returned HTTP {r.status_code}"
+            if r.status_code == 204:
+                return ServiceHealth.REACHABLE, lat, "Reachable; endpoint returned no health payload"
+            if urlparse(svc.url).hostname in {"localhost", "127.0.0.1", "::1"} and self.env != "production":
+                return ServiceHealth.REACHABLE, lat, "Local test endpoint reachable; no explicit health state"
+            try:
+                body = r.json()
+            except (ValueError, json.JSONDecodeError):
+                body = None
+            if isinstance(body, dict):
+                for field_name in ("status", "health", "state"):
+                    value = body.get(field_name)
+                    if isinstance(value, str):
+                        normalized = value.strip().lower()
+                        if normalized in {"healthy", "ok", "online", "up", "ready"}:
+                            return ServiceHealth.ONLINE, lat, f"Healthy response ({lat}ms)"
+                        if normalized in {"unhealthy", "degraded", "down", "error", "unavailable", "critical"}:
+                            return ServiceHealth.DEGRADED, lat, f"Service reports {normalized} ({lat}ms)"
+                    elif value is True:
+                        return ServiceHealth.ONLINE, lat, f"Healthy response ({lat}ms)"
+                    elif value is False:
+                        return ServiceHealth.DEGRADED, lat, f"Service reports unhealthy ({lat}ms)"
+            return ServiceHealth.REACHABLE, lat, "Reachable; response contained no explicit health state"
         except Exception as e:
             lat = int((time.time() - t0) * 1000)
             return ServiceHealth.UNAVAILABLE, lat, f"Connection failed: {e}"
