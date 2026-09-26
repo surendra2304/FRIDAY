@@ -11,17 +11,21 @@ Validates:
 8. Provider independence: Operates 100% offline with MockLLMProvider and zero external SDK dependencies.
 """
 
+import json
 import time
 
 from friday.agent.agent import FridayAgent
 from friday.core.config import Settings
-from friday.core.types import SafetyLevel, ToolResult
+from friday.core.types import Message, Role, SafetyLevel, ToolResult
 from friday.llm.mock_provider import MockLLMProvider
 from friday.memory.in_memory import InMemoryConversationMemory
+from friday.planning.types import TaskGraph, TaskStep
 from friday.tasks.manager import (
     LongRunningTaskManager,
     TaskLifecycleStatus,
+    TaskPersistenceStore,
     TaskProgressReport,
+    TaskSpec,
 )
 from friday.tools.base import BaseTool
 from friday.tools.registry import ToolRegistry
@@ -74,6 +78,91 @@ def test_task_submission_persists_plan_with_supported_keyword(monkeypatch, tmp_p
     assert persisted["task_id"] == task_id
     assert persisted["plan"] is not None
     assert len(persisted["plan"].list_tasks()) == 1
+
+
+def test_task_persistence_preserves_message_fields_in_plan(tmp_path):
+    store = TaskPersistenceStore(db_path=str(tmp_path / "message-task.sqlite"))
+    task_id = "message-task"
+    message = Message(
+        role=Role.ASSISTANT,
+        content="The task produced this message.",
+        name="FRIDAY",
+        metadata={"source": "task-result"},
+    )
+    plan = TaskGraph(
+        goal="Persist typed output",
+        tasks=[
+            TaskStep(
+                id="step_1",
+                description="Retain a typed result",
+                result=message,
+                outputs={"message": message},
+            )
+        ],
+    )
+
+    store.save_task(
+        task_id=task_id,
+        goal=plan.goal,
+        status=TaskLifecycleStatus.SUBMITTED,
+        spec=TaskSpec(task_id=task_id, goal=plan.goal),
+        plan=plan,
+    )
+
+    persisted = json.loads(store.get_incomplete_tasks()[0]["plan_json"])
+    result = persisted["tasks"][0]["result"]
+    output = persisted["tasks"][0]["outputs"]["message"]
+    assert result["content"] == message.content
+    assert output["role"] == Role.ASSISTANT.value
+    assert output["name"] == "FRIDAY"
+    assert output["metadata"] == {"source": "task-result"}
+
+
+def test_task_worker_uses_task_graph_success_and_persists_typed_results(monkeypatch, tmp_path):
+    tool = SlowWorkerTool()
+    reg = ToolRegistry()
+    reg.register(tool)
+    agent = FridayAgent(
+        settings=Settings(env="testing", agent_name="FRIDAY"),
+        llm_provider=MockLLMProvider(),
+        memory=InMemoryConversationMemory(),
+        tool_registry=reg,
+    )
+    db_path = tmp_path / "worker-results.sqlite"
+    manager = LongRunningTaskManager(agent=agent, db_path=str(db_path))
+    message = Message(role=Role.ASSISTANT, content="Verified result", metadata={"origin": "test"})
+    plan = TaskGraph(
+        goal="Complete one task",
+        tasks=[TaskStep(id="step_1", description="Return typed result")],
+    )
+    monkeypatch.setattr(agent.goal_orchestrator.planner, "plan", lambda goal, context=None: plan)
+
+    def execute_graph(graph, cancellation_token=None):
+        graph.mark_completed("step_1", result=message, outputs={"message": message})
+        return graph
+
+    monkeypatch.setattr(agent.goal_orchestrator, "execute_graph", execute_graph)
+    task_id = manager.submit_task(goal="Complete one task")
+
+    deadline = time.time() + 2.0
+    status = None
+    while time.time() < deadline:
+        status = manager.get_task_status(task_id)
+        if status and status.status in (TaskLifecycleStatus.COMPLETED, TaskLifecycleStatus.FAILED):
+            break
+        time.sleep(0.01)
+
+    assert status is not None
+    assert status.status == TaskLifecycleStatus.COMPLETED
+    assert status.completed_steps == 1
+
+    import sqlite3
+
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute("SELECT plan_json FROM background_tasks WHERE task_id = ?", (task_id,)).fetchone()
+    persisted = json.loads(row[0])
+    assert persisted["tasks"][0]["result"]["content"] == "Verified result"
+    assert persisted["tasks"][0]["outputs"]["message"]["metadata"] == {"origin": "test"}
 
 
 def test_long_running_task_lifecycle_completion():

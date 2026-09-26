@@ -31,7 +31,7 @@ from typing import Any
 from friday.agent.agent import FridayAgent
 from friday.agent.checkpoint import TaskCheckpointStore
 
-from friday.planning.types import TaskGraph
+from friday.planning.types import TaskGraph, TaskStep
 from friday.core.auth import BaseAuthorizer
 from friday.core.logging import get_logger
 from friday.observability.event import Event, EventType
@@ -39,6 +39,24 @@ from friday.observability.manager import get_observability_manager
 from friday.security.scrubber import redact_secrets
 
 logger = get_logger("tasks.manager")
+
+
+def _task_json_default(value: Any) -> Any:
+    """Serialize typed task results without discarding their model fields."""
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, datetime):
+        return value.isoformat()
+
+    model_dump = getattr(value, "model_dump", None)
+    if callable(model_dump):
+        return model_dump(mode="json")
+
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        return to_dict()
+
+    raise TypeError(f"Object of type {type(value).__name__} is not supported in persisted task plans")
 
 
 class TaskLifecycleStatus(str, Enum):
@@ -242,6 +260,7 @@ class TaskPersistenceStore:
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(task_id) DO UPDATE SET
                         status=excluded.status,
+                        plan_json=excluded.plan_json,
                         completed_steps=excluded.completed_steps,
                         total_steps=excluded.total_steps,
                         progress_pct=excluded.progress_pct,
@@ -252,7 +271,7 @@ class TaskPersistenceStore:
                     redact_secrets(goal),
                     status.value,
                     json.dumps(spec.to_dict()),
-                    json.dumps(plan.to_dict()) if plan else None,
+                    json.dumps(plan.to_dict(), default=_task_json_default) if plan else None,
                     completed_steps,
                     total_steps,
                     progress_pct,
@@ -329,6 +348,15 @@ class LongRunningTaskManager:
             result=payload,
         ))
 
+    def _cancel_agent_task(self, reason: str) -> None:
+        """Notify agents that expose cancellation while keeping manager cancellation authoritative."""
+        cancel = getattr(self.agent, "cancel_task", None)
+        if callable(cancel):
+            try:
+                cancel(reason=reason)
+            except Exception as ex:
+                logger.warning(f"Agent cancellation hook failed; task cancellation token remains set: {ex}")
+
     def submit_task(
         self,
         goal: str,
@@ -363,7 +391,20 @@ class LongRunningTaskManager:
                     logger.warning(f"Active task with identical goal '{goal}' already exists ({t['task_id']}).")
                     return t["task_id"]
 
-            plan = self.agent.goal_orchestrator.planner.plan(goal, context={'steps': steps})
+            if steps:
+                task_steps = []
+                for index, definition in enumerate(steps, start=1):
+                    step_data = dict(definition)
+                    step_data["id"] = step_data.get("step_id") or step_data.get("id") or f"task_{index}"
+                    step_data["dependencies"] = step_data.get("dependencies", step_data.get("depends_on", []))
+                    step_data.setdefault("description", step_data["id"])
+                    if "executor" in step_data and "selected_executor" not in step_data:
+                        step_data["selected_executor"] = step_data["executor"]
+                    task_steps.append(TaskStep.from_dict(step_data))
+                plan = TaskGraph(goal=goal, tasks=task_steps)
+                plan.compute_waves()
+            else:
+                plan = self.agent.goal_orchestrator.planner.plan(goal)
             task_id = plan.graph_id
             timeout = timeout_seconds or self.default_timeout_seconds
             r_limit = retry_budget if retry_budget is not None else self.default_retry_budget
@@ -382,12 +423,13 @@ class LongRunningTaskManager:
             cancel_event = threading.Event()
             pause_event = threading.Event()
 
+            deadline_expired = deadline is not None and datetime.now(timezone.utc) >= deadline
             task_record = {
                 "task_id": task_id,
                 "goal": goal,
                 "spec": spec,
                 "plan": plan,
-                "status": TaskLifecycleStatus.SUBMITTED,
+                "status": TaskLifecycleStatus.TIMED_OUT if deadline_expired else TaskLifecycleStatus.SUBMITTED,
                 "timeout_seconds": timeout,
                 "retry_budget": r_limit,
                 "retries_used": 0,
@@ -399,7 +441,7 @@ class LongRunningTaskManager:
                 "total_steps": len(plan.list_tasks()),
                 "current_step_id": None,
                 "progress_percentage": 0.0,
-                "error": None,
+                "error": "Task deadline expired before execution." if deadline_expired else None,
                 "result": None,
                 "cancel_event": cancel_event,
                 "pause_event": pause_event,
@@ -412,23 +454,26 @@ class LongRunningTaskManager:
             self.persistence.save_task(
                 task_id=task_id,
                 goal=goal,
-                status=TaskLifecycleStatus.SUBMITTED,
+                status=task_record["status"],
                 spec=spec,
                 plan=plan,
                 total_steps=len(plan.list_tasks()),
             )
 
-            worker = threading.Thread(
-                target=self._task_worker,
-                args=(task_id,),
-                daemon=True,
-                name=f"FridayTaskWorker-{task_id[:8]}",
-            )
-            task_record["thread"] = worker
-            worker.start()
+            if not deadline_expired:
+                worker = threading.Thread(
+                    target=self._task_worker,
+                    args=(task_id,),
+                    daemon=True,
+                    name=f"FridayTaskWorker-{task_id[:8]}",
+                )
+                task_record["thread"] = worker
+                worker.start()
 
             logger.info(f"Submitted long-running task '{task_id}' (goal: '{goal}') with {len(plan.list_tasks())} steps.")
             self._emit_task_event("submitted", task_id, {"goal": goal})
+            if deadline_expired:
+                self._notify_completion(task_id)
             return task_id
 
     def get_task_status(self, task_id: str) -> TaskProgressReport | None:
@@ -473,7 +518,9 @@ class LongRunningTaskManager:
 
             t["pause_event"].set()
             t["status"] = TaskLifecycleStatus.PAUSED
-            self.agent.pause_current_task(reason=f"Paused background task {task_id}")
+            pause = getattr(self.agent, "pause_current_task", None)
+            if callable(pause):
+                pause(reason=f"Paused background task {task_id}")
 
             self.persistence.save_task(
                 task_id=task_id,
@@ -535,7 +582,7 @@ class LongRunningTaskManager:
             t["status"] = TaskLifecycleStatus.CANCELLED
             t["error"] = reason
             t["finished_at"] = time.time()
-            self.agent.cancel_task(reason=reason)
+            self._cancel_agent_task(reason)
 
             self.persistence.save_task(
                 task_id=task_id,
@@ -664,7 +711,7 @@ class LongRunningTaskManager:
                     task_rec["status"] = TaskLifecycleStatus.TIMED_OUT
                     task_rec["error"] = f"Task exceeded execution timeout ({timeout}s) or deadline."
                     task_rec["cancel_event"].set()
-                    self.agent.cancel_task(reason=task_rec["error"])
+                    self._cancel_agent_task(task_rec["error"])
                     return
 
                 # Cancellation check
@@ -696,15 +743,10 @@ class LongRunningTaskManager:
                         logger.error(f"Error in progress callback for task '{task_id}': {ex}")
 
         try:
-            if is_resumption:
-                res = self.agent.resume_task(task_id)
-            else:
-                res = self.agent.goal_orchestrator.execute_graph(
-                    graph=plan,
-                    
-                    
-                    cancellation_token=t["cancel_event"],
-                )
+            res = self.agent.goal_orchestrator.execute_graph(
+                graph=plan,
+                cancellation_token=t["cancel_event"],
+            )
 
             with self._lock:
                 task_rec = self._tasks.get(task_id)
@@ -720,13 +762,18 @@ class LongRunningTaskManager:
                 elif time.time() - start_time > timeout:
                     task_rec["status"] = TaskLifecycleStatus.TIMED_OUT
                     task_rec["error"] = f"Task exceeded execution timeout ({timeout}s)."
-                elif res.success:
+                elif isinstance(res, TaskGraph) and res.is_successful():
                     task_rec["status"] = TaskLifecycleStatus.COMPLETED
                     task_rec["progress_percentage"] = 100.0
-                    task_rec["completed_steps"] = len(plan.list_tasks())
+                    task_rec["completed_steps"] = len(res.get_completed_ids())
                 else:
                     task_rec["status"] = TaskLifecycleStatus.FAILED
-                    task_rec["error"] = res.error or "Task execution failed"
+                    failed_steps = [
+                        f"{step.id}: {step.error}"
+                        for step in res.list_tasks()
+                        if step.error
+                    ] if isinstance(res, TaskGraph) else []
+                    task_rec["error"] = "; ".join(failed_steps) or "Task execution failed"
 
                 self.persistence.save_task(
                     task_id=task_id,
