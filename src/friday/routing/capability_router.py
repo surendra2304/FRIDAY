@@ -338,7 +338,7 @@ class CapabilityRouter:
                 safety_level=SafetyLevel.SAFE,
                 requires_authorization=False,
                 confidence=0.95,
-                rationale=f"Operator requested typing text into active window",
+                rationale="Operator requested typing text into active window",
             )
 
         # 5. Click UI element

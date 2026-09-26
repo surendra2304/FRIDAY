@@ -79,7 +79,7 @@ class Settings(BaseSettings):
             pass
         
         legacy_aliases = {
-            'FRIDAY_INFERENCE_URL': ['INFERENCE_URL', 'inference_url', 'AI_UNIVERSE_BASE_URL', 'ai_universe_base_url'],
+            'FRIDAY_INFERENCE_URL': ['INFERENCE_URL', 'inference_url', 'AI_UNIVERSE_BASE_URL', 'ai_universe_base_url', 'FRIDAY_AI_UNIVERSE_BASE_URL'],
             'FRIDAY_INFERENCE_API_KEY': ['INFERENCE_API_KEY', 'inference_api_key'],
             'FRIDAY_IOT_HUB_URL': ['IOT_HUB_URL', 'iot_hub_url'],
             'FRIDAY_IOT_HUB_TOKEN': ['IOT_HUB_TOKEN', 'iot_hub_token'],
@@ -122,8 +122,6 @@ class Settings(BaseSettings):
             'FRIDAY_ECOSYSTEM_ENABLED': ['ECOSYSTEM_ENABLED', 'ecosystem_enabled'],
             'FRIDAY_STRATEX_URL': ['STRATEX_URL', 'stratex_url', 'TRADING_BOT_BASE_URL', 'trading_bot_base_url', 'FRIDAY_TRADING_BOT_BASE_URL'],
             'FRIDAY_STRATEX_API_KEY': ['STRATEX_API_KEY', 'stratex_api_key', 'TRADING_BOT_API_KEY', 'BOT_API_KEY'],
-            'FRIDAY_INFERENCE_URL': ['INFERENCE_URL', 'inference_url', 'AI_UNIVERSE_BASE_URL', 'ai_universe_base_url', 'FRIDAY_AI_UNIVERSE_BASE_URL'],
-            'FRIDAY_INFERENCE_API_KEY': ['INFERENCE_API_KEY', 'inference_api_key'],
             'FRIDAY_INTELX_URL': ['INTELX_URL', 'intelx_url', 'INTELX_BASE_URL', 'intelx_base_url'],
             'FRIDAY_INTELX_API_KEY': ['INTELX_API_KEY', 'intelx_api_key'],
             'FRIDAY_FUTURIS_URL': ['FUTURIS_URL', 'futuris_url', 'FUTURIS_BASE_URL', 'futuris_base_url'],
@@ -137,7 +135,6 @@ class Settings(BaseSettings):
             'FRIDAY_CORTEX_ENABLED': ['CORTEX_ENABLED', 'NEXUS_ENABLED', 'cortex_enabled', 'nexus_enabled'],
             'FRIDAY_NEXUS_VIGILANCE_INTERVAL_SECONDS': ['NEXUS_VIGILANCE_INTERVAL_SECONDS', 'nexus_vigilance_interval_seconds'],
             'FRIDAY_FORGE_URL': ['FORGE_URL', 'forge_url', 'FORGE_BASE_URL', 'forge_base_url', 'FRIDAY_FORGE_BASE_URL'],
-            'FRIDAY_FORGE_API_KEY': ['FORGE_API_KEY', 'forge_api_key'],
             'FRIDAY_LLM_API_KEY': ['OPENAI_API_KEY', 'LLM_API_KEY', 'llm_api_key'],
             'FRIDAY_GEMINI_API_KEY': ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'gemini_api_key'],
             'FRIDAY_GROQ_API_KEY': ['GROQ_API_KEY', 'groq_api_key'],

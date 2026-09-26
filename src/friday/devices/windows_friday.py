@@ -520,59 +520,6 @@ class WindowsFridayController:
             logger.info(f"WhatsApp Web: Dispatched to '{recipient}' via Send modal.")
             return True
 
-            # Flow B: Standard WhatsApp Web Interface (Sidebar Search + Chat Message)
-            logger.info(f"WhatsApp Web: Processing standard chat interface for '{recipient}'")
-            if main_input is not None:
-                try:
-                    main_input.click_input()
-                except Exception:
-                    try:
-                        main_input.set_focus()
-                    except Exception:
-                        search_x = rect[0] + min(220, max(120, width // 4))
-                        search_y = rect[1] + 135
-                        driver.click(search_x, search_y)
-            else:
-                # Focus sidebar search bar
-                search_x = rect[0] + min(220, max(120, width // 4))
-                search_y = rect[1] + 135
-                driver.click(search_x, search_y)
-                time.sleep(0.2)
-
-            # Clear search and type recipient
-            driver.hotkey(["ctrl", "a"])
-            time.sleep(0.05)
-            driver.press_key("backspace")
-            time.sleep(0.05)
-            driver.type_text(recipient)
-            time.sleep(1.2)  # Wait for contacts list to filter
-
-            # Open the conversation
-            driver.press_key("enter")
-            time.sleep(0.3)
-            driver.press_key("down")
-            time.sleep(0.1)
-            driver.press_key("enter")
-            time.sleep(0.8)  # Wait for conversation to load
-
-            # Focus message input box and type message
-            if message:
-                if msg_input is not None:
-                    try:
-                        msg_input.click_input()
-                    except Exception:
-                        pass
-                msg_x = rect[0] + int(width * 0.6)
-                msg_y = rect[1] + height - 55
-                driver.click(msg_x, msg_y)
-                time.sleep(0.3)
-                driver.type_text(message)
-                time.sleep(0.3)
-                driver.press_key("enter")
-                time.sleep(0.3)
-                logger.info(f"WhatsApp Web: Typed and dispatched message '{message}' to '{recipient}'.")
-
-            return True
         except Exception as e:
             logger.warning(f"_dispatch_whatsapp_message error: {e}")
             return False
