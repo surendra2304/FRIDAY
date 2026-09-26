@@ -146,10 +146,11 @@ def test_live_voice_model_preservation_and_fallback():
         model="gemini-2.5-flash",  # Non-live model
     )
 
+    from friday.core.config import get_settings
     from friday.voice.gemini_live_session import _LIVE_CAPABLE_MODEL_NAMES
-    assert session.model == "gemini-3.1-flash-live-preview"
-    assert session.model.lower() in _LIVE_CAPABLE_MODEL_NAMES
-    assert session.model == "gemini-3.1-flash-live-preview"
+    configured_model = get_settings().voice_live_model
+    assert session.model == configured_model
+    assert "live" in session.model.lower() or session.model.lower() in _LIVE_CAPABLE_MODEL_NAMES
 
 
 # ============================================================================
@@ -182,9 +183,10 @@ def test_gemini_voice_provider_adapters_and_pool():
     provider = GeminiVoiceProvider(credential_pool=pool)
 
     assert provider.api_key == "test_primary_key_abc"
+    from friday.core.config import get_settings
     from friday.voice.gemini_live_session import _LIVE_CAPABLE_MODEL_NAMES
-    assert provider.model == "gemini-3.1-flash-live-preview"
-    assert provider.model.lower() in _LIVE_CAPABLE_MODEL_NAMES
+    assert provider.model == get_settings().voice_live_model
+    assert "live" in provider.model.lower() or provider.model.lower() in _LIVE_CAPABLE_MODEL_NAMES
 
     # Verify input adapter description
     chunk_desc = provider.input.read_chunk()

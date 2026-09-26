@@ -128,24 +128,36 @@ def test_agent_direct_chrome_search_fast_path(monkeypatch):
 
 
 def test_agent_direct_close_chrome_fast_path(monkeypatch):
-    calls = []
+    """Direct close requests use graceful WM_CLOSE and require OS confirmation."""
+    import sys
+    from types import SimpleNamespace
 
-    class Result:
-        returncode = 0
-        stdout = "SUCCESS"
-        stderr = ""
+    from friday.tools.builtin import close_application
+
+    state = {"open": True}
+
+    def matching(_title):
+        return [101] if state["open"] else []
+
+    def post_message(_hwnd, _message, _wparam, _lparam):
+        state["open"] = False
 
     agent = FridayAgent(settings=Settings(env="testing", llm_provider="mock", embedding_provider="none"))
     monkeypatch.setattr(
-        "friday.agent.agent.subprocess.run",
-        lambda args, **kwargs: calls.append(args) or Result(),
+        close_application,
+        "_native_matching_windows",
+        matching,
     )
+    monkeypatch.setitem(sys.modules, "win32gui", SimpleNamespace(PostMessage=post_message))
+    monkeypatch.setitem(sys.modules, "win32con", SimpleNamespace(WM_CLOSE=16))
 
     response = agent.process_message("Close Chrome.")
 
-    assert response.content == "Done."
+    assert response.is_done
+    assert response.metadata["success"] is True
     assert response.metadata["direct_desktop_action"] == "close_chrome"
-    assert calls == [["taskkill.exe", "/IM", "chrome.exe", "/T"]]
+    assert "Windows confirmed" in response.content
+    assert state["open"] is False
 
 
 def test_agent_direct_time_and_specs_fast_paths():

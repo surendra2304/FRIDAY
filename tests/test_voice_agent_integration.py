@@ -445,7 +445,11 @@ def test_open_application_tool_in_default_registry_and_live_decl():
     assert "open_application" in names
 
     session = GeminiLiveVoiceSession(api_key="TEST", agent=agent)
-    assert session._build_tools_config() is None
+    live_tools = session._build_tools_config()
+    assert live_tools
+    declarations = live_tools[0].function_declarations
+    declared_names = {declaration.name for declaration in declarations}
+    assert {"open_application", "close_application"} <= declared_names
 
 
 def test_open_application_launch_and_safety(monkeypatch):
@@ -570,7 +574,7 @@ def test_system_instruction_carries_current_time_hint():
 
 
 def test_default_registry_tools_are_local_agent_owned_in_live_voice():
-    """Live voice does not expose tools directly; the local agent owns tool execution."""
+    """Live voice exposes only the allowlisted tools backed by the local registry."""
     from friday.llm.mock_provider import MockLLMProvider
     from friday.memory.in_memory import InMemoryConversationMemory
 
@@ -585,7 +589,10 @@ def test_default_registry_tools_are_local_agent_owned_in_live_voice():
 
     session = GeminiLiveVoiceSession(api_key="TEST", agent=agent)
     tools = session._build_tools_config()
-    assert tools is None
+    assert tools
+    declared_names = {declaration.name for declaration in tools[0].function_declarations}
+    assert {"open_application", "close_application", "get_time_date"} <= declared_names
+    assert "type_text" not in declared_names  # typing is not enabled for direct Live tool calls
 
 
 @pytest.mark.anyio
