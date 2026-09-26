@@ -98,7 +98,8 @@ class TestWindowsFridayController:
 
     def test_directive_intent_matching(self) -> None:
         """Verify natural language directive matching via can_handle."""
-        assert windows_friday.can_handle("play Star Boy on youtube") is True
+        assert windows_friday.can_handle("play Star Boy on youtube") is False
+        assert windows_friday.can_handle("play something on Spotify") is False
         assert windows_friday.can_handle("open chrome") is True
         assert windows_friday.can_handle("close notepad") is True
         assert windows_friday.can_handle("volume up") is True

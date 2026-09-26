@@ -623,15 +623,6 @@ async def execute_command(req: CommandRequest, _: None = Depends(_require_contro
         logger.warning(f"Windows FRIDAY controller error: {fe}")
 
     try:
-        # Media / YouTube fast-path (must be evaluated before generic chrome launcher)
-        if "play " in cmd:
-            m = re.search(r"(?:open\s+(?:chrome|browser|youtube)\s+and\s+)?play\s+(?:the\s+)?(?:song\s+|video\s+|music\s+|track\s+)?(?P<query>.+?)(?:\s+(?:on|in)\s+youtube[\.\!\?]*)?$", cmd, re.IGNORECASE)
-            query_val = m.group("query").strip().rstrip(".!?") if m else cmd.split("play ", 1)[1].replace("on youtube", "").replace("in youtube", "").strip().rstrip(".!?")
-            if query_val:
-                from friday.tools.builtin.youtube import YouTubeTool
-                res = YouTubeTool().execute(query=query_val, play=True)
-                return {"reply": res.content, "metadata": {"fast_path": True, "device": "windows", "action": "play_youtube"}}
-
         # Screen Perception Fast-path ("What's on my screen now")
         if any(k in cmd for k in ["what's on my screen", "what is on my screen", "whats on my screen", "read my screen", "screen content", "look at my screen", "screen now", "view my screen"]):
             import ctypes

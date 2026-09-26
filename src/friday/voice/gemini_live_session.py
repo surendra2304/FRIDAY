@@ -39,7 +39,6 @@ logger = get_logger("voice.live_session")
 
 # Live-capable model names that do not contain "live" in their identifier
 _LIVE_CAPABLE_MODEL_NAMES = {"gemini-2.0-flash-exp", "gemini-3.1-flash-live-preview"}
-_VOICE_LIVE_EXCLUDED_TOOLS = {"web_search", "fetch_webpage"}
 
 # Preferred transcription model when the SDK's AudioTranscriptionConfig
 # supports an explicit model field (falls back to the plain marker otherwise).
@@ -211,23 +210,13 @@ class GeminiLiveVoiceSession:
         if not registry:
             return None
 
-        allowed_tool_names = [
-            "open_application",
-            "close_application",
-            "youtube",
-            "get_time_date",
-            "get_system_info",
-            "get_screen_snapshot",
-            "manage_volume",
-            "search_web",
-            "android_open_app",
-            "android_keyevent",
-        ]
-
         function_declarations = []
-        for name in allowed_tool_names:
-            tool = registry.get(name)
-            if not tool:
+        # Voice capabilities follow the live registry, so new registered safe
+        # tools are available without adding a phrase or tool-name fast path here.
+        # Sensitive and dangerous actions stay behind the normal authorization
+        # flow and are not offered as direct Live calls.
+        for tool in registry.list_tools():
+            if tool.safety_level != SafetyLevel.SAFE:
                 continue
             try:
                 schema = tool.to_openai_schema()
@@ -238,13 +227,13 @@ class GeminiLiveVoiceSession:
                 params = GeminiLLMProvider._sanitize_parameters_for_gemini(raw_params)
                 function_declarations.append(
                     genai_types.FunctionDeclaration(
-                        name=name,
+                        name=tool.name,
                         description=desc,
                         parameters=params,
                     )
                 )
             except Exception as e:
-                logger.debug(f"Failed to convert tool '{name}' for Gemini Live: {e}")
+                logger.debug(f"Failed to convert tool '{tool.name}' for Gemini Live: {e}")
 
         if function_declarations:
             return [genai_types.Tool(function_declarations=function_declarations)]

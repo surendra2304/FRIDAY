@@ -154,6 +154,7 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
         self.tool_timeout = tool_timeout
         self.system_message = build_system_message(self.settings)
         self._processed_tool_ids: set = set()
+        self._processed_tool_signatures: set[str] = set()
         self.state_machine: ReasoningStateMachine = ReasoningStateMachine()
         self._current_plan: TaskGraph | None = None
         self.task_context: ActiveTaskContext | None = None
@@ -426,12 +427,6 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
     _CHROME_SEARCH_PATTERN = re.compile(
         r"^\s*(?:please\s+)?(?:(?:open|launch|start)\s+)?(?:chrome|google chrome)\s+and\s+search\s+(?P<query>.+?)\s*$|"
         r"^\s*(?:please\s+)?search\s+(?P<query2>.+?)\s+in\s+(?:chrome|google chrome)\s*$",
-        re.IGNORECASE,
-    )
-    _PLAY_MEDIA_PATTERN = re.compile(
-        r"^\s*(?:please\s+)?(?:(?:open\s+(?:chrome|google\s+chrome|browser|youtube)\s+and\s+)?(?:play|stream)\s+(?:the\s+)?(?:song\s+|video\s+|music\s+|track\s+)?(?P<query>.+?)(?:\s+(?:on|in)\s+youtube)?|"
-        r"(?:play|stream)\s+(?:on|in)\s+youtube\s+(?P<query2>.+?)|"
-        r"(?:play|stream)\s+(?P<query3>.+?)(?:\s+(?:on|in)\s+youtube)?)\s*$",
         re.IGNORECASE,
     )
     _CLOSE_CHROME_PATTERN = re.compile(

@@ -22,9 +22,11 @@ from friday.core.logging import get_logger
 
 logger = get_logger("voice.audio_io")
 
+_AUDIO_BACKEND_ERROR: str | None = None
 try:
     import sounddevice as sd
-except ImportError:
+except (ImportError, OSError) as exc:
+    _AUDIO_BACKEND_ERROR = f"audio backend unavailable: {type(exc).__name__}"
     sd = None  # type: ignore
 
 
@@ -33,7 +35,7 @@ def get_audio_diagnostics() -> dict[str, Any]:
     if sd is None:
         return {
             "driver_available": False,
-            "error": "sounddevice library is not installed",
+            "error": _AUDIO_BACKEND_ERROR or "sounddevice library is not installed",
             "devices": [],
             "default_input": None,
             "default_output": None,
@@ -71,7 +73,7 @@ def get_audio_diagnostics() -> dict[str, Any]:
 def check_device_availability(device_type: str = "input") -> tuple[bool, str | None]:
     """Check if the requested audio device type ('input' or 'output') is available and functional."""
     if sd is None:
-        return False, "sounddevice library unavailable"
+        return False, _AUDIO_BACKEND_ERROR or "sounddevice library unavailable"
     try:
         devices = sd.query_devices()
         if not devices:

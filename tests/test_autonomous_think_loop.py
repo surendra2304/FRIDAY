@@ -86,7 +86,9 @@ def test_system_prompt_includes_inner_monologue_and_autonomous_thinking():
     assert "What tool do I need?" in prompt
     assert "What do I expect to happen?" in prompt
     assert "AUTONOMOUS GOAL COMPLETION & TOOL CHAINING" in prompt
-    assert "chain the necessary tools together autonomously" in prompt
+    assert "Do not depend on a fixed list of example commands or applications." in prompt
+    assert "never repeat a prior successful action unless the current request asks for it" in prompt
+    assert "tool schemas supplied for this turn are the authoritative capability catalog" in prompt
 
 
 def test_strip_thought_tags():

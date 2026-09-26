@@ -656,56 +656,6 @@ class FastPathMixin:
                     metadata={"fast_path": True, "workflow": "cancellation", "result": res}
                 )
 
-            play_match = getattr(self, "_PLAY_MEDIA_PATTERN", None)
-            if play_match:
-                m = play_match.match(clean_input)
-                if m:
-                    track = (m.group("query") or m.group("query2") or m.group("query3") or "").strip()
-                    if track.lower() in ("the song", "song", "it", "the music", "music", "the video", "video"):
-                        try:
-                            recent_msgs = self.memory.get_messages()[-6:]
-                            for prev_msg in reversed(recent_msgs):
-                                prev_text = prev_msg.content or ""
-                                if prev_text.startswith("Playing '") and "' on YouTube." in prev_text:
-                                    track = prev_text.split("Playing '")[1].split("' on YouTube.")[0]
-                                    break
-                                pm = getattr(self, "_PLAY_MEDIA_PATTERN", None).match(prev_text)
-                                if pm:
-                                    cand = (pm.group("query") or pm.group("query2") or pm.group("query3") or "").strip()
-                                    if cand and cand.lower() not in ("the song", "song", "it", "music", "the video", "video"):
-                                        track = cand
-                                        break
-                        except Exception:
-                            pass
-
-                    if track and not any(track.lower().startswith(x) for x in ["game", "chess", "cards"]):
-                        self.memory.add_message(Message(role=Role.USER, content=clean_input))
-                        self.state_machine.transition_to(TaskState.PLANNING, reason=f"Direct playback command for {track}")
-                        self.state_machine.transition_to(TaskState.EXECUTING, reason=f"Playing {track} on YouTube")
-                        yt_tool = self.tools.get("youtube")
-                        if yt_tool:
-                            res = yt_tool.execute(query=track, play=True)
-                            content = res.content
-                            ok = not res.is_error
-                        else:
-                            content = f"Playing '{track}' on YouTube."
-                            ok = True
-                        self.state_machine.transition_to(TaskState.VERIFYING, reason="Checking playback")
-                        self.state_machine.transition_to(TaskState.COMPLETED if ok else TaskState.FAILED, reason=content)
-                        self.memory.add_message(Message(role=Role.ASSISTANT, content=content))
-                        return AgentResponse(
-                            content=content,
-                            is_done=True,
-                            metadata={
-                                "fast_path": True,
-                                "direct_desktop_action": "play_youtube",
-                                "track": track,
-                                "success": ok,
-                                "duration_seconds": time.perf_counter() - start_time,
-                                "task_state": self.state_machine.current_state.value,
-                            },
-                        )
-
             if self._CLOSE_TAB_PATTERN.match(clean_input):
                 self.memory.add_message(Message(role=Role.USER, content=clean_input))
                 self.state_machine.transition_to(TaskState.PLANNING, reason="Direct close active Chrome tab command")
@@ -749,27 +699,6 @@ class FastPathMixin:
                         "task_state": self.state_machine.current_state.value,
                     },
                 )
-            play_match = self._PLAY_MEDIA_PATTERN.match(clean_input)
-            if play_match:
-                query_raw = (
-                    play_match.groupdict().get("query")
-                    or play_match.groupdict().get("query2")
-                    or play_match.groupdict().get("query3")
-                )
-                query_val = (query_raw or "").strip()
-                query_val = re.sub(r"\s+(?:on|in)\s+youtube[\.\!\?]*$", "", query_val, flags=re.IGNORECASE).strip().rstrip(".!?")
-                if query_val:
-                    def _play_youtube() -> str:
-                        from friday.tools.builtin.youtube import YouTubeTool
-                        return YouTubeTool().execute(query=query_val, play=True).content
-
-                    return self._complete_fast_path(
-                        clean_input, start_time, "play_media",
-                        f"Direct media playback command for '{query_val}'", f"Playing '{query_val}' on YouTube",
-                        _play_youtube,
-                        verifying_reason="Resolving YouTube video watch URL and launching in browser",
-                    )
-
             if self._SETTINGS_PATTERN.match(clean_input):
                 self.memory.add_message(Message(role=Role.USER, content=clean_input))
                 self.state_machine.transition_to(TaskState.PLANNING, reason="Direct Settings command")
@@ -1234,8 +1163,6 @@ class FastPathMixin:
                 return "close_chrome_tab"
             if self._CLOSE_CHROME_PATTERN.match(clean):
                 return "close_chrome"
-            if self._PLAY_MEDIA_PATTERN.match(clean):
-                return "play_media"
             open_app_match = self._OPEN_APP_PATTERN.match(clean)
             if open_app_match:
                 app_raw = open_app_match.group("app").strip().lower()

@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import random
@@ -325,6 +326,22 @@ class ToolExecutionMixin:
                     safety_level=SafetyLevel.SAFE,
                 )
             self._processed_tool_ids.add(tc.id)
+
+            operation_signature = json.dumps(
+                [tc.name, tc.arguments], sort_keys=True, separators=(",", ":"), default=str
+            )
+            if operation_signature in self._processed_tool_signatures:
+                return ToolResult(
+                    tool_call_id=tc.id,
+                    name=tc.name,
+                    content=(
+                        f"Error: Repeated tool operation '{tc.name}' with the same arguments "
+                        "was not executed again in this request. Use the previous result."
+                    ),
+                    is_error=True,
+                    safety_level=SafetyLevel.SAFE,
+                )
+            self._processed_tool_signatures.add(operation_signature)
 
             tool = self.tools.get(tc.name)
             if not tool:

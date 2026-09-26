@@ -450,6 +450,7 @@ def test_open_application_tool_in_default_registry_and_live_decl():
     declarations = live_tools[0].function_declarations
     declared_names = {declaration.name for declaration in declarations}
     assert {"open_application", "close_application"} <= declared_names
+    assert {"open_website", "media_control", "youtube"} <= declared_names
 
 
 def test_open_application_launch_and_safety(monkeypatch):

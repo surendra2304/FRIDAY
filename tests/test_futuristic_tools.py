@@ -392,7 +392,7 @@ def test_ocr_unavailable_graceful(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_all_futuristic_tools_registered_but_not_live_declared():
+def test_live_declarations_follow_registered_tool_safety():
     from friday.agent.agent import FridayAgent
     from friday.llm.mock_provider import MockLLMProvider
     from friday.memory.in_memory import InMemoryConversationMemory
@@ -413,7 +413,11 @@ def test_all_futuristic_tools_registered_but_not_live_declared():
     assert expected <= names
 
     session = GeminiLiveVoiceSession(api_key="TEST", agent=agent)
-    assert session._build_tools_config() is None
+    live_tools = session._build_tools_config()
+    assert live_tools
+    declared_names = {declaration.name for declaration in live_tools[0].function_declarations}
+    assert {"open_application", "open_website", "media_control", "youtube"} <= declared_names
+    assert "execute_command" in declared_names
 
 
 def test_new_tools_are_safe_level():

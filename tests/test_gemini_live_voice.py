@@ -151,12 +151,14 @@ async def test_live_system_prompt_allows_one_opening_greeting():
 
 @pytest.mark.anyio
 async def test_live_session_tool_config_building(mock_agent):
-    """Voice Live does not expose tools directly; the local agent owns execution."""
+    """Voice Live exposes the registry's safe tools for local execution."""
     session = GeminiLiveVoiceSession(
         api_key="TEST_GEMINI_API_KEY",
         agent=mock_agent,
     )
-    assert session._build_tools_config() is None
+    live_tools = session._build_tools_config()
+    assert live_tools
+    assert {declaration.name for declaration in live_tools[0].function_declarations} == {"get_time"}
 
 
 @pytest.mark.anyio

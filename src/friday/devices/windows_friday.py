@@ -1700,8 +1700,6 @@ class WindowsFridayController:
             return True
         if self.is_contact_directive(cmd):
             return True
-        if "play " in cmd or cmd.startswith("play") or ("youtube" in cmd and any(k in cmd for k in ["play", "song", "music", "video", "track"])):
-            return True
         if any(cmd == k or cmd == f"open {k}" or cmd == f"launch {k}" for k in ["youtube", "yt"]):
             return True
         if cmd in ["open chrome", "launch chrome", "start chrome", "chrome", "google chrome", "open google chrome"]:
@@ -1805,18 +1803,7 @@ class WindowsFridayController:
             rev = daily_rhythm.get_evening_review()
             return True, rev, {"action": "evening_review"}
 
-        # A. YouTube Video / Music Playback
-        if (
-            "play " in cmd
-            or cmd.startswith("play")
-            or "play the song" in cmd
-            or "play song" in cmd
-            or ("youtube" in cmd and any(k in cmd for k in ["play", "song", "music", "video", "track"]))
-        ):
-            ok, reply = self.play_youtube(raw)
-            return True, reply, {"action": "play_youtube", "success": ok}
-
-        # B. YouTube Direct Website
+        # A. YouTube Direct Website
         if any(cmd_clean == k or cmd_clean == f"open {k}" or cmd_clean == f"launch {k}" or cmd_clean == f"go to {k}" for k in ["youtube", "yt"]):
             ok = self.open_url("https://www.youtube.com")
             return True, "Opened YouTube in Google Chrome.", {"action": "open_youtube", "success": ok}

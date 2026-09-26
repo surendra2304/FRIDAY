@@ -178,6 +178,46 @@ def test_agent_direct_time_and_specs_fast_paths():
     assert listening_response.content == "Yes. I am listening."
 
 
+def test_media_command_uses_current_model_plan_and_not_prior_media_history(monkeypatch):
+    """Media routing is model-selected from the current request, without YouTube fallback."""
+    from friday.memory.in_memory import InMemoryConversationMemory
+
+    executed = []
+    provider_calls = 0
+
+    def responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
+        nonlocal provider_calls
+        provider_calls += 1
+        latest_user = next(message.content for message in reversed(messages) if message.role == Role.USER)
+        if provider_calls == 1:
+            assert latest_user == "Play something on Spotify"
+            return Message(
+                role=Role.ASSISTANT,
+                content="Opening Spotify.",
+                tool_calls=[ToolCall(id="spotify", name="open_website", arguments={"target": "spotify"})],
+            )
+        return Message(role=Role.ASSISTANT, content="Spotify is open.")
+
+    memory = InMemoryConversationMemory()
+    memory.add_message(Message(role=Role.ASSISTANT, content="Playing 'old video' on YouTube."))
+    agent = FridayAgent(
+        settings=Settings(env="testing", llm_provider="mock", embedding_provider="none"),
+        llm_provider=MockLLMProvider(custom_responder=responder),
+        memory=memory,
+    )
+    monkeypatch.setattr(
+        "friday.tools.builtin.open_website.webbrowser.open",
+        lambda url: executed.append(url) or True,
+    )
+
+    assert agent.classify_instant_command("Play something on Spotify") is None
+    response = agent.process_message("Play something on Spotify")
+
+    assert response.is_done
+    assert executed == ["https://open.spotify.com"]
+    assert not any(call.name == "youtube" for call in (response.tool_calls or []))
+
+
 def test_agent_direct_settings_and_update_fast_paths(monkeypatch):
     actions = []
     agent = FridayAgent(settings=Settings(env="testing", llm_provider="mock", embedding_provider="none"))
@@ -282,6 +322,49 @@ def test_agent_sequential_multi_step_tool_loop():
     assert response.tool_calls[0].name == "step_one_tool"
     assert response.tool_calls[1].name == "step_two_tool"
     assert response.metadata["iterations"] == 3
+
+
+def test_agent_does_not_repeat_same_tool_operation_with_new_call_id():
+    execution_count = 0
+    response_count = 0
+
+    class CountedTool(StepOneTool):
+        def execute(self, query: str, **kwargs: Any) -> ToolResult:
+            nonlocal execution_count
+            execution_count += 1
+            return super().execute(query=query, **kwargs)
+
+    def responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
+        nonlocal response_count
+        response_count += 1
+        if response_count <= 2:
+            return Message(
+                role=Role.ASSISTANT,
+                content="Running the requested operation.",
+                tool_calls=[
+                    ToolCall(
+                        id=f"call_{response_count}",
+                        name="step_one_tool",
+                        arguments={"query": "same request"},
+                    )
+                ],
+            )
+        return Message(role=Role.ASSISTANT, content="The requested operation is complete.")
+
+    registry = ToolRegistry()
+    registry.register(CountedTool())
+    agent = FridayAgent(
+        settings=Settings(env="testing", llm_provider="mock", embedding_provider="none"),
+        llm_provider=MockLLMProvider(custom_responder=responder),
+        tool_registry=registry,
+    )
+
+    response = agent.process_message("Run the requested operation")
+
+    assert response.content == "The requested operation is complete."
+    assert execution_count == 1
+    assert response.tool_results is not None
+    assert any("Repeated tool operation" in result.content for result in response.tool_results)
 
 
 def test_agent_unknown_tool_handling():

@@ -132,6 +132,7 @@ class CognitiveMixin:
             # Initialize fresh state machine for this turn/request
             self.state_machine = ReasoningStateMachine()
             self._processed_tool_ids.clear()
+            self._processed_tool_signatures.clear()
 
             if not clean_input:
                 self.state_machine.transition_to(TaskState.UNDERSTANDING, reason="Received empty turn")

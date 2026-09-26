@@ -5,6 +5,7 @@ import struct
 from unittest import mock
 
 import pytest
+import friday.voice.audio_io as audio_io
 
 from friday.voice.audio_io import (
     MicrophoneStream,
@@ -25,6 +26,19 @@ def test_audio_diagnostics_structure():
     assert isinstance(diag["driver_available"], bool)
     assert "devices" in diag
     assert isinstance(diag["devices"], list)
+
+
+def test_audio_diagnostics_when_native_backend_is_unavailable(monkeypatch):
+    monkeypatch.setattr(audio_io, "sd", None)
+    monkeypatch.setattr(audio_io, "_AUDIO_BACKEND_ERROR", "audio backend unavailable: OSError")
+
+    diag = audio_io.get_audio_diagnostics()
+    available, error = audio_io.check_device_availability("input")
+
+    assert diag["driver_available"] is False
+    assert diag["error"] == "audio backend unavailable: OSError"
+    assert available is False
+    assert error == "audio backend unavailable: OSError"
 
 
 def test_check_device_availability():
