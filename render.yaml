@@ -1,7 +1,7 @@
 services:
   - type: web
     name: friday
-    env: docker
+    runtime: docker
     runtime: docker
     plan: free
     region: singapore
