@@ -190,10 +190,19 @@ class MemoraClient:
         headers = {"X-Agent-Name": agent_name.lower()}
         if json_body:
             headers["Content-Type"] = "application/json"
-        credential = api_key or os.getenv(f"{agent_name.upper()}_API_KEY") or self.api_key
+        credential = api_key or self._agent_api_key(agent_name)
         if credential:
             headers["Authorization"] = f"Bearer {credential}"
         return headers
+
+    def _agent_api_key(self, agent_name: str) -> Optional[str]:
+        agent = agent_name.lower().strip()
+        return (
+            os.getenv(f"{agent.upper()}_API_KEY")
+            or (os.getenv("FRIDAY_MEMORA_API_KEY") if agent == "friday" else None)
+            or (os.getenv("FRIDAY_UNIVERSE_API_KEY") if agent == "friday" else None)
+            or (self.api_key if agent == "friday" else None)
+        )
 
     def poll_events(self, agent_name: str = "friday", after_id: int = 0, limit: int = 100) -> Dict[str, Any]:
         """Fetch durable shared Memora notifications after a caller-owned cursor."""
@@ -202,7 +211,7 @@ class MemoraClient:
         if not self.remote_enabled:
             return {"status": "disabled", "events": [], "next_after_id": after_id}
         agent = agent_name.lower().strip()
-        agent_key = os.getenv(f"{agent.upper()}_API_KEY")
+        agent_key = self._agent_api_key(agent)
         if not agent_key:
             return {"status": "error", "error": f"{agent.upper()}_API_KEY is not configured"}
         query = urllib.parse.urlencode({"after_id": after_id, "limit": limit})
@@ -223,7 +232,7 @@ class MemoraClient:
     def read_event_cursor(self, agent_name: str = "friday", consumer_id: str = "default") -> Dict[str, Any]:
         """Read FRIDAY's independent server-persisted feed cursor."""
         agent = agent_name.lower().strip()
-        key = os.getenv(f"{agent.upper()}_API_KEY")
+        key = self._agent_api_key(agent)
         if not self.remote_enabled or not key:
             return {"status": "error", "error": f"{agent.upper()}_API_KEY is not configured or Memora remote is disabled"}
         try:
@@ -242,7 +251,7 @@ class MemoraClient:
     def acknowledge_event(self, agent_name: str, event_id: int, consumer_id: str = "default") -> Dict[str, Any]:
         """Persist an event acknowledgement after successful local handling."""
         agent = agent_name.lower().strip()
-        key = os.getenv(f"{agent.upper()}_API_KEY")
+        key = self._agent_api_key(agent)
         if not self.remote_enabled or not key:
             return {"status": "error", "error": f"{agent.upper()}_API_KEY is not configured or Memora remote is disabled"}
         try:
@@ -259,6 +268,48 @@ class MemoraClient:
             logger.warning("Memora event acknowledgement failed (%s)", type(exc).__name__)
             return {"status": "error", "error": type(exc).__name__}
 
+    def persist_event_notice(self, event: Dict[str, Any], message: str, consumer_id: str) -> bool:
+        """Durably archive an untrusted event notice in Memora before its cursor advances."""
+        if not self.remote_enabled or not self._agent_api_key("friday"):
+            logger.warning("Memora event notice was not persisted: remote memory is not configured")
+            return False
+        event_id = event.get("id")
+        if not isinstance(event_id, int) or event_id <= 0:
+            return False
+        payload = {
+            "content_text": self.sanitize_for_persistence(message),
+            "memory_type": "episodic",
+            "source": "agent:friday-event-inbox",
+            "source_type": "cross_agent_notice",
+            "trust_level": "untrusted",
+            "target_namespace_path": "memora://friday/notifications",
+            "importance": 0.55,
+            "confidence": 0.0,
+            "idempotency_key": f"friday-event-{consumer_id}-{event_id}",
+            "provenance": {
+                "event_id": event_id,
+                "event_type": str(event.get("event_type", "unknown"))[:128],
+                "consumer_id": consumer_id[:64],
+                "created_at": str(event.get("created_at", ""))[:64],
+                "source_agent": str(event.get("payload", {}).get("source_agent", "unknown"))[:64],
+            },
+        }
+        try:
+            req = urllib.request.Request(
+                f"{self.base_url}/v1/memories",
+                data=json.dumps(payload).encode("utf-8"),
+                headers=self._remote_headers("friday", json_body=True),
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+                if response.status not in (200, 201):
+                    return False
+                result = json.loads(response.read().decode("utf-8"))
+                return isinstance(result, dict) and bool(result.get("id"))
+        except Exception as exc:
+            logger.warning("Memora event notice persistence failed (%s)", type(exc).__name__)
+            return False
+
     def publish_event(
         self,
         source_agent: str,
@@ -272,7 +323,7 @@ class MemoraClient:
     ) -> Dict[str, Any]:
         """Sign and persist an idempotent agent notification through Memora."""
         source = source_agent.lower().strip()
-        key = os.getenv(f"{source.upper()}_API_KEY")
+        key = self._agent_api_key(source)
         if not key:
             return {"status": "error", "error": f"{source.upper()}_API_KEY is not configured"}
         if not (1 <= ttl <= 86400):

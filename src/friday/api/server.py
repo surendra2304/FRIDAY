@@ -34,6 +34,8 @@ from friday.core.logging import get_logger
 from friday.devices.android_controller import AndroidDeviceController
 from friday.devices.app_launcher import launch_desktop_app
 from friday.ecosystem.fleet_client import fleet_client
+from friday.memory.event_consumer import MemoraEventConsumer
+from friday.memory.memora_client import memora_client
 from friday.autonomous import autonomous_controller
 from friday_deep.observability.metrics import DEFAULT as default_metrics
 from friday_deep.health import build as build_health_report
@@ -54,6 +56,18 @@ fleet_supervision_state: dict[str, Any] = {
     "last_completed_at": None,
     "last_error": None,
     "agents": [],
+}
+
+MEMORA_EVENT_CONSUMER_ID = "friday-cloud"
+try:
+    MEMORA_EVENT_POLL_INTERVAL_SECONDS = max(30, int(os.getenv("FRIDAY_MEMORA_POLL_INTERVAL_SECONDS", "60")))
+except ValueError:
+    MEMORA_EVENT_POLL_INTERVAL_SECONDS = 60
+memora_event_state: dict[str, Any] = {
+    "consumer_id": MEMORA_EVENT_CONSUMER_ID,
+    "running": False,
+    "last_completed_at": None,
+    "last_result": None,
 }
 
 
@@ -77,17 +91,51 @@ async def _fleet_supervision_loop() -> None:
         fleet_supervision_state["running"] = False
 
 
+async def _memora_event_loop() -> None:
+    """Archive untrusted Memora notices durably before advancing FRIDAY's cloud cursor."""
+    consumer = MemoraEventConsumer(
+        memora_client,
+        consumer_id=MEMORA_EVENT_CONSUMER_ID,
+        persist_notice=memora_client.persist_event_notice,
+    )
+    memora_event_state["running"] = True
+    try:
+        while True:
+            try:
+                result = await asyncio.to_thread(consumer.consume_once)
+                memora_event_state["last_result"] = result
+                memora_event_state["last_completed_at"] = datetime.now(timezone.utc).isoformat()
+                if result.get("status") != "ok":
+                    logger.warning("Memora event consumption did not complete: %s", result)
+                while result.get("status") == "ok" and result.get("has_more"):
+                    result = await asyncio.to_thread(consumer.consume_once)
+                    memora_event_state["last_result"] = result
+                    memora_event_state["last_completed_at"] = datetime.now(timezone.utc).isoformat()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                memora_event_state["last_result"] = {"status": "error", "error": type(exc).__name__}
+                memora_event_state["last_completed_at"] = datetime.now(timezone.utc).isoformat()
+                logger.exception("FRIDAY Memora event consumer cycle failed")
+            await asyncio.sleep(MEMORA_EVENT_POLL_INTERVAL_SECONDS)
+    finally:
+        memora_event_state["running"] = False
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     supervision_task = asyncio.create_task(_fleet_supervision_loop(), name="friday-fleet-supervision")
+    memora_task = asyncio.create_task(_memora_event_loop(), name="friday-memora-event-consumer")
     try:
         yield
     finally:
-        supervision_task.cancel()
-        try:
-            await supervision_task
-        except asyncio.CancelledError:
-            pass
+        for task in (supervision_task, memora_task):
+            task.cancel()
+        for task in (supervision_task, memora_task):
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
 app = FastAPI(
     title="FRIDAY Holographic Core & FastMCP Server",
@@ -106,6 +154,11 @@ app.add_middleware(
 )
 
 settings = get_settings()
+memora_client.base_url = str(getattr(settings, "memora_url", memora_client.base_url)).rstrip("/")
+memora_api_key = getattr(settings, "memora_api_key", None) or getattr(settings, "api_key", None)
+if memora_api_key:
+    memora_client.api_key = memora_api_key
+    memora_client.remote_enabled = True
 
 
 async def _require_control_access(request: Request) -> None:
@@ -362,6 +415,7 @@ async def get_agents_supervision() -> dict[str, Any]:
         "agent_count": len(agents),
         "status_counts": status_counts,
         "agents": agents,
+        "memora_event_consumer": dict(memora_event_state),
         "note": "HTTP health responses do not verify agent task execution, data persistence, or event delivery.",
     }
 
