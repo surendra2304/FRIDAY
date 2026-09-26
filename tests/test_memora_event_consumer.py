@@ -62,7 +62,7 @@ def test_consumer_does_not_ack_when_durable_persistence_fails():
     assert memora.cursors.get("friday-cloud", 0) == 0
 
 
-def test_legacy_list_feed_flows_through_persistence_before_ack(monkeypatch):
+def test_legacy_list_feed_is_rejected_without_persisting_or_acknowledging(monkeypatch):
     body = [{
         "cursor": 9,
         "event_id": "legacy-news-9",
@@ -101,9 +101,11 @@ def test_legacy_list_feed_flows_through_persistence_before_ack(monkeypatch):
 
     result = consumer.consume_once()
 
-    assert result["status"] == "ok"
-    assert result["acknowledged"] == 1
-    assert call_order == [("persist", 9, "friday-cloud"), ("ack", 9, "friday-cloud")]
+    assert result["status"] == "error"
+    assert result["stage"] == "poll"
+    assert "unsupported or invalid event feed schema" in result["error"]
+    assert "Legacy response" not in str(result)
+    assert call_order == []
 
 
 def test_notice_treats_remote_content_as_untrusted_data():

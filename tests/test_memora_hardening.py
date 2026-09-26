@@ -89,17 +89,9 @@ def test_memora_event_poll_uses_friday_key_and_cursor(monkeypatch):
             {"events": [{"id": 8, "event_id": "new-8", "event_type": "intelx.news", "created_at": "2026-09-26T10:00:00Z", "payload": {"headline": "new shape"}}], "next_after_id": 8, "has_more": False},
             7, 10, [8], False,
         ),
-        (
-            [{"cursor": 8, "event_id": "legacy-8", "event_type": "intelx.news", "timestamp": "2026-09-26T10:00:00Z", "payload": {"headline": "legacy shape"}}],
-            7, 1, [8], True,
-        ),
-        (
-            [{"cursor": 8, "event_id": "legacy-8", "event_type": "intelx.news", "timestamp": "2026-09-26T10:00:00Z", "payload": {"headline": "legacy shape"}}],
-            7, 2, [8], False,
-        ),
     ],
 )
-def test_memora_event_poll_normalizes_object_and_legacy_list_shapes(
+def test_memora_event_poll_accepts_protected_object_shape(
     monkeypatch, body, after_id, limit, expected_ids, expected_has_more
 ):
     import json
@@ -122,17 +114,11 @@ def test_memora_event_poll_normalizes_object_and_legacy_list_shapes(
     assert result["status"] == "ok"
     assert [event["id"] for event in result["events"]] == expected_ids
     assert result["has_more"] is expected_has_more
-    if isinstance(body, list):
-        assert result["events"][0]["created_at"] == body[0]["timestamp"]
-        assert result["events"][0]["event_id"] == body[0]["event_id"]
-        assert result["events"][0]["payload"] == body[0]["payload"]
-
-
 @pytest.mark.parametrize(
     "body",
     [
         {"events": [{"id": "not-an-int", "event_id": "x", "event_type": "intelx.news", "payload": {}}]},
-        [{"cursor": 1, "event_id": "x", "event_type": "intelx.news", "payload": []}],
+        [{"cursor": 1, "event_id": "x", "event_type": "intelx.news", "payload": {}}],
         [{"cursor": 1, "event_type": "intelx.news", "payload": {}}],
         {"unexpected": []},
     ],
@@ -156,7 +142,7 @@ def test_memora_event_poll_rejects_malformed_rows(monkeypatch, body):
     result = client.poll_events("friday", after_id=0)
 
     assert result["status"] == "error"
-    assert result["error"] == "Memora returned an invalid event feed"
+    assert result["error"] == "Memora returned an unsupported or invalid event feed schema"
 
 
 def test_memora_sanitizes_credentials_before_persistence():

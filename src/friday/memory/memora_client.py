@@ -222,21 +222,18 @@ class MemoraClient:
                 if response.status != 200:
                     return {"status": "error", "error": f"Memora returned HTTP {response.status}"}
                 result = json.loads(response.read().decode("utf-8"))
-                normalized = self._normalize_event_feed(result, after_id=after_id, limit=limit)
+                normalized = self._normalize_event_feed(result, after_id=after_id)
                 if normalized is None:
-                    return {"status": "error", "error": "Memora returned an invalid event feed"}
+                    return {"status": "error", "error": "Memora returned an unsupported or invalid event feed schema"}
                 return {"status": "ok", **normalized}
         except Exception as exc:
             logger.debug("Memora event feed unavailable (%s)", type(exc).__name__)
             return {"status": "error", "error": type(exc).__name__}
 
     @staticmethod
-    def _normalize_event_feed(result: Any, *, after_id: int, limit: int) -> Optional[Dict[str, Any]]:
-        """Normalize current object and deployed legacy-list feed contracts, rejecting bad rows."""
-        legacy_list = isinstance(result, list)
-        if legacy_list:
-            rows = result
-        elif isinstance(result, dict) and isinstance(result.get("events"), list):
+    def _normalize_event_feed(result: Any, *, after_id: int) -> Optional[Dict[str, Any]]:
+        """Normalize the protected object feed only; reject legacy unfiltered list routes."""
+        if isinstance(result, dict) and isinstance(result.get("events"), list):
             rows = result["events"]
         else:
             return None
@@ -246,7 +243,7 @@ class MemoraClient:
         for row in rows:
             if not isinstance(row, dict):
                 return None
-            event_id = row.get("cursor") if legacy_list else row.get("id")
+            event_id = row.get("id")
             if isinstance(event_id, bool) or not isinstance(event_id, int) or event_id <= previous_id:
                 return None
             message_id = row.get("event_id")
@@ -260,22 +257,12 @@ class MemoraClient:
                 return None
             timestamp = row.get("timestamp")
             created_at = row.get("created_at")
-            if legacy_list:
-                created_at = timestamp
             if created_at is not None and not isinstance(created_at, str):
                 return None
             if timestamp is not None and not isinstance(timestamp, str):
                 return None
             normalized_rows.append({**row, "id": event_id, "created_at": created_at})
             previous_id = event_id
-
-        if legacy_list:
-            return {
-                "events": normalized_rows,
-                "next_after_id": normalized_rows[-1]["id"] if normalized_rows else after_id,
-                # A full page may have more rows; a short page definitely does not.
-                "has_more": len(normalized_rows) == limit,
-            }
 
         next_after_id = result.get("next_after_id", normalized_rows[-1]["id"] if normalized_rows else after_id)
         has_more = result.get("has_more", False)
