@@ -1360,13 +1360,11 @@ class WindowsFridayController:
         # Explicit WhatsApp keywords
         if cmd in ["whatsapp", "open whatsapp", "launch whatsapp", "start whatsapp", "open whatsapp web", "whatsapp web", "wa"]:
             return True
-        if "whatsapp" in cmd or "whatsaapp" in cmd:
-            return True
         if re.search(r"^(?:open|launch|start|send|text|message)\s+(?:an?\s+)?(?:whats?a?app\b|.*\bwhats?a?app\b)", cmd):
             return True
         if re.search(r"^whats?a?app\s+[^\s]+\s+.+$", cmd):
             return True
-        if re.search(r"\b(?:in|on|via|through)\s+whats?a?app$", cmd):
+        if re.match(r"^(?:send|text|message)\b", cmd) and re.search(r"\b(?:in|on|via|through)\s+whats?a?app$", cmd):
             return True
 
         # Send/text/message to phone number (e.g. "send hi to 9014603029", "text 9014603029 hello")

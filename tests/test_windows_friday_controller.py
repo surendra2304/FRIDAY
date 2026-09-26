@@ -100,6 +100,9 @@ class TestWindowsFridayController:
         """Verify natural language directive matching via can_handle."""
         assert windows_friday.can_handle("play Star Boy on youtube") is False
         assert windows_friday.can_handle("play something on Spotify") is False
+        assert windows_friday.is_whatsapp_directive("mute notifications from whatsapp") is False
+        assert windows_friday.is_whatsapp_directive("mute notifications in whatsapp") is False
+        assert windows_friday.is_whatsapp_directive("send hi to ramesh in whatsapp") is True
         assert windows_friday.can_handle("open chrome") is True
         assert windows_friday.can_handle("close notepad") is True
         assert windows_friday.can_handle("volume up") is True
