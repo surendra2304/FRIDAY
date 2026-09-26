@@ -62,6 +62,50 @@ def test_consumer_does_not_ack_when_durable_persistence_fails():
     assert memora.cursors.get("friday-cloud", 0) == 0
 
 
+def test_legacy_list_feed_flows_through_persistence_before_ack(monkeypatch):
+    body = [{
+        "cursor": 9,
+        "event_id": "legacy-news-9",
+        "event_type": "intelx.news",
+        "timestamp": "2026-09-26T10:00:00Z",
+        "payload": {"source_agent": "intelx", "headline": "Legacy response"},
+    }]
+
+    class Response:
+        status = 200
+        def __enter__(self):
+            return self
+        def __exit__(self, *_args):
+            return False
+        def read(self):
+            return json.dumps(body).encode()
+
+    monkeypatch.setenv("FRIDAY_API_KEY", "test-only-friday-key")
+    monkeypatch.setattr("urllib.request.urlopen", lambda *_args, **_kwargs: Response())
+    client = MemoraClient(base_url="https://memora.invalid", local_db_path=":memory:", remote_enabled=True)
+    client.read_event_cursor = lambda _agent, _consumer: {"status": "ok", "after_id": 8}
+    call_order = []
+
+    def persist(event, message, consumer_id):
+        call_order.append(("persist", event["id"], consumer_id))
+        assert event["created_at"] == body[0]["timestamp"]
+        assert "Legacy response" in message
+        return True
+
+    def acknowledge(agent_name, event_id, consumer_id):
+        call_order.append(("ack", event_id, consumer_id))
+        return {"status": "ok", "after_id": event_id}
+
+    client.acknowledge_event = acknowledge
+    consumer = MemoraEventConsumer(client, consumer_id="friday-cloud", persist_notice=persist)
+
+    result = consumer.consume_once()
+
+    assert result["status"] == "ok"
+    assert result["acknowledged"] == 1
+    assert call_order == [("persist", 9, "friday-cloud"), ("ack", 9, "friday-cloud")]
+
+
 def test_notice_treats_remote_content_as_untrusted_data():
     event = FakeMemora().events[0]
     message = MemoraEventConsumer.format_notice(event)
