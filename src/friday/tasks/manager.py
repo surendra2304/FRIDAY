@@ -414,7 +414,7 @@ class LongRunningTaskManager:
                 goal=goal,
                 status=TaskLifecycleStatus.SUBMITTED,
                 spec=spec,
-                graph=plan,
+                plan=plan,
                 total_steps=len(plan.list_tasks()),
             )
 

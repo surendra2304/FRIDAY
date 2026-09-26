@@ -44,6 +44,38 @@ class SlowWorkerTool(BaseTool):
 
 
 # 1. Background Task Creation & Completion
+def test_task_submission_persists_plan_with_supported_keyword(monkeypatch, tmp_path):
+    """Task submission persists its graph through TaskPersistenceStore's `plan` contract."""
+    tool = SlowWorkerTool()
+    reg = ToolRegistry()
+    reg.register(tool)
+    agent = FridayAgent(
+        settings=Settings(env="testing", agent_name="FRIDAY"),
+        llm_provider=MockLLMProvider(),
+        memory=InMemoryConversationMemory(),
+        tool_registry=reg,
+    )
+    manager = LongRunningTaskManager(agent=agent, db_path=str(tmp_path / "tasks.sqlite"))
+    persisted = {}
+
+    def capture_save_task(*, task_id, goal, status, spec, plan=None, **kwargs):
+        persisted.update(task_id=task_id, plan=plan)
+
+    monkeypatch.setattr(manager.persistence, "save_task", capture_save_task)
+    monkeypatch.setattr(manager, "_task_worker", lambda task_id: None)
+
+    task_id = manager.submit_task(
+        goal="Persist a task plan",
+        steps=[
+            {"step_id": "step_1", "description": "Prepare", "tool_name": "slow_worker_tool", "parameters": {"work_item": "A"}}
+        ],
+    )
+
+    assert persisted["task_id"] == task_id
+    assert persisted["plan"] is not None
+    assert len(persisted["plan"].list_tasks()) == 1
+
+
 def test_long_running_task_lifecycle_completion():
     tool = SlowWorkerTool()
     reg = ToolRegistry()
