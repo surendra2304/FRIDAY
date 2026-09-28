@@ -15,10 +15,19 @@ def test_coding_workspace_guard_allows_local_root():
     # Subpath inside workspace root allowed
     allowed_sub = root / "src" / "friday" / "agent.py"
     assert guard.is_path_allowed(allowed_sub)
+    if os.name != "nt":
+        # Native POSIX absolute paths remain valid on POSIX hosts.
+        assert guard.is_path_allowed(root)
 
     # Path outside workspace root blocked
-    external_path = Path("C:/Windows/System32/drivers/etc/hosts").resolve()
+    # Keep the Windows path in its original form: resolving it on POSIX first
+    # disguises it as a relative path beneath the current workspace.
+    external_path = "C:/Windows/System32/drivers/etc/hosts"
     assert not guard.is_path_allowed(external_path)
+
+    # Drive-relative and UNC paths must not be reinterpreted as workspace names.
+    assert not guard.is_path_allowed("C:Windows\\System32")
+    assert not guard.is_path_allowed("\\\\server\\share\\secret.txt")
 
 
 def test_coding_workspace_guard_command_sanitization():

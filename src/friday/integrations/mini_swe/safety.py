@@ -8,7 +8,7 @@ repository boundaries.
 from __future__ import annotations
 
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 from friday.core.logging import get_logger
@@ -54,6 +54,16 @@ class CodingWorkspaceGuard:
     def is_path_allowed(self, target_path: str | Path) -> bool:
         """Verify that a path lies inside one of the authorized workspace roots."""
         try:
+            # pathlib interprets Windows paths as ordinary relative names on POSIX.
+            # That can turn e.g. ``C:/Windows`` into ``<workspace>/C:/Windows`` and
+            # accidentally admit it. Reject foreign absolute/drive-qualified paths
+            # before resolving them; on Windows, Path resolves those paths natively.
+            raw_path = os.fspath(target_path)
+            if os.name != "nt":
+                windows_path = PureWindowsPath(raw_path)
+                if windows_path.drive or raw_path.startswith("\\"):
+                    return False
+
             resolved = Path(target_path).resolve()
             return any(
                 resolved == root or root in resolved.parents
