@@ -1,3 +1,4 @@
+import json
 import os
 import random
 import re
@@ -119,6 +120,35 @@ from friday.vision.windows_input_driver import (
     WindowsNativeInputDriver,
     check_desktop_interactivity,
 )
+
+
+_YOUTUBE_ACTION_REQUEST = re.compile(
+    r"^\s*(?:(?:friday)[,:]?\s*)?(?:please\s+)?"
+    r"(?:open|go\s+to|visit|search(?:\s+for)?|find|play|watch|start|put\s+on)\b.*"
+    r"\b(?:youtube|youtu\.be)\b",
+    re.IGNORECASE,
+)
+_YOUTUBE_POLITE_REQUEST = re.compile(
+    r"^\s*(?:can|could|would|will)\s+you\s+(?:please\s+)?"
+    r"(?:open|go\s+to|visit|search(?:\s+for)?|find|play|watch|start|put\s+on)\b.*"
+    r"\b(?:youtube|youtu\.be)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_unrequested_youtube_action(call: ToolCall, current_request: str) -> bool:
+    """Block model-inferred YouTube navigation unless this turn requested it."""
+    try:
+        tool_args = json.dumps(call.arguments, ensure_ascii=False, default=str)
+    except (TypeError, ValueError):
+        tool_args = str(call.arguments)
+    youtube_targeted = (
+        call.name.lower() == "youtube"
+        or bool(re.search(r"(?:youtube(?:\.com)?|youtu\.be)", tool_args, re.IGNORECASE))
+    )
+    if not youtube_targeted:
+        return False
+    return not bool(_YOUTUBE_ACTION_REQUEST.search(current_request) or _YOUTUBE_POLITE_REQUEST.search(current_request))
 
 logger = get_logger("agent.core")
 
@@ -288,6 +318,7 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
         last_error = ""
         tool_failure_counts: dict[str, int] = {}
         stop_after_failure = False
+        current_user_request = str((context or {}).get("current_user_request", goal))
 
         iterations = 0
         for _ in range(self.max_tool_iterations):
@@ -327,7 +358,19 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
             messages.append(response)
             for call in response.tool_calls:
                 tool_calls.append(call)
-                result = self._execute_single_tool_call(call)
+                if _is_unrequested_youtube_action(call, current_user_request):
+                    result = ToolResult(
+                        tool_call_id=call.id,
+                        name=call.name,
+                        content=(
+                            "Action blocked: this turn did not explicitly ask to open, search, or play YouTube. "
+                            "Do not substitute YouTube for another service or for a general conversation request."
+                        ),
+                        is_error=True,
+                        safety_level=SafetyLevel.SAFE,
+                    )
+                else:
+                    result = self._execute_single_tool_call(call)
                 tool_results.append(result)
                 messages.append(
                     Message(
@@ -345,6 +388,7 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
                     non_retryable = any(marker in normalized_error for marker in (
                         "401", "unauthorized", "403", "forbidden", "permission denied",
                         "missing api key", "invalid api key", "authentication failed",
+                        "action blocked:",
                     ))
                     retries_exhausted = tool_failure_counts[call.name] > 3
                     messages.append(

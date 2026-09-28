@@ -224,6 +224,52 @@ def test_media_command_uses_current_model_plan_and_not_prior_media_history(monke
     assert not any(call.name == "youtube" for call in (response.tool_calls or []))
 
 
+def test_model_cannot_substitute_youtube_for_current_general_request(monkeypatch):
+    """A stale or hallucinated YouTube tool call must not launch a browser."""
+    from friday.memory.in_memory import InMemoryConversationMemory
+
+    launches = []
+    provider_calls = 0
+
+    def responder(messages: list[Message], tools: list[dict[str, Any]] | None) -> Message:
+        nonlocal provider_calls
+        provider_calls += 1
+        if provider_calls == 1:
+            return Message(
+                role=Role.ASSISTANT,
+                content="I will open a focus video.",
+                tool_calls=[ToolCall(id="wrong-media", name="youtube", arguments={"query": "study session"})],
+            )
+        assert any("Action blocked" in message.content for message in messages if message.role == Role.TOOL)
+        return Message(role=Role.ASSISTANT, content="Here is a focus suggestion without opening a site.")
+
+    agent = FridayAgent(
+        settings=Settings(env="testing", llm_provider="mock", embedding_provider="none"),
+        llm_provider=MockLLMProvider(custom_responder=responder),
+        memory=InMemoryConversationMemory(),
+    )
+    monkeypatch.setattr("friday.tools.builtin.youtube.webbrowser.open", lambda url: launches.append(url) or True)
+
+    response = agent.execute_complex_task(
+        goal="What helps with focus?",
+        context={"current_user_request": "What helps with focus?"},
+    )
+
+    assert response.is_done
+    assert launches == []
+    assert response.tool_results and response.tool_results[0].is_error
+    assert "Action blocked" in response.tool_results[0].content
+
+
+def test_youtube_tool_requires_explicit_current_turn_intent():
+    from friday.agent.agent import _is_unrequested_youtube_action
+
+    call = ToolCall(id="youtube", name="youtube", arguments={"query": "study music"})
+    assert _is_unrequested_youtube_action(call, "What helps with focus?")
+    assert not _is_unrequested_youtube_action(call, "Open YouTube and search for study music")
+    assert not _is_unrequested_youtube_action(call, "Could you play this on YouTube?")
+
+
 def test_agent_direct_settings_and_update_fast_paths(monkeypatch):
     actions = []
     agent = FridayAgent(settings=Settings(env="testing", llm_provider="mock", embedding_provider="none"))

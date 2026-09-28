@@ -310,6 +310,9 @@ class CognitiveMixin:
             
             context = {
                 "has_working_context": bool(self.task_context) or is_confirmation_turn,
+                # Tool authorization must be grounded in what the user asked on
+                # this turn, never an older media request recalled from memory.
+                "current_user_request": clean_input,
                 "recalled_memories": [
                     r.to_dict() if hasattr(r, "to_dict") else (r.model_dump() if hasattr(r, "model_dump") else dict(r))
                     for r in recalled
