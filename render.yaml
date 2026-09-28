@@ -2,7 +2,6 @@ services:
   - type: web
     name: friday
     runtime: docker
-    runtime: docker
     plan: free
     region: singapore
     healthCheckPath: /health

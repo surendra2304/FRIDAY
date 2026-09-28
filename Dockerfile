@@ -1,6 +1,13 @@
 # ==============================================================================
-# FRIDAY Holographic Core & FastMCP Server - Cloud Container (Render)
+# FRIDAY command center UI and FastAPI/MCP service (Render)
 # ==============================================================================
+FROM node:22-alpine AS ui-build
+WORKDIR /ui
+COPY ui/package.json ui/package-lock.json ./
+RUN npm ci
+COPY ui/ ./
+RUN npm run build
+
 FROM python:3.11-slim
 
 # Prevent Python from buffering stdout/stderr and writing bytecode
@@ -22,6 +29,8 @@ WORKDIR /app
 # Copy project specifications and source code
 COPY pyproject.toml README.md requirements.txt* ./
 COPY src/ ./src/
+COPY --from=ui-build /ui/out/ /app/ui/
+ENV FRIDAY_UI_DIR=/app/ui
 
 # Install dependencies
 RUN pip install --no-cache-dir --upgrade pip && \

@@ -18,3 +18,6 @@ diary
 logs/*
 scratch/*
 .DS_Store
+ui/node_modules
+ui/.next
+ui/out

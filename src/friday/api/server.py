@@ -20,11 +20,13 @@ import re
 import subprocess
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from friday.agent.agent import FridayAgent
@@ -202,7 +204,6 @@ class AndroidActionRequest(BaseModel):
     params: dict[str, Any] = {}
 
 
-@app.api_route("/", methods=["GET", "HEAD"])
 @app.api_route("/api/health", methods=["GET", "HEAD"])
 @app.api_route("/health", methods=["GET", "HEAD"])
 async def health_check() -> dict[str, Any]:
@@ -1087,3 +1088,10 @@ async def mcp_messages_endpoint(request: Request, _: None = Depends(_require_con
             "jsonrpc": "2.0",
             "error": {"code": -32000, "message": str(e)},
         })
+
+
+# Mount the static command center after API routes so it never shadows the API.
+# Local source checkouts may omit the exported UI; the API remains usable there.
+_ui_directory = Path(os.getenv("FRIDAY_UI_DIR", "")).expanduser() if os.getenv("FRIDAY_UI_DIR") else None
+if _ui_directory and (_ui_directory / "index.html").is_file():
+    app.mount("/", StaticFiles(directory=str(_ui_directory), html=True), name="friday-ui")
