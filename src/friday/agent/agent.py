@@ -287,7 +287,7 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
         system_message = self.system_message
         messages = [system_message if isinstance(system_message, Message) else Message(role=Role.SYSTEM, content=str(system_message))]
         context_limit = max(1, int(getattr(self.memory, "max_messages", 12)))
-        messages.extend(self.memory.get_messages()[-max(0, context_limit - 1):])
+        recalled_messages: list[Message] = []
 
         # Recall persistent long-term memories and self-upgraded operational guidelines from Memora
         try:
@@ -308,11 +308,18 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
                     + "\n\n".join(recalled_blocks)
                     + "\n=== [END HISTORICAL MEMORY CONTEXT] ==="
                 )
-                messages.append(Message(role=Role.USER, content=quarantined_memory))
+                recalled_messages.append(Message(role=Role.USER, content=quarantined_memory))
         except Exception as e:
             logger.debug(f"Memora context injection skipped: {e}")
 
-        messages.append(Message(role=Role.USER, content=goal))
+        # The configured context limit covers every non-system prompt message,
+        # including recalled context and the current request. Reserve those slots
+        # first, then fill the remaining space with the newest conversation turns.
+        current_request_messages = [*recalled_messages, Message(role=Role.USER, content=goal)]
+        history_slots = max(0, context_limit - len(current_request_messages))
+        if history_slots:
+            messages.extend(self.memory.get_messages()[-history_slots:])
+        messages.extend(current_request_messages)
         tool_results: list[ToolResult] = []
         tool_calls: list[ToolCall] = []
         last_error = ""
@@ -612,6 +619,51 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
     def current_plan(self) -> TaskGraph | None:
         """Return the active TaskGraph if one exists."""
         return self._current_plan
+
+    def create_plan(self, goal: str, steps: list[dict[str, Any]] | None = None) -> TaskGraph:
+        """Build and retain a validated task graph for explicit or model-planned work."""
+        if not goal or not goal.strip():
+            raise ValueError("A task goal is required to create a plan.")
+
+        if steps is None:
+            graph = self.goal_orchestrator.planner.plan(goal)
+        else:
+            from friday.planning.types import TaskStep
+
+            normalized_steps = []
+            for raw_step in steps:
+                step_data = dict(raw_step)
+                if "id" not in step_data and "step_id" in step_data:
+                    step_data["id"] = step_data.pop("step_id")
+                normalized_steps.append(TaskStep(**step_data))
+            graph = TaskGraph(goal=goal, tasks=normalized_steps)
+
+        for task in graph.list_tasks():
+            self.goal_orchestrator.router.route_task(task)
+        self._current_plan = graph
+        self.task_context = ActiveTaskContext(goal=goal, plan=graph)
+        return graph
+
+    def execute_plan(self, plan: TaskGraph | None = None):
+        """Execute a previously created task graph and persist a factual summary."""
+        from friday.agent.state import TaskState
+
+        graph = plan or self._current_plan
+        if graph is None:
+            raise ValueError("There is no active task plan to execute.")
+
+        executed_graph = self.goal_orchestrator.execute_graph(graph)
+        self._current_plan = executed_graph
+        success = all(task.status.value == "COMPLETED" for task in executed_graph.list_tasks())
+        summary = self.goal_orchestrator.synthesizer.synthesize(executed_graph)
+        if self.task_context is None or self.task_context.goal != executed_graph.goal:
+            self.task_context = ActiveTaskContext(goal=executed_graph.goal, plan=executed_graph)
+        self.task_context.plan = executed_graph
+        self.task_context.set_state(TaskState.COMPLETED if success else TaskState.FAILED)
+        long_term_summary = self.task_context.finalize_and_extract_long_term_summary(success=success)
+        if long_term_summary is not None:
+            self.memory.add_message(long_term_summary)
+        return summary
 
 
 

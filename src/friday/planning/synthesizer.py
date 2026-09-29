@@ -54,6 +54,11 @@ class SynthesizedResponse:
     task_outputs: dict[str, Any] = field(default_factory=dict)
     tool_results: list[Any] = field(default_factory=list)
 
+    @property
+    def success(self) -> bool:
+        """Compatibility alias for callers that expose task execution success."""
+        return self.is_successful
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "content": self.content,
