@@ -42,6 +42,9 @@ class ToolRegistry:
         self._thread_executor = ThreadPoolExecutor(max_workers=20, thread_name_prefix="friday-tool-worker")
         self._timed_out_executions = set()
         self._timed_out_lock = threading.Lock()
+        # Keep the fallback breaker on the registry so failures across calls
+        # can trip it even when the caller does not provide an execution context.
+        self._circuit_breaker = CircuitBreaker()
         from friday_deep.security.tool_firewall import ToolFirewall
         self._firewall = ToolFirewall({})
 
@@ -217,7 +220,7 @@ class ToolRegistry:
 
         try:
             # Circuit breaker check
-            cb = (exec_context.circuit_breaker if exec_context and exec_context.circuit_breaker else None) or CircuitBreaker()
+            cb = (exec_context.circuit_breaker if exec_context and exec_context.circuit_breaker else None) or self._circuit_breaker
             if cb.is_open(name):
                 exec_id = tool_call_id or str(uuid.uuid4())
                 error_detail = CircuitBreakerError(name, exec_id)
@@ -292,7 +295,10 @@ class ToolRegistry:
                 )
 
             # Record success for circuit breaker
-            cb.record_success(name)
+            if result.is_error:
+                cb.record_failure(name)
+            else:
+                cb.record_success(name)
 
             # Attach execution ID to result
             result.tool_call_id = exec_id
