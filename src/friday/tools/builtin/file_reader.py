@@ -1,6 +1,6 @@
 """Built-in tool for reading file contents safely."""
 
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 from friday.core.types import SafetyLevel, ToolResult
@@ -38,7 +38,8 @@ class FileReaderTool(BaseTool):
 
         # Defensively reject absolute paths or drive letters directly
         path_obj = Path(path)
-        if path_obj.is_absolute() or path_obj.anchor:
+        windows_path = PureWindowsPath(path)
+        if path_obj.is_absolute() or path_obj.anchor or windows_path.drive or windows_path.root:
             return ToolResult(
                 name=self.name,
                 content="Security Error: File path is outside the allowed workspace sandbox.",

@@ -1,7 +1,7 @@
 """Built-in tool for listing directory files safely."""
 
 import datetime
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 from friday.core.types import SafetyLevel, ToolResult
@@ -30,7 +30,8 @@ class FileListingTool(BaseTool):
 
         # Defensively reject absolute paths or drive letters directly
         path_obj = Path(path)
-        if path_obj.is_absolute() or path_obj.anchor:
+        windows_path = PureWindowsPath(path)
+        if path_obj.is_absolute() or path_obj.anchor or windows_path.drive or windows_path.root:
             return ToolResult(
                 name=self.name,
                 content="Security Error: Directory path is outside the allowed workspace sandbox.",

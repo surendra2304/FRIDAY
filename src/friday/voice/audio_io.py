@@ -72,6 +72,8 @@ def get_audio_diagnostics() -> dict[str, Any]:
 
 def check_device_availability(device_type: str = "input") -> tuple[bool, str | None]:
     """Check if the requested audio device type ('input' or 'output') is available and functional."""
+    if device_type not in {"input", "output"}:
+        return False, f"Unknown device type '{device_type}'"
     if sd is None:
         return False, _AUDIO_BACKEND_ERROR or "sounddevice library unavailable"
     try:
@@ -93,7 +95,7 @@ def check_device_availability(device_type: str = "input") -> tuple[bool, str | N
             if out_dev.get("max_output_channels", 0) < 1:
                 return False, f"Default output device '{out_dev.get('name')}' has no output channels"
             return True, None
-        else:
+        else:  # guarded above; retained for type narrowing and defensive clarity
             return False, f"Unknown device type '{device_type}'"
     except Exception as e:
         return False, str(e)
