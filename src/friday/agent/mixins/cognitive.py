@@ -409,5 +409,6 @@ class CognitiveMixin:
                     "graph_id": exec_res.metadata.get("graph_id"),
                     "total_tasks": exec_res.metadata.get("total_tasks"),
                     "completed_tasks": exec_res.metadata.get("completed_tasks"),
+                    "recalled_memories": context["recalled_memories"],
                 },
             )
