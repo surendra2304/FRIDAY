@@ -72,6 +72,32 @@ def test_open_application_does_not_retry_when_os_started_but_focus_failed(monkey
     assert result.metadata == {"launch_requested": True, "verified_visible": False}
 
 
+def test_open_application_does_not_retry_unverified_generic_launch(monkeypatch):
+    from friday.devices import app_launcher
+    from friday.tools.builtin import open_application
+
+    monkeypatch.setattr(
+        app_launcher,
+        "launch_desktop_app",
+        lambda name: (False, "Some App started, but FRIDAY could not verify a visible application window."),
+    )
+    monkeypatch.setattr(
+        open_application.OpenApplicationTool,
+        "_resolve_executable",
+        lambda self, name: "some-app.exe",
+    )
+    monkeypatch.setattr(
+        open_application.OpenApplicationTool,
+        "_launch",
+        lambda self, executable: (_ for _ in ()).throw(AssertionError("must not retry an unverified launch")),
+    )
+
+    result = open_application.OpenApplicationTool().execute(application="Some App")
+
+    assert result.is_error is True
+    assert result.metadata == {"launch_requested": True, "verified_visible": False}
+
+
 def test_windows_directive_routes_close_tab_to_browser_handler(monkeypatch):
     from friday.devices.windows_friday import windows_friday
 

@@ -159,7 +159,9 @@ class OpenApplicationTool(BaseTool):
                     safety_level=self.safety_level,
                     metadata={"is_ambiguous": True},
                 )
-            elif msg.startswith(("Chrome started;", "A launch request for")):
+            elif msg.startswith(("Chrome started;", "A launch request for")) or (
+                "started, but FRIDAY could not verify a visible application window" in msg
+            ):
                 # The OS accepted the launch; don't run a second launcher just
                 # because focus/visibility verification failed.
                 return ToolResult(
