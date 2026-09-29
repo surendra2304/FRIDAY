@@ -147,6 +147,8 @@ async def test_live_system_prompt_allows_one_opening_greeting():
     assert "NEVER greet the user again after the session has started" not in prompt
     assert "soo-REN-dhra" in prompt
     assert "acknowledge briefly without repeating the mispronounced name" in prompt
+    assert "call that function once and wait for its result" in prompt
+    assert "Report success only when the result confirms it" in prompt
 
 
 @pytest.mark.anyio
