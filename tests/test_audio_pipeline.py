@@ -2,6 +2,7 @@
 
 import asyncio
 import struct
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
@@ -171,24 +172,26 @@ def test_mock_stream_simulated_errors():
     assert mock_spk.error == "Audio device busy (exclusive mode)"
 
 
-def test_microphone_device_failure_handling():
+def test_microphone_device_failure_handling(monkeypatch):
     """Verify MicrophoneStream gracefully records error state on device failure."""
-    with mock.patch("sounddevice.RawInputStream", side_effect=RuntimeError("Device Busy")):
-        mic = MicrophoneStream(sample_rate=16000)
-        mic.start()
-        assert not mic.is_active
-        assert mic.error is not None
-        assert "Device Busy" in mic.error
+    backend = SimpleNamespace(RawInputStream=mock.Mock(side_effect=RuntimeError("Device Busy")))
+    monkeypatch.setattr(audio_io, "sd", backend)
+    mic = MicrophoneStream(sample_rate=16000)
+    mic.start()
+    assert not mic.is_active
+    assert mic.error is not None
+    assert "Device Busy" in mic.error
 
 
-def test_speaker_device_failure_handling():
+def test_speaker_device_failure_handling(monkeypatch):
     """Verify SpeakerStream gracefully records error state on device failure."""
-    with mock.patch("sounddevice.RawOutputStream", side_effect=RuntimeError("Device Disconnected")):
-        spk = SpeakerStream(sample_rate=24000, prebuffer_ms=0)
-        spk.start()
-        assert not spk.is_active
-        assert spk.error is not None
-        assert "Device Disconnected" in spk.error
+    backend = SimpleNamespace(RawOutputStream=mock.Mock(side_effect=RuntimeError("Device Disconnected")))
+    monkeypatch.setattr(audio_io, "sd", backend)
+    spk = SpeakerStream(sample_rate=24000, prebuffer_ms=0)
+    spk.start()
+    assert not spk.is_active
+    assert spk.error is not None
+    assert "Device Disconnected" in spk.error
 
 
 @pytest.mark.anyio
