@@ -32,6 +32,8 @@ class TestWindowsFridayController:
         assert "logical cores" in reply
         assert meta["action"] == "specs"
 
+    @pytest.mark.windows
+    @pytest.mark.hardware
     def test_network_status(self) -> None:
         """Verify real local IP and gateway query."""
         h, reply, meta = windows_friday.handle_directive("network status")
@@ -67,6 +69,8 @@ class TestWindowsFridayController:
         assert opened == ["https://www.youtube.com/results?search_query=Star+Boy"]
         assert "No video was selected or played" in message
 
+    @pytest.mark.windows
+    @pytest.mark.hardware
     def test_powershell_execution(self) -> None:
         """Verify arbitrary PowerShell command execution."""
         h, reply, meta = windows_friday.handle_directive("powershell Write-Output 'FRIDAY_OK'")
@@ -74,6 +78,8 @@ class TestWindowsFridayController:
         assert "FRIDAY_OK" in reply
         assert meta["action"] == "powershell"
 
+    @pytest.mark.windows
+    @pytest.mark.hardware
     def test_app_launch_and_close(self) -> None:
         """Verify launching and cleanly terminating an application."""
         # 1. Launch notepad

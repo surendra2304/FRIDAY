@@ -2,6 +2,7 @@
 
 from types import SimpleNamespace
 from unittest import mock
+import pytest
 
 from friday.core.config import Settings
 from friday.core.types import SafetyLevel
@@ -64,6 +65,7 @@ def test_manage_volume_unavailable(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.windows
 def test_power_control_safe_lock(monkeypatch):
     from friday.tools.builtin import os_control
 

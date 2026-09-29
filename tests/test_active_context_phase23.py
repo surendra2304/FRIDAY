@@ -1,6 +1,7 @@
 """Unit tests for Full-Duplex Voice Engine3: Active Screen Awareness."""
 
 from unittest.mock import MagicMock, patch
+import pytest
 
 from friday.agent.prompts import get_default_system_prompt
 from friday.core.config import Settings
@@ -14,6 +15,7 @@ from friday.vision.active_context import (
 )
 
 
+@pytest.mark.windows
 def test_get_active_window_context_mocked():
     with patch("sys.platform", "win32"):
         with patch("win32gui.GetForegroundWindow", return_value=12345):

@@ -80,6 +80,7 @@ python_functions = ["test_*"]
 addopts = "-m 'not live and not hardware'"
 markers = [
     "unit: Unit tests verifying isolated components and data models",
+    "windows: Tests requiring Windows APIs, types, or command-line tools",
     "integration: Multi-component agent and memory integration tests",
     "simulation: In-memory and offline simulated multi-stage workflow tests",
     "security: Authentication, authorization, and secret protection tests",

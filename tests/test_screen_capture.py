@@ -1,6 +1,7 @@
 """Deterministic unit tests for Multimodal Screen Perception.2 Windows Screen Capture and ScreenSnapshotTool."""
 
 from unittest import mock
+import pytest
 
 from friday.core.types import SafetyLevel
 from friday.tools.builtin.screen_snapshot import ScreenSnapshotTool
@@ -87,6 +88,7 @@ def test_screen_snapshot_tool_failure_handling():
     assert "Screen capture failed" in res.content
 
 
+@pytest.mark.windows
 def test_windows_screen_capture_gdi_cleanup_on_error():
     """Verify WindowsScreenCaptureProvider cleans up GDI handles if an exception occurs."""
     prov = WindowsScreenCaptureProvider()

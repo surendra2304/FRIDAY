@@ -66,7 +66,7 @@ def test_windows_friday_non_windows_safety() -> None:
     from friday.devices.windows_friday import WindowsFridayController
 
     # Temporarily hide windll if present
-    with patch.object(ctypes, "windll", None, create=False):
+    with patch.object(ctypes, "windll", None, create=True):
         ctrl = WindowsFridayController()
         # Should initialize gracefully without raising AttributeError
         assert ctrl is not None

@@ -29,7 +29,10 @@ class MorningBriefingWorkflow:
     ) -> None:
         self.calendar_tool = calendar_tool or GetTodaysEventsTool()
         self.search_tool = search_tool or WebSearchTool()
-        self.tool_registry = tool_registry or ToolRegistry()
+        # Use explicitly supplied tools directly so callers can inject adapters
+        # (and tests can provide deterministic implementations). A registry is
+        # used only when the caller explicitly asks for registry-based dispatch.
+        self.tool_registry = tool_registry
 
     def can_handle(self, user_prompt: str) -> bool:
         """Check if user prompt requests a daily or morning briefing (excluding trading-specific briefings)."""
@@ -47,7 +50,10 @@ class MorningBriefingWorkflow:
         name = user_name or getattr(settings, "user_name", "Surendra") or "Surendra"
 
         # 1. Fetch Calendar Events
-        cal_res = self.tool_registry.execute(self.calendar_tool.name, {})
+        if self.tool_registry is None:
+            cal_res = self.calendar_tool.execute()
+        else:
+            cal_res = self.tool_registry.execute(self.calendar_tool.name, {})
         meeting_count = 0
         meetings_detail = []
 
@@ -62,7 +68,13 @@ class MorningBriefingWorkflow:
         # 2. Fetch Weather via Search
         weather_summary = "clear"
         try:
-            w_res = self.tool_registry.execute(self.search_tool.name, {"query": "current weather forecast today"})
+            if self.tool_registry is None:
+                w_res = self.search_tool.execute(query="current weather forecast today")
+            else:
+                w_res = self.tool_registry.execute(
+                    self.search_tool.name,
+                    {"query": "current weather forecast today"},
+                )
             if not w_res.is_error and w_res.content:
                 # Extract first brief summary or keyword
                 first_snippet = w_res.content.split("\n")[0] if "\n" in w_res.content else w_res.content

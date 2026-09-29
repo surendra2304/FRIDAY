@@ -2,10 +2,12 @@
 
 import ctypes
 from ctypes import wintypes
+import pytest
 
 from friday.vision.windows_screen import BITMAPINFOHEADER, WindowsScreenCaptureProvider
 
 
+@pytest.mark.windows
 def test_windows_screen_gdi_types_configured():
     """Verify that Win32 GDI function prototypes are explicitly configured with accurate ctypes."""
     provider = WindowsScreenCaptureProvider()
@@ -26,6 +28,7 @@ def test_windows_screen_gdi_types_configured():
     assert len(provider._gdi32.BitBlt.argtypes) == 9
 
 
+@pytest.mark.windows
 def test_bitmapinfoheader_structure():
     """Verify BITMAPINFOHEADER struct packing and field sizes."""
     bmi = BITMAPINFOHEADER()
@@ -40,6 +43,7 @@ def test_bitmapinfoheader_structure():
     assert bmi.biHeight == -864
 
 
+@pytest.mark.windows
 def test_encode_png_deterministic():
     """Verify that _encode_png produces valid PNG header, IHDR, IDAT, and IEND chunks."""
     provider = WindowsScreenCaptureProvider()

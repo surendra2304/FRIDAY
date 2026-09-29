@@ -329,6 +329,8 @@ def test_approval_profiles_and_safety_tiers():
 # 6. Windows Target Verification & Untrusted Screen Data Tests
 # ==============================================================================
 
+@pytest.mark.windows
+@pytest.mark.hardware
 def test_windows_app_launch_verification():
     """Verify Windows application launch and post-execution process existence verification."""
     win = WindowsDeviceController()
