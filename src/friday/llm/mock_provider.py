@@ -41,9 +41,10 @@ class MockLLMProvider(BaseLLMProvider):
             return Message(
                 role=Role.ASSISTANT,
                 content=(
-                    f"Based on the system diagnostics, here is the report:\n\n"
-                    f"{last_tool_msg.content}\n\n"
-                    f"All system metrics are within normal operational limits, Surendra."
+                    "[FRIDAY Mock Mode]: Simulated provider response. I did not query live agent data. "
+                    "The following is only the tool output supplied to this mock response; it does not establish "
+                    "remote service health:\n\n"
+                    f"{last_tool_msg.content}"
                 ),
             )
 
@@ -70,5 +71,8 @@ class MockLLMProvider(BaseLLMProvider):
 
         return Message(
             role=Role.ASSISTANT,
-            content=f"[FRIDAY Mock Mode]: I have received your request: '{last_user_msg}'. All core systems are operational.",
+            content=(
+                f"[FRIDAY Mock Mode]: Simulated response to '{last_user_msg}'. "
+                "I did not query live agent data; service status and requested integration details are UNVERIFIED."
+            ),
         )

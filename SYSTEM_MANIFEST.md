@@ -7,85 +7,84 @@
 
 ---
 
-## ☁️ 1. Live Cloud Infrastructure & Deployment
+## ☁️ 1. Configured Cloud Infrastructure
 
-| Attribute | Production Configuration |
+| Attribute | Repository configuration |
 | :--- | :--- |
-| **Live Production URL** | [Local Desktop Hub (d:\FRIDAY Universe\FRIDAY)](#) |
-| **Health Check Endpoint** | Local Hub (https://friday-zw59.onrender.com/health) |
-| **Master API Key Variable** | FRIDAY_API_KEY=friday_api |
-| **Authentication Header** | Authorization: Bearer friday_api |
-| **Database Topology** | Local Voice State / Connected to Memora Cloud |
-| **Database Connection** | memora://friday/private |
-| **Hosting Platform** | Render Docker Web Service (Singapore / AWS Mumbai) |
+| **Configured Cloud URL** | https://friday-zw59.onrender.com (deployment state not verified here) |
+| **Configured Health Route** | `/health` (response is not proof of supervision or readiness) |
+| **Authentication Variable** | `FRIDAY_API_KEY` (configure as a secret; never use a checked-in example) |
+| **Configured database topology (runtime unverified)** | Local state plus Memora integration; durability and current cloud connectivity require runtime verification |
+| **Memory Namespace** | `memora://friday/private` (configured intent; access not verified here) |
+| **Hosting** | Render is configured in the repository; current deployment revision is not verified here |
 
 ---
 
 ## 🎯 2. Purpose & Responsibilities
 
-### What FRIDAY IS:
-* FRIDAY is the master multimodal desktop operating system. It interfaces directly with the operator via voice, vision, and keyboard/mouse, orchestrating all 8 specialized subsystems into a single unified intelligence.
+### Intended role
+* FRIDAY is intended to provide a multimodal local assistant and coordinate the eight specialist services. The complete capability set and live connectivity are not established by this manifest.
 
-### What FRIDAY DOES:
-* Operates as the **Central Voice Assistant, Desktop Orchestrator & Master Ecosystem Controller** within the 9-agent FRIDAY Universe.
-* Communicates directly with peer agents via authenticated REST and WebSocket protocols.
-* Persists private long-term memory records to **Memora** under memora://friday/private.
+### What FRIDAY is intended to do
+* Operate as the central voice assistant and orchestrator for the FRIDAY Universe.
+* Use authenticated peer APIs where configured; successful live peer connectivity is not verified by this manifest.
+* Use the Memora private namespace when remote memory is enabled and reachable; persistence requires runtime verification.
 
 ---
 
-## 🌐 3. Full Ecosystem Network Connectivity
+## 🌐 3. Ecosystem endpoint configuration
 
-Every agent in the universe communicates using standard environment variables:
+The following are variable names and configured URLs, not proof that services are reachable or authenticated. Set real secrets in each service's secret environment; never commit them:
 
-`env
+`````env
 # ============================================================================== #
 #               FRIDAY UNIVERSE MASTER ECOSYSTEM CONFIGURATION                  #
 # ============================================================================== #
 
-# 1. ⚡ Inference AI Multi-Model Gateway (25 Keys)
+# 1. ⚡ Inference AI Multi-Model Gateway (runtime-configured provider pool)
 INFERENCE_URL=https://inference-r1sn.onrender.com
-INFERENCE_API_KEY=inference_api
+INFERENCE_API_KEY=<configure in secret environment>
 
-# 2. 🧠 Memora Cloud Persistent Memory (9 GB Turso AWS Mumbai)
+# 2. 🧠 Memora cloud memory service (active backend/capacity not verified)
 MEMORA_URL=https://memora-cavc.onrender.com
-MEMORA_API_KEY=memora_api
+MEMORA_API_KEY=<configure in secret environment>
 
-# 3. 📈 Stratex 24/7 Algorithmic Trading Platform (Binance Futures)
+# 3. 📈 Stratex paper/testnet strategy service (live-money orders blocked in source)
 STRATEX_URL=https://stratex-8wj1.onrender.com
-STRATEX_API_KEY=stratex_api
+STRATEX_API_KEY=<configure in secret environment>
 
-# 4. 🧠 IntelX Evidence & Intelligence Research Engine (Turso AWS Mumbai)
+# 4. 🧠 IntelX research service (active corpus backend unverified)
 INTELX_URL=https://intelx-mygl.onrender.com
-INTELX_API_KEY=intelx_api
+INTELX_API_KEY=<configure in secret environment>
 
 # 5. 🔮 Futuris Calibrated Predictive Forecasting Engine
 FUTURIS_URL=https://futuris-th6f.onrender.com
-FUTURIS_API_KEY=futuris_api
+FUTURIS_API_KEY=<configure in secret environment>
 
 # 6. 🌐 Cortex Autonomous Web Operations & Intelligence
 CORTEX_URL=https://cortex-0m7c.onrender.com
-CORTEX_API_KEY=cortex_api
+CORTEX_API_KEY=<configure in secret environment>
 
 # 7. 🛠️ Forge Local Software Engineering Engine
 FORGE_URL=https://forge-e9kl.onrender.com
-FORGE_API_KEY=forge_api
+FORGE_API_KEY=<configure in secret environment>
 
 # 8. 🛡️ Sentinel Local Cybersecurity & Threat Defense Shield
 SENTINEL_URL=https://sentinel-a861.onrender.com
-SENTINEL_API_KEY=sentinel_api
+SENTINEL_API_KEY=<configure in secret environment>
 
 # 9. 🤖 FRIDAY Central Desktop Operating System
 FRIDAY_URL=https://friday-zw59.onrender.com
-FRIDAY_API_KEY=friday_api
-`
+FRIDAY_API_KEY=<configure in secret environment>
+```
 
 ---
 
-## 🤖 4. Antigravity AI Session Guide
+## 🤖 4. Repository guide
 
-When opening this directory in **Antigravity AI**:
+When opening this repository:
 * **Identity:** You are working inside **FRIDAY** (d:\FRIDAY Universe\FRIDAY).
-* **Live Service:** This service is deployed live at Local Desktop Hub (d:\FRIDAY Universe\FRIDAY).
-* **Authentication:** Incoming requests use FRIDAY_API_KEY=friday_api.
-* **Never Fake Tests:** All tests and verifications must be executed against real code and real endpoints.
-* **No Unapproved Git Pushes:** Keep modifications local unless explicitly instructed to push.
+* **Configured Service URL:** https://friday-zw59.onrender.com; confirm current deployment status in Render.
+* **Authentication:** Incoming requests use the configured `FRIDAY_API_KEY`; do not use repository examples as credentials.
+* **Verification:** Distinguish source tests, local integrations, paper operations, mocked results, and live service evidence.
+* **Secrets:** Never commit live credentials or copy placeholder examples into service environments.

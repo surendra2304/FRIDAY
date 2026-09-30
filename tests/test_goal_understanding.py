@@ -92,6 +92,16 @@ def test_ambiguous_request_triggers_clarification():
     assert "clarify" in goal.clarification_needed.lower() or "ambiguous" in goal.clarification_needed.lower()
 
 
+def test_affirmation_only_confirms_when_pending_action_is_explicit():
+    engine = GoalUnderstandingEngine()
+
+    no_pending_action = engine.analyze_goal("do it")
+    assert no_pending_action.request_type == GoalRequestType.AMBIGUOUS_REQUEST
+
+    pending_action = engine.analyze_goal("do it", confirmation_pending=True)
+    assert pending_action.request_type == GoalRequestType.MULTI_STEP_TASK
+
+
 # 6. Conflicting Constraints Detection
 def test_conflicting_constraints_detection():
     """Verify contradictory instructions generate clarification requests."""

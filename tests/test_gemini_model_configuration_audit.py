@@ -1,17 +1,17 @@
 """Comprehensive audit tests for Gemini model configurations and parameter sanitization.
 
 Verifies:
-1. GeminiLLMProvider defaults to 'gemini-1.5-flash-latest'.
+1. GeminiLLMProvider defaults to the configured stable model ('gemini-3.6-flash').
 2. GenerateContentConfig for 3.7-family models (explicitly configured) omits unsupported parameters.
 3. Legacy models (e.g. 'gemini-1.5-pro') retain supported generation parameters.
-4. GeminiVisionProvider defaults to 'gemini-1.5-flash-latest' and omits temperature in SDK config.
+4. GeminiVisionProvider defaults to 'gemini-3.6-flash' and omits temperature in SDK config.
 5. GeminiLiveVoiceSession isolates Live models (gemini-3.1-flash-live-preview) and rejects non-live models. ('gemini-1.5-flash-latest' via allowlist) and rejects non-live models.
 6. GeminiEmbeddingProvider defaults to 'gemini-embedding-2' with 768 dimensions.
 """
 
 from unittest import mock
 
-from friday.core.config import get_settings
+from friday.core.config import Settings
 from friday.core.types import Message, Role
 from friday.llm.gemini_provider import GeminiLLMProvider, is_gemini_37_model
 from friday.memory.embeddings.gemini import GeminiEmbeddingProvider
@@ -20,13 +20,12 @@ from friday.voice.gemini_live_session import GeminiLiveVoiceSession
 
 
 def test_gemini_llm_provider_default_model():
-    """Verify GeminiLLMProvider constructor default model is gemini-1.5-flash-latest."""
+    """Verify the Gemini provider uses the maintained stable text model default."""
     provider = GeminiLLMProvider(api_key="TEST_API_KEY")
-    assert provider.model == "gemini-1.5-flash-latest"
+    assert provider.model == "gemini-3.6-flash"
     assert is_gemini_37_model(provider.model) is False
 
-    settings = get_settings()
-    assert settings.llm_model == "gemini-1.5-flash-latest"
+    assert Settings.model_fields["llm_model"].default == "gemini-3.6-flash"
 
 
 def test_gemini_37_generate_content_config_omits_unsupported_parameters():
@@ -46,7 +45,7 @@ def test_gemini_37_generate_content_config_omits_unsupported_parameters():
     assert config.temperature is None, f"Expected config.temperature to be None for Gemini 3.7, got {config.temperature}"
     assert config.top_p is None, f"Expected config.top_p to be None for Gemini 3.7, got {config.top_p}"
     assert config.top_k is None, f"Expected config.top_k to be None for Gemini 3.7, got {config.top_k}"
-    assert config.thinking_config is not None
+    assert config.thinking_config is None
 
 
 def test_legacy_model_generate_content_config_preserves_temperature():
@@ -80,8 +79,12 @@ def test_gemini_vision_provider_model_and_parameter_sanitization():
         assert passed_config.temperature is None
 
 
-def test_gemini_live_voice_session_model_isolation():
+def test_gemini_live_voice_session_model_isolation(monkeypatch):
     """Verify Live voice session defaults to gemini-3.1-flash-live-preview and refuses non-live models."""
+    configured = Settings(voice_live_model="gemini-3.1-flash-live-preview")
+    monkeypatch.setattr(
+        "friday.voice.gemini_live_session.get_settings", lambda: configured
+    )
     # 1. Default model
     session = GeminiLiveVoiceSession(api_key="TEST_API_KEY")
     assert session.model == "gemini-3.1-flash-live-preview"
@@ -98,9 +101,8 @@ def test_gemini_embedding_provider_model_and_dimension():
     assert embedder.model == "gemini-embedding-2"
     assert embedder.dimension == 768
 
-    settings = get_settings()
-    assert settings.embedding_model == "gemini-embedding-2"
-    assert settings.embedding_dimension == 768
+    assert Settings.model_fields["embedding_model"].default == "gemini-embedding-2"
+    assert Settings.model_fields["embedding_dimension"].default == 768
 
 
 def test_gemini_37_build_gemini_payload_omits_unsupported_parameters():

@@ -85,8 +85,8 @@ class EcosystemAnomalyDetection(BaseOperator):
                     logger.critical(f"[ECOSYSTEM_ANOMALY] {evt['message']}")
 
                 # 2. Correlated Build / AI-Universe Failure
-                forge_status = forge.get("status", "IDLE")
-                ai_status = ai.get("status", "HEALTHY")
+                forge_status = forge.get("status", "UNVERIFIED")
+                ai_status = ai.get("status", "UNVERIFIED")
                 if (forge_status in ("FAILED", "BLOCKED")) and (ai_status in ("DEGRADED", "UNAVAILABLE")):
                     evt = {
                         "type": "CORRELATED_BUILD_AI_FAILURE",
@@ -100,9 +100,9 @@ class EcosystemAnomalyDetection(BaseOperator):
                     logger.warning(f"[ECOSYSTEM_ANOMALY] {evt['message']}")
 
                 # 3. Market / Web Spike Anomaly
-                bot_loss = bot.get("daily_loss_pct", 0.0)
-                nexus_visitors = nexus.get("visitors_today", 4280)
-                if bot_loss >= 3.5 and nexus_visitors >= 8000:
+                bot_loss = bot.get("daily_loss_pct")
+                nexus_visitors = nexus.get("visitors_today")
+                if bot_loss is not None and nexus_visitors is not None and bot_loss >= 3.5 and nexus_visitors >= 8000:
                     evt = {
                         "type": "MARKET_WEB_ANOMALY",
                         "severity": "MEDIUM",
@@ -115,11 +115,20 @@ class EcosystemAnomalyDetection(BaseOperator):
                     logger.info(f"[ECOSYSTEM_ANOMALY] {evt['message']}")
 
                 # 4. Unusual Quietness Rule (0 across all systems)
+                quiet_metrics = (
+                    bot.get("active_positions_count"),
+                    nexus.get("visitors_today"),
+                    forge.get("active_tasks_count"),
+                    ai.get("consultations_today"),
+                )
+                verified_sources = (bot, nexus, forge, ai)
                 if (
-                    bot.get("active_positions_count", 0) == 0
-                    and nexus.get("visitors_today", 0) == 0
-                    and forge.get("active_tasks_count", 0) == 0
-                    and ai.get("consultations_today", 0) == 0
+                    all(value is not None for value in quiet_metrics)
+                    and all(
+                        str(data.get("status", "")).upper() not in {"", "UNVERIFIED", "UNKNOWN"}
+                        for data in verified_sources
+                    )
+                    and all(value == 0 for value in quiet_metrics)
                 ):
                     evt = {
                         "type": "UNUSUAL_QUIETNESS",

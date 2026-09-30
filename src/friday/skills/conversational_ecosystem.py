@@ -71,40 +71,44 @@ class ConversationalEcosystemQuery(BaseSkill):
             ai = subs.get("ai_universe", {}).get("data", {})
             nexus = subs.get("nexus", {}).get("data", {})
 
+            def status_line(label: str, data: dict[str, Any]) -> str:
+                status_value = str(data.get("status", "UNVERIFIED"))
+                evidence = data.get("evidence")
+                suffix = f" Evidence: {evidence}" if evidence else ""
+                metrics = {
+                    key: value for key, value in data.items()
+                    if key not in {"status", "evidence", "service", "checked_at"}
+                }
+                if metrics:
+                    suffix += f" Observed metrics: {metrics}."
+                return f"{label}: {status_value}.{suffix}"
+
             # 1. Multi-part Cross-Subsystem Query: "Compare website leads to trading profits this week"
             if "compare" in clean or ("leads" in clean and "profit" in clean):
                 spoken = (
-                    f"Ecosystem Cross-Analysis: Nexus generated {nexus.get('leads_detected_today', 14)} high-intent enterprise leads today "
-                    f"(98 this week) with a 3.65% conversion rate, while the Trading Bot generated +${bot.get('daily_pnl_usdt', 420.50):,.2f} USDT today "
-                    f"(+$2,450.00 this week). Both capital and customer acquisition pipelines are trending positively."
+                    "Ecosystem comparison: "
+                    + status_line("Cortex", nexus) + " "
+                    + status_line("Stratex", bot)
+                    + " A comparison requires verified lead and trading event data; no totals are inferred."
                 )
-                step_results.append({"action": "compare_subsystems", "nexus_leads": 14, "trading_pnl": bot.get('daily_pnl_usdt', 420.5)})
+                step_results.append({"action": "compare_subsystems", "nexus": nexus, "trading_bot": bot})
                 return SkillExecutionResult(skill_name=self.name, success=True, output=spoken, step_results=step_results)
 
             # 2. Nexus Query: "How did the website do today?"
             if any(k in clean for k in ["how did the website do", "website performance", "website do today"]):
-                spoken = (
-                    f"🌐 Nexus Website Summary: Traffic reached {nexus.get('visitors_today', 4280):,} visitors with a {nexus.get('conversion_rate_pct', 3.65):.2f}% conversion rate. "
-                    f"{nexus.get('leads_detected_today', 14)} high-intent leads were identified with 0 active incidents and health score of {nexus.get('health_score', 98.4):.1f}/100."
-                )
+                spoken = "🌐 Website status: " + status_line("Cortex", nexus)
                 step_results.append({"action": "query_nexus", "data": nexus})
                 return SkillExecutionResult(skill_name=self.name, success=True, output=spoken, step_results=step_results)
 
             # 3. Trading Bot Query: "What did the trading bot decide overnight?"
             if any(k in clean for k in ["trading bot decide", "trading decisions", "decide overnight"]):
-                spoken = (
-                    f"📈 Trading Bot Overnight Log: Maintained {bot.get('active_positions_count', 3)} active positions across Binance, Bybit, and OKX. "
-                    f"Realized overnight gains of +${bot.get('daily_pnl_usdt', 420.50):,.2f} USDT with aggregate leverage at {bot.get('aggregate_leverage', 0.85):.2f}x. AI Advisory is {bot.get('advisory_status', 'ACTIVE')}."
-                )
+                spoken = "📈 Stratex status: " + status_line("Stratex", bot)
                 step_results.append({"action": "query_trading", "data": bot})
                 return SkillExecutionResult(skill_name=self.name, success=True, output=spoken, step_results=step_results)
 
             # 4. FORGE Query: "What did Forge build this week?"
             if any(k in clean for k in ["what did forge build", "forge build this week", "forge builds"]):
-                spoken = (
-                    f"🛠️ FORGE Weekly Build Report: FORGE completed {forge.get('total_completed', 2)} production software builds "
-                    f"(latest: '{forge.get('last_completed_task', 'portfolio website')}') with a mean test coverage of {forge.get('mean_test_coverage_pct', 96.0):.1f}%. Engine is currently {forge.get('status', 'IDLE')}."
-                )
+                spoken = "🛠️ Forge status: " + status_line("Forge", forge)
                 step_results.append({"action": "query_forge", "data": forge})
                 return SkillExecutionResult(skill_name=self.name, success=True, output=spoken, step_results=step_results)
 
@@ -113,17 +117,17 @@ class ConversationalEcosystemQuery(BaseSkill):
                 health = self.registry.get_ecosystem_health()
                 h_subs = health.get("subsystems", {})
                 spoken = (
-                    f"🌐 Full Ecosystem Health Audit: All systems are **{health.get('overall_health', 'HEALTHY')}**.\n"
-                    f"• 📈 Trading Bot: **{h_subs.get('trading_bot', {}).get('status', 'HEALTHY')}**\n"
-                    f"• 🌐 Nexus Growth: **{h_subs.get('nexus', {}).get('status', 'HEALTHY')}**\n"
-                    f"• 🛠️ Forge Engine: **{h_subs.get('forge', {}).get('status', 'HEALTHY')}**\n"
-                    f"• 🧠 AI-Universe Core: **{h_subs.get('ai_universe', {}).get('status', 'HEALTHY')}**"
+                    f"🌐 Full Ecosystem Health Audit: **{health.get('overall_health', 'UNVERIFIED')}**.\n"
+                    f"• Stratex: **{h_subs.get('trading_bot', {}).get('status', 'UNVERIFIED')}**\n"
+                    f"• Cortex: **{h_subs.get('nexus', {}).get('status', 'UNVERIFIED')}**\n"
+                    f"• Forge: **{h_subs.get('forge', {}).get('status', 'UNVERIFIED')}**\n"
+                    f"• Inference: **{h_subs.get('ai_universe', {}).get('status', 'UNVERIFIED')}**"
                 )
                 step_results.append({"action": "check_ecosystem_health", "health": health})
                 return SkillExecutionResult(skill_name=self.name, success=True, output=spoken, step_results=step_results)
 
             # Default
-            spoken = "Ecosystem Query: Telemetry retrieved across Trading Bot, Nexus, FORGE, and AI-Universe."
+            spoken = "Ecosystem query received. No matching verified telemetry was available for this request."
             step_results.append({"action": "default"})
             return SkillExecutionResult(skill_name=self.name, success=True, output=spoken, step_results=step_results)
 

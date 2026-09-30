@@ -208,12 +208,12 @@ class CognitiveMixin:
             if last_assistant_msg and last_assistant_msg.content:
                 last_text = last_assistant_msg.content
                 has_pending_prompt = (
-                    "?" in last_text
-                    or "would you like" in last_text.lower()
-                    or "ready to send" in last_text.lower()
-                    or "should i" in last_text.lower()
-                    or "draft" in last_text.lower()
-                    or "confirmation" in last_text.lower()
+                    bool(re.search(
+                        r"\b(?:would you like me to|should i|shall i|do you want me to|may i)\b.{0,160}\?"
+                        r"|\b(?:reply|say)\s+(?:yes|confirm)\b",
+                        last_text,
+                        flags=re.IGNORECASE | re.DOTALL,
+                    ))
                 )
 
                 if low_input in negation_words and has_pending_prompt:
@@ -307,6 +307,12 @@ class CognitiveMixin:
 
             # State: PLANNING & EXECUTING (Delegating to authoritative ExecutionGateway / FridayOrchestrator)
             self.state_machine.transition_to(TaskState.PLANNING, reason="Planning the requested action")
+
+            # Every cognitive execution turn gets an isolated working context.
+            # Observations are added only from actual tool receipts below.
+            if not is_confirmation_turn or self.task_context is None:
+                self.task_context = ActiveTaskContext(goal=effective_goal)
+            self.task_context.set_state(TaskState.PLANNING)
             
             recalled = []
             if hasattr(self, "_retrieve_relevant_memories"):
@@ -378,6 +384,12 @@ class CognitiveMixin:
                 assistant_tc_msg = Message(role=Role.ASSISTANT, content="", tool_calls=all_tool_calls)
                 self.memory.add_message(assistant_tc_msg)
                 for tr in exec_res.tool_results:
+                    if self.task_context is not None:
+                        self.task_context.add_observation(
+                            step_id=tr.tool_call_id or f"tool_{tr.name}",
+                            content=tr.content,
+                            source_tool=tr.name,
+                        )
                     self.memory.add_message(Message(role=Role.TOOL, content=tr.content, name=tr.name, tool_call_id=tr.tool_call_id or "call_0"))
 
             final_msg = Message(role=Role.ASSISTANT, content=final_content)

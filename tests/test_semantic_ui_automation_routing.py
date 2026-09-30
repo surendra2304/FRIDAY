@@ -50,7 +50,7 @@ def test_launch_calculator_variants():
 
 
 def test_unknown_app_open_falls_to_other():
-    result = IntentDetector.detect("open spotify")
+    result = IntentDetector.detect("open an app named photo-editor-pro")
     assert result.intent == ActionIntent.OTHER
 
 

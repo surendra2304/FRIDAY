@@ -155,15 +155,19 @@ class TestCredentialPoolHighConcurrencyAudit:
             assert attempts_by_key["KEY_FALLBACK_1"] >= num_concurrent_requests
             assert attempts_by_key["KEY_PRIMARY"] >= 1
 
-    def test_all_credentials_exhausted_raises_clear_error(self, test_pool):
-        """Verify that when all credentials in the pool enter cooldown, generate raises LLMProviderError without looping infinitely."""
+    def test_all_credentials_exhausted_raises_clear_error(self, test_pool, monkeypatch):
+        """Exhaustion is resolved locally and never falls back to ambient credentials or network."""
+        for env_name in ("FRIDAY_GEMINI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "gemini_api_key"):
+            monkeypatch.delenv(env_name, raising=False)
         for key in ["KEY_PRIMARY", "KEY_FALLBACK_1", "KEY_FALLBACK_2", "KEY_FALLBACK_3"]:
             test_pool.report_failure(key, Exception("429 Resource Exhausted"))
 
         provider = GeminiLLMProvider(api_key=None, credential_pool=test_pool, max_retries=1)
+        with mock.patch.object(provider, "_get_client", side_effect=AssertionError("network/SDK must not be reached")) as get_client:
+            with pytest.raises(LLMProviderError) as exc_info:
+                provider.generate([Message(role=Role.USER, content="Test exhausted")])
 
-        with pytest.raises(LLMProviderError) as exc_info:
-            provider.generate([Message(role=Role.USER, content="Test exhausted")])
+        get_client.assert_not_called()
 
         err_msg = str(exc_info.value).lower()
         assert any(term in err_msg for term in ["exhausted", "cooldown", "no healthy gemini api key"])

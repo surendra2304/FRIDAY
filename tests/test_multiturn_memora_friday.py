@@ -12,12 +12,16 @@ from friday.agent.cognitive import CognitiveIntelligenceEngine, CognitivePhase
 
 
 def test_goal_understanding_affirmations():
-    """Verify that affirmations and negations are not flagged as ambiguous in GoalUnderstandingEngine."""
+    """Affirmations need an explicit pending action; standalone ones are ambiguous."""
     engine = GoalUnderstandingEngine()
     for token in ["yes", "y", "sure", "ok", "okay", "proceed", "send", "send it", "confirm", "do it"]:
         goal = engine.analyze_goal(token)
-        assert goal.request_type != GoalRequestType.AMBIGUOUS_REQUEST, f"Failed for '{token}'"
-        assert not goal.is_ambiguous
+        assert goal.request_type == GoalRequestType.AMBIGUOUS_REQUEST, f"Failed for '{token}' without pending action"
+        assert goal.is_ambiguous
+
+    confirmed = engine.analyze_goal("yes", confirmation_pending=True)
+    assert confirmed.request_type == GoalRequestType.MULTI_STEP_TASK
+    assert not confirmed.is_ambiguous
 
     for token in ["no", "n", "cancel", "stop", "abort", "don't", "never mind"]:
         goal = engine.analyze_goal(token)
@@ -26,12 +30,16 @@ def test_goal_understanding_affirmations():
 
 
 def test_cognitive_engine_affirmation_evaluation():
-    """Verify CognitiveIntelligenceEngine does not trigger CLARIFY for affirmations/negations."""
+    """Affirmations need context; explicit negations remain recognized as dialogue."""
     engine = CognitiveIntelligenceEngine()
-    for token in ["yes", "y", "sure", "ok", "proceed", "no", "cancel"]:
+    for token in ["yes", "y", "sure", "ok", "proceed"]:
+        decision = engine.evaluate_request(token)
+        assert decision.current_phase == CognitivePhase.CLARIFY, f"Failed for context-free '{token}'"
+        assert decision.lacks_information
+
+    for token in ["no", "cancel"]:
         decision = engine.evaluate_request(token)
         assert decision.current_phase != CognitivePhase.CLARIFY, f"Failed for '{token}'"
-        assert not decision.lacks_information
 
 
 def test_multiturn_email_confirmation():
@@ -94,6 +102,19 @@ def test_multiturn_action_cancellation():
 
         assert "cancelled" in resp.content.lower()
         mock_exec.assert_not_called()
+
+
+def test_affirmation_without_explicit_pending_confirmation_does_not_execute():
+    """A prior question or draft mention alone must not authorize an action."""
+    agent = FridayAgent(settings=Settings(env="testing", llm_provider="mock", embedding_provider="none"))
+    agent.memory.add_message(Message(role=Role.ASSISTANT, content="I prepared a draft, but have not sent it."))
+
+    with mock.patch.object(agent, "execute_complex_task") as mock_exec:
+        response = agent.process_message("yes")
+
+    assert response.is_done
+    assert "clarify" in response.content.lower() or "pending action" in response.content.lower()
+    mock_exec.assert_not_called()
 
 
 def test_windows_friday_extended_volume_directives():

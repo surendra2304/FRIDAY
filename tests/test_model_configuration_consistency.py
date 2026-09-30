@@ -15,7 +15,7 @@ from friday.voice.gemini_live_session import GeminiLiveVoiceSession
 
 # Authoritative active model configuration
 AUTHORITATIVE_MODELS = {
-    "text_llm": "gemini-1.5-flash-latest",
+    "text_llm": "gemini-3.6-flash",
     "vision": "gemini-3.6-flash",
     "voice_live": "gemini-3.1-flash-live-preview",
     "embeddings": "gemini-embedding-2",
@@ -38,14 +38,14 @@ DISALLOWED_LEGACY_PATTERNS = [
 
 def test_settings_default_model_consistency():
     """Verify Settings class defaults match authoritative production model configurations."""
-    settings = Settings()
-    assert settings.llm_model == AUTHORITATIVE_MODELS["text_llm"]
-    assert settings.vision_model == AUTHORITATIVE_MODELS["vision"]
-    assert settings.voice_live_model == AUTHORITATIVE_MODELS["voice_live"]
-    assert settings.embedding_model == AUTHORITATIVE_MODELS["embeddings"]
+    # Inspect the declared default rather than developer-specific .env values.
+    assert Settings.model_fields["llm_model"].default == AUTHORITATIVE_MODELS["text_llm"]
+    assert Settings.model_fields["vision_model"].default == AUTHORITATIVE_MODELS["vision"]
+    assert Settings.model_fields["voice_live_model"].default == AUTHORITATIVE_MODELS["voice_live"]
+    assert Settings.model_fields["embedding_model"].default == AUTHORITATIVE_MODELS["embeddings"]
 
 
-def test_provider_constructors_default_to_authoritative_models():
+def test_provider_constructors_default_to_authoritative_models(monkeypatch):
     """Verify provider class constructors default to authoritative production models."""
     llm = GeminiLLMProvider(api_key="TEST_API_KEY")
     assert llm.model == AUTHORITATIVE_MODELS["text_llm"]
@@ -53,6 +53,10 @@ def test_provider_constructors_default_to_authoritative_models():
     vision = GeminiVisionProvider(api_key="TEST_API_KEY")
     assert vision.model == AUTHORITATIVE_MODELS["vision"]
 
+    live_config = Settings(voice_live_model=AUTHORITATIVE_MODELS["voice_live"])
+    monkeypatch.setattr(
+        "friday.voice.gemini_live_session.get_settings", lambda: live_config
+    )
     voice = GeminiLiveVoiceSession(api_key="TEST_API_KEY")
     assert voice.model == AUTHORITATIVE_MODELS["voice_live"]
 

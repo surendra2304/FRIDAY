@@ -78,6 +78,9 @@ def test_02_ambiguous_application_chrome_flow(agent, monkeypatch):
         ]
     }
     monkeypatch.setenv("FRIDAY_MOCK_INSTALLATIONS", json.dumps(mock_installs))
+    # This scenario is about ambiguous installation selection, not the actual
+    # desktop state. Keep it deterministic and ensure it never launches Chrome.
+    monkeypatch.setattr("friday.devices.app_launcher.find_existing_window", lambda *args, **kwargs: None)
 
     # 1. Verify find_all_installations detects both paths
     candidates = find_all_installations("chrome")

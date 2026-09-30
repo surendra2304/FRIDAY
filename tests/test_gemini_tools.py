@@ -337,8 +337,16 @@ def test_gemini_max_iteration_guardrail():
 
     response = agent.process_message("Loop forever")
 
+    # The third provider request is text-only finalization after FRIDAY blocks
+    # a repeated operation; automatic function calling remains disabled.
     assert provider._client.models.generate_content.call_count == 3
+    final_config = provider._client.models.generate_content.call_args.kwargs["config"]
+    assert final_config.tools is None
+    assert final_config.automatic_function_calling.disable is True
     assert response.is_done is True
-    assert response.metadata["iterations"] == 3
-    assert "completed the requested tool operations" in response.content.lower()
-    assert len(response.tool_results) == 3
+    assert response.metadata["iterations"] == 2
+    assert "repeated tool operation" in response.content.lower()
+    assert "not executed again" in response.content.lower()
+    assert len(response.tool_results) == 2
+    assert response.tool_results[0].is_error is False
+    assert response.tool_results[1].is_error is True

@@ -116,9 +116,31 @@ def test_chain_provider_name_lists_order():
 # ---------------------------------------------------------------------------
 
 
-def test_factory_creates_chain_in_groq_mistral_openrouter_order():
+@pytest.fixture
+def isolated_gemini_configuration(monkeypatch):
+    """Keep developer-local credentials/pools from changing chain membership."""
+    from friday.auth.credential_pool import credential_pool
+
+    env_names = [
+        "FRIDAY_GEMINI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "gemini_api_key",
+        *[f"FRIDAY_GEMINI_FALLBACK_API_KEY_{i}" for i in range(1, 5)],
+        *[f"GEMINI_FALLBACK_API_KEY_{i}" for i in range(1, 5)],
+        # Chain tests assert their explicit provider/key inputs, so ambient
+        # legacy aliases must not rewrite them during Settings construction.
+        "FRIDAY_GROQ_API_KEY", "GROQ_API_KEY",
+        "FRIDAY_MISTRAL_API_KEY", "MISTRAL_API_KEY",
+        "FRIDAY_OPENROUTER_API_KEY", "OPENROUTER_API_KEY",
+        "FRIDAY_INFERENCE_API_KEY", "INFERENCE_API_KEY",
+    ]
+    for name in env_names:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(credential_pool, "credentials", [])
+
+
+def test_factory_creates_chain_in_groq_mistral_openrouter_order(isolated_gemini_configuration):
     settings = Settings(
         llm_provider="chain",
+        gemini_api_key="",
         groq_api_key="gk",
         mistral_api_key="mk",
         openrouter_api_key="ork",
@@ -133,7 +155,7 @@ def test_factory_creates_chain_in_groq_mistral_openrouter_order():
     assert provider.provider_name == "chain(groq -> mistral -> openrouter -> ai_universe)"
 
 
-def test_factory_chain_uses_own_pools_not_gemini(monkeypatch):
+def test_factory_chain_uses_own_pools_not_gemini(monkeypatch, isolated_gemini_configuration):
     from friday.auth.credential_pool import GeminiCredentialPool
 
     def _explode(*a, **kw):
@@ -142,6 +164,7 @@ def test_factory_chain_uses_own_pools_not_gemini(monkeypatch):
     monkeypatch.setattr(GeminiCredentialPool, "get_active_key", _explode)
     settings = Settings(
         llm_provider="chain",
+        gemini_api_key="",
         groq_api_key="gk",
         mistral_api_key="mk",
         openrouter_api_key="ork",

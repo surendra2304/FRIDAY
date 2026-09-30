@@ -101,8 +101,9 @@ def test_friday_trading_integration(ecosystem_fixture):
 
     res_trade = status_skill.execute("Trading status")
     assert res_trade.success is True
-    assert "Trading Bot Status: RUNNING" in res_trade.output
-    assert "$10,450.00 USDT" in res_trade.output
+    assert "| Stratex | UNVERIFIED |" in res_trade.output
+    assert "10,450.00" not in res_trade.output
+    assert "trading mode and order execution" not in res_trade.output.lower()
 
 
 # =========================================================================
@@ -134,16 +135,21 @@ def test_unified_briefing_all_subsystems(ecosystem_fixture):
     # Morning
     morning = briefing_wf.generate_morning_briefing()
     assert morning.briefing_type == "MORNING"
-    assert "Quantitative Trading Overview" in morning.markdown_report
-    assert "FORGE Software Engineering Status" in morning.markdown_report
-    assert "Nexus Website & Growth Intelligence" in morning.markdown_report
-    assert "AI-Universe Intelligence & Advisory" in morning.markdown_report
+    assert "Quantitative Trading Overview" not in morning.markdown_report
+    assert "no verified trading" in morning.spoken_summary.lower()
+    assert "10,450" not in morning.markdown_report
+    assert "Friday Universe service status" in morning.markdown_report
+    assert "**Forge:** `UNVERIFIED`" in morning.markdown_report
+    assert "**Cortex:** `UNVERIFIED`" in morning.markdown_report
+    assert "**Inference:** `UNVERIFIED`" in morning.markdown_report
+    assert "4,280" not in morning.markdown_report
 
     # Evening
     evening = briefing_wf.generate_evening_briefing()
     assert evening.briefing_type == "EVENING"
-    assert "Daily Performance Summary" in evening.markdown_report
-    assert "Website Traffic & Leads" in evening.markdown_report
+    assert "Their returned status is listed in the report" in evening.spoken_summary
+    assert "Daily accomplishments and performance totals are omitted" in evening.markdown_report
+    assert "2,450" not in evening.markdown_report
 
 
 # =========================================================================

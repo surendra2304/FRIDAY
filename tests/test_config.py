@@ -136,19 +136,25 @@ def test_gemini_key_detected_without_leakage(tmp_path):
     assert _FAKE_GEMINI not in repr(settings)
 
 
-def test_voice_enabled_true_respected(tmp_path):
+def test_voice_enabled_true_respected(tmp_path, monkeypatch):
     """Test E: voice_enabled=true in .env is correctly respected."""
     env_file = tmp_path / "voice_on.env"
     env_file.write_text("FRIDAY_VOICE_ENABLED=true\n", encoding="utf-8")
+    # The process environment intentionally outranks dotenv in production;
+    # remove ambient canonical and legacy variables to test this file alone.
+    for name in ("FRIDAY_VOICE_ENABLED", "VOICE_ENABLED", "voice_enabled"):
+        monkeypatch.delenv(name, raising=False)
     settings = Settings(_env_file=str(env_file))
     assert settings.voice_enabled is True
     assert settings.get_diagnostics()["voice_enabled"] is True
 
 
-def test_voice_enabled_false_respected(tmp_path):
+def test_voice_enabled_false_respected(tmp_path, monkeypatch):
     """Test F: voice_enabled=false in .env is correctly respected."""
     env_file = tmp_path / "voice_off.env"
     env_file.write_text("FRIDAY_VOICE_ENABLED=false\n", encoding="utf-8")
+    for name in ("FRIDAY_VOICE_ENABLED", "VOICE_ENABLED", "voice_enabled"):
+        monkeypatch.delenv(name, raising=False)
     settings = Settings(_env_file=str(env_file))
     assert settings.voice_enabled is False
     assert settings.get_diagnostics()["voice_enabled"] is False

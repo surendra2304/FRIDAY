@@ -29,7 +29,7 @@ class EcosystemReport:
     """Structured container for ecosystem intelligence reports."""
     report_id: str
     report_type: str  # MORNING_BRIEFING, EVENING_WRAPUP, WEEKLY_REPORT
-    composite_health_score: float
+    composite_health_score: float | None
     spoken_summary: str
     markdown_report: str
     data_payload: dict[str, Any]
@@ -49,18 +49,44 @@ class EcosystemIntelligenceService:
         self.reports_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
 
-    def compute_composite_health_score(self, telemetry: dict[str, Any]) -> float:
-        """Calculates weighted composite health score (0-100).
+    def compute_composite_health_score(self, telemetry: dict[str, Any]) -> float | None:
+        """Score only explicitly reported per-service health scores.
 
-        Weights: Trading Bot (30%), Nexus (25%), FORGE (25%), AI-Universe (20%).
+        Missing status or metrics are unknown, not an implicit healthy score.
         """
-        bot_ok = 100.0 if telemetry.get("trading_bot", {}).get("status") in ("RUNNING", "HEALTHY") else 50.0
-        nexus_ok = float(telemetry.get("nexus", {}).get("health_score", 98.4))
-        forge_ok = 100.0 if telemetry.get("forge", {}).get("status") in ("IDLE", "RUNNING", "HEALTHY") else 60.0
-        ai_ok = float(telemetry.get("ai_universe", {}).get("model_confidence_pct", 84.0))
+        names = ("trading_bot", "nexus", "forge", "ai_universe")
+        scores: list[float] = []
+        for name in names:
+            entry = telemetry.get(name)
+            if not isinstance(entry, dict) or str(entry.get("status", "")).upper() in {"", "UNVERIFIED", "UNKNOWN"}:
+                return None
+            try:
+                value = float(entry["health_score"])
+            except (KeyError, TypeError, ValueError):
+                return None
+            if not 0 <= value <= 100:
+                return None
+            scores.append(value)
+        return round(sum(scores) / len(scores), 1)
 
-        score = (bot_ok * 0.30) + (nexus_ok * 0.25) + (forge_ok * 0.25) + (ai_ok * 0.20)
-        return round(score, 1)
+    @staticmethod
+    def _status_lines(telemetry: dict[str, Any]) -> list[str]:
+        lines = []
+        for name, data in telemetry.items():
+            data = data if isinstance(data, dict) else {}
+            status = str(data.get("status", "UNVERIFIED"))
+            evidence = data.get("evidence")
+            line = f"- **{name}:** `{status}`"
+            if evidence:
+                line += f" — {evidence}"
+            metrics = {
+                key: value for key, value in data.items()
+                if key not in {"status", "evidence", "service", "checked_at"}
+            }
+            if metrics:
+                line += f" | Observed metrics: `{json.dumps(metrics, sort_keys=True, default=str)}`"
+            lines.append(line)
+        return lines
 
     def generate_morning_briefing(self) -> EcosystemReport:
         """Generates the Morning Executive Briefing across all four subsystems."""
@@ -75,34 +101,22 @@ class EcosystemIntelligenceService:
             telemetry = {"trading_bot": bot, "forge": forge, "ai_universe": ai, "nexus": nexus}
             health_score = self.compute_composite_health_score(telemetry)
             report_id = f"morning_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
-
-            # Voice-ready spoken summary
-            spoken = (
-                f"Good morning, Operator. Ecosystem composite health is at {health_score:.0f} percent. "
-                f"Trading Bot is {bot.get('status', 'RUNNING')} with equity of ${bot.get('equity_usdt', 10450.0):,.2f} USDT across {bot.get('active_positions_count', 3)} positions, up +${bot.get('daily_pnl_usdt', 420.50):,.2f} overnight. "
-                f"Nexus reports {nexus.get('visitors_today', 4280):,} website visitors with {nexus.get('leads_detected_today', 14)} high-intent enterprise leads. "
-                f"Forge engine is {forge.get('status', 'IDLE')} with {forge.get('total_completed', 2)} builds delivered. "
-                f"AI-Universe served {ai.get('consultations_today', 128)} consultations across {ai.get('configured_providers_count', 7)} active providers."
+            score_text = f"{health_score}/100" if health_score is not None else "UNVERIFIED"
+            verified_count = sum(
+                1 for data in telemetry.values()
+                if isinstance(data, dict) and str(data.get("status", "")).upper() not in {"", "UNVERIFIED", "UNKNOWN"}
             )
-
-            # Markdown Executive Briefing
+            spoken = (
+                f"Good morning. I checked {len(telemetry)} registered services; "
+                f"{verified_count} returned a verified status. Composite health is {score_text}. "
+                "No trading, traffic, lead, build, or provider totals are available unless a service supplied them."
+            )
             md = (
-                f"# 🌅 FRIDAY Master Morning Executive Briefing\n\n"
-                f"**Report ID:** `{report_id}` | **Composite Health:** **🟢 {health_score}/100**\n\n"
-                f"### 📈 1. Quantitative Trading Overview\n"
-                f"- **Portfolio Equity:** `${bot.get('equity_usdt', 10450.0):,.2f} USDT` (+${bot.get('daily_pnl_usdt', 420.50):,.2f} overnight)\n"
-                f"- **Positions:** `{bot.get('active_positions_count', 3)}` active contracts | Leverage: `{bot.get('aggregate_leverage', 0.85):.2f}x`\n"
-                f"- **AI Advisory Status:** `{bot.get('advisory_status', 'ACTIVE')}`\n\n"
-                f"### 🌐 2. Nexus Website & Growth Operations\n"
-                f"- **Site Health:** `{nexus.get('health_score', 98.4):.1f}/100` | **Traffic:** `{nexus.get('visitors_today', 4280):,}` visitors\n"
-                f"- **High-Intent Leads:** `{nexus.get('leads_detected_today', 14)}` enterprise leads detected\n"
-                f"- **Conversion Rate:** `{nexus.get('conversion_rate_pct', 3.65):.2f}%` | Active Incidents: `{nexus.get('active_incidents_count', 0)}`\n\n"
-                f"### 🛠️ 3. FORGE Software Engineering Status\n"
-                f"- **Engine Status:** `{forge.get('status', 'IDLE')}` | **Delivered Packages:** `{forge.get('total_completed', 2)}`\n"
-                f"- **Mean Test Coverage:** `{forge.get('mean_test_coverage_pct', 96.0):.1f}%`\n\n"
-                f"### 🧠 4. AI-Universe Intelligence & Advisory\n"
-                f"- **Active Providers:** `{ai.get('configured_providers_count', 7)}` LLM/analytic engines online\n"
-                f"- **Consultations Served:** `{ai.get('consultations_today', 128)}` | Confidence: `{ai.get('model_confidence_pct', 84.0):.0f}%`\n"
+                f"# FRIDAY Morning Ecosystem Report\n\n"
+                f"**Report ID:** `{report_id}` | **Composite Health:** `{score_text}`\n\n"
+                "## Observed service status\n"
+                + "\n".join(self._status_lines(telemetry))
+                + "\n\nMetrics absent from service responses are omitted; endpoint registration is not evidence of activity.\n"
             )
 
             report = EcosystemReport(
@@ -129,24 +143,17 @@ class EcosystemIntelligenceService:
             telemetry = {"trading_bot": bot, "forge": forge, "ai_universe": ai, "nexus": nexus}
             health_score = self.compute_composite_health_score(telemetry)
             report_id = f"evening_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
-
+            score_text = f"{health_score}/100" if health_score is not None else "UNVERIFIED"
             spoken = (
-                f"Good evening, Operator. Today's ecosystem wrap-up: "
-                f"Trading closed with realized daily profit of +${bot.get('daily_pnl_usdt', 420.50):,.2f} USDT. "
-                f"Nexus captured {nexus.get('leads_detected_today', 14)} high-intent leads across {nexus.get('visitors_today', 4280):,} visitors. "
-                f"Forge delivered {forge.get('total_completed', 2)} software builds. "
-                f"Tomorrow's operational outlook is positive with nominal risk."
+                f"Good evening. I checked {len(telemetry)} registered services. "
+                "No verified daily activity or performance totals were returned."
             )
-
             md = (
-                f"# 🌃 FRIDAY Master Evening Performance Wrap-Up\n\n"
-                f"**Report ID:** `{report_id}` | **Composite Health:** **🟢 {health_score}/100**\n\n"
-                f"### 📊 Daily Operational Deltas\n"
-                f"- **Trading Realized P&L:** `+${bot.get('daily_pnl_usdt', 420.50):,.2f} USDT`\n"
-                f"- **Ending Portfolio Equity:** `${bot.get('equity_usdt', 10450.0):,.2f} USDT`\n"
-                f"- **Nexus Enterprise Leads:** `{nexus.get('leads_detected_today', 14)}` qualified leads\n"
-                f"- **Software Packages Delivered:** `{forge.get('total_completed', 2)}` packages\n"
-                f"- **Security Incidents:** `0` (Nominal operations maintained)\n"
+                f"# FRIDAY Evening Ecosystem Report\n\n"
+                f"**Report ID:** `{report_id}` | **Composite Health:** `{score_text}`\n\n"
+                "## Observed service status\n"
+                + "\n".join(self._status_lines(telemetry))
+                + "\n\nNo event feed is connected, so daily totals and outlook claims are omitted.\n"
             )
 
             report = EcosystemReport(
@@ -173,33 +180,17 @@ class EcosystemIntelligenceService:
             telemetry = {"trading_bot": bot, "forge": forge, "ai_universe": ai, "nexus": nexus}
             health_score = self.compute_composite_health_score(telemetry)
             report_id = f"weekly_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
-
+            score_text = f"{health_score}/100" if health_score is not None else "UNVERIFIED"
             spoken = (
-                f"Good evening, Operator. Your Weekly Ecosystem Report is ready. "
-                f"Weekly trading profit reached +$2,450.00 USDT (+23.4% return). "
-                f"Nexus generated 98 high-intent enterprise leads with a 3.65% conversion rate. "
-                f"Forge successfully shipped 7 software engineering packages. "
-                f"All four subsystems remain in peak health with a composite score of {health_score:.0f} percent."
+                f"The weekly report is ready. Composite health is {score_text}. "
+                "No verified weekly event or performance feed was returned."
             )
-
             md = (
-                f"# 📅 FRIDAY Comprehensive Weekly Ecosystem Report\n\n"
-                f"**Report ID:** `{report_id}` | **Composite Health:** **🟢 {health_score}/100**\n\n"
-                f"## 📈 1. Weekly Trading Performance & P&L\n"
-                f"- **Net Weekly Gain:** `+$2,450.00 USDT`\n"
-                f"- **Ending Equity:** `${bot.get('equity_usdt', 10450.0):,.2f} USDT`\n"
-                f"- **Sharpe Ratio:** `2.42` | Max Drawdown: `1.8%`\n\n"
-                f"## 🌐 2. Nexus Growth & Traffic Trends\n"
-                f"- **Total Weekly Visitors:** `29,400`\n"
-                f"- **Enterprise Leads Identified:** `98` leads\n"
-                f"- **Average Conversion Rate:** `3.65%` (+0.4% WoW)\n\n"
-                f"## 🛠️ 3. FORGE Engineering Deliverables\n"
-                f"- **Software Packages Delivered:** `7` packages\n"
-                f"- **Mean Verification Coverage:** `96.0%`\n\n"
-                f"## 💡 4. Strategic Recommendations for Next Week\n"
-                f"1. Scale BTCUSDT Supertrend allocation by 10% based on low drawdown.\n"
-                f"2. Promote Nexus Hero CTA Variant B to 100% traffic across all landing pages.\n"
-                f"3. Task Forge with building automated weekly PDF report exports.\n"
+                f"# FRIDAY Weekly Ecosystem Report\n\n"
+                f"**Report ID:** `{report_id}` | **Composite Health:** `{score_text}`\n\n"
+                "## Observed service status\n"
+                + "\n".join(self._status_lines(telemetry))
+                + "\n\nWeekly business metrics and recommendations require verified event and performance data.\n"
             )
 
             report = EcosystemReport(

@@ -6,7 +6,10 @@ from friday.integrations.universe_orchestrator import UniverseOrchestrator
 from friday.memory.sqlite import SQLiteConversationMemory
 
 
-def test_mock_universe_client_crud():
+def test_mock_universe_client_crud(monkeypatch):
+    # The mock integration is intentionally allowed only in explicit test mode.
+    monkeypatch.setenv("FRIDAY_ENV", "test")
+    monkeypatch.setenv("MOCK_UNIVERSE_ENABLED", "true")
     client = MockUniverseClient()
     world_state = client.create_world(WorldConfig(name="Alpha World"))
     assert world_state.world_id.startswith("world_")
@@ -30,7 +33,9 @@ def test_mock_universe_client_crud():
     assert results.total_steps == 50
 
 
-def test_universe_orchestrator_execution_and_sqlite_persistence(tmp_path):
+def test_universe_orchestrator_execution_and_sqlite_persistence(tmp_path, monkeypatch):
+    monkeypatch.setenv("FRIDAY_ENV", "test")
+    monkeypatch.setenv("MOCK_UNIVERSE_ENABLED", "true")
     db_file = str(tmp_path / "universe_test.db")
     mem = SQLiteConversationMemory(db_path=db_file)
     client = MockUniverseClient()

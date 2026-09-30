@@ -67,6 +67,9 @@ class GeminiLLMProvider(BaseLLMProvider):
         thinking_level: str | None = None,
     ) -> None:
         super().__init__(model=model, temperature=temperature, max_tokens=max_tokens)
+        # Preserve an explicitly supplied blank value so callers that provided
+        # an empty key receive the clear missing-key error. The provider
+        # factory normalizes absent environment values before construction.
         self._explicit_api_key: str | None = api_key
         self.api_key: str | None = api_key
         self.credential_pool: GeminiCredentialPool | None = credential_pool
@@ -119,7 +122,12 @@ class GeminiLLMProvider(BaseLLMProvider):
                 if key and key.strip():
                     return key.strip()
             except Exception as e:
-                logger.debug(f"Credential pool get_active_key: {e}")
+                # A populated but exhausted pool is an explicit credential
+                # policy. Do not silently fall back to an unrelated ambient
+                # key from local settings or the process environment.
+                raise LLMProviderError(
+                    "CREDENTIAL_EXHAUSTED: No healthy Gemini API key is available in the configured credential pool."
+                ) from e
 
         if self._explicit_api_key is not None and self._explicit_api_key.strip():
             return self._explicit_api_key.strip()

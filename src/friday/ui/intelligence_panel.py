@@ -41,35 +41,41 @@ class UnifiedIntelligencePanel:
 
         telemetry = {"trading_bot": bot, "forge": forge, "ai_universe": ai, "nexus": nexus}
         composite_score = self.intelligence_service.compute_composite_health_score(telemetry)
+        score_label = f"{composite_score}/100" if composite_score is not None else "UNVERIFIED"
+
+        def observed(data: dict[str, Any], key: str, suffix: str = "") -> str:
+            value = data.get(key)
+            return f"{value}{suffix}" if value is not None else "Not verified"
 
         return {
             "title": "FRIDAY Unified Ecosystem Intelligence Dashboard",
             "composite_health_score": composite_score,
-            "status": "OPTIMAL" if composite_score >= 90 else "NOMINAL" if composite_score >= 75 else "DEGRADED",
+            "composite_health_label": score_label,
+            "status": "UNVERIFIED" if composite_score is None else "OBSERVED",
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "subsystems": {
                 "trading": {
-                    "equity": f"${bot.get('equity_usdt', 10450.0):,.2f} USDT",
-                    "daily_pnl": f"+${bot.get('daily_pnl_usdt', 420.50):,.2f} USDT",
-                    "positions_count": bot.get("active_positions_count", 3),
-                    "status": bot.get("status", "RUNNING"),
+                    "equity": observed(bot, "equity_usdt", " USDT"),
+                    "daily_pnl": observed(bot, "daily_pnl_usdt", " USDT"),
+                    "positions_count": observed(bot, "active_positions_count"),
+                    "status": bot.get("status", "UNVERIFIED"),
                 },
                 "nexus": {
-                    "health_score": f"{nexus.get('health_score', 98.4):.1f}/100",
-                    "visitors": f"{nexus.get('visitors_today', 4280):,}",
-                    "leads": nexus.get("leads_detected_today", 14),
-                    "conversion_rate": f"{nexus.get('conversion_rate_pct', 3.65):.2f}%",
+                    "health_score": observed(nexus, "health_score", "/100"),
+                    "visitors": observed(nexus, "visitors_today"),
+                    "leads": observed(nexus, "leads_detected_today"),
+                    "conversion_rate": observed(nexus, "conversion_rate_pct", "%"),
                 },
                 "forge": {
-                    "delivered": forge.get("total_completed", 2),
-                    "active_tasks": forge.get("active_tasks_count", 0),
-                    "mean_coverage": f"{forge.get('mean_test_coverage_pct', 96.0):.1f}%",
-                    "status": forge.get("status", "IDLE"),
+                    "delivered": observed(forge, "total_completed"),
+                    "active_tasks": observed(forge, "active_tasks_count"),
+                    "mean_coverage": observed(forge, "mean_test_coverage_pct", "%"),
+                    "status": forge.get("status", "UNVERIFIED"),
                 },
                 "ai_universe": {
-                    "providers_online": f"{ai.get('configured_providers_count', 7)}/7",
-                    "consultations": ai.get("consultations_today", 128),
-                    "model_confidence": f"{ai.get('model_confidence_pct', 84.0):.0f}%",
+                    "providers_online": observed(ai, "configured_providers_count"),
+                    "consultations": observed(ai, "consultations_today"),
+                    "model_confidence": observed(ai, "model_confidence_pct", "%"),
                 },
             },
             "one_click_reports": [
@@ -90,7 +96,7 @@ class UnifiedIntelligencePanel:
 
         return (
             f"# 🧠 {data['title']}\n\n"
-            f"**Composite Ecosystem Health:** **🟢 {data['composite_health_score']}/100** (`{data['status']}`)\n\n"
+            f"**Composite Ecosystem Health:** `{data['composite_health_label']}` (`{data['status']}`)\n\n"
             f"### 📈 Quantitative Trading\n"
             f"- **Equity:** `{t['equity']}` | **P&L:** `{t['daily_pnl']}` | **Positions:** `{t['positions_count']}`\n\n"
             f"### 🌐 Nexus Growth & Website\n"

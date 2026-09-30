@@ -486,6 +486,17 @@ async def execute_command(req: CommandRequest, _: None = Depends(_require_contro
     raw_cmd = req.command.strip()
     cmd = raw_cmd.lower()
 
+    # Reject direct prompt-injection attempts before any fast path or agent
+    # execution. The response names the reason so clients can distinguish a
+    # security refusal from a provider or execution failure.
+    from friday.security.production_security import ProductionSecurityManager
+    injection_detected, injection_reason, _ = ProductionSecurityManager().scan_prompt_injection(raw_cmd)
+    if injection_detected:
+        return {
+            "reply": f"Security Alert: request blocked. {injection_reason}",
+            "metadata": {"fast_path": True, "security_blocked": True, "reason": "prompt_injection"},
+        }
+
     # =========================================================================
     # A. Autonomous Mode Toggles & Directives
     # =========================================================================

@@ -217,6 +217,7 @@ class GoalUnderstandingEngine:
         user_request: str,
         context_summary: str | None = None,
         environmental_context: str | None = None,
+        confirmation_pending: bool = False,
     ) -> Goal:
         """Parse user request, classify request type, evaluate safety/risk, and formulate Goal."""
         goal_id = f"goal_{uuid.uuid4().hex[:12]}"
@@ -250,6 +251,22 @@ class GoalUnderstandingEngine:
             "no", "n", "nope", "cancel", "stop", "abort", "don't", "dont",
             "do not", "never mind", "nevermind", "discard"
         }
+
+        if low_req in affirmative_words and not confirmation_pending:
+            return Goal(
+                goal_id=goal_id,
+                original_request=clean_request,
+                normalized_intent="Ambiguous confirmation without a pending action",
+                desired_outcome="Clarification of the requested action",
+                request_type=GoalRequestType.AMBIGUOUS_REQUEST,
+                risk_level=GoalRiskLevel.LOW,
+                is_ambiguous=True,
+                clarification_needed=(
+                    "I don't have a pending action to confirm in this context. "
+                    f"Please clarify what you want me to do with '{clean_request}'."
+                ),
+                cancellation_conditions=["User cancels clarification request"],
+            )
 
         if low_req in affirmative_words:
             return Goal(

@@ -42,8 +42,8 @@ def test_core_layers_have_no_gemini_sdk_imports():
     import inspect
 
     import friday.agent.agent as agent_mod
-    import friday.agent.executor as executor_mod
-    import friday.agent.planner as planner_mod
+    import friday.agent.mixins.tools as executor_mod
+    import friday.agent.goal as planner_mod
     import friday.agent.recovery as recovery_mod
     import friday.agent.state as state_mod
     import friday.agent.verification as verifier_mod

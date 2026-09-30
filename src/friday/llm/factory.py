@@ -74,6 +74,19 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
         api_key = settings.gemini_api_key if settings.gemini_api_key is not None else settings.llm_api_key
         if api_key is None:
             api_key = os.getenv("FRIDAY_GEMINI_API_KEY")
+            if api_key is not None and not api_key.strip():
+                api_key = None
+        elif not api_key.strip():
+            # An explicitly supplied pair of blank settings means the caller
+            # requested Gemini but omitted its key; preserve that marker so
+            # the provider raises the clear missing-key error.  Blank values
+            # inherited from ambient environment aliases remain absent and
+            # must not disable credential-pool failover.
+            explicitly_blank = (
+                settings.gemini_api_key == ""
+                and settings.llm_api_key == ""
+            )
+            api_key = "" if explicitly_blank else None
 
         model_name = settings.gemini_model or settings.llm_model
         temperature = settings.gemini_temperature if settings.gemini_temperature is not None else settings.llm_temperature

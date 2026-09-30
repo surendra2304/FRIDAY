@@ -14,6 +14,15 @@ from friday.skills.trading_bot_operator import TradingBotOperator
 from tests.mock_trading_bot import MockTradingBotServer
 
 
+def _assert_mock_response_disclaims_live_data(response):
+    assert "[FRIDAY Mock Mode]" in response.content
+    assert "Simulated response" in response.content
+    assert "did not query live agent data" in response.content
+    assert "UNVERIFIED" in response.content
+    assert response.tool_calls is None
+    assert response.tool_results is None
+
+
 @pytest.fixture(scope="module")
 def mock_server():
     server = MockTradingBotServer(port=8994, scenario="mixed")
@@ -58,18 +67,16 @@ def integrated_agent(mock_server):
 # =========================================================================
 
 def test_full_integration_what_did_ai_universe_recommend(integrated_agent):
-    """End-to-end: User asks 'What did AI-Universe recommend?' -> Agent routes to AdvisorySupervisorSkill."""
+    """Mock LLM must not invent advisory results or claim it queried the peer."""
     agent, supervisor, operator, memory, server = integrated_agent
     server.set_scenario("mixed")
 
     response = agent.process_message("What did AI-Universe recommend?")
 
     assert response.is_done is True
-    assert "Recent AI-Universe Advisory Decisions" in response.content
-    assert "[APPLY - 85% Conf]" in response.content
-    assert "Tighten BTC scalper stop-loss to 0.4%" in response.content
-    assert "[REJECT - 91% Conf]" in response.content
-    assert "Increase ETH max position size to 2.5x" in response.content
+    _assert_mock_response_disclaims_live_data(response)
+    assert "Recent AI-Universe Advisory Decisions" not in response.content
+    assert "Tighten BTC scalper stop-loss" not in response.content
 
     # Verify conversation memory messages
     history = memory.get_messages()
@@ -78,35 +85,36 @@ def test_full_integration_what_did_ai_universe_recommend(integrated_agent):
     asst_msg = history[-1]
     assert user_msg.role == Role.USER
     assert asst_msg.role == Role.ASSISTANT
-    assert "Recent AI-Universe Advisory Decisions" in asst_msg.content
+    assert "UNVERIFIED" in asst_msg.content
 
 
 def test_full_integration_trading_morning_briefing(integrated_agent):
-    """End-to-end: User asks 'Trading morning briefing' -> Agent returns spoken briefing."""
+    """Mock LLM must not fabricate trading metrics or service health."""
     agent, supervisor, operator, memory, server = integrated_agent
     server.set_scenario("mixed")
 
     response = agent.process_message("Trading morning briefing")
 
     assert response.is_done is True
-    assert "Trading Bot Morning Briefing" in response.content
-    assert "$10,540.25 USDT" in response.content
-    assert "BTCUSDT LONG" in response.content
-    assert "AI-Universe Advisory is HEALTHY" in response.content
+    _assert_mock_response_disclaims_live_data(response)
+    assert "Trading Bot Morning Briefing" not in response.content
+    assert "10,540.25" not in response.content
+    assert "BTCUSDT LONG" not in response.content
+    assert "HEALTHY" not in response.content
 
 
 def test_full_integration_explain_advisory_decision(integrated_agent):
-    """End-to-end: User asks 'explain advisory adv_mix_02' -> Agent details safety gate rejection."""
+    """Mock LLM must not invent an advisory decision that it did not retrieve."""
     agent, supervisor, operator, memory, server = integrated_agent
     server.set_scenario("mixed")
 
     response = agent.process_message("explain advisory adv_mix_02")
 
     assert response.is_done is True
-    assert "REJECTED by Safety Gates" in response.content
-    assert "Exceeds max account risk limit of 1.0x per asset" in response.content
-    assert "AI-Universe Proposal" in response.content
-    assert "91%" in response.content
+    _assert_mock_response_disclaims_live_data(response)
+    assert "REJECTED by Safety Gates" not in response.content
+    assert "AI-Universe Proposal" not in response.content
+    assert "91%" not in response.content
 
 
 def test_full_integration_untrusted_external_tagging_in_watchdog_memory(integrated_agent):

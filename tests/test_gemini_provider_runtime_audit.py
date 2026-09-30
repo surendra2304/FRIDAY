@@ -68,7 +68,7 @@ def test_provider_explicit_state_initialization():
     assert provider._client is None
     assert provider._current_key is None
     assert isinstance(provider._lock, type(threading.Lock()))
-    assert provider.model == "gemini-1.5-flash-latest"
+    assert provider.model == "gemini-3.6-flash"
 
 
 def test_provider_without_credential_pool():

@@ -3,6 +3,8 @@ import os
 import random
 import re
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
+import threading
 import time
 import warnings
 from collections.abc import Callable
@@ -185,6 +187,7 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
         self.system_message = build_system_message(self.settings)
         self._processed_tool_ids: set = set()
         self._processed_tool_signatures: set[str] = set()
+        self._tool_replay_lock = threading.Lock()
         self.state_machine: ReasoningStateMachine = ReasoningStateMachine()
         self._current_plan: TaskGraph | None = None
         self.task_context: ActiveTaskContext | None = None
@@ -348,6 +351,7 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
         last_error = ""
         tool_failure_counts: dict[str, int] = {}
         stop_after_failure = False
+        duplicate_operation_blocked = False
         current_user_request = str((context or {}).get("current_user_request", goal))
 
         iterations = 0
@@ -386,10 +390,19 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
                 break
 
             messages.append(response)
-            for call in response.tool_calls:
+            calls = response.tool_calls
+            call_results: list[ToolResult | None] = [None] * len(calls)
+            parallel_safe_batch = len(calls) > 1 and all(
+                not _is_unrequested_youtube_action(call, current_user_request)
+                and (tool := self.tools.get(call.name)) is not None
+                and tool.safety_level == SafetyLevel.SAFE
+                for call in calls
+            )
+
+            for index, call in enumerate(calls):
                 tool_calls.append(call)
                 if _is_unrequested_youtube_action(call, current_user_request):
-                    result = ToolResult(
+                    call_results[index] = ToolResult(
                         tool_call_id=call.id,
                         name=call.name,
                         content=(
@@ -400,7 +413,40 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
                         safety_level=SafetyLevel.SAFE,
                     )
                 else:
-                    result = self._execute_single_tool_call(call)
+                    tool = self.tools.get(call.name)
+                    if not parallel_safe_batch:
+                        call_results[index] = self._execute_single_tool_call(call)
+
+            safe_indices = [
+                index for index, result in enumerate(call_results) if result is None
+            ]
+            if parallel_safe_batch:
+                # Mixed-safety batches execute sequentially in model order so
+                # authorization checks and any approval UI cannot race. Purely
+                # safe batches can overlap without changing tool-trace order.
+                with ThreadPoolExecutor(
+                    max_workers=min(8, len(safe_indices)),
+                    thread_name_prefix="friday-safe-tool",
+                ) as tool_executor:
+                    futures = {
+                        index: tool_executor.submit(self._execute_single_tool_call, calls[index])
+                        for index in safe_indices
+                    }
+                    for index, future in futures.items():
+                        try:
+                            call_results[index] = future.result(timeout=self.tool_timeout + 1)
+                        except Exception as exc:
+                            call = calls[index]
+                            call_results[index] = ToolResult(
+                                tool_call_id=call.id,
+                                name=call.name,
+                                content=f"Error: Safe tool execution failed: {type(exc).__name__}: {exc}",
+                                is_error=True,
+                                safety_level=SafetyLevel.SAFE,
+                            )
+
+            for call, result in zip(calls, call_results, strict=True):
+                assert result is not None
                 tool_results.append(result)
                 messages.append(
                     Message(
@@ -415,10 +461,12 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
                         last_error = result.content
                     tool_failure_counts[call.name] = tool_failure_counts.get(call.name, 0) + 1
                     normalized_error = result.content.lower()
+                    if "repeated tool operation" in normalized_error:
+                        duplicate_operation_blocked = True
                     non_retryable = any(marker in normalized_error for marker in (
                         "401", "unauthorized", "403", "forbidden", "permission denied",
                         "missing api key", "invalid api key", "authentication failed",
-                        "action blocked:",
+                        "action blocked:", "repeated tool operation",
                     ))
                     retries_exhausted = tool_failure_counts[call.name] > 3
                     messages.append(
@@ -435,6 +483,29 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
                         break
             if stop_after_failure:
                 break
+
+        # A duplicate call is blocked to prevent repeating a side effect. Give
+        # the model one text-only turn to summarize the earlier result; never
+        # pass tool schemas here, so it cannot issue another operation.
+        if duplicate_operation_blocked:
+            try:
+                final_response = self.llm.generate(messages, tools=[])
+                if not final_response.tool_calls and final_response.content.strip():
+                    content = strip_thought_tags(final_response.content)
+                    return AgentResponse(
+                        content=content,
+                        tool_calls=tool_calls or None,
+                        tool_results=tool_results or None,
+                        is_done=True,
+                        metadata={
+                            "goal_orchestration": False,
+                            "duration_seconds": time.perf_counter() - start_time,
+                            "is_successful": True,
+                            "iterations": iterations + 1,
+                        },
+                    )
+            except Exception as exc:
+                logger.warning("Text-only finalization after duplicate tool call failed: %s", exc)
 
         content = (
             f"I encountered persistent errors while completing the request: {last_error}"
