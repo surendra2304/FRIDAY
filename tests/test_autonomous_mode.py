@@ -186,7 +186,11 @@ def test_whatsapp_fast_path_natural_language():
     from unittest.mock import patch
     from friday.devices.windows_friday import windows_friday
 
-    with patch.object(windows_friday, "open_url", return_value=True) as mock_open:
+    with patch.object(windows_friday, "open_url", return_value=True) as mock_open, patch.object(
+        windows_friday, "_lookup_contact_phone", return_value="+919876543210"
+    ):
+        # Contact resolution is patched so this test stays hermetic: it verifies
+        # directive parsing and dispatch, not the contact database contents.
         # Test 1: "send hi to ramesh in whatsapp"
         handled1, reply1, meta1 = windows_friday.handle_directive("send hi to ramesh in whatsapp")
         assert handled1 is True
