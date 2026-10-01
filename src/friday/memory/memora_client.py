@@ -311,7 +311,10 @@ class MemoraClient:
             )
             with urllib.request.urlopen(req, timeout=self.timeout) as response:
                 data = json.loads(response.read().decode("utf-8"))
-                return {"status": "ok", **data} if response.status == 200 and isinstance(data, dict) else {"status": "error", "error": f"Memora returned HTTP {response.status}"}
+                # Memora answers {"status": "acknowledged"}; normalize to the
+                # client contract ("ok") AFTER unpacking so the server's status
+                # string cannot clobber it.
+                return {**data, "status": "ok"} if response.status == 200 and isinstance(data, dict) else {"status": "error", "error": f"Memora returned HTTP {response.status}"}
         except Exception as exc:
             logger.warning("Memora event acknowledgement failed (%s)", type(exc).__name__)
             return {"status": "error", "error": type(exc).__name__}
