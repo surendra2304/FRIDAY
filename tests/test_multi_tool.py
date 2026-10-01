@@ -1,5 +1,6 @@
 """Tests for coordinated multi-tool execution (parallel & sequential)."""
 
+import threading
 import time
 from typing import Any
 
@@ -26,6 +27,27 @@ from friday.tools.base import BaseTool
 from friday.tools.registry import ToolRegistry
 
 
+class _OverlapTracker:
+    """Records the maximum number of tool executions active at the same instant."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._active = 0
+        self.max_active = 0
+
+    def enter(self) -> None:
+        with self._lock:
+            self._active += 1
+            self.max_active = max(self.max_active, self._active)
+
+    def exit(self) -> None:
+        with self._lock:
+            self._active -= 1
+
+
+_OVERLAP = _OverlapTracker()
+
+
 class MockSafeToolA(BaseTool):
     name = "safe_a"
     description = "Safe Tool A"
@@ -33,14 +55,19 @@ class MockSafeToolA(BaseTool):
     parameters = {"type": "object", "properties": {"val": {"type": "string"}}}
 
     def execute(self, val: str = "A", **kwargs: Any) -> ToolResult:
-        # Intentionally sleep slightly to verify concurrency overlaps
-        time.sleep(0.05)
-        return ToolResult(
-            name=self.name,
-            content=f"Result A: {val}",
-            is_error=False,
-            safety_level=self.safety_level,
-        )
+        # Sleep briefly while tracking overlap so tests can verify true
+        # concurrency instead of relying on machine-dependent wall-clock bounds.
+        _OVERLAP.enter()
+        try:
+            time.sleep(0.05)
+            return ToolResult(
+                name=self.name,
+                content=f"Result A: {val}",
+                is_error=False,
+                safety_level=self.safety_level,
+            )
+        finally:
+            _OVERLAP.exit()
 
 
 class MockSafeToolB(BaseTool):
@@ -50,13 +77,17 @@ class MockSafeToolB(BaseTool):
     parameters = {"type": "object", "properties": {"val": {"type": "string"}}}
 
     def execute(self, val: str = "B", **kwargs: Any) -> ToolResult:
-        time.sleep(0.05)
-        return ToolResult(
-            name=self.name,
-            content=f"Result B: {val}",
-            is_error=False,
-            safety_level=self.safety_level,
-        )
+        _OVERLAP.enter()
+        try:
+            time.sleep(0.05)
+            return ToolResult(
+                name=self.name,
+                content=f"Result B: {val}",
+                is_error=False,
+                safety_level=self.safety_level,
+            )
+        finally:
+            _OVERLAP.exit()
 
 
 class MockFailingSafeTool(BaseTool):
@@ -160,9 +191,8 @@ def test_two_independent_safe_tool_calls(registry):
         authorizer=AutoApproveAuthorizer.create_for_testing()
     )
 
-    start = time.perf_counter()
+    _OVERLAP.max_active = 0  # isolate this test's overlap measurement
     response = agent.process_message("Execute both")
-    elapsed = time.perf_counter() - start
 
     assert response.is_done
     assert response.tool_results is not None
@@ -174,10 +204,13 @@ def test_two_independent_safe_tool_calls(registry):
     assert response.tool_results[1].name == "safe_b"
     assert response.tool_results[1].content == "Result B: second"
     
-    # Elapsed check: both tools sleep for 0.05 seconds.
-    # If run in parallel, total batch latency should be ~0.05s.
-    # If run sequentially, it would be >= 0.10s.
-    assert elapsed < 0.40  # Allows headroom for mock generation under high test runner load, but validates parallel overlap
+    # Concurrency verification (hardware-independent): both tools must have
+    # been inside execute() at the same instant at least once. Sequential
+    # execution can never exceed max_active == 1.
+    assert _OVERLAP.max_active >= 2, (
+        "SAFE tools did not run in parallel: max concurrent executions "
+        f"observed = {_OVERLAP.max_active}"
+    )
 
 
 # --- 3. Test multiple safe tool calls ---
