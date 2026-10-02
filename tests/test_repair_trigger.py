@@ -346,6 +346,7 @@ async def test_a_failed_propose_call_is_recorded_and_does_not_abort_the_pass():
 
     assert first.call_failed is True
     assert first.has_result is False
+    assert first.failed_party == "gate"
     assert "ConnectError" in first.call_detail
     assert "NO RESULT" in first.summary
     # It must not read as a settled "no", which is what a refusal or a declined
@@ -374,7 +375,8 @@ async def test_a_failed_review_call_keeps_the_proposal_that_already_succeeded():
     # And it is honest about not knowing how the review landed.
     assert outcome.review_filed is False
     assert outcome.waiting_on_owner is False
-    assert "review call failed" in outcome.call_detail
+    assert outcome.failed_party == "gate"
+    assert "review failed" in outcome.call_detail
 
 
 @pytest.mark.asyncio
@@ -429,6 +431,7 @@ async def test_an_unexpected_error_in_one_spec_is_contained_not_raised():
     )
     outcomes = await trigger.run_once([_SPEC])
     assert outcomes[0].call_failed is True
+    assert outcomes[0].failed_party == "local"
     assert "unexpected failure" in outcomes[0].call_detail
     assert "NO RESULT" in outcomes[0].summary
 
@@ -550,7 +553,8 @@ async def test_a_real_dropped_connection_costs_one_spec_and_nothing_else(
     lost = next(o for o in outcomes if o.spec == lost_spec)
     assert lost.call_failed is True
     assert lost.has_result is False
-    assert f"{lost_step} call failed" in lost.call_detail
+    assert lost.failed_party == "gate"
+    assert f"{lost_step} failed" in lost.call_detail
     assert "RemoteProtocolError" in lost.call_detail
     assert "NO RESULT" in lost.summary
     # Whatever had already succeeded for this spec is still reported.
@@ -564,9 +568,174 @@ async def test_a_real_dropped_connection_costs_one_spec_and_nothing_else(
         assert outcome.waiting_on_owner is True
 
     text = render_summary(outcomes)
-    assert "no result at all    : 1" in text
+    assert "no verdict reached  : 1" in text
     assert "INCOMPLETE PASS" in text
     assert f"proposals filed     : {filed}" in text
+
+
+# ── a failure before any call must not blame the gate ─────────────────────
+
+
+class _UnbuildableProposal:
+    """A proposal whose payload cannot be built — Forge's own guard, reproduced."""
+
+    fixed = True
+    reason = ""
+    before = after = None
+
+    def to_request(self, repo_path: str) -> Any:
+        raise RuntimeError(
+            "refusing to emit a proposal: the candidate did not produce a passing test run"
+        )
+
+
+class _FailingReviewer:
+    """A reviewer that fails on one spec and works on the others."""
+
+    def __init__(self, fail_on: int) -> None:
+        self.fail_on = fail_on
+        self.calls = 0
+
+    def review(self, *, patch_fingerprint: str, **kwargs: Any) -> _Review:
+        self.calls += 1
+        if self.calls == self.fail_on:
+            raise RuntimeError("reviewer backend unreachable")
+        return _Review()
+
+
+@pytest.mark.asyncio
+async def test_a_payload_that_cannot_be_built_blames_itself_not_the_gate():
+    """Nothing was submitted, so the gate is not the party that failed.
+
+    The real server counts its own requests, so "the gate was never asked" is
+    demonstrated rather than asserted: if this ever regressed into a real call,
+    the count would not be zero.
+    """
+    gate = _DroppingGate(fail_on_call=10**6)  # never drop; we want every call to land
+    try:
+        specs = [
+            WatchSpec(**{**_SPEC.as_dict(), "name": "unbuildable"}),
+            WatchSpec(**{**_SPEC.as_dict(), "name": "healthy"}),
+        ]
+
+        def proposer() -> Any:
+            class _OneBad:
+                def __init__(self) -> None:
+                    self.calls = 0
+
+                async def propose(self, **kwargs: Any) -> Any:
+                    self.calls += 1
+                    return _UnbuildableProposal() if self.calls == 1 else _Outcome(True)
+
+            return _OneBad()
+
+        trigger = RepairTrigger(
+            HttpxGateClient(gate.base_url, api_key="k", timeout=10.0),
+            proposal_factory=proposer,
+            reviewer_factory=_Reviewer,
+        )
+        outcomes = await trigger.run_once(specs)
+    finally:
+        gate.close()
+
+    lost, healthy = outcomes
+    assert lost.failed_party == "local", "a local failure was blamed on the gate"
+    assert lost.call_failed is True
+    assert lost.has_result is False
+    assert "nothing was submitted" in lost.summary
+    assert "the gate could not be reached" not in lost.summary
+    assert "building the proposal payload failed" in lost.call_detail
+
+    # The server saw only the healthy spec: one propose, one review.
+    assert gate.requests == 2, "the gate was asked about the spec that never submitted"
+
+    assert healthy.failed_party == ""
+    assert healthy.waiting_on_owner is True
+
+    text = render_summary(outcomes)
+    assert "no verdict reached  : 1" in text
+    assert "unfinished by party: local 1" in text
+    assert "INCOMPLETE PASS" in text
+
+
+@pytest.mark.asyncio
+async def test_a_reviewer_that_fails_leaves_that_spec_counted_and_named():
+    """A pass that could not review something must not look like one with nothing to review."""
+    gate = _DroppingGate(fail_on_call=10**6)
+    try:
+        specs = [
+            WatchSpec(**{**_SPEC.as_dict(), "name": name})
+            for name in ("one", "two", "three")
+        ]
+        # One shared reviewer across the pass: the factory is called per review,
+        # so a fresh instance each time would never reach its second call.
+        reviewer = _FailingReviewer(fail_on=2)
+        trigger = RepairTrigger(
+            HttpxGateClient(gate.base_url, api_key="k", timeout=10.0),
+            proposal_factory=_Proposer,
+            reviewer_factory=lambda: reviewer,
+        )
+        outcomes = await trigger.run_once(specs)
+    finally:
+        gate.close()
+
+    lost = outcomes[1]
+    assert lost.spec == "two"
+    assert lost.failed_party == "sentinel"
+    assert lost.call_failed is True
+    assert lost.has_result is False
+    assert lost.review_filed is False
+    assert lost.waiting_on_owner is False
+    assert "the reviewer failed" in lost.summary
+    assert "reviewer backend unreachable" in lost.call_detail
+    # The proposal really did land, and that work is still reported.
+    assert lost.proposed is True
+    assert lost.patch_id == "patch_0001"
+
+    for outcome in (outcomes[0], outcomes[2]):
+        assert outcome.failed_party == ""
+        assert outcome.waiting_on_owner is True
+    assert reviewer.calls == 3, "the reviewer was not consulted for every spec"
+
+    text = render_summary(outcomes)
+    assert "specs attempted     : 3" in text
+    assert "proposals filed     : 3" in text
+    assert "no verdict reached  : 1" in text
+    assert "unfinished by party: sentinel 1" in text
+    assert "INCOMPLETE PASS" in text
+    assert "3 spec(s) reached no verdict" in text
+
+
+@pytest.mark.asyncio
+async def test_a_proposer_that_raises_is_not_reported_as_a_proposer_that_declined():
+    """Forge crashing and Forge answering 'no' are different problems."""
+    gate = _DroppingGate(fail_on_call=10**6)
+    try:
+        trigger = RepairTrigger(
+            HttpxGateClient(gate.base_url, api_key="k", timeout=10.0),
+            proposal_factory=_Proposer(raises=RuntimeError("not a git repository")),
+            reviewer_factory=_Reviewer,
+        )
+        outcomes = await trigger.run_once([_SPEC])
+    finally:
+        gate.close()
+
+    assert outcomes[0].failed_party == "forge"
+    assert outcomes[0].call_failed is True
+    assert "the proposer failed" in outcomes[0].summary
+    assert gate.requests == 0, "a proposer that crashed still had something submitted"
+
+    declined = await _trigger(_Gate(), _Proposer(fixed=False)).run_spec(_SPEC)
+    assert declined.failed_party == ""
+    assert declined.has_result is True
+    assert "no proposal" in declined.summary
+
+
+def test_as_dict_names_the_failing_party_for_whatever_reads_it():
+    payload = json.loads(
+        outcomes_as_json([TriggerOutcome(spec="a", call_failed=True, failed_party="sentinel")])
+    )[0]
+    assert payload["failed_party"] == "sentinel"
 
 
 # ── structural guarantees, read from the source ───────────────────────────
@@ -690,7 +859,7 @@ def test_render_summary_reports_the_halves_separately():
     assert "this trigger never approves or applies" in text
     assert "test still fails" in text
     assert "INCOMPLETE PASS" not in text, "a clean pass must not cry wolf"
-    assert "no result at all    : 0" in text
+    assert "no verdict reached  : 0" in text
 
 
 def test_render_summary_cannot_present_a_lost_call_as_a_quiet_pass():
@@ -700,7 +869,7 @@ def test_render_summary_cannot_present_a_lost_call_as_a_quiet_pass():
     ]
     text = render_summary(outcomes)
     assert "proposals filed     : 0" in text
-    assert "no result at all    : 1" in text
+    assert "no verdict reached  : 1" in text
     assert "INCOMPLETE PASS" in text
     assert "NOT evidence that nothing was wrong" in text
     assert "NO RESULT" in text

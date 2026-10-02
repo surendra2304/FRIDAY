@@ -234,6 +234,55 @@ Parametrized over both halves: a dropped propose costs that spec entirely; a dro
 review costs only the review. In both cases the other two specs complete with their
 real outcomes and the summary shows `INCOMPLETE PASS`.
 
+### 2.6 A failure must name the party that failed
+
+Probing the fix above turned up two cases where the trigger reported the wrong
+thing about itself. Both are fixed; neither was caught by a test that only checked
+"the pass completed".
+
+**A payload that could not be built blamed the gate.** The build sits before the
+network, so the gate was never asked, yet the outcome said the gate was unreachable
+— sending a reader after a service that was not involved. Now recorded as
+`failed_party="local"` and rendered `NO RESULT - nothing was submitted; the failure
+was local`.
+
+**A reviewer that failed produced no verdict and no warning.** The spec came back
+`proposed, review SKIPPED`, which is true and useless: it never appeared in the
+incompleteness count, so a pass that could not review something looked like a pass
+that had nothing to review. Now counted, named `sentinel`, and its summary line
+reads `the reviewer failed, so this repair has no verdict` — while the proposal that
+did land is still reported, because it is real.
+
+**A third case turned up while fixing those two**: a proposer that *raises* was
+reported identically to a proposer that *declines*. Forge crashing and Forge
+answering "no" are different problems needing different fixes, so the crash is now
+`failed_party="forge"` and the decline stays a plain `no proposal`.
+
+Every failure mode now names its party, and the summary counts by party so the
+reader knows where to look:
+
+```
+repair-a: NO RESULT - nothing was submitted; the failure was local (...)
+repair-b: NO RESULT - the reviewer failed, so this repair has no verdict (...)
+repair-c: NO RESULT - the gate could not be reached (...)
+repair-d: NO RESULT - the proposer failed, so no repair was attempted (...)
+repair-e: no proposal (the test still fails after the change (exit=1))
+repair-f: patch_0006 REVIEWED and waiting on the owner
+
+  specs attempted     : 6
+  proposals filed     : 2
+  reviews accepted    : 1
+  no verdict reached  : 4
+  unfinished by party: forge 1, gate 1, local 1, sentinel 1
+
+  INCOMPLETE PASS: 4 of 6 spec(s) reached no verdict. The counts above are NOT evidence that nothing was wrong with them.
+```
+
+Proven against a real HTTP server whose own request counter is the evidence: the
+local-failure test asserts the server saw **2** requests when three specs ran, which
+is only true if the unbuildable spec never reached the network; the reviewer test
+asserts the failing spec's proposal still landed while its verdict did not.
+
 ## 3. Defects this phase actually found and fixed
 
 Not a list of things that were already right. Each of these was reproduced by a
@@ -248,6 +297,7 @@ real run, then fixed, then pinned by a test.
 | 5 | Repair trigger | A trigger built without a proposer or a reviewer **reported "no proposal" for every spec** instead of failing — indistinguishable, in the summary, from a fleet where nothing was broken. | `TriggerNotConfigured`, deliberately not caught by the per-spec handler, so an inert trigger fails loudly on its first pass. |
 | 6 | Repair trigger | A caller was **detached at a commit of their own** and would have been restored onto the default branch — their working tree would have changed underneath them without a word. | Covered by a new Forge test (`test_a_detached_caller_is_returned_to_the_same_commit_not_the_default_branch`). |
 | 7 | Repair trigger | **A single transport error aborted the whole pass** and discarded every outcome already gathered. | A failed call is now its own outcome (`call_failed`, `NO RESULT`), contained to its spec, counted in the summary with an `INCOMPLETE PASS` banner; `run_once` nets anything else. Proven by dropping a real connection mid-pass (section 2.5). |
+| 8 | Repair trigger | **The trigger reported the wrong failing party twice**: a payload that never left the process was blamed on the gate, and a reviewer that failed produced a spec with no verdict that was never counted. A proposer crash was also reported identically to a proposer declining. | `failed_party` names who failed — `local`, `forge`, `sentinel`, `gate` — every no-verdict spec is counted and summarised by party (section 2.6). |
 
 Also fixed: the F2 driver originally stopped at `REVIEWED`, so no real apply commit
 existed on the F2 surface. It now completes the loop as a distinct owner caller.
@@ -262,8 +312,8 @@ found it, and it was the most consequential defect in the phase.
 |---|---|
 | `Forge/tests/unit/` (whole repo) | **294 passed** |
 | `Forge/tests/unit/test_selfrepair_proposer.py` | 23 passed |
-| `FRIDAY` self-repair + fleet-truth suites (gate, signatures, HTTP driver, restart, trigger, fleet truth) | **88 passed** |
-| `FRIDAY/tests/test_repair_trigger.py` | 31 passed |
+| `FRIDAY` self-repair + fleet-truth suites (gate, signatures, HTTP driver, restart, trigger, fleet truth) | **92 passed** |
+| `FRIDAY/tests/test_repair_trigger.py` | 35 passed |
 | `FRIDAY/tests/test_self_repair_survives_restart.py` | **3 passed** (three real process generations) |
 | `research/self_repair_loop.py` (E1 regression, re-run) | 42 assertions, 12 gate steps, **0 failures** |
 | `research/repair_trigger_run.py` (F2 driver) | 29 checks, **0 failures**, exit 0 |

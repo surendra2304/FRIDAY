@@ -34,6 +34,16 @@ from friday.core.logging import get_logger
 
 logger = get_logger("autonomous.repair_trigger")
 
+#: How each failing party is described to a reader. The wording is the point: a
+#: reader who is told the wrong party failed will go and look in the wrong place,
+#: and "we never asked" and "we asked and got no answer" are not the same event.
+_PARTY_PHRASE = {
+    "local": "nothing was submitted; the failure was local",
+    "forge": "the proposer failed, so no repair was attempted",
+    "sentinel": "the reviewer failed, so this repair has no verdict",
+    "gate": "the gate could not be reached",
+}
+
 
 class TriggerNotConfigured(RuntimeError):
     """The trigger is inert because it was built without a proposer or a reviewer.
@@ -138,10 +148,16 @@ class TriggerOutcome:
     review_detail: str = ""
     waiting_on_owner: bool = False
     signature_verified: bool = False
-    #: The gate could not be asked. Set only when a call raised, never when the
-    #: gate answered. A spec in this state has no result, which is a different
-    #: thing from a result of "no" and must never be summarised as one.
+    #: This spec ended with no verdict at all. Distinct from a result of "no",
+    #: and never summarised as one. Whatever the reason, it is counted in the
+    #: incompleteness banner, because a pass that could not finish something must
+    #: not present as a pass that had nothing to do.
     call_failed: bool = False
+    #: Which party failed: ``local``, ``forge``, ``sentinel`` or ``gate``. Empty
+    #: when nobody failed. Named rather than inferred, because "the gate was
+    #: unreachable" and "we never got as far as asking it" send a reader to two
+    #: completely different places to look.
+    failed_party: str = ""
     call_detail: str = ""
     findings: list[str] = field(default_factory=list)
 
@@ -155,7 +171,10 @@ class TriggerOutcome:
         # Checked first and phrased as a loss, so it cannot be misread as a
         # settled "no" no matter how the other branches are worded.
         if self.call_failed:
-            return f"{self.spec}: NO RESULT - gate call failed ({self.call_detail})"
+            return (
+                f"{self.spec}: NO RESULT - {_PARTY_PHRASE.get(self.failed_party, self.failed_party)}"
+                f" ({self.call_detail})"
+            )
         if not self.proposed:
             return f"{self.spec}: no proposal ({self.proposal_detail})"
         if not self.review_filed:
@@ -178,6 +197,7 @@ class TriggerOutcome:
             "waiting_on_owner": self.waiting_on_owner,
             "signature_verified": self.signature_verified,
             "call_failed": self.call_failed,
+            "failed_party": self.failed_party,
             "call_detail": self.call_detail,
             "findings": list(self.findings),
         }
@@ -246,6 +266,7 @@ class RepairTrigger:
                     TriggerOutcome(
                         spec=spec.name,
                         call_failed=True,
+                        failed_party="local",
                         call_detail=f"unexpected failure: {type(exc).__name__}: {exc}",
                     )
                 )
@@ -258,23 +279,37 @@ class RepairTrigger:
         return outcomes
 
     @staticmethod
-    def _call_failed(outcome: TriggerOutcome, step: str, exc: Exception) -> TriggerOutcome:
-        """Record that the gate could not be asked. Returns the same outcome.
+    def _call_failed(
+        outcome: TriggerOutcome, step: str, exc: Exception, party: str = "gate"
+    ) -> TriggerOutcome:
+        """Record that this spec ended with no verdict, and who lost it.
 
-        A third kind of result, kept apart from the other two on purpose. A
-        refusal means the gate answered "no" and the question is settled. A
-        declined proposal means Forge answered "no". Neither says anything here:
-        nobody answered, so this spec has **no result at all**, and nothing may be
-        inferred about whether the repair was needed.
+        Kept apart from the other two outcomes on purpose. A refusal means the gate
+        answered "no" and the question is settled. A declined proposal means Forge
+        answered "no". Neither says anything here: this spec has **no result at
+        all**, and nothing may be inferred about whether the repair was needed.
 
-        One honest edge case is worth stating rather than hiding. If the request
-        reached the gate and only the response was lost, the proposal may exist on
-        the gate under an id this process never learned. The record says exactly
-        that — no result known — instead of claiming the proposal did not happen.
+        ``party`` is the difference between "nobody answered" and "we never got as
+        far as asking". A payload that could not be built never reaches the
+        network, and saying the gate was unreachable sends the reader after the
+        wrong component entirely.
+
+        One honest edge case is worth stating rather than hiding. When ``party`` is
+        ``gate``, the request may have reached it and only the response been lost,
+        so the proposal may exist on the gate under an id this process never
+        learned. The record says exactly that — no result known — instead of
+        claiming the proposal did not happen.
         """
         outcome.call_failed = True
-        outcome.call_detail = f"{step} call failed: {type(exc).__name__}: {exc}"
-        logger.warning("gate call failed for %s at %s: %s", outcome.spec, step, outcome.call_detail)
+        outcome.failed_party = party
+        outcome.call_detail = f"{step} failed ({type(exc).__name__}: {exc})"
+        logger.warning(
+            "no verdict for %s at %s, party=%s: %s",
+            outcome.spec,
+            step,
+            party,
+            outcome.call_detail,
+        )
         return outcome
 
     async def run_spec(self, spec: WatchSpec) -> TriggerOutcome:
@@ -298,9 +333,11 @@ class RepairTrigger:
             # A deployment fault, not a result about this spec. Let it out.
             raise
         except Exception as exc:  # a broken repo must not stop the other specs
+            # Forge raising is not Forge declining. Reporting a crash as "no
+            # proposal" would put a broken proposer and a healthy one in the same
+            # bucket, and only one of them needs fixing.
             outcome.proposal_detail = f"{type(exc).__name__}: {exc}"
-            logger.warning("proposal raised for %s: %s", spec.name, outcome.proposal_detail)
-            return outcome
+            return self._call_failed(outcome, "propose", exc, party="forge")
 
         # The proposer only emits when the command genuinely went failing to
         # passing. If it did not, there is nothing honest to file.
@@ -310,7 +347,12 @@ class RepairTrigger:
             return outcome
 
         outcome.test_proved = True
-        request = proposal.to_request(spec.repo_path)
+        try:
+            request = proposal.to_request(spec.repo_path)
+        except Exception as exc:  # noqa: BLE001 - nothing has been sent yet
+            # The gate has not been asked and never will be for this spec. Saying
+            # otherwise points the reader at a service that was never involved.
+            return self._call_failed(outcome, "building the proposal payload", exc, party="local")
         try:
             filed = await self._client.post(
                 "/api/self-repair/proposals",
@@ -346,11 +388,14 @@ class RepairTrigger:
                 test_evidence=request.test_evidence,
             )
         except TriggerNotConfigured:
+            # A deployment fault, not a result about this spec. Let it out.
             raise
         except Exception as exc:
+            # The proposal is not undone by the reviewer failing, so it stays
+            # reported. But this spec now has no verdict at all, and saying
+            # nothing about that would let the pass look complete.
             outcome.review_detail = f"{type(exc).__name__}: {exc}"
-            logger.warning("review raised for %s: %s", spec.name, outcome.review_detail)
-            return outcome
+            return self._call_failed(outcome, "review", exc, party="sentinel")
 
         outcome.findings = [str(r) for r in getattr(reviewed, "reasons", [])]
         document = reviewed.review.to_document()
@@ -420,22 +465,28 @@ def render_summary(outcomes: list[TriggerOutcome]) -> str:
     for outcome in outcomes:
         lines.append(f"  {outcome.summary}")
     waiting = [o for o in outcomes if o.waiting_on_owner]
-    lost = [o for o in outcomes if o.call_failed]
+    lost = [o for o in outcomes if not o.has_result]
     lines += [
         "",
         f"  specs attempted     : {len(outcomes)}",
         f"  proposals filed     : {sum(1 for o in outcomes if o.proposed)}",
         f"  reviews accepted    : {len(waiting)}",
         f"  waiting on the owner: {len(waiting)}  (this trigger never approves or applies)",
-        f"  no result at all    : {len(lost)}",
+        f"  no verdict reached  : {len(lost)}",
     ]
     if lost:
-        # Without this, a run where the gate was unreachable prints zeros that
-        # read exactly like a fleet where nothing was broken.
+        # Without this, a run that could not finish prints zeros that read exactly
+        # like a run that had nothing to do. The breakdown is here so the reader
+        # knows which component to go and look at.
+        breakdown = ", ".join(
+            f"{party or 'unknown'} {sum(1 for o in lost if o.failed_party == party)}"
+            for party in sorted({o.failed_party for o in lost})
+        )
         lines += [
+            f"  unfinished by party: {breakdown}",
             "",
-            f"  INCOMPLETE PASS: {len(lost)} spec(s) could not be reached. The counts "
-            "above are NOT evidence that nothing was wrong with them.",
+            f"  INCOMPLETE PASS: {len(lost)} of {len(outcomes)} spec(s) reached no verdict. "
+            "The counts above are NOT evidence that nothing was wrong with them.",
         ]
     return "\n".join(lines)
 
