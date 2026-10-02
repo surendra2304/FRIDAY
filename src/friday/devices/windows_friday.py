@@ -48,15 +48,21 @@ VK_MEDIA_PLAY_PAUSE = 0xB3
 VK_LWIN = 0x5B
 KEYEVENTF_KEYUP = 0x0002
 
-# How long open_gmail waits for its send keystroke before reporting. The auto-send
-# thread sleeps 4.5s then 2.5s and retries once, so this covers both attempts plus
-# margin. Reporting before this expires would mean reporting an unverified send.
+# How long open_gmail waits for its send keystroke before reporting. This is the
+# ceiling, not a fixed cost: the auto-send thread polls for the Gmail window and
+# returns the moment it is found. Reporting before the budget expires would mean
+# declaring a send unconfirmed before the browser had a fair chance to act.
 _GMAIL_AUTOSEND_TIMEOUT_SECONDS = 12.0
 
-# How long the auto-send waits before each of its two attempts to find the Gmail
-# window. A module constant so the retry path can be exercised without sleeping
-# for real; the production values are the ones above.
-_GMAIL_AUTOSEND_RETRY_DELAYS = (4.5, 2.5)
+# How often the auto-send re-checks for the Gmail window while waiting. Polling
+# means a browser that is ready in a fraction of a second costs that fraction,
+# while the total budget is unchanged for one that never appears.
+_GMAIL_AUTOSEND_POLL_SECONDS = 0.25
+
+# Settle time after focusing the window, before the keystroke lands. Focus is
+# asynchronous; pressing into a window that has not yet been raised would send
+# the keystroke somewhere else.
+_GMAIL_AUTOSEND_SETTLE_SECONDS = 0.3
 
 COMMON_WEBSITES = {
     "youtube": "https://www.youtube.com",
@@ -541,15 +547,19 @@ class WindowsFridayController:
                     from friday.vision.windows_input_driver import WindowsNativeInputDriver
 
                     driver = WindowsNativeInputDriver()
-                    for wait_time in _GMAIL_AUTOSEND_RETRY_DELAYS:
-                        time.sleep(wait_time)
+                    deadline = time.monotonic() + _GMAIL_AUTOSEND_TIMEOUT_SECONDS
+                    while time.monotonic() < deadline:
                         hwnd = self._get_active_browser_hwnd(["gmail", "mail", "chrome"])
                         if hwnd:
                             force_window_foreground(hwnd)
-                            time.sleep(0.3)
+                            time.sleep(_GMAIL_AUTOSEND_SETTLE_SECONDS)
                             # Ctrl+Enter sends email in Gmail compose
                             outcome["key_sent"] = bool(driver.hotkey(["ctrl", "enter"]))
                             break
+                        # Nothing to press yet. Re-check instead of sitting out a
+                        # fixed delay: the answer changes when the window
+                        # appears, not when a timer happens to expire.
+                        time.sleep(_GMAIL_AUTOSEND_POLL_SECONDS)
                 except Exception as e:
                     outcome["error"] = str(e)
                     logger.warning(f"Gmail auto-send failed: {e}")

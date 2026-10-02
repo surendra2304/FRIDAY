@@ -13,7 +13,9 @@ production logic under test - the branching, the receipt, the wording - is real.
 """
 
 import threading
+import time
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
@@ -41,7 +43,10 @@ def no_smtp_credentials(monkeypatch):
         raising=False,
     )
     monkeypatch.setattr(
-        wf, "_GMAIL_AUTOSEND_RETRY_DELAYS", (0.0, 0.0), raising=False
+        wf, "_GMAIL_AUTOSEND_POLL_SECONDS", 0.01, raising=False
+    )
+    monkeypatch.setattr(
+        wf, "_GMAIL_AUTOSEND_SETTLE_SECONDS", 0.0, raising=False
     )
     monkeypatch.setattr(
         wf, "_GMAIL_AUTOSEND_TIMEOUT_SECONDS", 3.0, raising=False
@@ -109,7 +114,8 @@ def test_the_return_waits_for_the_keystroke_rather_than_racing_ahead_of_it(monke
     """Fire-and-forget was the bug: the caller reported before the send was even attempted."""
     events: list[str] = []
     driver = _InputDriver(log=events)
-    monkeypatch.setattr(wf, "_GMAIL_AUTOSEND_RETRY_DELAYS", (0.4, 0.4), raising=False)
+    monkeypatch.setattr(wf, "_GMAIL_AUTOSEND_POLL_SECONDS", 0.01, raising=False)
+    monkeypatch.setattr(wf, "_GMAIL_AUTOSEND_SETTLE_SECONDS", 0.4, raising=False)
     monkeypatch.setattr(wf, "_GMAIL_AUTOSEND_TIMEOUT_SECONDS", 5.0, raising=False)
     _install(monkeypatch, driver=driver)
 
@@ -122,6 +128,76 @@ def test_the_return_waits_for_the_keystroke_rather_than_racing_ahead_of_it(monke
         "being told about a send that had not happened yet"
     )
     assert ok is False
+
+
+def test_the_wait_is_a_ceiling_and_not_a_fixed_cost(monkeypatch):
+    """A browser that is ready immediately must not cost the whole budget.
+
+    The old code slept 4.5s, looked once, slept 2.5s more, and only then
+    reported. Polling means the caller waits for the answer, not for a timer.
+    """
+    monkeypatch.setattr(wf, "_GMAIL_AUTOSEND_POLL_SECONDS", 0.01, raising=False)
+    monkeypatch.setattr(wf, "_GMAIL_AUTOSEND_SETTLE_SECONDS", 0.0, raising=False)
+    monkeypatch.setattr(wf, "_GMAIL_AUTOSEND_TIMEOUT_SECONDS", 30.0, raising=False)
+    _install(monkeypatch, driver=_InputDriver(result=True))
+
+    started = time.monotonic()
+    ok, msg = windows_friday.open_gmail(to="alice@example.com", subject="Meeting Update", body="body")
+    elapsed = time.monotonic() - started
+
+    assert ok is False
+    assert elapsed < 2.0, (
+        f"open_gmail waited {elapsed:.1f}s for a window that was already there - "
+        f"the budget is a ceiling, not a cost"
+    )
+
+
+def test_a_window_that_appears_late_is_still_caught(monkeypatch):
+    """Polling must not give up early: a browser that needs a moment still gets sent."""
+    monkeypatch.setattr(wf, "_GMAIL_AUTOSEND_POLL_SECONDS", 0.05, raising=False)
+    monkeypatch.setattr(wf, "_GMAIL_AUTOSEND_SETTLE_SECONDS", 0.0, raising=False)
+    monkeypatch.setattr(wf, "_GMAIL_AUTOSEND_TIMEOUT_SECONDS", 10.0, raising=False)
+
+    polls = {"n": 0}
+    driver = _InputDriver()
+
+    def _late_window(keywords=None):
+        polls["n"] += 1
+        return 4321 if polls["n"] >= 4 else None
+
+    _install(monkeypatch, driver=driver)
+    monkeypatch.setattr(windows_friday, "_get_active_browser_hwnd", _late_window, raising=False)
+
+    ok, msg = windows_friday.open_gmail(to="alice@example.com", subject="Meeting Update", body="body")
+
+    assert polls["n"] >= 4, "gave up before the browser had a fair chance to appear"
+    assert "pressed Ctrl+Enter" in msg, "a late-arriving window was never acted on"
+    assert ok is False
+
+
+def test_no_amount_of_waiting_can_produce_a_sent_receipt(monkeypatch):
+    """Sleeping longer must not be a way to earn SENT.
+
+    The keystroke is dispatched and the driver reports success, yet the receipt
+    is still not SENT: only a confirmed send earns that, and the web path can
+    never confirm one.
+    """
+    monkeypatch.setattr(wf, "_GMAIL_AUTOSEND_POLL_SECONDS", 0.01, raising=False)
+    monkeypatch.setattr(wf, "_GMAIL_AUTOSEND_SETTLE_SECONDS", 0.0, raising=False)
+    monkeypatch.setattr(wf, "_GMAIL_AUTOSEND_TIMEOUT_SECONDS", 5.0, raising=False)
+    _install(monkeypatch, driver=_InputDriver(result=True))
+
+    with patch.object(
+        windows_friday, "get_all_contacts", return_value={"alice": {"email": "alice@realwork.com"}}
+    ):
+        handled, reply, meta = windows_friday.handle_directive(
+            "FRIDAY, email Alice that the meeting moved to 3 PM."
+        )
+
+    assert handled is True
+    assert meta["receipt"]["status"] == "NOT_CONFIRMED"
+    assert meta["receipt"]["status"] != "SENT"
+    assert meta["success"] is False
 
 
 # --------------------------------------------------------------------------
@@ -168,7 +244,7 @@ def test_a_browser_that_refuses_to_open_is_not_reported_as_sent(monkeypatch):
 
 def test_a_wedged_send_thread_does_not_hang_the_agent_forever(monkeypatch):
     """A driver that never returns must not pin the caller past the bound."""
-    monkeypatch.setattr(wf, "_GMAIL_AUTOSEND_RETRY_DELAYS", (30.0, 30.0), raising=False)
+    monkeypatch.setattr(wf, "_GMAIL_AUTOSEND_POLL_SECONDS", 30.0, raising=False)
     monkeypatch.setattr(wf, "_GMAIL_AUTOSEND_TIMEOUT_SECONDS", 0.5, raising=False)
 
     class _Wedged:
