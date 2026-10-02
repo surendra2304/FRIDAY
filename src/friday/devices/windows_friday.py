@@ -279,6 +279,32 @@ class WindowsFridayController:
             logger.debug(f"_get_active_browser_hwnd error: {e}")
             return None
 
+    def _window_title(self, hwnd: int) -> str:
+        """Title of a top-level window, or "" if it cannot be read."""
+        if sys.platform != "win32" or not hwnd:
+            return ""
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+            length = user32.GetWindowTextLengthW(hwnd)
+            if length <= 0:
+                return ""
+            buf = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(hwnd, buf, length + 1)
+            return buf.value.strip()
+        except Exception:
+            return ""
+
+    def _is_gmail_window(self, hwnd: int) -> bool:
+        """Whether a window is actually Gmail, not merely some browser.
+
+        The browser search falls back to any Chrome window when no keyword
+        matches, so without this check the send keystroke can land in whatever
+        Chrome happens to be open. That is worse than sending nothing: the
+        caller is told the keystroke went to Gmail when it went elsewhere.
+        """
+        return "gmail" in self._window_title(hwnd).lower()
+
     def _activate_browser_tab(self, hwnd: int, tab_keyword: str) -> bool:
         """Find and select a specific tab inside a browser window via UI Automation."""
         if sys.platform != "win32":
@@ -550,7 +576,7 @@ class WindowsFridayController:
                     deadline = time.monotonic() + _GMAIL_AUTOSEND_TIMEOUT_SECONDS
                     while time.monotonic() < deadline:
                         hwnd = self._get_active_browser_hwnd(["gmail", "mail", "chrome"])
-                        if hwnd:
+                        if hwnd and self._is_gmail_window(hwnd):
                             force_window_foreground(hwnd)
                             time.sleep(_GMAIL_AUTOSEND_SETTLE_SECONDS)
                             # Ctrl+Enter sends email in Gmail compose

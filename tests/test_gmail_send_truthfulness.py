@@ -73,6 +73,7 @@ def _install(
     *,
     driver=None,
     hwnd: int | None = 1234,
+    title: str = "Compose Mail - user@gmail.com - Gmail",
     smtp=None,
     smtp_raises: Exception | None = None,
     opened: bool = True,
@@ -81,6 +82,9 @@ def _install(
     monkeypatch.setattr(windows_friday, "open_url", lambda url: opened, raising=False)
     monkeypatch.setattr(
         windows_friday, "_get_active_browser_hwnd", lambda keywords=None: hwnd, raising=False
+    )
+    monkeypatch.setattr(
+        windows_friday, "_window_title", lambda h: title, raising=False
     )
     import friday.devices.app_launcher as launcher
 
@@ -173,6 +177,72 @@ def test_a_window_that_appears_late_is_still_caught(monkeypatch):
     assert polls["n"] >= 4, "gave up before the browser had a fair chance to appear"
     assert "pressed Ctrl+Enter" in msg, "a late-arriving window was never acted on"
     assert ok is False
+
+
+def test_the_keystroke_never_lands_in_a_non_gmail_window(monkeypatch):
+    """The browser search falls back to any Chrome window.
+
+    Measured on this machine: with no Gmail window open, the lookup returned
+    hwnd 722072, titled "CodeTantra-SEA". Pressing Ctrl+Enter there would send
+    nothing while the caller was told the keystroke went to Gmail.
+    """
+    events: list = []
+    _install(monkeypatch, driver=_InputDriver(log=events), title="CodeTantra-SEA")
+    monkeypatch.setattr(wf, "_GMAIL_AUTOSEND_POLL_SECONDS", 0.01, raising=False)
+    monkeypatch.setattr(wf, "_GMAIL_AUTOSEND_SETTLE_SECONDS", 0.0, raising=False)
+    monkeypatch.setattr(wf, "_GMAIL_AUTOSEND_TIMEOUT_SECONDS", 0.3, raising=False)
+
+    ok, msg = windows_friday.open_gmail(to="alice@example.com", subject="Meeting Update", body="body")
+
+    assert not any(e[0] == "hotkey" for e in events), "a keystroke was sent into a window that is not Gmail"
+    assert "could not press send" in msg
+    assert ok is False
+
+
+def test_a_gmail_window_is_still_acted_on(monkeypatch):
+    """The check must not stop the send when Gmail really is the window."""
+    events: list = []
+    _install(
+        monkeypatch,
+        driver=_InputDriver(log=events),
+        title="Compose Mail - user@gmail.com - Gmail",
+    )
+    monkeypatch.setattr(wf, "_GMAIL_AUTOSEND_POLL_SECONDS", 0.01, raising=False)
+    monkeypatch.setattr(wf, "_GMAIL_AUTOSEND_SETTLE_SECONDS", 0.0, raising=False)
+    monkeypatch.setattr(wf, "_GMAIL_AUTOSEND_TIMEOUT_SECONDS", 3.0, raising=False)
+
+    ok, msg = windows_friday.open_gmail(to="alice@example.com", subject="Meeting Update", body="body")
+
+    assert ("hotkey", ("ctrl", "enter")) in events
+    assert "pressed Ctrl+Enter" in msg
+    assert ok is False, "acting on a Gmail window still cannot confirm the send"
+
+
+def test_the_compose_window_closing_is_not_treated_as_a_send(monkeypatch):
+    """A vanished compose window is consistent with a send OR a dismissed draft.
+
+    Gmail's title goes from "Compose Mail - user@gmail.com - Gmail" to
+    "Inbox (...) - user@gmail.com - Gmail" after a successful send, but the
+    same disappearance happens when a draft is discarded. It therefore cannot
+    distinguish the two, and must never be read as proof that mail went out.
+    """
+    monkeypatch.setattr(wf, "_GMAIL_AUTOSEND_POLL_SECONDS", 0.01, raising=False)
+    monkeypatch.setattr(wf, "_GMAIL_AUTOSEND_SETTLE_SECONDS", 0.0, raising=False)
+    monkeypatch.setattr(wf, "_GMAIL_AUTOSEND_TIMEOUT_SECONDS", 3.0, raising=False)
+    _install(monkeypatch, driver=_InputDriver(result=True))
+
+    with patch.object(
+        windows_friday, "get_all_contacts", return_value={"alice": {"email": "alice@realwork.com"}}
+    ):
+        handled, reply, meta = windows_friday.handle_directive(
+            "FRIDAY, email Alice that the meeting moved to 3 PM."
+        )
+
+    assert meta["receipt"]["status"] == "NOT_CONFIRMED"
+    assert meta["receipt"]["status"] != "SENT"
+    assert "check the Sent folder" in reply, (
+        "the user is told where the truth can be found rather than being given a guess"
+    )
 
 
 def test_no_amount_of_waiting_can_produce_a_sent_receipt(monkeypatch):
