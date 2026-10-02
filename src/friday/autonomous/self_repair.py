@@ -39,6 +39,10 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Literal
 
+from friday.core.logging import get_logger
+
+logger = get_logger("autonomous.self_repair")
+
 #: Only this actor may file a review. The proposer never reviews itself.
 REVIEWER = "sentinel"
 
@@ -82,6 +86,24 @@ REVIEW_MAX_AGE_SECONDS = 900.0
 #: Reimplemented here on purpose. The gate must be able to verify a review
 #: without executing the code that produced it.
 _REVIEW_SIGNING_ENV = ("FRIDAY_SELF_REPAIR_REVIEW_KEY", "SENTINEL_AUDIT_HMAC_KEY", "SENTINEL_AUDIT_SIGNING_KEY")
+
+#: Where the gate's ledger is written, so a restart does not lose the pipeline.
+#:
+#: Opt-in. With this unset the gate keeps its records in memory exactly as it
+#: always has, which is the safe default for a build that has not yet chosen a
+#: durable location. Set it to a path and every recorded transition is written
+#: there and reloaded on the next start.
+#:
+#: The bound is the filesystem, and that is stated rather than implied: this
+#: survives a process crash, a restart and a free-tier spin-down, but not a
+#: redeploy onto a fresh container. Surviving a redeploy needs a fleet store,
+#: which is separate work and is not claimed here.
+STATE_ENV = "FRIDAY_SELF_REPAIR_STATE"
+
+#: Bumped when the on-disk shape changes. A ledger written by another version is
+#: not loaded: guessing at a missing field would restore a repair record that was
+#: never fully written.
+STATE_VERSION = 1
 
 
 def canonical_json(payload: dict[str, Any]) -> str:
@@ -325,6 +347,124 @@ class RepairRecord:
         }
 
 
+def _record_to_dict(record: RepairRecord) -> dict[str, Any]:
+    """Everything about a repair, losslessly, so a restart can restore it.
+
+    Deliberately *not* ``RepairRecord.as_dict``. That is the endpoint's summary
+    shape and it omits fields the ledger must keep: the approval's bound
+    fingerprint, the branch that was created, and the submitted evidence. Sharing
+    one shape between the API and the ledger is how one of them quietly stops
+    carrying a field, and here the field that would be lost is the one that binds
+    an approval to a patch.
+    """
+    proposal = record.proposal
+    approval = record.approval
+    evidence = proposal.test_evidence
+    if isinstance(evidence, TestEvidence):
+        evidence = {
+            "command": evidence.command,
+            "passed": evidence.passed,
+            "summary": evidence.summary,
+            "ran_at": evidence.ran_at,
+        }
+    return {
+        "proposal": {
+            "repo_path": proposal.repo_path,
+            "branch": proposal.branch,
+            "base_commit": proposal.base_commit,
+            "target_file": proposal.target_file,
+            "original_snippet": proposal.original_snippet,
+            "replacement_snippet": proposal.replacement_snippet,
+            "rationale": proposal.rationale,
+            "proposed_by": proposal.proposed_by,
+            "proposal_id": proposal.proposal_id,
+            "proposed_at": proposal.proposed_at,
+            "test_evidence": evidence,
+        },
+        "state": record.state.value,
+        "review": record.review,
+        "approval": None if approval is None else {
+            "patch_fingerprint": approval.patch_fingerprint,
+            "approver": approval.approver,
+            "approval_id": approval.approval_id,
+            "approved_at": approval.approved_at.isoformat(),
+            "expires_at": approval.expires_at.isoformat(),
+            "consumed": approval.consumed,
+        },
+        "tests": None if record.tests is None else {
+            "command": record.tests.command,
+            "passed": record.tests.passed,
+            "summary": record.tests.summary,
+            "ran_at": record.tests.ran_at,
+        },
+        "applied_commit": record.applied_commit,
+        "checkpoint_commit": record.checkpoint_commit,
+        "branch_created": record.branch_created,
+        "receipts": [r.as_dict() for r in record.receipts],
+    }
+
+
+def _record_from_dict(raw: dict[str, Any]) -> RepairRecord:
+    """Rebuild a record from the ledger. Raises rather than half-restoring."""
+    p = raw["proposal"]
+    proposal = RepairProposal(
+        repo_path=str(p["repo_path"]),
+        branch=str(p["branch"]),
+        base_commit=str(p["base_commit"]),
+        target_file=str(p["target_file"]),
+        original_snippet=str(p["original_snippet"]),
+        replacement_snippet=str(p["replacement_snippet"]),
+        rationale=str(p["rationale"]),
+        proposed_by=str(p.get("proposed_by", "forge")),
+        proposal_id=str(p.get("proposal_id", "")),
+        proposed_at=str(p.get("proposed_at", "")),
+        test_evidence=p.get("test_evidence"),
+    )
+    approval_raw = raw.get("approval")
+    approval = None
+    if approval_raw:
+        approval = OwnerApproval(
+            patch_fingerprint=str(approval_raw["patch_fingerprint"]),
+            approver=str(approval_raw["approver"]),
+            approval_id=str(approval_raw.get("approval_id", "")),
+            approved_at=datetime.fromisoformat(str(approval_raw["approved_at"])),
+            expires_at=datetime.fromisoformat(str(approval_raw["expires_at"])),
+            consumed=bool(approval_raw.get("consumed", False)),
+        )
+    tests_raw = raw.get("tests")
+    tests = None
+    if tests_raw:
+        tests = TestEvidence(
+            command=str(tests_raw["command"]),
+            passed=bool(tests_raw["passed"]),
+            summary=str(tests_raw.get("summary", "")),
+            ran_at=str(tests_raw.get("ran_at", "")),
+        )
+    return RepairRecord(
+        proposal=proposal,
+        # An unrecognised state raises, and the caller drops that one record
+        # rather than restoring a patch into a lifecycle state we cannot name.
+        state=RepairState(str(raw.get("state", RepairState.PROPOSED.value))),
+        review=raw.get("review"),
+        approval=approval,
+        tests=tests,
+        applied_commit=raw.get("applied_commit"),
+        checkpoint_commit=raw.get("checkpoint_commit"),
+        branch_created=raw.get("branch_created"),
+        receipts=[
+            Receipt(
+                step=str(x["step"]),
+                outcome=x["outcome"],
+                at=str(x["at"]),
+                detail=str(x.get("detail", "")),
+                evidence_class=str(x.get("evidence_class", "pipeline_transition")),
+                evidence=dict(x.get("evidence") or {}),
+            )
+            for x in raw.get("receipts") or []
+        ],
+    )
+
+
 class GitRepairApplier:
     """Applies and rolls back one repair against a real git working tree.
 
@@ -424,12 +564,18 @@ class SelfRepairGate:
         self,
         applier: GitRepairApplier | None = None,
         review_verification_key: bytes | None = None,
+        state_path: str | None = None,
     ) -> None:
         self._applier = applier
         self._records: dict[str, RepairRecord] = {}
         self._seq = 0
         self._spent_review_approvals: set[str] = set()
         self._verifier = review_verification_key or self._load_review_key()
+        # Explicit argument wins, then the environment, then in-memory only.
+        self._state_path = (
+            str(state_path or os.environ.get(STATE_ENV, "").strip()) or None
+        )
+        self._restore()
 
     @staticmethod
     def _load_review_key() -> bytes | None:
@@ -440,6 +586,85 @@ class SelfRepairGate:
                 return value.encode("utf-8")
         return None
 
+    # ── durability ─────────────────────────────────────────────────────────
+    # Every state change in this class ends at `_record`, including every
+    # refusal, because `_refuse` goes through it. One call there is therefore
+    # one place that has to be right, rather than a write sprinkled across five
+    # methods that would eventually be missed in one of them.
+    def _restore(self) -> None:
+        """Reload records written by an earlier process. Invents nothing.
+
+        A ledger that cannot be read is logged and left alone rather than raised:
+        this runs at construction, and a corrupt file must not take the whole
+        service down with it. The cost of that choice is stated plainly — the
+        pipeline comes back empty, so previously approved patches are unknown
+        again and will be refused rather than wrongly applied.
+        """
+        if not self._state_path:
+            return
+        path = Path(self._state_path)
+        if not path.is_file():
+            return
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            logger.error("repair ledger at %s is unreadable, starting empty: %s", path, exc)
+            return
+        if not isinstance(raw, dict) or raw.get("version") != STATE_VERSION:
+            logger.error(
+                "repair ledger at %s has version %r, expected %d; not loading it",
+                path,
+                (raw or {}).get("version") if isinstance(raw, dict) else None,
+                STATE_VERSION,
+            )
+            return
+        for item in raw.get("records") or []:
+            try:
+                record = _record_from_dict(item)
+            except (KeyError, TypeError, ValueError) as exc:
+                logger.error("dropping an unreadable repair record: %s", exc)
+                continue
+            self._records[record.patch_id] = record
+        self._spent_review_approvals = {
+            str(x) for x in raw.get("spent_review_approvals") or []
+        }
+        # Never hand out an id that already names a restored record: a fresh
+        # patch_0001 would silently overwrite the one written before the restart.
+        self._seq = max(self._seq, int(raw.get("seq") or 0))
+        logger.info(
+            "restored %d repair record(s) from %s", len(self._records), path
+        )
+
+    def _persist(self) -> None:
+        """Write the whole ledger, atomically.
+
+        A failure here is logged, never raised. The commit may already exist in
+        the working tree, and turning a successful apply into an error because the
+        ledger could not be written would leave the patch applied *and*
+        unrecorded — strictly worse than a durability guarantee that lapsed.
+        """
+        if not self._state_path:
+            return
+        path = Path(self._state_path)
+        tmp = path.with_name(path.name + ".tmp")
+        payload = {
+            "version": STATE_VERSION,
+            "seq": self._seq,
+            "spent_review_approvals": sorted(self._spent_review_approvals),
+            "records": [_record_to_dict(r) for r in self._records.values()],
+        }
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp.write_text(
+                json.dumps(payload, indent=2, sort_keys=True, default=str),
+                encoding="utf-8",
+            )
+            # Replace rather than write in place: a crash mid-write then leaves
+            # the previous ledger, never a half-written one.
+            os.replace(tmp, path)
+        except (OSError, TypeError, ValueError) as exc:
+            logger.error("could not write the repair ledger to %s: %s", path, exc)
+
     # ── helpers ────────────────────────────────────────────────────────────
     def _next_id(self, prefix: str) -> str:
         self._seq += 1
@@ -448,6 +673,7 @@ class SelfRepairGate:
     def _record(self, record: RepairRecord, step: str, outcome: str, **kw: Any) -> Receipt:
         receipt = Receipt(step=step, outcome=outcome, at=_stamp(_now()), **kw)
         record.receipts.append(receipt)
+        self._persist()
         return receipt
 
     def get(self, patch_id: str) -> RepairRecord | None:

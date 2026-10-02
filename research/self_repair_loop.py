@@ -152,6 +152,9 @@ class GateServer:
         self.base_url = f"http://127.0.0.1:{self.port}"
         self.proc: subprocess.Popen[bytes] | None = None
         self.log_path = repo.parent / "server.log"
+        #: Outside the repository under repair, for the same reason the reviewer
+        #: state is: a gate's own bookkeeping is not part of anyone's patch.
+        self.state_path = repo.parent / "repair-ledger.json"
 
     @property
     def headers(self) -> dict[str, str]:
@@ -165,6 +168,11 @@ class GateServer:
             # The key the gate verifies Sentinel's signature with. Set before the
             # module is imported, because a keyless gate accepts no review at all.
             "FRIDAY_SELF_REPAIR_REVIEW_KEY": SHARED_KEY,
+            # Where the gate's records are written, so they outlive the process.
+            # tests/test_self_repair_survives_restart.py kills and restarts the
+            # gate to prove that; this driver only runs one process, but it must
+            # not be exercising a code path production would not take.
+            "FRIDAY_SELF_REPAIR_STATE": str(self.state_path),
             # Exercise the production control-access guard instead of the
             # loopback bypass, so the transcript proves the auth layer too.
             "RENDER": "1",
