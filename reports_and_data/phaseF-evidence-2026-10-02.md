@@ -167,8 +167,20 @@ existed on the F2 surface. It now completes the loop as a distinct owner caller.
 | `research/repair_trigger_run.py` (F2 driver) | 26 checks, **0 failures**, exit 0 |
 | `python -m ruff check` (both repos) | clean |
 
-mypy could not be run locally — Application Control blocks it on this machine. CI
-runs `mypy src/` on every push and is the gate for that.
+mypy cannot be run locally — Application Control blocks it on this machine. CI runs
+`mypy src/` on every push and is the gate for that. On the heads pushed here it
+passed: FRIDAY `3a90ec8` run `36985714594` **success** (ubuntu + windows), Forge
+`cbbc298` run `36985664923` **success** (ubuntu + windows).
+
+## 4b. Pushed heads
+
+| Repo | Commit | CI run | Conclusion |
+|---|---|---|---|
+| Forge | `cbbc298` | `36985664923` | **success** |
+| FRIDAY | `22c1a07` (F1) + `3a90ec8` (F2) | `36985714594` | **success** |
+
+The earlier FRIDAY run `36974282664` (push `4d45490`, previously still in progress)
+has since completed **success**.
 
 ## 5. Blocked on the owner
 
