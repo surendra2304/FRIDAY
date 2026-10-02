@@ -12,7 +12,6 @@ and the Win32 input driver are all replaced at their module boundary. The
 production logic under test - the branching, the receipt, the wording - is real.
 """
 
-import sys
 import threading
 from types import SimpleNamespace
 
@@ -22,14 +21,11 @@ from friday.core import config as friday_config
 from friday.devices import windows_friday as wf
 from friday.devices.windows_friday import windows_friday
 
-# The fallback under test drives Windows input through ctypes.windll and the
-# Win32 input driver. On any other platform that call does not exist, so the
-# branch being asserted is never reached and every case would pass or fail for
-# the wrong reason.
-pytestmark = pytest.mark.skipif(
-    sys.platform != "win32",
-    reason="Gmail web fallback drives Windows input synthesis",
-)
+# Nothing here needs a Windows host. The desktop attachment is the only step the
+# product performs that cannot be substituted, and it is guarded by platform in
+# open_gmail itself. The input driver, the window lookup and the foreground call
+# are all replaced below, so the contract under test - what a receipt is allowed
+# to claim - is asserted identically on every runner.
 
 
 @pytest.fixture(autouse=True)

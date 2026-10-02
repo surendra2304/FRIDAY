@@ -525,11 +525,17 @@ class WindowsFridayController:
             def _auto_send_gmail() -> None:
                 try:
                     import time
-                    import ctypes
-                    user32 = ctypes.windll.user32
-                    h_desk = user32.OpenDesktopW("Default", 0, False, 0x01FF)
-                    if h_desk:
-                        user32.SetThreadDesktop(h_desk)
+
+                    # Desktop attachment is the one step here that cannot be
+                    # substituted. Off Windows there is no windll to call, and
+                    # letting the AttributeError escape aborted the send before
+                    # the driver was ever reached.
+                    if sys.platform == "win32":
+                        import ctypes
+                        user32 = ctypes.windll.user32
+                        h_desk = user32.OpenDesktopW("Default", 0, False, 0x01FF)
+                        if h_desk:
+                            user32.SetThreadDesktop(h_desk)
 
                     from friday.devices.app_launcher import force_window_foreground
                     from friday.vision.windows_input_driver import WindowsNativeInputDriver
