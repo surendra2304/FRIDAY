@@ -158,46 +158,9 @@ def test_03b_gmail_action_receipt_structure():
     assert "NOT SENT" in reply
 
 
-def test_03c_gmail_declines_when_no_address_is_known():
-    """A name with no known address produces no address and no receipt."""
-    handled, reply, meta = windows_friday.handle_directive(
-        "FRIDAY, email Alice that the meeting moved to 3 PM."
-    )
-
-    assert handled is True
-    assert "do not have an email address for Alice" in reply
-    assert "receipt" not in meta, "a declined send must not leave a receipt behind"
-    assert meta["success"] is False
-    assert "recipient" not in meta
-
-
-def test_03d_gmail_uses_a_saved_contact_address():
-    """A name that resolves to a real saved contact is honoured."""
-    with patch.object(
-        windows_friday, "get_all_contacts", return_value={"alice": {"email": "alice@realwork.com"}}
-    ):
-        with patch.object(windows_friday, "open_gmail", return_value=(False, "Opened a Gmail draft.")) as mocked:
-            handled, reply, meta = windows_friday.handle_directive(
-                "FRIDAY, email Alice that the meeting moved to 3 PM."
-            )
-
-    assert handled is True
-    assert mocked.call_args.kwargs["to"] == "alice@realwork.com"
-    assert meta["receipt"]["recipient"] == "alice@realwork.com"
-
-
-def test_03e_only_a_confirmed_send_earns_sent():
-    """The SENT receipt is reachable, but only when a send was confirmed."""
-    directive = "send an email to alice@realwork.com that the meeting moved to 3 PM"
-
-    with patch.object(windows_friday, "open_gmail", return_value=(True, "Email sent successfully.")):
-        handled, reply, meta = windows_friday.handle_directive(directive)
-
-    assert handled is True
-    assert meta["receipt"]["status"] == "SENT"
-    assert meta["receipt"]["provider"] == "smtp.gmail.com"
-    assert meta["success"] is True
-    assert "sent and confirmed" in reply
+# The decline path, the saved-contact path and the confirmed-send path are all
+# asserted in tests/test_gmail_send_truthfulness.py, which owns that contract.
+# Repeating them here only let the two files drift apart.
 
 
 # ==============================================================================

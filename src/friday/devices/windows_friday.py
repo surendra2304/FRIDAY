@@ -279,22 +279,6 @@ class WindowsFridayController:
             logger.debug(f"_get_active_browser_hwnd error: {e}")
             return None
 
-    def _window_title(self, hwnd: int) -> str:
-        """Title of a top-level window, or "" if it cannot be read."""
-        if sys.platform != "win32" or not hwnd:
-            return ""
-        try:
-            import ctypes
-            user32 = ctypes.windll.user32
-            length = user32.GetWindowTextLengthW(hwnd)
-            if length <= 0:
-                return ""
-            buf = ctypes.create_unicode_buffer(length + 1)
-            user32.GetWindowTextW(hwnd, buf, length + 1)
-            return buf.value.strip()
-        except Exception:
-            return ""
-
     def _is_gmail_window(self, hwnd: int) -> bool:
         """Whether a window is actually Gmail, not merely some browser.
 
@@ -302,8 +286,21 @@ class WindowsFridayController:
         matches, so without this check the send keystroke can land in whatever
         Chrome happens to be open. That is worse than sending nothing: the
         caller is told the keystroke went to Gmail when it went elsewhere.
+        Measured: with no Gmail open it returned a window titled CodeTantra-SEA.
         """
-        return "gmail" in self._window_title(hwnd).lower()
+        if sys.platform != "win32" or not hwnd:
+            return False
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+            length = user32.GetWindowTextLengthW(hwnd)
+            if length <= 0:
+                return False
+            buf = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(hwnd, buf, length + 1)
+            return "gmail" in buf.value.lower()
+        except Exception:
+            return False
 
     def _activate_browser_tab(self, hwnd: int, tab_keyword: str) -> bool:
         """Find and select a specific tab inside a browser window via UI Automation."""
