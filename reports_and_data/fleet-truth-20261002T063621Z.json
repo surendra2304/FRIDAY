@@ -1,0 +1,243 @@
+{
+  "generated_at": "20261002T063621Z",
+  "measured_at": "2026-10-02T06:36:21.164338+00:00",
+  "phase": "F1",
+  "probe_rule": "a service is LIVE only if /health answers 200 and carries evidence_class and observed_at; otherwise STALE_BUILD; if no response, UNREACHABLE",
+  "probes": [
+    {
+      "service": "FRIDAY",
+      "url": "https://friday-zw59.onrender.com",
+      "verdict": "LIVE",
+      "reachable": true,
+      "status_code": 200,
+      "reported_status": "healthy",
+      "evidence_class": "process_liveness",
+      "observed_at": "2026-10-02T06:36:25.272668+00:00",
+      "missing_evidence_fields": [],
+      "latency_ms": 1383.7,
+      "error": null
+    },
+    {
+      "service": "Inference",
+      "url": "https://inference-r1sn.onrender.com",
+      "verdict": "LIVE",
+      "reachable": true,
+      "status_code": 200,
+      "reported_status": "responding",
+      "evidence_class": "process_liveness",
+      "observed_at": "2026-10-02T06:36:25.227713+00:00",
+      "missing_evidence_fields": [],
+      "latency_ms": 1342.3,
+      "error": null
+    },
+    {
+      "service": "Memora",
+      "url": "https://memora-cavc.onrender.com",
+      "verdict": "STALE_BUILD",
+      "reachable": true,
+      "status_code": 200,
+      "reported_status": "healthy",
+      "evidence_class": null,
+      "observed_at": null,
+      "missing_evidence_fields": [
+        "evidence_class",
+        "observed_at"
+      ],
+      "latency_ms": 2562.9,
+      "error": null
+    },
+    {
+      "service": "Stratex",
+      "url": "https://stratex-8wj1.onrender.com",
+      "verdict": "LIVE",
+      "reachable": true,
+      "status_code": 200,
+      "reported_status": "ok",
+      "evidence_class": "process_liveness",
+      "observed_at": "2026-10-02T06:36:24.141383Z",
+      "missing_evidence_fields": [],
+      "latency_ms": 245.2,
+      "error": null
+    },
+    {
+      "service": "IntelX",
+      "url": "https://intelx-mygl.onrender.com",
+      "verdict": "LIVE",
+      "reachable": true,
+      "status_code": 200,
+      "reported_status": "ok",
+      "evidence_class": "process_liveness",
+      "observed_at": "2026-10-02T06:36:25.222782+00:00",
+      "missing_evidence_fields": [],
+      "latency_ms": 1340.3,
+      "error": null
+    },
+    {
+      "service": "Futuris",
+      "url": "https://futuris-th6f.onrender.com",
+      "verdict": "LIVE",
+      "reachable": true,
+      "status_code": 200,
+      "reported_status": "ok",
+      "evidence_class": "process_liveness",
+      "observed_at": "2026-10-02T06:36:24.216483+00:00",
+      "missing_evidence_fields": [],
+      "latency_ms": 372.7,
+      "error": null
+    },
+    {
+      "service": "Cortex",
+      "url": "https://cortex-0m7c.onrender.com",
+      "verdict": "STALE_BUILD",
+      "reachable": true,
+      "status_code": 200,
+      "reported_status": "UP",
+      "evidence_class": null,
+      "observed_at": null,
+      "missing_evidence_fields": [
+        "evidence_class",
+        "observed_at"
+      ],
+      "latency_ms": 2353.5,
+      "error": null
+    },
+    {
+      "service": "Forge",
+      "url": "https://forge-e9kl.onrender.com",
+      "verdict": "LIVE",
+      "reachable": true,
+      "status_code": 200,
+      "reported_status": "ok",
+      "evidence_class": "process_liveness",
+      "observed_at": "2026-10-02T06:36:24.247795+00:00",
+      "missing_evidence_fields": [],
+      "latency_ms": 391.7,
+      "error": null
+    },
+    {
+      "service": "Sentinel",
+      "url": "https://sentinel-a861.onrender.com",
+      "verdict": "LIVE",
+      "reachable": true,
+      "status_code": 200,
+      "reported_status": "ok",
+      "evidence_class": "process_liveness",
+      "observed_at": "2026-10-02T06:36:25.263502+00:00",
+      "missing_evidence_fields": [],
+      "latency_ms": 1371.9,
+      "error": null
+    }
+  ],
+  "ci": [
+    {
+      "repo": "FRIDAY",
+      "available": true,
+      "head": "4d45490",
+      "ci_status": "in_progress",
+      "ci_conclusion": "",
+      "ci_head_sha": "4d45490",
+      "ci_matches_local_head": true
+    },
+    {
+      "repo": "Inference",
+      "available": true,
+      "head": "b78e480",
+      "ci_status": "completed",
+      "ci_conclusion": "success",
+      "ci_head_sha": "b78e480",
+      "ci_matches_local_head": true
+    },
+    {
+      "repo": "Memora",
+      "available": true,
+      "head": "e986aea",
+      "ci_status": "completed",
+      "ci_conclusion": "success",
+      "ci_head_sha": "e986aea",
+      "ci_matches_local_head": true
+    },
+    {
+      "repo": "Stratex",
+      "available": true,
+      "head": "dc24b2e",
+      "ci_status": "completed",
+      "ci_conclusion": "success",
+      "ci_head_sha": "dc24b2e",
+      "ci_matches_local_head": true
+    },
+    {
+      "repo": "IntelX",
+      "available": true,
+      "head": "9e719ae",
+      "ci_status": "completed",
+      "ci_conclusion": "success",
+      "ci_head_sha": "9e719ae",
+      "ci_matches_local_head": true
+    },
+    {
+      "repo": "Futuris",
+      "available": true,
+      "head": "1069007",
+      "ci_status": "completed",
+      "ci_conclusion": "success",
+      "ci_head_sha": "1069007",
+      "ci_matches_local_head": true
+    },
+    {
+      "repo": "Cortex",
+      "available": true,
+      "head": "dfb37ab",
+      "ci_status": "completed",
+      "ci_conclusion": "success",
+      "ci_head_sha": "dfb37ab",
+      "ci_matches_local_head": true
+    },
+    {
+      "repo": "Forge",
+      "available": true,
+      "head": "bb0e018",
+      "ci_status": "completed",
+      "ci_conclusion": "success",
+      "ci_head_sha": "bb0e018",
+      "ci_matches_local_head": true
+    },
+    {
+      "repo": "Sentinel",
+      "available": true,
+      "head": "706fb23",
+      "ci_status": "completed",
+      "ci_conclusion": "success",
+      "ci_head_sha": "706fb23",
+      "ci_matches_local_head": true
+    }
+  ],
+  "owner_blocked": [
+    {
+      "item": "Cortex redeploy",
+      "state": "auto-deploy off for this service only",
+      "action": "Render dashboard -> Cortex service -> Manual Deploy -> 'Deploy latest commit'",
+      "verify": "curl -s https://cortex-0m7c.onrender.com/health   # expect evidence_class AND observed_at"
+    },
+    {
+      "item": "Memora redeploy",
+      "state": "auto-deploy off for this service only",
+      "action": "Render dashboard -> Memora service -> Manual Deploy -> 'Deploy latest commit'",
+      "verify": "curl -s https://memora-cavc.onrender.com/health   # expect evidence_class AND observed_at"
+    },
+    {
+      "item": "Phase D3 \u2014 nine Render dashboards + UptimeRobot",
+      "state": "no Render API key, deploy hook or UptimeRobot credential reachable from this machine",
+      "action": "open each of the nine Render dashboards and UptimeRobot, confirm the $0 tier and free-plan status",
+      "verify": "a dated note naming each dashboard and what it showed"
+    }
+  ],
+  "summary": {
+    "total": 9,
+    "live": 7,
+    "stale_build": 2,
+    "unreachable": 0,
+    "ci_total": 9,
+    "ci_green": 8,
+    "ci_unavailable": 0
+  }
+}
