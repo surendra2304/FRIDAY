@@ -1,5 +1,10 @@
 """Real Windows OS integration tests for Win32 SendInput and ComputerActionExecutor.
 
+WARNING: the tests marked ``hardware`` in this file really do move the pointer
+on whatever desktop is running the suite. Running them takes the mouse away
+from whoever is using the machine, so they are opt-in, like every other test
+that needs real hardware.
+
 Exercises:
 1. Native display metrics and cursor position queries.
 2. Harmless Win32 cursor positioning and post-execution position verification.
@@ -40,6 +45,7 @@ def test_windows_native_driver_metrics_and_cursor_query():
     assert isinstance(cursor_y, int)
 
 
+@pytest.mark.hardware
 def test_windows_native_driver_harmless_cursor_move_and_verify():
     """Verify physical cursor movement and assert GetCursorPos reflects new location when desktop is interactive."""
     is_interactive, reason = check_desktop_interactivity()
@@ -63,6 +69,7 @@ def test_windows_native_driver_harmless_cursor_move_and_verify():
     assert abs(new_y - target_y) <= 2, f"Expected cursor Y near {target_y}, got {new_y}"
 
 
+@pytest.mark.hardware
 def test_physical_computer_action_executor_move_execution():
     """Verify ComputerActionExecutor in physical mode genuinely moves cursor and records verification when interactive."""
     is_interactive, reason = check_desktop_interactivity()

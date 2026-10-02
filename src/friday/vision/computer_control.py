@@ -18,6 +18,7 @@ Enforces:
 """
 
 import re
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -33,6 +34,13 @@ from friday.vision.windows_input_driver import (
 )
 
 logger = get_logger("vision.computer_control")
+
+# How hard a physical mouse move is allowed to try before it is called a failure.
+# A real desktop is shared: the user's own mouse, an input tool, or a screen
+# reader can move the pointer between the move and the read. Retrying a few
+# times is the difference between "the move failed" and "we looked too early".
+_MOVE_VERIFY_ATTEMPTS = 5
+_MOVE_VERIFY_DELAY_SECONDS = 0.05
 
 # Hard-blocked patterns that will NEVER be executed under any circumstances
 HARD_BLOCKED_INTENTS = [
@@ -321,8 +329,17 @@ class ComputerActionExecutor:
                 tx = int(proposal.arguments["x"])
                 ty = int(proposal.arguments["y"])
                 op_success = self.driver.move_cursor(tx, ty)
-                # Post-execution verification
-                cur_x, cur_y = self.driver.get_cursor_position()
+                # Post-execution verification. The cursor position is sampled a
+                # few times rather than once: a single read races the OS moving
+                # the pointer (anything else touching the same desktop does), and
+                # reporting a correct move as FAILED is worse than waiting a few
+                # milliseconds for the truth.
+                cur_x, cur_y = tx, ty
+                for _attempt in range(_MOVE_VERIFY_ATTEMPTS):
+                    cur_x, cur_y = self.driver.get_cursor_position()
+                    if abs(cur_x - tx) <= 2 and abs(cur_y - ty) <= 2:
+                        break
+                    time.sleep(_MOVE_VERIFY_DELAY_SECONDS)
                 verification_info["target_coords"] = (tx, ty)
                 verification_info["actual_coords"] = (cur_x, cur_y)
                 verification_info["coords_match"] = abs(cur_x - tx) <= 2 and abs(cur_y - ty) <= 2

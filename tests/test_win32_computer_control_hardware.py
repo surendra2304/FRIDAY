@@ -83,6 +83,7 @@ def _issue_capability(tool_name: str, intent: str) -> str:
 # Test 1 — Real Win32 cursor move OR honest BLOCKED
 # ---------------------------------------------------------------------------
 
+@pytest.mark.hardware
 class TestRealWin32CursorMove:
     """Proves that the physical Win32 execution path actually calls SetCursorPos/SendInput."""
 
@@ -309,6 +310,7 @@ class TestCoordinatePresenceGuard:
 # Test 10 — Physical move verified via post-execution cursor read-back
 # ---------------------------------------------------------------------------
 
+@pytest.mark.hardware
 class TestPhysicalMoveVerification:
     """End-to-end: ComputerActionExecutor(sandboxed=False) + WindowsNativeInputDriver → OS."""
 

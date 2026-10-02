@@ -10,6 +10,7 @@ Provides:
 
 import ctypes
 import sys
+import threading
 import time
 from abc import ABC, abstractmethod
 from ctypes import wintypes
@@ -157,6 +158,12 @@ def check_desktop_interactivity() -> tuple[bool, str]:
         return False, f"Failed to query desktop state: {e}"
 
 
+#: Marks that the current thread has already been attached to the interactive
+#: desktop. Per-thread on purpose: a thread inherits its desktop from whoever
+#: created it, so the guard has to be too.
+_DESKTOP_ATTACHMENT = threading.local()
+
+
 class BaseWindowsInputDriver(ABC):
     """Abstract contract for Windows input synthesis driver."""
 
@@ -201,13 +208,26 @@ class WindowsNativeInputDriver(BaseWindowsInputDriver):
     """Real Win32 input synthesis driver using user32.SendInput and user32 cursor APIs."""
 
     def _ensure_desktop(self) -> None:
-        """Attach current thread to interactive desktop session to prevent Win32 Error 5 (Access Denied)."""
+        """Attach current thread to interactive desktop session to prevent Win32 Error 5 (Access Denied).
+
+        Done once per thread, not once per driver. SetThreadDesktop can only
+        take effect the first time on a given thread - every later call fails
+        silently - but each attempt still leaks a desktop handle. A driver is
+        built per action, so the old per-call behaviour cost one handle per
+        action: measured 400 instantiations grew the process by 406 handles.
+        """
         if sys.platform != "win32":
+            return
+        if getattr(_DESKTOP_ATTACHMENT, "done", False):
             return
         try:
             h_desk = self._user32.OpenDesktopW("Default", 0, False, 0x01FF)
             if h_desk:
-                self._user32.SetThreadDesktop(h_desk)
+                try:
+                    self._user32.SetThreadDesktop(h_desk)
+                finally:
+                    self._user32.CloseDesktop(h_desk)
+            _DESKTOP_ATTACHMENT.done = True
         except Exception:
             pass
 
