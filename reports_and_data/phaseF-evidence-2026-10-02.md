@@ -244,9 +244,16 @@ passed: FRIDAY `3a90ec8` run `36985714594` **success** (ubuntu + windows), Forge
 |---|---|---|---|
 | Forge | `cbbc298` | `36985664923` | **success** |
 | FRIDAY | `22c1a07` (F1) + `3a90ec8` (F2) | `36985714594` | **success** |
+| FRIDAY | `26753ab` (CI conclusions doc) | `36986436282` | **success** |
+| FRIDAY | `56a9ddf` (durable ledger) + `02fd988` (this file) | `36988808095` | **success** |
 
 The earlier FRIDAY run `36974282664` (push `4d45490`, previously still in progress)
 has since completed **success**.
+
+The durable-ledger head was verified on **both** CI runners, which matters more
+than usual: `tests/test_self_repair_survives_restart.py` starts and kills real
+server processes and runs real git, so a green run there is evidence the
+restart path works on a clean machine, not just on the one that wrote it.
 
 ## 5. Blocked on the owner
 
