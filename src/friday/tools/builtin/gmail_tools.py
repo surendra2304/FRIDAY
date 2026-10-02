@@ -11,8 +11,6 @@ from __future__ import annotations
 
 import email
 from email.header import decode_header
-import email.mime.multipart
-import email.mime.text
 import imaplib
 import os
 import smtplib
@@ -281,54 +279,67 @@ class SendGmailTool(BaseTool):
         app_password = getattr(settings, "email_app_password", None) or os.getenv("FRIDAY_EMAIL_APP_PASSWORD")
 
         if not user_email or not app_password:
-            # Fallback to mailto URI in browser
+            # A compose window is a draft, not a send. Nothing left this machine,
+            # so it is reported as not sent rather than as a quiet success.
             import urllib.parse
             mailto = f"https://mail.google.com/mail/?view=cm&fs=1&to={urllib.parse.quote(to_address)}&su={urllib.parse.quote(subject)}&body={urllib.parse.quote(body)}"
             webbrowser.open(mailto)
             return ToolResult(
                 name=self.name,
                 content=(
-                    "Gmail credentials not configured in .env. "
-                    "Opened Gmail compose window in your browser with your draft ready."
+                    "Gmail credentials are not configured, so nothing was sent. "
+                    "A draft to "
+                    f"{to_address} is open in the browser - press Send there to deliver it."
                 ),
-                is_error=False,
+                is_error=True,
                 safety_level=self.safety_level,
-                metadata={"provider": "web_browser", "idempotency_key": idempotency_key},
+                metadata={
+                    "provider": "gmail_web",
+                    "idempotency_key": idempotency_key,
+                    "recipient": to_address,
+                    "status": "NOT_SENT",
+                },
             )
 
-        msg = email.mime.multipart.MIMEMultipart()
-        msg["From"] = user_email
-        msg["To"] = to_address
-        msg["Subject"] = subject
-        msg.attach(email.mime.text.MIMEText(body, "plain", "utf-8"))
+        # One owner for "did this send": the shared sender is the only code that
+        # reads sendmail's refusal dict, so both callers get the same rule.
+        from friday.tools.builtin.email_tools import _send_smtp_email
 
-        try:
-            with smtplib.SMTP(_SMTP_SERVER, _SMTP_PORT, timeout=_TIMEOUT) as server:
-                server.ehlo()
-                server.starttls()
-                server.ehlo()
-                server.login(user_email, app_password)
-                send_errs = server.sendmail(user_email, [to_address], msg.as_string())
+        sent_ok, sent_msg = _send_smtp_email(
+            to_address=to_address,
+            subject=subject,
+            body=body,
+            from_address=user_email,
+            app_password=app_password,
+            smtp_host=_SMTP_SERVER,
+            smtp_port=_SMTP_PORT,
+        )
 
-            logger.info(f"Gmail sent successfully to {to_address}")
+        if not sent_ok:
+            logger.warning(f"Gmail did not send to {to_address}: {sent_msg}")
             return ToolResult(
                 name=self.name,
-                content=f"Email successfully sent to {to_address} with subject '{subject}'.",
-                is_error=False,
+                content=f"Failed to send email to {to_address}: {sent_msg}",
+                is_error=True,
                 safety_level=self.safety_level,
                 metadata={
                     "provider": "smtp.gmail.com",
                     "idempotency_key": idempotency_key,
                     "recipient": to_address,
-                    "send_errors": send_errs,
-                    "status": "SENT",
+                    "status": "NOT_SENT",
                 },
             )
-        except Exception as e:
-            logger.error(f"Failed to send Gmail: {e}")
-            return ToolResult(
-                name=self.name,
-                content=f"Failed to send email to {to_address}: {e}",
-                is_error=True,
-                safety_level=self.safety_level,
-            )
+
+        logger.info(f"Gmail sent successfully to {to_address}")
+        return ToolResult(
+            name=self.name,
+            content=f"Email successfully sent to {to_address} with subject '{subject}'.",
+            is_error=False,
+            safety_level=self.safety_level,
+            metadata={
+                "provider": "smtp.gmail.com",
+                "idempotency_key": idempotency_key,
+                "recipient": to_address,
+                "status": "SENT",
+            },
+        )

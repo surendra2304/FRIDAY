@@ -8,7 +8,7 @@ import email.mime.multipart
 import email.mime.text
 import os
 import smtplib
-from typing import Any
+from typing import Any, Sequence
 
 from friday.core.config import get_settings
 from friday.core.logging import get_logger
@@ -20,8 +20,47 @@ logger = get_logger("tools.email")
 _SMTP_TIMEOUT = 12.0
 
 
+def _recipients_from(to_address: "str | Sequence[str]") -> list[str]:
+    """One address or several, blank and duplicate entries dropped."""
+    candidates = [to_address] if isinstance(to_address, str) else list(to_address)
+    ordered: list[str] = []
+    for raw in candidates:
+        addr = (raw or "").strip()
+        if addr and addr not in ordered:
+            ordered.append(addr)
+    return ordered
+
+
+def _describe_refusals(
+    recipients: Sequence[str], refused: "dict[str, tuple[int, bytes]]"
+) -> str:
+    """Report a partial send as the refusal it is.
+
+    ``sendmail`` raises only when *every* recipient is refused. A partial
+    refusal comes back as a dict and no exception at all, so ignoring the
+    return value is how a message the server rejected came to be reported as
+    delivered.
+    """
+    accepted = [addr for addr in recipients if addr not in refused]
+    parts = []
+    for addr, detail in refused.items():
+        code = detail[0] if isinstance(detail, tuple) and detail else "?"
+        text = ""
+        if isinstance(detail, tuple) and len(detail) > 1 and detail[1]:
+            raw = detail[1]
+            text = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else str(raw)
+        parts.append(f"{addr} (SMTP {code}{': ' + text if text else ''})")
+    summary = "; ".join(parts)
+    if accepted:
+        return (
+            f"NOT sent to every recipient. The server refused {summary}. "
+            f"Delivered to: {', '.join(accepted)}."
+        )
+    return f"NOT sent. The server refused every recipient: {summary}."
+
+
 def _send_smtp_email(
-    to_address: str,
+    to_address: "str | Sequence[str]",
     subject: str,
     body: str,
     from_address: str | None = None,
@@ -29,7 +68,12 @@ def _send_smtp_email(
     smtp_host: str | None = None,
     smtp_port: int | None = None,
 ) -> tuple[bool, str]:
-    """Connect to SMTP server and send MIME text email."""
+    """Connect to SMTP server and send MIME text email.
+
+    Returns True only when the server accepted every recipient. A recipient it
+    refused is never reported as sent, whether the refusal arrived as an
+    exception or as ``sendmail``'s return value.
+    """
     settings = get_settings()
     sender = from_address or getattr(settings, "email_address", None) or os.getenv("FRIDAY_EMAIL_ADDRESS")
     password = app_password or getattr(settings, "email_app_password", None) or os.getenv("FRIDAY_EMAIL_APP_PASSWORD")
@@ -39,9 +83,13 @@ def _send_smtp_email(
     if not sender or not password:
         return False, "Email sender credentials not configured. Please set FRIDAY_EMAIL_ADDRESS and FRIDAY_EMAIL_APP_PASSWORD in your .env file."
 
+    recipients = _recipients_from(to_address)
+    if not recipients:
+        return False, "No recipient address was given, so there was nothing to send."
+
     msg = email.mime.multipart.MIMEMultipart()
     msg["From"] = sender
-    msg["To"] = to_address
+    msg["To"] = ", ".join(recipients)
     msg["Subject"] = subject
     msg.attach(email.mime.text.MIMEText(body, "plain", "utf-8"))
 
@@ -51,9 +99,17 @@ def _send_smtp_email(
             server.starttls()
             server.ehlo()
             server.login(sender, password)
-            server.sendmail(sender, [to_address], msg.as_string())
+            refused = server.sendmail(sender, recipients, msg.as_string())
+        # A refusal the server already reported is still a refusal. This is the
+        # only place a send is called sent, so it is the only place that has to
+        # know sendmail answers with a dict rather than raising. Keyed on the
+        # mapping type because that is the contract, not on truthiness.
+        if isinstance(refused, dict) and refused:
+            reason = _describe_refusals(recipients, refused)
+            logger.warning(f"SMTP refused a recipient for '{subject}': {reason}")
+            return False, reason
         logger.info(f"Email sent successfully to '{to_address}' with subject '{subject}'.")
-        return True, f"Email successfully sent to {to_address}."
+        return True, f"Email successfully sent to {', '.join(recipients)}."
     except smtplib.SMTPAuthenticationError as e:
         logger.warning(f"SMTP authentication failed: {e}")
         return False, f"SMTP Authentication failed: Invalid email or app password. ({e})"

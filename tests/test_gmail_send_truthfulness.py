@@ -245,6 +245,181 @@ def test_an_smtp_failure_falls_through_without_claiming_a_send(monkeypatch, smtp
     assert ok is False
 
 
+# ---------------------------------------------------------------------------
+# What the server refused, not what we hoped it accepted
+# ---------------------------------------------------------------------------
+# sendmail raises only when EVERY recipient is refused. A partial refusal comes
+# back as a dict and no exception at all, so both send paths used to read that
+# as success: a recipient the server had answered "550 Mailbox unavailable"
+# still produced "Email successfully sent", a SENT receipt and success=True.
+#
+# These cases replace the transport only. _send_smtp_email really runs, and so
+# does everything it does with sendmail's return value - the exact line every
+# other stub in this file sits above, which is why 22 cases of receipt
+# truthfulness never reached it.
+
+
+def _server_that_refuses(refused: dict, accepted: tuple = ()):
+    """A real SMTP conversation that refuses ``refused`` and takes ``accepted``."""
+
+    class _Server:
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def ehlo(self):
+            pass
+
+        def starttls(self):
+            pass
+
+        def login(self, user, password):
+            pass
+
+        def sendmail(self, sender, recipients, message):
+            return dict(refused)
+
+    return _Server
+
+
+def _with_credentials(monkeypatch):
+    """Every binding site that resolves the sending account, all at once.
+
+    open_gmail imports get_settings inside its body while both send tools bind
+    it at their own module level, so patching only the defining module leaves
+    the tools reading the real config - and they then quietly take the
+    no-credentials branch instead of the branch under test.
+    """
+    import friday.tools.builtin.email_tools as et
+    from friday.tools.builtin import gmail_tools as gt
+
+    def settings():
+        return SimpleNamespace(email_address="me@real.com", email_app_password="secret")
+
+    for target in (friday_config, et, gt):
+        monkeypatch.setattr(target, "get_settings", settings)
+
+
+def test_a_refused_recipient_is_never_reported_as_sent(monkeypatch):
+    """The refusal arrived as a return value, so no exception caught it."""
+    import friday.tools.builtin.email_tools as et
+
+    _with_credentials(monkeypatch)
+    monkeypatch.setattr(
+        et.smtplib, "SMTP",
+        _server_that_refuses({"bob@bad.invalid": (550, b"Mailbox unavailable")}),
+    )
+
+    ok, message = et._send_smtp_email(to_address="bob@bad.invalid", subject="S", body="B")
+
+    assert ok is False
+    assert "successfully sent" not in message
+    assert "bob@bad.invalid" in message, "the refusal has to name who was refused"
+    assert "550" in message, "the server's own reason has to survive into the report"
+
+
+def test_a_partial_send_names_who_arrived_and_who_did_not(monkeypatch):
+    """One accepted and one refused: the case easiest to overstate as sent."""
+    import friday.tools.builtin.email_tools as et
+
+    _with_credentials(monkeypatch)
+    monkeypatch.setattr(
+        et.smtplib, "SMTP",
+        _server_that_refuses({"bob@bad.invalid": (550, b"Mailbox unavailable")}),
+    )
+
+    ok, message = et._send_smtp_email(
+        to_address=["alice@realwork.com", "bob@bad.invalid"], subject="S", body="B")
+
+    assert ok is False, "a send that lost a recipient is not a send that succeeded"
+    assert "bob@bad.invalid" in message
+    assert "alice@realwork.com" in message, (
+        "the recipient that did arrive is named, so the user knows what happened"
+    )
+
+
+def test_the_receipt_cannot_carry_a_recipient_the_server_refused(monkeypatch):
+    """End to end: the receipt the user is shown must not claim this send."""
+    import friday.tools.builtin.email_tools as et
+
+    _with_credentials(monkeypatch)
+    monkeypatch.setattr(
+        et.smtplib, "SMTP",
+        _server_that_refuses({"bob@bad.invalid": (550, b"Mailbox unavailable")}),
+    )
+    # Isolate the SMTP verdict: the web fallback must not be mistaken for it.
+    monkeypatch.setattr(windows_friday, "open_url", lambda url: True)
+    monkeypatch.setattr(windows_friday, "_get_active_browser_hwnd", lambda keywords=None: None)
+    monkeypatch.setattr(windows_friday, "get_all_contacts", lambda: {})
+
+    handled, reply, meta = windows_friday.handle_directive(
+        "FRIDAY, email bob@bad.invalid that the meeting moved to 3 PM")
+
+    assert handled is True
+    assert meta["receipt"]["status"] != "SENT"
+    assert meta["success"] is False
+    assert "successfully sent" not in reply
+
+
+def test_the_registered_gmail_tool_reports_a_refusal_as_a_failure(monkeypatch):
+    """send_gmail is live in the agent registry, so it answers to the model."""
+    import friday.tools.builtin.email_tools as et
+    from friday.tools.builtin.gmail_tools import SendGmailTool
+
+    _with_credentials(monkeypatch)
+    monkeypatch.setattr(
+        et.smtplib, "SMTP",
+        _server_that_refuses({"bob@bad.invalid": (550, b"Mailbox unavailable")}),
+    )
+
+    result = SendGmailTool().execute(to_address="bob@bad.invalid", subject="S", body="B")
+
+    assert result.is_error is True
+    assert result.metadata.get("status") != "SENT"
+    assert "successfully sent" not in result.content
+    assert "550" in result.content, (
+        "the refusal has to reach the caller, not just the log"
+    )
+
+
+def test_the_registered_gmail_tool_does_not_call_a_bare_draft_a_send(monkeypatch):
+    """With no credentials it opens a draft and presses nothing."""
+    import friday.tools.builtin.email_tools as et
+    from friday.tools.builtin import gmail_tools as gt
+
+    def empty():
+        return SimpleNamespace(email_address=None, email_app_password=None)
+
+    for target in (friday_config, et, gt):
+        monkeypatch.setattr(target, "get_settings", empty)
+    monkeypatch.setattr(gt, "webbrowser", type("W", (), {"open": staticmethod(lambda u: None)})())
+
+    result = gt.SendGmailTool().execute(to_address="bob@bad.invalid", subject="S", body="B")
+
+    assert result.is_error is True, "a draft that was never sent is not a successful send"
+    assert result.metadata.get("status") == "NOT_SENT"
+
+
+def test_an_accepted_recipient_still_earns_sent(monkeypatch):
+    """The rule must not cost us the one true confirmation we can have."""
+    import friday.tools.builtin.email_tools as et
+    from friday.tools.builtin.gmail_tools import SendGmailTool
+
+    _with_credentials(monkeypatch)
+    monkeypatch.setattr(et.smtplib, "SMTP", _server_that_refuses({}))
+
+    result = SendGmailTool().execute(to_address="alice@realwork.com", subject="S", body="B")
+
+    assert result.is_error is False
+    assert result.metadata.get("status") == "SENT"
+    assert "successfully sent" in result.content
+
+
 @pytest.mark.parametrize("directive", [ALICE, ALICE_ADDRESSED])
 def test_no_web_send_ever_produces_a_sent_receipt(monkeypatch, directive):
     """The web path cannot observe Gmail, so it never earns SENT - by any route.
