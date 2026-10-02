@@ -719,7 +719,12 @@ class WindowsFridayController:
         return matches
 
     def _lookup_contact_email(self, name: str) -> str | None:
-        """Attempt to resolve a contact name to an email address from local contacts or Memora."""
+        """Resolve a contact name to a real email address, or None.
+
+        Never guesses. A made-up address is worse than no address: the message
+        either bounces or reaches a stranger, and a receipt naming it looks like
+        a send that happened.
+        """
         if not name:
             return None
         clean_name = name.lower().strip()
@@ -732,13 +737,7 @@ class WindowsFridayController:
             if (clean_name in k.lower() or k.lower() in clean_name) and v.get("email"):
                 return v.get("email")
 
-        # 2. Standard known defaults
-        if clean_name == "alice":
-            return "alice@example.com"
-        if clean_name == "bob":
-            return "bob@example.com"
-
-        # 3. Memora memory database lookup
+        # 2. Memora memory database lookup
         try:
             from friday.memory.memora_client import memora_client
             if hasattr(memora_client, "local_db_path") and os.path.exists(memora_client.local_db_path):
@@ -1813,7 +1812,22 @@ class WindowsFridayController:
                 m_named = re.search(r"\b(?:email|send\s+(?:an?\s+)?(?:email|gmail)\s+to|mail)\s+([a-zA-Z]+)\b", raw, re.IGNORECASE)
                 if m_named:
                     recipient_name = m_named.group(1).strip()
-                    to_addr = self._lookup_contact_email(recipient_name) or f"{recipient_name.lower()}@example.com"
+                    to_addr = self._lookup_contact_email(recipient_name) or ""
+
+            # A name with no known address is not an address. Declining is the
+            # honest outcome; guessing a domain produces a receipt for a message
+            # addressed to nobody the user has ever met.
+            if not to_addr:
+                who = recipient_name or "that recipient"
+                return True, (
+                    f"I do not have an email address for {who}. "
+                    f"Tell me the address, or save {who} to your contacts, and I will send it."
+                ), {
+                    "action": "open_gmail",
+                    "direct_action": "send_email",
+                    "recipient_name": recipient_name,
+                    "success": False,
+                }
 
             m_subj = re.search(r"\b(?:about|with\s+subject|subject)\s+['\"]?([^'\"\n]+?)['\"]?(?:\s+(?:and\s+)?(?:with\s+body|saying|body|message)\b|$)", raw, re.IGNORECASE)
             if m_subj:

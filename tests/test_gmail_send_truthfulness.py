@@ -224,7 +224,7 @@ def test_end_to_end_the_real_directive_never_produces_a_sent_receipt(monkeypatch
     monkeypatch.setattr(windows_friday, "_lookup_contact_email", lambda name: None, raising=False)
 
     handled, reply, meta = windows_friday.handle_directive(
-        "send an email to alice saying the meeting moved to 3 PM"
+        "send an email to alice@realwork.com saying the meeting moved to 3 PM"
     )
     assert handled is True
 
@@ -243,13 +243,29 @@ def test_end_to_end_the_real_directive_never_produces_a_sent_receipt(monkeypatch
 
 def test_end_to_end_a_confirmed_smtp_send_does_produce_a_sent_receipt(monkeypatch):
     _install(monkeypatch, driver=_InputDriver(result=False), smtp=(True, "250 OK"))
-    monkeypatch.setattr(windows_friday, "_lookup_contact_email", lambda name: None, raising=False)
 
     handled, reply, meta = windows_friday.handle_directive(
-        "send an email to alice saying the meeting moved to 3 PM"
+        "send an email to alice@realwork.com saying the meeting moved to 3 PM"
     )
     assert handled is True
     assert meta["success"] is True
     assert meta["receipt"]["status"] == "SENT"
     assert meta["receipt"]["provider"] == "smtp.gmail.com"
     assert "sent and confirmed" in reply
+
+
+def test_end_to_end_a_name_with_no_known_address_declines(monkeypatch):
+    """Asking to email someone the product has no address for must not guess one."""
+    _install(monkeypatch, driver=_InputDriver(result=False))
+    monkeypatch.setattr(windows_friday, "_lookup_contact_email", lambda name: None, raising=False)
+
+    handled, reply, meta = windows_friday.handle_directive(
+        "send an email to alice saying the meeting moved to 3 PM"
+    )
+
+    assert handled is True
+    assert "do not have an email address" in reply
+    assert "receipt" not in meta, "a declined send must not leave a receipt behind"
+    assert meta["success"] is False
+    for guess in ("example.com", "@example"):
+        assert guess not in reply, f"the reply invented an address: {guess!r}"

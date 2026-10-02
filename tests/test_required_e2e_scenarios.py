@@ -113,34 +113,33 @@ def test_02_ambiguous_application_chrome_flow(agent, monkeypatch):
 # approval -> send through configured provider -> return provider/message result -> store receipt
 # ==============================================================================
 def test_03_gmail_email_alice_flow(agent):
-    """Scenario 3: Direct email directive with contact resolution and receipt."""
+    """Scenario 3: Direct email directive with contact resolution and receipt.
+
+    Alice is not in contacts, so the product must ask for an address rather
+    than invent one. Guessing a domain produced a receipt addressed to a
+    stranger while the test called it a success.
+    """
     directive = "FRIDAY, email Alice that the meeting moved to 3 PM."
 
     with patch.object(windows_friday, "open_gmail") as mock_open_gmail:
-        mock_open_gmail.return_value = (True, "Opened Gmail compose window in Google Chrome.")
-
         resp = agent.process_message(directive)
-        assert resp.is_done is True
+        assert mock_open_gmail.call_count == 0, "no address was known, so nothing should be sent"
 
-        # Check contact resolution to Alice's email
-        assert "alice@example.com" in resp.content or "Alice" in resp.content
-        assert "3 PM" in resp.content
-        assert "Scoped approval confirmed" in resp.content
-        assert "Receipt:" in resp.content
-
-        meta = resp.metadata
-        assert meta.get("direct_desktop_action") == "send_email"
-        assert meta.get("success") is True
+    assert resp.is_done is True
+    assert "do not have an email address for Alice" in resp.content
+    assert "alice@example.com" not in resp.content
+    assert resp.metadata.get("success") is False
 
 
 def test_03b_gmail_action_receipt_structure():
     """Verify Gmail produces valid ActionReceipt with audit trail.
 
-    The receipt records what actually happened. This used to assert SENT
-    unconditionally, which meant the test demanded a send that nothing had
-    confirmed - the same fabrication the receipt itself used to carry.
+    The receipt records what actually happened, and names a recipient that was
+    actually given. This used to assert SENT unconditionally, and to expect
+    alice@example.com for a directive that never contained an address - two
+    fabrications the product was making on the user's behalf.
     """
-    directive = "FRIDAY, email Alice that the meeting moved to 3 PM."
+    directive = "send an email to alice@realwork.com that the meeting moved to 3 PM"
 
     with patch.object(windows_friday, "open_gmail", return_value=(False, "Opened a Gmail draft.")):
         handled, reply, meta = windows_friday.handle_directive(directive)
@@ -148,7 +147,7 @@ def test_03b_gmail_action_receipt_structure():
     assert handled is True
     receipt = meta["receipt"]
     assert receipt["action"] == "send_email"
-    assert receipt["recipient"] == "alice@example.com"
+    assert receipt["recipient"] == "alice@realwork.com"
     assert "the meeting moved to 3 pm" in receipt["body"].lower()
 
     # No send was confirmed, so the receipt must not claim one, and the SMTP
@@ -158,7 +157,39 @@ def test_03b_gmail_action_receipt_structure():
     assert meta["success"] is False
     assert "NOT SENT" in reply
 
-    # Only a confirmed send earns SENT.
+
+def test_03c_gmail_declines_when_no_address_is_known():
+    """A name with no known address produces no address and no receipt."""
+    handled, reply, meta = windows_friday.handle_directive(
+        "FRIDAY, email Alice that the meeting moved to 3 PM."
+    )
+
+    assert handled is True
+    assert "do not have an email address for Alice" in reply
+    assert "receipt" not in meta, "a declined send must not leave a receipt behind"
+    assert meta["success"] is False
+    assert "recipient" not in meta
+
+
+def test_03d_gmail_uses_a_saved_contact_address():
+    """A name that resolves to a real saved contact is honoured."""
+    with patch.object(
+        windows_friday, "get_all_contacts", return_value={"alice": {"email": "alice@realwork.com"}}
+    ):
+        with patch.object(windows_friday, "open_gmail", return_value=(False, "Opened a Gmail draft.")) as mocked:
+            handled, reply, meta = windows_friday.handle_directive(
+                "FRIDAY, email Alice that the meeting moved to 3 PM."
+            )
+
+    assert handled is True
+    assert mocked.call_args.kwargs["to"] == "alice@realwork.com"
+    assert meta["receipt"]["recipient"] == "alice@realwork.com"
+
+
+def test_03e_only_a_confirmed_send_earns_sent():
+    """The SENT receipt is reachable, but only when a send was confirmed."""
+    directive = "send an email to alice@realwork.com that the meeting moved to 3 PM"
+
     with patch.object(windows_friday, "open_gmail", return_value=(True, "Email sent successfully.")):
         handled, reply, meta = windows_friday.handle_directive(directive)
 
