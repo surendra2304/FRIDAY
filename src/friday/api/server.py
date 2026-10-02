@@ -39,6 +39,11 @@ from friday.ecosystem.fleet_client import fleet_client
 from friday.memory.event_consumer import MemoraEventConsumer
 from friday.memory.memora_client import memora_client
 from friday.autonomous import autonomous_controller
+from friday.autonomous.self_repair import (
+    GitRepairApplier,
+    RepairProposal,
+    SelfRepairGate,
+)
 from friday_deep.observability.metrics import DEFAULT as default_metrics
 from friday_deep.health import build as build_health_report
 
@@ -438,6 +443,104 @@ async def toggle_autonomous_mode(_: None = Depends(_require_control_access)) -> 
 async def trigger_autonomous_repair(_: None = Depends(_require_control_access)) -> dict[str, Any]:
     """Trigger an immediate autonomous self-healing and diagnostic sweep."""
     return await autonomous_controller.execute_self_repair()
+
+
+# ── Gated self-repair pipeline (Phase E1) ────────────────────────────────
+# Every mutating step below is behind _require_control_access, and additionally
+# behind the gate's own rules: no step can reach a working tree without a
+# fingerprint-bound, single-use owner approval that survived a Sentinel review.
+
+_self_repair_repo = os.getenv("FRIDAY_SELF_REPAIR_REPO", "").strip()
+_self_repair_gate = SelfRepairGate(
+    GitRepairApplier(_self_repair_repo) if _self_repair_repo else None
+)
+
+
+class RepairProposalRequest(BaseModel):
+    repo_path: str = ""
+    branch: str
+    base_commit: str
+    target_file: str
+    original_snippet: str
+    replacement_snippet: str
+    rationale: str
+    proposed_by: str = "forge"
+    test_evidence: dict[str, Any] = {}
+
+
+class RepairDecisionRequest(BaseModel):
+    actor: str
+    approve: bool = True
+
+
+@app.post("/api/self-repair/proposals")
+async def propose_repair(
+    req: RepairProposalRequest, _: None = Depends(_require_control_access)
+) -> dict[str, Any]:
+    """File a repair proposal. Evidence-free proposals are refused, not stored as ready."""
+    record, receipt = _self_repair_gate.propose(
+        RepairProposal(
+            repo_path=req.repo_path or _self_repair_repo,
+            branch=req.branch,
+            base_commit=req.base_commit,
+            target_file=req.target_file,
+            original_snippet=req.original_snippet,
+            replacement_snippet=req.replacement_snippet,
+            rationale=req.rationale,
+            proposed_by=req.proposed_by,
+            test_evidence=req.test_evidence,
+        )
+    )
+    return {"record": record.as_dict(), "receipt": receipt.as_dict()}
+
+
+@app.post("/api/self-repair/{patch_id}/review")
+async def review_repair(
+    patch_id: str, req: RepairDecisionRequest, _: None = Depends(_require_control_access)
+) -> dict[str, Any]:
+    """File Sentinel's review. A non-Sentinel reviewer is refused by the gate."""
+    receipt = _self_repair_gate.record_review(
+        patch_id, reviewer=req.actor, verdict="clear" if req.approve else "block"
+    )
+    return {"receipt": receipt.as_dict(), "record": _describe(_self_repair_gate, patch_id)}
+
+
+@app.post("/api/self-repair/{patch_id}/owner-decision")
+async def owner_decision(
+    patch_id: str, req: RepairDecisionRequest, _: None = Depends(_require_control_access)
+) -> dict[str, Any]:
+    """Record the owner's decision. Agent identities are refused by the gate."""
+    receipt = _self_repair_gate.record_owner_decision(
+        patch_id, approver=req.actor, approve=req.approve
+    )
+    return {"receipt": receipt.as_dict(), "record": _describe(_self_repair_gate, patch_id)}
+
+
+@app.post("/api/self-repair/{patch_id}/apply")
+async def apply_repair(patch_id: str, _: None = Depends(_require_control_access)) -> dict[str, Any]:
+    """Apply an approved repair. Refused without a live, unconsumed, matching approval."""
+    receipt = _self_repair_gate.apply(patch_id)
+    return {"receipt": receipt.as_dict(), "record": _describe(_self_repair_gate, patch_id)}
+
+
+@app.post("/api/self-repair/{patch_id}/rollback")
+async def rollback_repair(patch_id: str, _: None = Depends(_require_control_access)) -> dict[str, Any]:
+    """Revert an applied repair as its own auditable commit."""
+    receipt = _self_repair_gate.rollback(patch_id)
+    return {"receipt": receipt.as_dict(), "record": _describe(_self_repair_gate, patch_id)}
+
+
+@app.get("/api/self-repair/{patch_id}")
+async def repair_status(patch_id: str, _: None = Depends(_require_control_access)) -> dict[str, Any]:
+    """Return the full receipt trail for one repair."""
+    return {"record": _describe(_self_repair_gate, patch_id)}
+
+
+def _describe(gate: SelfRepairGate, patch_id: str) -> dict[str, Any]:
+    record = gate.get(patch_id)
+    if record is None:
+        return {"found": False, "patch_id": patch_id}
+    return {"found": True, **record.as_dict()}
 
 
 @app.post("/api/android")
