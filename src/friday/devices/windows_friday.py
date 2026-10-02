@@ -48,6 +48,16 @@ VK_MEDIA_PLAY_PAUSE = 0xB3
 VK_LWIN = 0x5B
 KEYEVENTF_KEYUP = 0x0002
 
+# How long open_gmail waits for its send keystroke before reporting. The auto-send
+# thread sleeps 4.5s then 2.5s and retries once, so this covers both attempts plus
+# margin. Reporting before this expires would mean reporting an unverified send.
+_GMAIL_AUTOSEND_TIMEOUT_SECONDS = 12.0
+
+# How long the auto-send waits before each of its two attempts to find the Gmail
+# window. A module constant so the retry path can be exercised without sleeping
+# for real; the production values are the ones above.
+_GMAIL_AUTOSEND_RETRY_DELAYS = (4.5, 2.5)
+
 COMMON_WEBSITES = {
     "youtube": "https://www.youtube.com",
     "google": "https://www.google.com",
@@ -465,7 +475,12 @@ class WindowsFridayController:
         return self._dispatch_whatsapp_message(hwnd, recipient=name, message="", allow_blind_fallback=True)
 
     def open_gmail(self, to: str = "", subject: str = "", body: str = "") -> Tuple[bool, str]:
-        """Send email via SMTP if configured, or open Gmail compose in Google Chrome and auto-send."""
+        """Send email via SMTP if configured, otherwise open Gmail compose and try to auto-send.
+
+        The boolean means "a send was confirmed", never "a window was opened". The
+        web fallback cannot observe Gmail, so it can never confirm a send and must
+        not report one.
+        """
         to_clean = to.strip()
         subj_clean = subject.strip()
         body_clean = body.strip()
@@ -504,7 +519,10 @@ class WindowsFridayController:
 
         # If recipient and content are provided, auto-send via Ctrl+Enter after compose loads
         if to_clean and (body_clean or subj_clean):
-            def _auto_send_gmail():
+            outcome: dict[str, object] = {"key_sent": False, "error": ""}
+            done = threading.Event()
+
+            def _auto_send_gmail() -> None:
                 try:
                     import time
                     import ctypes
@@ -517,20 +535,39 @@ class WindowsFridayController:
                     from friday.vision.windows_input_driver import WindowsNativeInputDriver
 
                     driver = WindowsNativeInputDriver()
-                    for wait_time in [4.5, 2.5]:
+                    for wait_time in _GMAIL_AUTOSEND_RETRY_DELAYS:
                         time.sleep(wait_time)
                         hwnd = self._get_active_browser_hwnd(["gmail", "mail", "chrome"])
                         if hwnd:
                             force_window_foreground(hwnd)
                             time.sleep(0.3)
                             # Ctrl+Enter sends email in Gmail compose
-                            driver.hotkey(["ctrl", "enter"])
+                            outcome["key_sent"] = bool(driver.hotkey(["ctrl", "enter"]))
+                            break
                 except Exception as e:
-                    logger.debug(f"Gmail auto-send error: {e}")
+                    outcome["error"] = str(e)
+                    logger.warning(f"Gmail auto-send failed: {e}")
+                finally:
+                    done.set()
 
-            import threading
             threading.Thread(target=_auto_send_gmail, daemon=True).start()
-            return ok, f"Sending email to {to_clean} with subject '{subj_clean or '(no subject)'}' via Gmail."
+            # Bounded wait so the caller can be told something true. Returning while
+            # the keystroke is still in flight is how an unsent draft got reported
+            # as a sent email.
+            done.wait(timeout=_GMAIL_AUTOSEND_TIMEOUT_SECONDS)
+
+            subject = subj_clean or "(no subject)"
+            if outcome["key_sent"]:
+                return False, (
+                    f"Opened a Gmail draft to {to_clean} with subject '{subject}' and pressed Ctrl+Enter. "
+                    f"I cannot confirm the message left - check the Sent folder in Gmail. "
+                    f"Reported as NOT sent."
+                )
+            reason = f" ({outcome['error']})" if outcome["error"] else ""
+            return False, (
+                f"Opened a Gmail draft to {to_clean} with subject '{subject}', but could not press send"
+                f"{reason}. The message is NOT sent - press Send in the compose window."
+            )
 
         target = f" to {to_clean}" if to_clean else ""
         return ok, f"Opened Gmail compose window{target} in Google Chrome."
@@ -1789,7 +1826,12 @@ class WindowsFridayController:
                     if not any(k in cand.lower() for k in ["email", "gmail"]):
                         body = cand
 
-            # Generate structured ActionReceipt for Gmail
+            ok, send_reply = self.open_gmail(to=to_addr, subject=subject, body=body)
+
+            # Generate structured ActionReceipt for Gmail. The status is derived
+            # from what open_gmail actually confirmed, never asserted up front: a
+            # receipt that says SENT before anything was sent is a fabricated
+            # audit record, which is worse than no receipt at all.
             import uuid
             from datetime import datetime, timezone
             receipt_id = f"rcpt_email_{uuid.uuid4().hex[:8]}"
@@ -1800,17 +1842,20 @@ class WindowsFridayController:
                 "recipient_name": recipient_name or to_addr,
                 "subject": subject or "Notification",
                 "body": body,
-                "provider": "smtp.gmail.com",
-                "status": "SENT",
+                "provider": "smtp.gmail.com" if ok else "gmail_web",
+                "status": "SENT" if ok else "NOT_CONFIRMED",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
-            ok, send_reply = self.open_gmail(to=to_addr, subject=subject, body=body)
+            if ok:
+                outcome_line = f"Message sent and confirmed via SMTP (Receipt: {receipt_id})."
+            else:
+                outcome_line = f"NOT SENT - no send was confirmed. {send_reply}"
             reply = (
                 f"Resolved recipient {recipient_name or to_addr} <{to_addr}>.\n"
                 f"Subject: '{subject}'\n"
                 f"Body: '{body}'\n"
-                f"Scoped approval confirmed. Message dispatched via Gmail provider (Receipt: {receipt_id})."
+                f"Scoped approval confirmed. {outcome_line}"
             )
             return True, reply, {
                 "action": "open_gmail",

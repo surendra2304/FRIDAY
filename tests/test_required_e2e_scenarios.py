@@ -134,18 +134,39 @@ def test_03_gmail_email_alice_flow(agent):
 
 
 def test_03b_gmail_action_receipt_structure():
-    """Verify Gmail produces valid ActionReceipt with audit trail."""
-    handled, reply, meta = windows_friday.handle_directive(
-        "FRIDAY, email Alice that the meeting moved to 3 PM."
-    )
+    """Verify Gmail produces valid ActionReceipt with audit trail.
+
+    The receipt records what actually happened. This used to assert SENT
+    unconditionally, which meant the test demanded a send that nothing had
+    confirmed - the same fabrication the receipt itself used to carry.
+    """
+    directive = "FRIDAY, email Alice that the meeting moved to 3 PM."
+
+    with patch.object(windows_friday, "open_gmail", return_value=(False, "Opened a Gmail draft.")):
+        handled, reply, meta = windows_friday.handle_directive(directive)
+
     assert handled is True
-    assert "receipt" in meta
     receipt = meta["receipt"]
     assert receipt["action"] == "send_email"
     assert receipt["recipient"] == "alice@example.com"
-    assert receipt["status"] == "SENT"
-    assert receipt["provider"] == "smtp.gmail.com"
     assert "the meeting moved to 3 pm" in receipt["body"].lower()
+
+    # No send was confirmed, so the receipt must not claim one, and the SMTP
+    # provider must not be named for a send that never used SMTP.
+    assert receipt["status"] == "NOT_CONFIRMED"
+    assert receipt["provider"] == "gmail_web"
+    assert meta["success"] is False
+    assert "NOT SENT" in reply
+
+    # Only a confirmed send earns SENT.
+    with patch.object(windows_friday, "open_gmail", return_value=(True, "Email sent successfully.")):
+        handled, reply, meta = windows_friday.handle_directive(directive)
+
+    assert handled is True
+    assert meta["receipt"]["status"] == "SENT"
+    assert meta["receipt"]["provider"] == "smtp.gmail.com"
+    assert meta["success"] is True
+    assert "sent and confirmed" in reply
 
 
 # ==============================================================================
