@@ -9,7 +9,11 @@ wrong, a review is sloppy, an approval is stale, or a caller replays a request.
 So the rules are all *fail-closed*:
 
 1. A proposal without test evidence is refused. "It probably works" is not evidence.
-2. Only Sentinel may file a review. The proposer cannot review its own patch.
+2. A review must be a **signed document**, not a claimed identity. The gate
+   verifies an HMAC over the reviewer's own verdict, and refuses a review it
+   cannot verify, cannot bind to this patch, or cannot match to an unspent
+   single-use approval. The proposer cannot review its own patch, and neither can
+   anyone who merely claims to be the reviewer.
 3. An approval binds to the *fingerprint of the exact patch*. Edit one byte of the
    patch after approval and the approval no longer applies, because the
    fingerprint no longer matches.
@@ -25,7 +29,9 @@ report success cannot be audited.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
+import os
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -64,6 +70,38 @@ NON_OWNER_ACTORS = frozenset(
 #: cannot authorize a repair hours later against a repo that has since moved.
 APPROVAL_TTL_SECONDS = 900.0
 
+#: How old a signed review may be and still be honoured. A review of code that has
+#: since changed is not a review of this code, and the fingerprint check would
+#: usually catch that — this catches the case where nothing changed but the
+#: reviewer stopped standing behind the verdict.
+REVIEW_MAX_AGE_SECONDS = 900.0
+
+#: Signing scheme shared with Sentinel's audit logger:
+#:     hash      = sha256(canonical_json(document minus "signature"))
+#:     signature = hmac_sha256(key, hash)
+#: Reimplemented here on purpose. The gate must be able to verify a review
+#: without executing the code that produced it.
+_REVIEW_SIGNING_ENV = ("FRIDAY_SELF_REPAIR_REVIEW_KEY", "SENTINEL_AUDIT_HMAC_KEY", "SENTINEL_AUDIT_SIGNING_KEY")
+
+
+def canonical_json(payload: dict[str, Any]) -> str:
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+
+def verify_review_document(document: dict[str, Any], key: bytes) -> bool:
+    """Verify a review's HMAC in constant time.
+
+    Any field other than the signature participates in the hash, so flipping a
+    verdict or a fingerprint after signing invalidates the signature.
+    """
+    signature = str(document.get("signature", ""))
+    if not signature:
+        return False
+    body = {k: v for k, v in document.items() if k != "signature"}
+    digest = hashlib.sha256(canonical_json(body).encode("utf-8")).hexdigest()
+    expected = hmac.new(key, digest.encode("utf-8"), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature)
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
@@ -96,6 +134,12 @@ class GateRefusal(str, Enum):
     WRONG_REVIEWER = "WRONG_REVIEWER"
     NOT_APPROVED = "NOT_APPROVED"
     WRONG_APPROVER = "WRONG_APPROVER"
+    MALFORMED_REVIEW = "MALFORMED_REVIEW"
+    BAD_REVIEW_SIGNATURE = "BAD_REVIEW_SIGNATURE"
+    REVIEW_WRONG_PATCH = "REVIEW_WRONG_PATCH"
+    REVIEW_APPROVAL_REPLAYED = "REVIEW_APPROVAL_REPLAYED"
+    REVIEW_EXPIRED = "REVIEW_EXPIRED"
+    NO_REVIEW_KEY = "NO_REVIEW_KEY"
     APPROVAL_EXPIRED = "APPROVAL_EXPIRED"
     APPROVAL_CONSUMED = "APPROVAL_CONSUMED"
     FINGERPRINT_MISMATCH = "FINGERPRINT_MISMATCH"
@@ -376,10 +420,25 @@ class SelfRepairGate:
     without inheriting another test's approvals.
     """
 
-    def __init__(self, applier: GitRepairApplier | None = None) -> None:
+    def __init__(
+        self,
+        applier: GitRepairApplier | None = None,
+        review_verification_key: bytes | None = None,
+    ) -> None:
         self._applier = applier
         self._records: dict[str, RepairRecord] = {}
         self._seq = 0
+        self._spent_review_approvals: set[str] = set()
+        self._verifier = review_verification_key or self._load_review_key()
+
+    @staticmethod
+    def _load_review_key() -> bytes | None:
+        """Load the shared review key, or None so reviews are refused rather than trusted."""
+        for name in _REVIEW_SIGNING_ENV:
+            value = os.environ.get(name)
+            if value:
+                return value.encode("utf-8")
+        return None
 
     # ── helpers ────────────────────────────────────────────────────────────
     def _next_id(self, prefix: str) -> str:
@@ -457,14 +516,27 @@ class SelfRepairGate:
         return record, receipt
 
     # ── step 2: review ─────────────────────────────────────────────────────
-    def record_review(
-        self,
-        patch_id: str,
-        reviewer: str,
-        verdict: str,
-        findings: str = "",
-    ) -> Receipt:
-        """File Sentinel's review. Required before any approval can exist."""
+    def record_review(self, patch_id: str, review: dict[str, Any]) -> Receipt:
+        """File Sentinel's review. Required before any approval can exist.
+
+        The review is now a *signed document*, not a claimed identity. An earlier
+        version took ``reviewer="sentinel"`` on trust, which meant anyone who could
+        reach the endpoint could assert that the security agent had cleared their
+        patch. The reviewer is no longer asked whether it approves: it is asked to
+        prove it, by producing an HMAC over its own verdict that this gate can
+        check against a shared key.
+
+        Refusals, in the order they are checked:
+          * the patch must exist and still be awaiting review
+          * the document must be well formed and carry the reviewer's identity
+          * the signature must verify under the configured key
+          * the review must be bound to *this* patch's current fingerprint
+          * the underlying single-use approval must not already have been spent
+          * the verdict must be "clear"
+
+        Verification is implemented here, locally, rather than by importing the
+        signer. A verifier that calls the signer's own code is not independent.
+        """
         record = self._records.get(patch_id)
         if record is None:
             return Receipt(
@@ -477,30 +549,107 @@ class SelfRepairGate:
             return self._refuse(
                 record, "review", GateRefusal.NOT_PROPOSED, f"state is {record.state.value}"
             )
-        if (reviewer or "").lower() != REVIEWER:
+        if not isinstance(review, dict):
             return self._refuse(
-                record, "review", GateRefusal.WRONG_REVIEWER, f"reviewer was {reviewer!r}"
+                record, "review", GateRefusal.MALFORMED_REVIEW, "review is not a document"
+            )
+        if str(review.get("reviewer", "")).lower() != REVIEWER:
+            return self._refuse(
+                record,
+                "review",
+                GateRefusal.WRONG_REVIEWER,
+                f"reviewer was {review.get('reviewer')!r}",
+            )
+        if not self._verifier:
+            return self._refuse(
+                record,
+                "review",
+                GateRefusal.NO_REVIEW_KEY,
+                "no review verification key configured; an unverifiable review cannot be accepted",
+            )
+        if not verify_review_document(review, self._verifier):
+            return self._refuse(
+                record,
+                "review",
+                GateRefusal.BAD_REVIEW_SIGNATURE,
+                "signature does not verify against the configured key",
             )
 
+        expected_fingerprint = record.proposal.fingerprint()
+        if str(review.get("patch_fingerprint", "")) != expected_fingerprint:
+            return self._refuse(
+                record,
+                "review",
+                GateRefusal.REVIEW_WRONG_PATCH,
+                f"review covers fingerprint {str(review.get('patch_fingerprint'))[:12]}..., "
+                f"patch is {expected_fingerprint[:12]}...",
+            )
+
+        approval_id = str(review.get("approval_id", ""))
+        if not approval_id:
+            return self._refuse(
+                record, "review", GateRefusal.MALFORMED_REVIEW, "review carries no approval id"
+            )
+        if approval_id in self._spent_review_approvals:
+            return self._refuse(
+                record,
+                "review",
+                GateRefusal.REVIEW_APPROVAL_REPLAYED,
+                f"approval {approval_id} was already spent on another review",
+            )
+        if self._is_review_stale(review):
+            return self._refuse(
+                record,
+                "review",
+                GateRefusal.REVIEW_EXPIRED,
+                f"review issued at {review.get('issued_at')} is older than the review window",
+            )
+
+        verdict = str(review.get("verdict", ""))
         record.review = {
-            "reviewer": reviewer,
+            "reviewer": REVIEWER,
             "verdict": verdict,
-            "findings": findings,
+            "findings": list(review.get("findings", ())),
+            "checks_run": list(review.get("checks_run", ())),
+            "approval_id": approval_id,
             "reviewed_at": _stamp(_now()),
+            "signature_verified": True,
         }
-        if (verdict or "").lower() != "clear":
+
+        if verdict.lower() != "clear":
+            self._spent_review_approvals.add(approval_id)
             return self._refuse(
                 record, "review", GateRefusal.REVIEW_REJECTED, f"verdict was {verdict!r}"
             )
 
+        self._spent_review_approvals.add(approval_id)
         record.state = RepairState.REVIEWED
         return self._record(
             record,
             "review",
             "ACCEPTED",
-            detail="sentinel review cleared; awaiting owner decision",
-            evidence={"reviewer": reviewer, "verdict": verdict, "findings": findings},
+            detail="sentinel review signature verified; awaiting owner decision",
+            evidence={
+                "reviewer": REVIEWER,
+                "verdict": verdict,
+                "signature_verified": True,
+                "approval_id": approval_id,
+                "bound_fingerprint": expected_fingerprint,
+                "findings": list(review.get("findings", ())),
+            },
         )
+
+    def _is_review_stale(self, review: dict[str, Any]) -> bool:
+        """Refuse a review that is too old to act on, whatever it signs."""
+        try:
+            issued_at = float(review.get("issued_at", 0.0))
+        except (TypeError, ValueError):
+            return True
+        if issued_at <= 0.0:
+            return True
+        age = (_now() - datetime.fromtimestamp(issued_at, tz=timezone.utc)).total_seconds()
+        # A small clock skew tolerance, then a hard stop.
+        return age > REVIEW_MAX_AGE_SECONDS + 60.0
 
     # ── step 3: owner approval ─────────────────────────────────────────────
     def record_owner_decision(

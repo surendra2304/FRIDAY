@@ -22,6 +22,45 @@ from friday.autonomous.self_repair import (
 
 PASSING_TESTS = {"command": "pytest -q tests/test_thing.py", "passed": True, "summary": "12 passed"}
 
+#: The shared key the gate and Sentinel's reviewer would hold in deployment.
+REVIEW_KEY = b"unit-test-review-key"
+_approval_seq = [0]
+
+
+def _sign_review(
+    patch_fingerprint: str,
+    verdict: str = "clear",
+    key: bytes = REVIEW_KEY,
+    approval_id: str | None = None,
+    issued_at: float | None = None,
+    findings: tuple[str, ...] = ("no blockers",),
+) -> dict:
+    """Build a review document signed the way Sentinel signs one.
+
+    Deliberately re-implemented here rather than imported from Sentinel: the gate
+    must be able to verify a review without executing the signer's code, and a
+    test that shares the signer's implementation proves nothing about the gate.
+    """
+    import hashlib
+    import hmac
+    import json
+    import time
+
+    _approval_seq[0] += 1
+    body = {
+        "patch_fingerprint": patch_fingerprint,
+        "verdict": verdict,
+        "reviewer": "sentinel",
+        "approval_id": approval_id or f"appr_test_{_approval_seq[0]:04d}",
+        "findings": list(findings),
+        "checks_run": ["test_evidence_present", "no_hardcoded_credentials"],
+        "issued_at": time.time() if issued_at is None else issued_at,
+        "nonce": f"nonce_{_approval_seq[0]:04d}",
+    }
+    digest = hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    body["signature"] = hmac.new(key, digest.encode(), hashlib.sha256).hexdigest()
+    return body
+
 
 def _git(repo: Path, *args: str) -> str:
     proc = subprocess.run(
@@ -60,8 +99,15 @@ def _proposal(repo: Path, base: str, **overrides) -> RepairProposal:
     return RepairProposal(**defaults)
 
 
-def _fully_approved(gate: SelfRepairGate, patch_id: str, approver: str = "surendra") -> None:
-    gate.record_review(patch_id, reviewer="sentinel", verdict="clear", findings="no blockers")
+def _fully_approved(
+    gate: SelfRepairGate,
+    patch_id: str,
+    approver: str = "surendra",
+    fingerprint: str | None = None,
+) -> None:
+    record = gate.get(patch_id)
+    target = fingerprint or record.proposal.fingerprint()
+    gate.record_review(patch_id, _sign_review(target))
     gate.record_owner_decision(patch_id, approver=approver, approve=True)
 
 
@@ -70,13 +116,14 @@ def _fully_approved(gate: SelfRepairGate, patch_id: str, approver: str = "surend
 
 def test_approved_repair_applies_and_rolls_back_for_real(repo: Path):
     base = _git(repo, "rev-parse", "HEAD")
-    gate = SelfRepairGate(GitRepairApplier(str(repo)))
+    gate = SelfRepairGate(GitRepairApplier(str(repo)), review_verification_key=REVIEW_KEY)
 
     record, receipt = gate.propose(_proposal(repo, base))
     assert receipt.outcome == "ACCEPTED"
     assert record.state is RepairState.PROPOSED
 
-    assert gate.record_review(record.patch_id, "sentinel", "clear").outcome == "ACCEPTED"
+    signed = _sign_review(record.proposal.fingerprint())
+    assert gate.record_review(record.patch_id, signed).outcome == "ACCEPTED"
     assert record.state is RepairState.REVIEWED
 
     assert gate.record_owner_decision(record.patch_id, "surendra", True).outcome == "ACCEPTED"
@@ -108,7 +155,7 @@ def test_approved_repair_applies_and_rolls_back_for_real(repo: Path):
 
 def test_proposal_without_passing_tests_is_refused(repo: Path):
     base = _git(repo, "rev-parse", "HEAD")
-    gate = SelfRepairGate(GitRepairApplier(str(repo)))
+    gate = SelfRepairGate(GitRepairApplier(str(repo)), review_verification_key=REVIEW_KEY)
 
     for bad in (None, {}, {"command": "pytest -q", "passed": False}, {"passed": True}):
         record, receipt = gate.propose(_proposal(repo, base, test_evidence=bad))
@@ -122,7 +169,7 @@ def test_proposal_without_passing_tests_is_refused(repo: Path):
 
 def test_patch_that_changes_nothing_is_refused(repo: Path):
     base = _git(repo, "rev-parse", "HEAD")
-    gate = SelfRepairGate(GitRepairApplier(str(repo)))
+    gate = SelfRepairGate(GitRepairApplier(str(repo)), review_verification_key=REVIEW_KEY)
 
     _, receipt = gate.propose(
         _proposal(repo, base, original_snippet="x", replacement_snippet="x")
@@ -133,23 +180,28 @@ def test_patch_that_changes_nothing_is_refused(repo: Path):
 
 def test_the_proposer_cannot_review_its_own_patch(repo: Path):
     base = _git(repo, "rev-parse", "HEAD")
-    gate = SelfRepairGate(GitRepairApplier(str(repo)))
+    gate = SelfRepairGate(GitRepairApplier(str(repo)), review_verification_key=REVIEW_KEY)
     record, _ = gate.propose(_proposal(repo, base))
 
     for impostor in ("forge", "friday", ""):
-        receipt = gate.record_review(record.patch_id, impostor, "clear")
+        receipt = gate.record_review(
+            record.patch_id, {**_sign_review(record.proposal.fingerprint()), "reviewer": impostor}
+        )
         assert receipt.outcome == "REFUSED"
         assert GateRefusal.WRONG_REVIEWER.value in receipt.detail
 
-    assert gate.record_review(record.patch_id, "sentinel", "clear").outcome == "ACCEPTED"
+    signed = _sign_review(record.proposal.fingerprint())
+    assert gate.record_review(record.patch_id, signed).outcome == "ACCEPTED"
 
 
 def test_a_rejected_review_blocks_the_pipeline(repo: Path):
     base = _git(repo, "rev-parse", "HEAD")
-    gate = SelfRepairGate(GitRepairApplier(str(repo)))
+    gate = SelfRepairGate(GitRepairApplier(str(repo)), review_verification_key=REVIEW_KEY)
     record, _ = gate.propose(_proposal(repo, base))
 
-    receipt = gate.record_review(record.patch_id, "sentinel", "block", findings="touches auth")
+    receipt = gate.record_review(
+        record.patch_id, _sign_review(record.proposal.fingerprint(), verdict="block")
+    )
     assert receipt.outcome == "REFUSED"
     assert record.state is RepairState.BLOCKED
 
@@ -161,7 +213,7 @@ def test_a_rejected_review_blocks_the_pipeline(repo: Path):
 
 def test_unreviewed_patch_cannot_be_approved_or_applied(repo: Path):
     base = _git(repo, "rev-parse", "HEAD")
-    gate = SelfRepairGate(GitRepairApplier(str(repo)))
+    gate = SelfRepairGate(GitRepairApplier(str(repo)), review_verification_key=REVIEW_KEY)
     record, _ = gate.propose(_proposal(repo, base))
 
     receipt = gate.record_owner_decision(record.patch_id, "surendra", True)
@@ -174,9 +226,9 @@ def test_unreviewed_patch_cannot_be_approved_or_applied(repo: Path):
 
 def test_an_agent_cannot_approve_its_own_patch(repo: Path):
     base = _git(repo, "rev-parse", "HEAD")
-    gate = SelfRepairGate(GitRepairApplier(str(repo)))
+    gate = SelfRepairGate(GitRepairApplier(str(repo)), review_verification_key=REVIEW_KEY)
     record, _ = gate.propose(_proposal(repo, base))
-    gate.record_review(record.patch_id, "sentinel", "clear")
+    gate.record_review(record.patch_id, _sign_review(record.proposal.fingerprint()))
 
     # Every agent in the universe, including FRIDAY itself, which is the component
     # that would carry the repair out. Approval is a human act.
@@ -190,9 +242,9 @@ def test_an_agent_cannot_approve_its_own_patch(repo: Path):
 
 def test_apply_without_approval_is_refused(repo: Path):
     base = _git(repo, "rev-parse", "HEAD")
-    gate = SelfRepairGate(GitRepairApplier(str(repo)))
+    gate = SelfRepairGate(GitRepairApplier(str(repo)), review_verification_key=REVIEW_KEY)
     record, _ = gate.propose(_proposal(repo, base))
-    gate.record_review(record.patch_id, "sentinel", "clear")
+    gate.record_review(record.patch_id, _sign_review(record.proposal.fingerprint()))
 
     receipt = gate.apply(record.patch_id)
     assert receipt.outcome == "REFUSED"
@@ -202,7 +254,7 @@ def test_apply_without_approval_is_refused(repo: Path):
 
 def test_approval_is_single_use(repo: Path):
     base = _git(repo, "rev-parse", "HEAD")
-    gate = SelfRepairGate(GitRepairApplier(str(repo)))
+    gate = SelfRepairGate(GitRepairApplier(str(repo)), review_verification_key=REVIEW_KEY)
     record, _ = gate.propose(_proposal(repo, base))
     _fully_approved(gate, record.patch_id)
 
@@ -219,7 +271,7 @@ def test_approval_is_single_use(repo: Path):
 
 def test_expired_approval_is_refused(repo: Path):
     base = _git(repo, "rev-parse", "HEAD")
-    gate = SelfRepairGate(GitRepairApplier(str(repo)))
+    gate = SelfRepairGate(GitRepairApplier(str(repo)), review_verification_key=REVIEW_KEY)
     record, _ = gate.propose(_proposal(repo, base))
     _fully_approved(gate, record.patch_id)
 
@@ -235,7 +287,7 @@ def test_expired_approval_is_refused(repo: Path):
 def test_editing_the_patch_after_approval_invalidates_it(repo: Path):
     """The approval is bound to the patch, not to the patch's paperwork."""
     base = _git(repo, "rev-parse", "HEAD")
-    gate = SelfRepairGate(GitRepairApplier(str(repo)))
+    gate = SelfRepairGate(GitRepairApplier(str(repo)), review_verification_key=REVIEW_KEY)
     record, _ = gate.propose(_proposal(repo, base))
     _fully_approved(gate, record.patch_id)
 
@@ -252,7 +304,7 @@ def test_editing_the_patch_after_approval_invalidates_it(repo: Path):
 def test_rewording_the_rationale_keeps_the_approval_valid(repo: Path):
     """Rationale is prose, not payload: editing it must not void an approval."""
     base = _git(repo, "rev-parse", "HEAD")
-    gate = SelfRepairGate(GitRepairApplier(str(repo)))
+    gate = SelfRepairGate(GitRepairApplier(str(repo)), review_verification_key=REVIEW_KEY)
     record, _ = gate.propose(_proposal(repo, base))
     _fully_approved(gate, record.patch_id)
 
@@ -268,7 +320,7 @@ def test_patch_is_refused_when_the_reviewed_content_is_not_at_the_base_commit(re
     code that is not the code being changed.
     """
     base = _git(repo, "rev-parse", "HEAD")
-    gate = SelfRepairGate(GitRepairApplier(str(repo)))
+    gate = SelfRepairGate(GitRepairApplier(str(repo)), review_verification_key=REVIEW_KEY)
 
     # The file at `base` says "a - b". This proposal claims it says "a // b".
     record, _ = gate.propose(
@@ -294,7 +346,7 @@ def test_patch_is_refused_when_the_reviewed_text_is_ambiguous(repo: Path):
     _git(repo, "commit", "-m", "duplicate the line")
     base = _git(repo, "rev-parse", "HEAD")
 
-    gate = SelfRepairGate(GitRepairApplier(str(repo)))
+    gate = SelfRepairGate(GitRepairApplier(str(repo)), review_verification_key=REVIEW_KEY)
     record, _ = gate.propose(_proposal(repo, base))
     _fully_approved(gate, record.patch_id)
 
@@ -306,7 +358,7 @@ def test_patch_is_refused_when_the_reviewed_text_is_ambiguous(repo: Path):
 
 def test_rollback_without_an_apply_is_refused(repo: Path):
     base = _git(repo, "rev-parse", "HEAD")
-    gate = SelfRepairGate(GitRepairApplier(str(repo)))
+    gate = SelfRepairGate(GitRepairApplier(str(repo)), review_verification_key=REVIEW_KEY)
     record, _ = gate.propose(_proposal(repo, base))
 
     receipt = gate.rollback(record.patch_id)
@@ -316,7 +368,7 @@ def test_rollback_without_an_apply_is_refused(repo: Path):
 
 def test_gate_without_an_applier_never_claims_to_have_applied(repo: Path):
     base = _git(repo, "rev-parse", "HEAD")
-    gate = SelfRepairGate()  # no applier wired
+    gate = SelfRepairGate(review_verification_key=REVIEW_KEY)  # no applier wired
     record, _ = gate.propose(_proposal(repo, base))
     _fully_approved(gate, record.patch_id)
 
@@ -329,10 +381,10 @@ def test_gate_without_an_applier_never_claims_to_have_applied(repo: Path):
 
 
 def test_unknown_patch_ids_are_refused_not_crashed(repo: Path):
-    gate = SelfRepairGate(GitRepairApplier(str(repo)))
+    gate = SelfRepairGate(GitRepairApplier(str(repo)), review_verification_key=REVIEW_KEY)
     assert gate.apply("patch_9999").outcome == "REFUSED"
     assert gate.rollback("patch_9999").outcome == "REFUSED"
-    assert gate.record_review("patch_9999", "sentinel", "clear").outcome == "REFUSED"
+    assert gate.record_review("patch_9999", _sign_review("0" * 64)).outcome == "REFUSED"
     assert gate.record_owner_decision("patch_9999", "surendra", True).outcome == "REFUSED"
     assert gate.get("patch_9999") is None
 
@@ -342,7 +394,7 @@ def test_unknown_patch_ids_are_refused_not_crashed(repo: Path):
 
 def test_every_attempt_leaves_a_receipt_with_honest_labels(repo: Path):
     base = _git(repo, "rev-parse", "HEAD")
-    gate = SelfRepairGate(GitRepairApplier(str(repo)))
+    gate = SelfRepairGate(GitRepairApplier(str(repo)), review_verification_key=REVIEW_KEY)
     record, _ = gate.propose(_proposal(repo, base))
     _fully_approved(gate, record.patch_id)
     gate.apply(record.patch_id)

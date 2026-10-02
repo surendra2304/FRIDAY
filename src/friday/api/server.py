@@ -473,6 +473,16 @@ class RepairDecisionRequest(BaseModel):
     approve: bool = True
 
 
+class SignedReviewRequest(BaseModel):
+    """A Sentinel review document, carried verbatim.
+
+    Accepts the signed document either as the body itself or wrapped in
+    ``{"review": {...}}``, so the sender does not have to reshape its own output.
+    """
+
+    document: dict[str, Any]
+
+
 @app.post("/api/self-repair/proposals")
 async def propose_repair(
     req: RepairProposalRequest, _: None = Depends(_require_control_access)
@@ -496,12 +506,15 @@ async def propose_repair(
 
 @app.post("/api/self-repair/{patch_id}/review")
 async def review_repair(
-    patch_id: str, req: RepairDecisionRequest, _: None = Depends(_require_control_access)
+    patch_id: str, req: SignedReviewRequest, _: None = Depends(_require_control_access)
 ) -> dict[str, Any]:
-    """File Sentinel's review. A non-Sentinel reviewer is refused by the gate."""
-    receipt = _self_repair_gate.record_review(
-        patch_id, reviewer=req.actor, verdict="clear" if req.approve else "block"
-    )
+    """File Sentinel's review.
+
+    The request body is the signed review document itself, not a claim about who
+    reviewed. The gate verifies the HMAC, so this endpoint cannot be used to
+    assert a review that Sentinel did not actually sign.
+    """
+    receipt = _self_repair_gate.record_review(patch_id, req.document)
     return {"receipt": receipt.as_dict(), "record": _describe(_self_repair_gate, patch_id)}
 
 
