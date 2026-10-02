@@ -151,7 +151,8 @@ class TriggerOutcome:
     #: This spec ended with no verdict at all. Distinct from a result of "no",
     #: and never summarised as one. Whatever the reason, it is counted in the
     #: incompleteness banner, because a pass that could not finish something must
-    #: not present as a pass that had nothing to do.
+    #: not present as a pass that had nothing to do. One name for one fact: there
+    #: is deliberately no second "has_result" spelling of the same bit.
     call_failed: bool = False
     #: Which party failed: ``local``, ``forge``, ``sentinel`` or ``gate``. Empty
     #: when nobody failed. Named rather than inferred, because "the gate was
@@ -160,11 +161,6 @@ class TriggerOutcome:
     failed_party: str = ""
     call_detail: str = ""
     findings: list[str] = field(default_factory=list)
-
-    @property
-    def has_result(self) -> bool:
-        """Whether this spec's question was actually answered."""
-        return not self.call_failed
 
     @property
     def summary(self) -> str:
@@ -261,7 +257,7 @@ class RepairTrigger:
             except TriggerNotConfigured:
                 # A deployment fault, not a result about any spec. Let it out.
                 raise
-            except Exception as exc:  # noqa: BLE001 - the net, deliberately wide
+            except Exception as exc:  # the net, deliberately wide
                 outcomes.append(
                     TriggerOutcome(
                         spec=spec.name,
@@ -349,7 +345,7 @@ class RepairTrigger:
         outcome.test_proved = True
         try:
             request = proposal.to_request(spec.repo_path)
-        except Exception as exc:  # noqa: BLE001 - nothing has been sent yet
+        except Exception as exc:  # nothing has been sent yet
             # The gate has not been asked and never will be for this spec. Saying
             # otherwise points the reader at a service that was never involved.
             return self._call_failed(outcome, "building the proposal payload", exc, party="local")
@@ -368,7 +364,7 @@ class RepairTrigger:
                 "test_evidence": request.test_evidence,
                 },
             )
-        except Exception as exc:  # noqa: BLE001 - one spec, one lost result
+        except Exception as exc:  # one spec, one lost result
             return self._call_failed(outcome, "propose", exc)
         receipt = filed.get("receipt", {}) or {}
         outcome.proposal_outcome = str(receipt.get("outcome", "UNKNOWN"))
@@ -403,7 +399,7 @@ class RepairTrigger:
             review_result = await self._client.post(
                 f"/api/self-repair/{outcome.patch_id}/review", {"document": document}
             )
-        except Exception as exc:  # noqa: BLE001 - the proposal stands; the review is unknown
+        except Exception as exc:  # the proposal stands; the review is unknown
             # The proposal is not undone by a failed review call. Keep it: the gate
             # holds a PROPOSED patch with no review, which is a safe and truthful
             # state, and throwing that away would discard work that did succeed.
@@ -465,7 +461,7 @@ def render_summary(outcomes: list[TriggerOutcome]) -> str:
     for outcome in outcomes:
         lines.append(f"  {outcome.summary}")
     waiting = [o for o in outcomes if o.waiting_on_owner]
-    lost = [o for o in outcomes if not o.has_result]
+    lost = [o for o in outcomes if o.call_failed]
     lines += [
         "",
         f"  specs attempted     : {len(outcomes)}",

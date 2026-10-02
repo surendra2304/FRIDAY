@@ -119,7 +119,6 @@ class Gate:
             return int(sock.getsockname()[1])
 
     def start(self) -> "Gate":
-        pytest.importorskip("uvicorn")
         self.port = self._free_port()
         self.base_url = f"http://127.0.0.1:{self.port}"
         env = {
@@ -343,7 +342,6 @@ def test_the_whole_lifecycle_survives_two_real_process_restarts(repo: Path) -> N
 
 def test_the_ledger_refuses_to_guess_at_a_version_it_does_not_know(repo: Path) -> None:
     """A half-written or future ledger must not restore a repair it cannot describe."""
-    pytest.importorskip("friday.autonomous.self_repair")
     from friday.autonomous.self_repair import SelfRepairGate
 
     ledger = repo.parent / "repair-ledger.json"
@@ -359,7 +357,6 @@ def test_the_ledger_refuses_to_guess_at_a_version_it_does_not_know(repo: Path) -
 
 def test_no_ledger_path_means_no_ledger_written(repo: Path) -> None:
     """With nothing configured the gate behaves exactly as it always has."""
-    pytest.importorskip("friday.autonomous.self_repair")
     from friday.autonomous.self_repair import RepairProposal, SelfRepairGate
 
     gate = SelfRepairGate()

@@ -235,11 +235,6 @@ async def test_the_reviewer_is_handed_the_gate_fingerprint_not_a_local_one():
     assert reviewer.calls[0]["patch_fingerprint"] == "fp_1"
 
 
-def gate_seen_proposal_body(gate: _Gate) -> dict[str, Any]:
-    """The first body the gate received."""
-    return gate.bodies[0]
-
-
 # ── every refusal path ────────────────────────────────────────────────────
 
 
@@ -250,6 +245,7 @@ async def test_a_declined_candidate_files_nothing_at_all():
 
     assert outcome.proposed is False
     assert outcome.review_filed is False
+    assert outcome.call_failed is False, "Forge answering 'no' is not Forge failing"
     assert gate.paths == [], "a declined candidate must not reach the gate at all"
     assert "the test still fails after the change" in outcome.proposal_detail
 
@@ -263,6 +259,7 @@ async def test_a_refused_proposal_is_never_reviewed():
 
     assert outcome.proposed is False
     assert outcome.review_filed is False
+    assert outcome.call_failed is False, "the gate answering 'no' is not the gate failing"
     assert reviewer.calls == []
     assert gate.paths == ["/api/self-repair/proposals"]
 
@@ -297,19 +294,6 @@ async def test_one_broken_repository_does_not_stop_the_others():
 
 
 @pytest.mark.asyncio
-async def test_a_reviewer_that_raises_leaves_the_patch_proposed_not_reviewed():
-    gate = _Gate()
-    outcome = await _trigger(gate, reviewer=_Reviewer(raises=ValueError("no signing key"))).run_spec(
-        _SPEC
-    )
-    assert outcome.proposed is True
-    assert outcome.review_filed is False
-    assert outcome.waiting_on_owner is False
-    assert "no signing key" in outcome.review_detail
-    assert gate.paths == ["/api/self-repair/proposals"]
-
-
-@pytest.mark.asyncio
 async def test_the_trigger_refuses_to_guess_a_repair_with_no_proposer():
     """An inert trigger must not report a plausible-looking 'no proposal'.
 
@@ -332,31 +316,38 @@ async def test_the_trigger_refuses_to_file_an_unsigned_review_with_no_reviewer()
 # ── a call that fails must cost its own spec and nothing else ─────────────
 
 
+#: Each spec makes two calls, propose then review, so spec N's propose is call
+#: 2N-1. Failing the last spec is the case that would discard the most
+#: already-completed work, so both the middle and the last spec are covered.
+@pytest.mark.parametrize(("fail_on_call", "lost_index"), [(1, 0), (3, 1), (5, 2)])
 @pytest.mark.asyncio
-async def test_a_failed_propose_call_is_recorded_and_does_not_abort_the_pass():
+async def test_a_failed_propose_call_is_recorded_and_does_not_abort_the_pass(
+    fail_on_call: int, lost_index: int
+):
     """The flakiest dependency in the system is the network. One call, one spec."""
     gate = _Gate()
-    gate.fail_on = {1}
-    specs = [_SPEC, WatchSpec(**{**_SPEC.as_dict(), "name": "second"})]
+    gate.fail_on = {fail_on_call}
+    specs = [
+        WatchSpec(**{**_SPEC.as_dict(), "name": name}) for name in ("first", "second", "third")
+    ]
 
     outcomes = await _trigger(gate).run_once(specs)
 
-    assert [o.spec for o in outcomes] == ["describe-double-scales", "second"]
-    first, second = outcomes
+    assert [o.spec for o in outcomes] == ["first", "second", "third"]
+    lost = outcomes[lost_index]
 
-    assert first.call_failed is True
-    assert first.has_result is False
-    assert first.failed_party == "gate"
-    assert "ConnectError" in first.call_detail
-    assert "NO RESULT" in first.summary
+    assert lost.call_failed is True
+    assert lost.failed_party == "gate"
+    assert "ConnectError" in lost.call_detail
+    assert "NO RESULT" in lost.summary
     # It must not read as a settled "no", which is what a refusal or a declined
     # proposal means.
-    assert not first.summary.startswith("describe-double-scales: no proposal")
+    assert not lost.summary.endswith("no proposal")
 
-    # The second spec is unaffected, and its real result is intact.
-    assert second.call_failed is False
-    assert second.proposed is True
-    assert second.waiting_on_owner is True
+    for outcome in [o for o in outcomes if o is not lost]:
+        assert outcome.call_failed is False
+        assert outcome.proposed is True
+        assert outcome.waiting_on_owner is True
 
 
 @pytest.mark.asyncio
@@ -367,7 +358,6 @@ async def test_a_failed_review_call_keeps_the_proposal_that_already_succeeded():
     outcome = await _trigger(gate).run_spec(_SPEC)
 
     assert outcome.call_failed is True
-    assert outcome.has_result is False
     # The proposal really was filed, and that fact survives the review failing.
     assert outcome.proposed is True
     assert outcome.patch_id == "patch_0001"
@@ -380,36 +370,6 @@ async def test_a_failed_review_call_keeps_the_proposal_that_already_succeeded():
 
 
 @pytest.mark.asyncio
-async def test_a_refused_call_is_not_reported_as_a_failed_call():
-    """Three distinct things: a refusal, a decline, and no answer at all."""
-    refused = await _trigger(_Gate(proposal_outcome="REFUSED")).run_spec(_SPEC)
-    assert refused.call_failed is False
-    assert refused.has_result is True
-
-    declined = await _trigger(_Gate(), _Proposer(fixed=False)).run_spec(_SPEC)
-    assert declined.call_failed is False
-    assert declined.has_result is True
-    assert "no proposal" in declined.summary
-
-
-@pytest.mark.asyncio
-async def test_a_failure_on_the_last_spec_still_returns_the_earlier_ones():
-    """Work already done is never discarded by what happens afterwards."""
-    gate = _Gate()
-    gate.fail_on = {5, 6}  # both calls of the third spec
-    specs = [_SPEC, WatchSpec(**{**_SPEC.as_dict(), "name": "second"}),
-             WatchSpec(**{**_SPEC.as_dict(), "name": "third"})]
-
-    outcomes = await _trigger(gate).run_once(specs)
-
-    assert [(o.spec, o.proposed, o.call_failed) for o in outcomes] == [
-        ("describe-double-scales", True, False),
-        ("second", True, False),
-        ("third", False, True),
-    ]
-
-
-@pytest.mark.asyncio
 async def test_an_unexpected_error_in_one_spec_is_contained_not_raised():
     """The net under everything run_spec knows about."""
 
@@ -417,19 +377,12 @@ async def test_an_unexpected_error_in_one_spec_is_contained_not_raised():
         async def propose(self, **kwargs: Any) -> Any:
             raise KeyboardInterrupt  # not an Exception: must still escape
 
-    class Fine:
-        async def propose(self, **kwargs: Any) -> Any:
-            return _Outcome(True)
-
     trigger = RepairTrigger(_Gate(), proposal_factory=lambda: Exploding())
     with pytest.raises(KeyboardInterrupt):
         await trigger.run_once([_SPEC])
 
-    # An ordinary error is contained and labelled as a lost result.
-    trigger = RepairTrigger(
-        _Gate(), proposal_factory=lambda: Fine(), candidate_factory=_boom
-    )
-    outcomes = await trigger.run_once([_SPEC])
+    # An ordinary error, raised before the proposer is even reached.
+    outcomes = await RepairTrigger(_Gate(), candidate_factory=_boom).run_once([_SPEC])
     assert outcomes[0].call_failed is True
     assert outcomes[0].failed_party == "local"
     assert "unexpected failure" in outcomes[0].call_detail
@@ -450,13 +403,17 @@ def _boom(spec: WatchSpec) -> Any:
 
 
 class _DroppingGate:
-    """A real threaded HTTP server that answers, except on one chosen call."""
+    """A real threaded HTTP server that answers, except on one chosen call.
 
-    def __init__(self, fail_on_call: int) -> None:
+    With ``fail_on_call=None`` it simply answers every call, which is what the
+    tests about *other* people's failures need from it: a real server, no drop.
+    """
+
+    def __init__(self, fail_on_call: int | None = None) -> None:
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
         self.requests = 0
-        fail_on_call = fail_on_call
+        fail_on = fail_on_call
         gate = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -469,7 +426,7 @@ class _DroppingGate:
                 gate.requests += 1
                 length = int(self.headers.get("content-length") or 0)
                 self.rfile.read(length)
-                if gate.requests == fail_on_call:
+                if fail_on is not None and gate.requests == fail_on:
                     # Drop the connection with no response at all.
                     self.close_connection = True
                     self.connection.close()
@@ -552,7 +509,6 @@ async def test_a_real_dropped_connection_costs_one_spec_and_nothing_else(
 
     lost = next(o for o in outcomes if o.spec == lost_spec)
     assert lost.call_failed is True
-    assert lost.has_result is False
     assert lost.failed_party == "gate"
     assert f"{lost_step} failed" in lost.call_detail
     assert "RemoteProtocolError" in lost.call_detail
@@ -611,7 +567,7 @@ async def test_a_payload_that_cannot_be_built_blames_itself_not_the_gate():
     demonstrated rather than asserted: if this ever regressed into a real call,
     the count would not be zero.
     """
-    gate = _DroppingGate(fail_on_call=10**6)  # never drop; we want every call to land
+    gate = _DroppingGate()
     try:
         specs = [
             WatchSpec(**{**_SPEC.as_dict(), "name": "unbuildable"}),
@@ -641,7 +597,6 @@ async def test_a_payload_that_cannot_be_built_blames_itself_not_the_gate():
     lost, healthy = outcomes
     assert lost.failed_party == "local", "a local failure was blamed on the gate"
     assert lost.call_failed is True
-    assert lost.has_result is False
     assert "nothing was submitted" in lost.summary
     assert "the gate could not be reached" not in lost.summary
     assert "building the proposal payload failed" in lost.call_detail
@@ -661,7 +616,7 @@ async def test_a_payload_that_cannot_be_built_blames_itself_not_the_gate():
 @pytest.mark.asyncio
 async def test_a_reviewer_that_fails_leaves_that_spec_counted_and_named():
     """A pass that could not review something must not look like one with nothing to review."""
-    gate = _DroppingGate(fail_on_call=10**6)
+    gate = _DroppingGate()
     try:
         specs = [
             WatchSpec(**{**_SPEC.as_dict(), "name": name})
@@ -683,7 +638,6 @@ async def test_a_reviewer_that_fails_leaves_that_spec_counted_and_named():
     assert lost.spec == "two"
     assert lost.failed_party == "sentinel"
     assert lost.call_failed is True
-    assert lost.has_result is False
     assert lost.review_filed is False
     assert lost.waiting_on_owner is False
     assert "the reviewer failed" in lost.summary
@@ -709,7 +663,7 @@ async def test_a_reviewer_that_fails_leaves_that_spec_counted_and_named():
 @pytest.mark.asyncio
 async def test_a_proposer_that_raises_is_not_reported_as_a_proposer_that_declined():
     """Forge crashing and Forge answering 'no' are different problems."""
-    gate = _DroppingGate(fail_on_call=10**6)
+    gate = _DroppingGate()
     try:
         trigger = RepairTrigger(
             HttpxGateClient(gate.base_url, api_key="k", timeout=10.0),
@@ -727,15 +681,7 @@ async def test_a_proposer_that_raises_is_not_reported_as_a_proposer_that_decline
 
     declined = await _trigger(_Gate(), _Proposer(fixed=False)).run_spec(_SPEC)
     assert declined.failed_party == ""
-    assert declined.has_result is True
     assert "no proposal" in declined.summary
-
-
-def test_as_dict_names_the_failing_party_for_whatever_reads_it():
-    payload = json.loads(
-        outcomes_as_json([TriggerOutcome(spec="a", call_failed=True, failed_party="sentinel")])
-    )[0]
-    assert payload["failed_party"] == "sentinel"
 
 
 # ── structural guarantees, read from the source ───────────────────────────
@@ -875,31 +821,26 @@ def test_render_summary_cannot_present_a_lost_call_as_a_quiet_pass():
     assert "NO RESULT" in text
 
 
-def test_outcomes_json_keeps_a_lost_call_visible_to_whatever_reads_it():
-    """A dashboard built on as_dict must not be able to drop the negative."""
-    payload = json.loads(
-        outcomes_as_json([TriggerOutcome(spec="a", call_failed=True, call_detail="boom")])
-    )[0]
-    assert payload["call_failed"] is True
-    assert payload["call_detail"] == "boom"
-    assert payload["waiting_on_owner"] is False
-
-
-def test_outcomes_are_json_serialisable_and_keep_the_negative_facts():
-    """A negative result must survive serialisation, or a dashboard will hide it."""
-    outcome = TriggerOutcome(
-        spec="b",
+def test_a_negative_result_survives_serialisation_with_its_cause():
+    """A dashboard built on as_dict must not be able to drop a negative fact."""
+    declined = TriggerOutcome(
+        spec="declined",
         proposed=False,
         proposal_detail="the snippet is not present",
-        review_filed=False,
         signature_verified=False,
         findings=["nothing was filed"],
     )
-    payload = json.loads(outcomes_as_json([outcome]))[0]
-    assert payload["proposed"] is False
-    assert payload["signature_verified"] is False
-    assert payload["waiting_on_owner"] is False
-    assert payload["proposal_detail"] == "the snippet is not present"
+    lost = TriggerOutcome(
+        spec="lost", call_failed=True, failed_party="sentinel", call_detail="boom"
+    )
+    first, second = json.loads(outcomes_as_json([declined, lost]))
+    assert first["proposed"] is False
+    assert first["signature_verified"] is False
+    assert first["waiting_on_owner"] is False
+    assert first["proposal_detail"] == "the snippet is not present"
+    assert second["call_failed"] is True
+    assert second["failed_party"] == "sentinel"
+    assert second["call_detail"] == "boom"
 
 
 def test_a_watch_spec_round_trips_through_json():

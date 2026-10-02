@@ -312,8 +312,8 @@ found it, and it was the most consequential defect in the phase.
 |---|---|
 | `Forge/tests/unit/` (whole repo) | **294 passed** |
 | `Forge/tests/unit/test_selfrepair_proposer.py` | 23 passed |
-| `FRIDAY` self-repair + fleet-truth suites (gate, signatures, HTTP driver, restart, trigger, fleet truth) | **92 passed** |
-| `FRIDAY/tests/test_repair_trigger.py` | 35 passed |
+| `FRIDAY` self-repair + fleet-truth suites (gate, signatures, HTTP driver, restart, trigger, fleet truth) | **89 passed** |
+| `FRIDAY/tests/test_repair_trigger.py` | 32 passed |
 | `FRIDAY/tests/test_self_repair_survives_restart.py` | **3 passed** (three real process generations) |
 | `research/self_repair_loop.py` (E1 regression, re-run) | 42 assertions, 12 gate steps, **0 failures** |
 | `research/repair_trigger_run.py` (F2 driver) | 29 checks, **0 failures**, exit 0 |
