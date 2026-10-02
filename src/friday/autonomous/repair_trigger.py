@@ -151,8 +151,7 @@ class TriggerOutcome:
     #: This spec ended with no verdict at all. Distinct from a result of "no",
     #: and never summarised as one. Whatever the reason, it is counted in the
     #: incompleteness banner, because a pass that could not finish something must
-    #: not present as a pass that had nothing to do. One name for one fact: there
-    #: is deliberately no second "has_result" spelling of the same bit.
+    #: not present as a pass that had nothing to do.
     call_failed: bool = False
     #: Which party failed: ``local``, ``forge``, ``sentinel`` or ``gate``. Empty
     #: when nobody failed. Named rather than inferred, because "the gate was
