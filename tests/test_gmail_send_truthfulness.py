@@ -12,6 +12,7 @@ and the Win32 input driver are all replaced at their module boundary. The
 production logic under test - the branching, the receipt, the wording - is real.
 """
 
+import sys
 import threading
 from types import SimpleNamespace
 
@@ -20,6 +21,15 @@ import pytest
 from friday.core import config as friday_config
 from friday.devices import windows_friday as wf
 from friday.devices.windows_friday import windows_friday
+
+# The fallback under test drives Windows input through ctypes.windll and the
+# Win32 input driver. On any other platform that call does not exist, so the
+# branch being asserted is never reached and every case would pass or fail for
+# the wrong reason.
+pytestmark = pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="Gmail web fallback drives Windows input synthesis",
+)
 
 
 @pytest.fixture(autouse=True)
