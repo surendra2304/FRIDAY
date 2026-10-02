@@ -71,7 +71,9 @@ the owner's, and it is the only step that is.
 ### 2.2 The driver — `research/repair_trigger_run.py`
 
 Proves the trigger over real HTTP against a real git repository. Run it with
-`python research/repair_trigger_run.py`. Latest run: **26 checks, 0 failures, exit 0.**
+`python research/repair_trigger_run.py`. Latest run: **28 checks, 0 failures, exit 0.**
+(An earlier version of this file said 26. The driver runs 28; the count was
+understated and is corrected here rather than quietly left.)
 
 What it does, in order, on this machine:
 
@@ -138,6 +140,65 @@ Observed results from that run:
   persistent state across the run, and disappears when the driver exits.
 - Nothing in F2 has run against `friday-*.onrender.com` or any other deployment.
 
+## 2.4 Durability: the one thing every proof above was blind to
+
+An audit of this phase found a defect that no proof in the repository could see,
+because **every one of them ran a single process**.
+
+`SelfRepairGate` held its entire ledger in a `dict` on the instance. Measured,
+before the fix, with the real class:
+
+```
+instance A proposes  -> ACCEPTED patch_0001 PROPOSED
+after a restart, GET     -> None
+after a restart, apply   -> REFUSED | NOT_PROPOSED: unknown patch patch_0001
+after a restart, rollback-> REFUSED | NOT_PROPOSED: unknown patch patch_0001
+```
+
+So on a host that sleeps and redeploys, a `REVIEWED` patch could vanish between
+the review and the owner's approval — and, far worse, **a patch that had already
+been applied could no longer be rolled back**, with the record of the apply gone.
+
+**Fixed** inside `SelfRepairGate` only: `_restore()` at construction, `_persist()`
+on every recorded transition, and a lossless ledger serializer deliberately kept
+separate from `RepairRecord.as_dict` (that is the endpoint's summary shape and it
+omits the approval's bound fingerprint — the one field that binds an approval to a
+patch). `_persist()` is called from `_record()`, which every accept *and* every
+refusal funnels through, so there is one place to be right rather than five that
+will eventually be missed. Writes are atomic (temp file + `os.replace`).
+
+**Proven by killing real processes** — `tests/test_self_repair_survives_restart.py`,
+collected by CI on both runners:
+
+| Process | Does |
+|---|---|
+| 1 | proposes, and files a signed review that spends approval `appr_restart_1` |
+| 2 | **killed.** New process: finds the record still `REVIEWED` with both receipts; a *second* patch reviewed with the *same* approval id is refused `REVIEW_APPROVAL_REPLAYED` — refused by the restored ledger, because this process's own memory has never heard of that id; then owner approval and a real apply commit |
+| 3 | **killed.** New process: the record is still `APPLIED` with `consumed: true`, and rollback is accepted — the broken line is back and the reversal is a real commit |
+
+3 tests, 0 failures, ~15s. The receipt trail after the third process reads
+`['propose', 'review', 'owner_decision', 'apply', 'rollback']` — the whole
+lifecycle, carried across two process deaths.
+
+**What this does not claim**
+
+- **It survives a process restart, a crash, and a free-tier spin-down. It does not
+  survive a redeploy onto a fresh container** — the ledger is a file on that
+  container's disk. Surviving a redeploy needs a fleet store (Memora/Turso), which
+  is separate work and is not claimed here.
+- **The deployed gate is still in-memory.** `FRIDAY_SELF_REPAIR_STATE` is not set
+  on the Render service, and `FRIDAY_SELF_REPAIR_REPO` is not set either, so
+  `_self_repair_gate` is built with no applier and would refuse every apply with
+  `NO_CHECKPOINT`. The fix is written, tested and proven locally; it is not live.
+  **Exact owner action to make it live:** Render → *friday* → Environment →
+  add `FRIDAY_SELF_REPAIR_REPO` (a git checkout on a durable volume, not the
+  container disk) and `FRIDAY_SELF_REPAIR_STATE` (a path on durable storage), then
+  redeploy. **Verify with:** `curl -s https://friday-zw59.onrender.com/openapi.json | grep -c self-repair`
+  for the routes and a propose → review → restart → apply round trip for the ledger.
+- Until `FRIDAY_SELF_REPAIR_REPO` exists, the deployed gate cannot apply anything.
+  That is a fail-closed outcome, not a hazard, but it means the deployed gate is
+  not a working pipeline and must not be reported as one.
+
 ## 3. Defects this phase actually found and fixed
 
 Not a list of things that were already right. Each of these was reproduced by a
@@ -155,16 +216,21 @@ real run, then fixed, then pinned by a test.
 Also fixed: the F2 driver originally stopped at `REVIEWED`, so no real apply commit
 existed on the F2 surface. It now completes the loop as a distinct owner caller.
 
+And found by audit rather than by a failing test: the gate's in-memory ledger
+(section 2.4). It is listed here because a test that never ran would not have
+found it, and it was the most consequential defect in the phase.
+
 ## 4. Test totals, this phase
 
 | Suite | Result |
 |---|---|
 | `Forge/tests/unit/` (whole repo) | **294 passed** |
 | `Forge/tests/unit/test_selfrepair_proposer.py` | 23 passed |
-| `FRIDAY` self-repair + fleet-truth suites (gate, signatures, HTTP driver, trigger, fleet truth) | **76 passed** |
+| `FRIDAY` self-repair + fleet-truth suites (gate, signatures, HTTP driver, restart, trigger, fleet truth) | **79 passed** |
 | `FRIDAY/tests/test_repair_trigger.py` | 22 passed |
+| `FRIDAY/tests/test_self_repair_survives_restart.py` | **3 passed** (three real process generations) |
 | `research/self_repair_loop.py` (E1 regression, re-run) | 42 assertions, 12 gate steps, **0 failures** |
-| `research/repair_trigger_run.py` (F2 driver) | 26 checks, **0 failures**, exit 0 |
+| `research/repair_trigger_run.py` (F2 driver) | 28 checks, **0 failures**, exit 0 |
 | `python -m ruff check` (both repos) | clean |
 
 mypy cannot be run locally — Application Control blocks it on this machine. CI runs
@@ -214,6 +280,9 @@ that predates the evidence fields.
 - **F3** (the owner checklist) has not been started, per the current instruction.
 - The trigger is not scheduled anywhere. Wiring it into a running service with a
   real candidate detector is the next piece of work and is **not** done.
+- **The durable ledger is not live.** It is written, tested and proven locally;
+  the Render service still runs the gate in memory with no applier (section 2.4).
+  Owner action is named there with the verify command.
 
 ---
 
