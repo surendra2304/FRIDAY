@@ -268,11 +268,66 @@ def test_no_web_send_ever_produces_a_sent_receipt(monkeypatch, directive):
             assert lie not in reply, f"the reply still claims a send: {lie!r}"
 
 
+# Measured, not argued: what a real Gmail compose does on Ctrl+Enter.
+#
+# Built-in browser panel, real keystroke, real Gmail account, 2026-10-02. A
+# compose addressed to no-such-mailbox-zzz@invalid.invalid - a domain that
+# cannot resolve - was accepted and sent. The page showed "Sending..." and
+# then "Message sent / Undo / View message", and issued
+# POST https://mail.google.com/sync/u/0/i/s. Gmail checks the shape of an
+# address, not whether it delivers, so a well-formed address never produces a
+# compose-stage failure to tell apart from a success.
+#
+# The only positive signal was that snackbar, and it lives in the page. The
+# product reaches the browser through the Win32 window title alone, and after a
+# send that title becomes "Inbox (230) - cometbrowser001@gmail.com - Gmail" -
+# the same title a discarded draft leaves behind. Nothing the product can read
+# separates a send from a dismissal, so the web path stays NOT_CONFIRMED.
+
+
+def test_the_measured_post_send_desktop_state_is_still_not_a_send(monkeypatch):
+    """Replays the real post-send desktop: window alive, title off Compose.
+
+    This is the strongest evidence a genuine send leaves that the product can
+    actually observe, and it is the same evidence a discarded draft leaves. It
+    must not earn SENT.
+    """
+    state = {"title": "Compose Mail - cometbrowser001@gmail.com - Gmail"}
+
+    class _SendsThenComposeCloses(_Driver):
+        def hotkey(self, keys):
+            sent = super().hotkey(keys)
+            # The keystroke landed and Gmail sent: the compose window closed and
+            # the title went back to the inbox view.
+            state["title"] = "Inbox (230) - cometbrowser001@gmail.com - Gmail"
+            return sent
+
+    monkeypatch.setattr(windows_friday, "open_url", lambda url: True)
+    monkeypatch.setattr(windows_friday, "_get_active_browser_hwnd", lambda keywords=None: 4242)
+    monkeypatch.setattr(windows_friday, "_is_gmail_window", lambda h: "gmail" in state["title"].lower())
+
+    import friday.devices.app_launcher as launcher
+    import friday.vision.windows_input_driver as wdrv
+
+    monkeypatch.setattr(launcher, "force_window_foreground", lambda h: True)
+    monkeypatch.setattr(wdrv, "WindowsNativeInputDriver", lambda: _SendsThenComposeCloses())
+
+    ok, message = windows_friday.open_gmail(to="alice@realwork.com", subject="S", body="b")
+
+    assert state["title"] == "Inbox (230) - cometbrowser001@gmail.com - Gmail", (
+        "the test has to actually replay the post-send title"
+    )
+    assert ok is False, "a title that moved off Compose is not proof the mail left"
+    assert "check the Sent folder" in message
+    assert "NOT sent" in message
+
+
 def test_the_compose_window_closing_is_not_evidence_of_a_send(monkeypatch):
     """Gmail's title does change after a send - and identically after a discard.
 
     So a vanished compose window cannot tell a send from a dismissal, and must
-    never be read as proof that mail went out.
+    never be read as proof that mail went out. The measurement above is why
+    this stays decided rather than open.
     """
     _install(monkeypatch)
     monkeypatch.setattr(windows_friday, "get_all_contacts", lambda: {"alice": {"email": "alice@realwork.com"}})
