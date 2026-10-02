@@ -1,5 +1,6 @@
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 import importlib
 import platform
@@ -22,10 +23,16 @@ class Check:
 class Report:
     overall: Health
     checks: list[Check]
+    observed_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+    #: These checks prove the process started and its modules import, nothing more.
+    EVIDENCE_CLASS = "process_liveness"
 
     def as_dict(self):
         return {
             "overall": self.overall.value,
+            "evidence_class": self.EVIDENCE_CLASS,
+            "observed_at": self.observed_at,
             "checks": [{"name": c.name, "state": c.state.value, "details": c.details} for c in self.checks],
         }
 
