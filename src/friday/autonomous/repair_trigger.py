@@ -138,10 +138,24 @@ class TriggerOutcome:
     review_detail: str = ""
     waiting_on_owner: bool = False
     signature_verified: bool = False
+    #: The gate could not be asked. Set only when a call raised, never when the
+    #: gate answered. A spec in this state has no result, which is a different
+    #: thing from a result of "no" and must never be summarised as one.
+    call_failed: bool = False
+    call_detail: str = ""
     findings: list[str] = field(default_factory=list)
 
     @property
+    def has_result(self) -> bool:
+        """Whether this spec's question was actually answered."""
+        return not self.call_failed
+
+    @property
     def summary(self) -> str:
+        # Checked first and phrased as a loss, so it cannot be misread as a
+        # settled "no" no matter how the other branches are worded.
+        if self.call_failed:
+            return f"{self.spec}: NO RESULT - gate call failed ({self.call_detail})"
         if not self.proposed:
             return f"{self.spec}: no proposal ({self.proposal_detail})"
         if not self.review_filed:
@@ -163,6 +177,8 @@ class TriggerOutcome:
             "review_detail": self.review_detail,
             "waiting_on_owner": self.waiting_on_owner,
             "signature_verified": self.signature_verified,
+            "call_failed": self.call_failed,
+            "call_detail": self.call_detail,
             "findings": list(self.findings),
         }
 
@@ -208,8 +224,58 @@ class RepairTrigger:
         return self._reviewer_factory()
 
     async def run_once(self, specs: list[WatchSpec]) -> list[TriggerOutcome]:
-        """One pass over the given specs. Never approves, never applies."""
-        return [await self.run_spec(spec) for spec in specs]
+        """One pass over the given specs. Never approves, never applies.
+
+        A failure that belongs to one spec must not cost the results of the others.
+        ``run_spec`` contains the failures it knows about, and this loop is the net
+        under the ones it does not: whatever goes wrong, the specs that already
+        finished keep their outcomes and the pass still returns. Discarding three
+        good results because the fourth could not reach the network turns a
+        transport blip into an empty report, which is the one reading nobody can
+        act on.
+        """
+        outcomes: list[TriggerOutcome] = []
+        for spec in specs:
+            try:
+                outcomes.append(await self.run_spec(spec))
+            except TriggerNotConfigured:
+                # A deployment fault, not a result about any spec. Let it out.
+                raise
+            except Exception as exc:  # noqa: BLE001 - the net, deliberately wide
+                outcomes.append(
+                    TriggerOutcome(
+                        spec=spec.name,
+                        call_failed=True,
+                        call_detail=f"unexpected failure: {type(exc).__name__}: {exc}",
+                    )
+                )
+                logger.error(
+                    "unexpected failure running spec %s: %s: %s",
+                    spec.name,
+                    type(exc).__name__,
+                    exc,
+                )
+        return outcomes
+
+    @staticmethod
+    def _call_failed(outcome: TriggerOutcome, step: str, exc: Exception) -> TriggerOutcome:
+        """Record that the gate could not be asked. Returns the same outcome.
+
+        A third kind of result, kept apart from the other two on purpose. A
+        refusal means the gate answered "no" and the question is settled. A
+        declined proposal means Forge answered "no". Neither says anything here:
+        nobody answered, so this spec has **no result at all**, and nothing may be
+        inferred about whether the repair was needed.
+
+        One honest edge case is worth stating rather than hiding. If the request
+        reached the gate and only the response was lost, the proposal may exist on
+        the gate under an id this process never learned. The record says exactly
+        that — no result known — instead of claiming the proposal did not happen.
+        """
+        outcome.call_failed = True
+        outcome.call_detail = f"{step} call failed: {type(exc).__name__}: {exc}"
+        logger.warning("gate call failed for %s at %s: %s", outcome.spec, step, outcome.call_detail)
+        return outcome
 
     async def run_spec(self, spec: WatchSpec) -> TriggerOutcome:
         outcome = TriggerOutcome(spec=spec.name)
@@ -245,8 +311,9 @@ class RepairTrigger:
 
         outcome.test_proved = True
         request = proposal.to_request(spec.repo_path)
-        filed = await self._client.post(
-            "/api/self-repair/proposals",
+        try:
+            filed = await self._client.post(
+                "/api/self-repair/proposals",
             {
                 "repo_path": request.repo_path,
                 "branch": request.branch,
@@ -257,8 +324,10 @@ class RepairTrigger:
                 "rationale": request.rationale,
                 "proposed_by": request.proposed_by,
                 "test_evidence": request.test_evidence,
-            },
-        )
+                },
+            )
+        except Exception as exc:  # noqa: BLE001 - one spec, one lost result
+            return self._call_failed(outcome, "propose", exc)
         receipt = filed.get("receipt", {}) or {}
         outcome.proposal_outcome = str(receipt.get("outcome", "UNKNOWN"))
         outcome.proposal_detail = str(receipt.get("detail", ""))
@@ -285,9 +354,15 @@ class RepairTrigger:
 
         outcome.findings = [str(r) for r in getattr(reviewed, "reasons", [])]
         document = reviewed.review.to_document()
-        review_result = await self._client.post(
-            f"/api/self-repair/{outcome.patch_id}/review", {"document": document}
-        )
+        try:
+            review_result = await self._client.post(
+                f"/api/self-repair/{outcome.patch_id}/review", {"document": document}
+            )
+        except Exception as exc:  # noqa: BLE001 - the proposal stands; the review is unknown
+            # The proposal is not undone by a failed review call. Keep it: the gate
+            # holds a PROPOSED patch with no review, which is a safe and truthful
+            # state, and throwing that away would discard work that did succeed.
+            return self._call_failed(outcome, "review", exc)
         review_receipt = review_result.get("receipt", {}) or {}
         outcome.review_filed = True
         outcome.review_outcome = str(review_receipt.get("outcome", "UNKNOWN"))
@@ -345,13 +420,23 @@ def render_summary(outcomes: list[TriggerOutcome]) -> str:
     for outcome in outcomes:
         lines.append(f"  {outcome.summary}")
     waiting = [o for o in outcomes if o.waiting_on_owner]
+    lost = [o for o in outcomes if o.call_failed]
     lines += [
         "",
         f"  specs attempted     : {len(outcomes)}",
         f"  proposals filed     : {sum(1 for o in outcomes if o.proposed)}",
         f"  reviews accepted    : {len(waiting)}",
         f"  waiting on the owner: {len(waiting)}  (this trigger never approves or applies)",
+        f"  no result at all    : {len(lost)}",
     ]
+    if lost:
+        # Without this, a run where the gate was unreachable prints zeros that
+        # read exactly like a fleet where nothing was broken.
+        lines += [
+            "",
+            f"  INCOMPLETE PASS: {len(lost)} spec(s) could not be reached. The counts "
+            "above are NOT evidence that nothing was wrong with them.",
+        ]
     return "\n".join(lines)
 
 

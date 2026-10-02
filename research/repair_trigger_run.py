@@ -170,6 +170,11 @@ async def run() -> int:
     outcomes = await trigger.run_once([good, bad])
     print(render_summary(outcomes))
 
+    check(
+        "no spec lost its result to a failed gate call",
+        not any(o.call_failed for o in outcomes),
+        ", ".join(f"{o.spec}: {o.call_detail}" for o in outcomes if o.call_failed),
+    )
     check("the correct repair was proposed", outcomes[0].proposed)
     check("the real test proved it before filing", outcomes[0].test_proved)
     check("the review was accepted with a verified signature", outcomes[0].signature_verified)

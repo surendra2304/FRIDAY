@@ -14,9 +14,12 @@ guarantee.
 from __future__ import annotations
 
 import ast
+import json
+import threading
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 
 from friday.autonomous.repair_trigger import (
@@ -137,10 +140,14 @@ class _Gate:
         self.proposal_outcome = proposal_outcome
         self.review_outcome = review_outcome
         self.signature_verified = signature_verified
+        #: 1-based call numbers that raise instead of answering, e.g. {2}.
+        self.fail_on: set[int] = set()
 
     async def post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
         self.paths.append(path)
         self.bodies.append(body)
+        if len(self.paths) in self.fail_on:
+            raise httpx.ConnectError("connection refused")
         if path.endswith("/proposals"):
             return {
                 "receipt": {
@@ -322,6 +329,246 @@ async def test_the_trigger_refuses_to_file_an_unsigned_review_with_no_reviewer()
         await trigger.run_spec(_SPEC)
 
 
+# ── a call that fails must cost its own spec and nothing else ─────────────
+
+
+@pytest.mark.asyncio
+async def test_a_failed_propose_call_is_recorded_and_does_not_abort_the_pass():
+    """The flakiest dependency in the system is the network. One call, one spec."""
+    gate = _Gate()
+    gate.fail_on = {1}
+    specs = [_SPEC, WatchSpec(**{**_SPEC.as_dict(), "name": "second"})]
+
+    outcomes = await _trigger(gate).run_once(specs)
+
+    assert [o.spec for o in outcomes] == ["describe-double-scales", "second"]
+    first, second = outcomes
+
+    assert first.call_failed is True
+    assert first.has_result is False
+    assert "ConnectError" in first.call_detail
+    assert "NO RESULT" in first.summary
+    # It must not read as a settled "no", which is what a refusal or a declined
+    # proposal means.
+    assert not first.summary.startswith("describe-double-scales: no proposal")
+
+    # The second spec is unaffected, and its real result is intact.
+    assert second.call_failed is False
+    assert second.proposed is True
+    assert second.waiting_on_owner is True
+
+
+@pytest.mark.asyncio
+async def test_a_failed_review_call_keeps_the_proposal_that_already_succeeded():
+    """Work that succeeded is not undone by the next call failing."""
+    gate = _Gate()
+    gate.fail_on = {2}  # the review call
+    outcome = await _trigger(gate).run_spec(_SPEC)
+
+    assert outcome.call_failed is True
+    assert outcome.has_result is False
+    # The proposal really was filed, and that fact survives the review failing.
+    assert outcome.proposed is True
+    assert outcome.patch_id == "patch_0001"
+    assert outcome.test_proved is True
+    # And it is honest about not knowing how the review landed.
+    assert outcome.review_filed is False
+    assert outcome.waiting_on_owner is False
+    assert "review call failed" in outcome.call_detail
+
+
+@pytest.mark.asyncio
+async def test_a_refused_call_is_not_reported_as_a_failed_call():
+    """Three distinct things: a refusal, a decline, and no answer at all."""
+    refused = await _trigger(_Gate(proposal_outcome="REFUSED")).run_spec(_SPEC)
+    assert refused.call_failed is False
+    assert refused.has_result is True
+
+    declined = await _trigger(_Gate(), _Proposer(fixed=False)).run_spec(_SPEC)
+    assert declined.call_failed is False
+    assert declined.has_result is True
+    assert "no proposal" in declined.summary
+
+
+@pytest.mark.asyncio
+async def test_a_failure_on_the_last_spec_still_returns_the_earlier_ones():
+    """Work already done is never discarded by what happens afterwards."""
+    gate = _Gate()
+    gate.fail_on = {5, 6}  # both calls of the third spec
+    specs = [_SPEC, WatchSpec(**{**_SPEC.as_dict(), "name": "second"}),
+             WatchSpec(**{**_SPEC.as_dict(), "name": "third"})]
+
+    outcomes = await _trigger(gate).run_once(specs)
+
+    assert [(o.spec, o.proposed, o.call_failed) for o in outcomes] == [
+        ("describe-double-scales", True, False),
+        ("second", True, False),
+        ("third", False, True),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_an_unexpected_error_in_one_spec_is_contained_not_raised():
+    """The net under everything run_spec knows about."""
+
+    class Exploding:
+        async def propose(self, **kwargs: Any) -> Any:
+            raise KeyboardInterrupt  # not an Exception: must still escape
+
+    class Fine:
+        async def propose(self, **kwargs: Any) -> Any:
+            return _Outcome(True)
+
+    trigger = RepairTrigger(_Gate(), proposal_factory=lambda: Exploding())
+    with pytest.raises(KeyboardInterrupt):
+        await trigger.run_once([_SPEC])
+
+    # An ordinary error is contained and labelled as a lost result.
+    trigger = RepairTrigger(
+        _Gate(), proposal_factory=lambda: Fine(), candidate_factory=_boom
+    )
+    outcomes = await trigger.run_once([_SPEC])
+    assert outcomes[0].call_failed is True
+    assert "unexpected failure" in outcomes[0].call_detail
+    assert "NO RESULT" in outcomes[0].summary
+
+
+def _boom(spec: WatchSpec) -> Any:
+    raise ValueError("cannot build a candidate for this spec")
+
+
+# ── the same thing again, against a real socket ──────────────────────────
+#
+# The tests above hand the trigger a stub that raises. This one gives it the real
+# production client pointed at a real HTTP server on a real port, and makes that
+# server genuinely drop one connection mid-pass. Nothing is mocked: the failure is
+# a socket closing without a response, which is what a free-tier host waking up or
+# a load balancer cutting a request actually looks like.
+
+
+class _DroppingGate:
+    """A real threaded HTTP server that answers, except on one chosen call."""
+
+    def __init__(self, fail_on_call: int) -> None:
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        self.requests = 0
+        fail_on_call = fail_on_call
+        gate = self
+
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def log_message(self, *args: Any) -> None:  # keep the transcript clean
+                return
+
+            def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler's name
+                gate.requests += 1
+                length = int(self.headers.get("content-length") or 0)
+                self.rfile.read(length)
+                if gate.requests == fail_on_call:
+                    # Drop the connection with no response at all.
+                    self.close_connection = True
+                    self.connection.close()
+                    return
+                body = json.dumps(
+                    {
+                        "receipt": {"outcome": "ACCEPTED", "detail": "accepted"},
+                        "record": {
+                            "patch_id": "patch_0001",
+                            "fingerprint": "fp_1",
+                            "review": {"signature_verified": True},
+                        },
+                    }
+                ).encode("utf-8")
+                self.send_response(200)
+                self.send_header("content-type", "application/json")
+                self.send_header("content-length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        self._server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.port = int(self._server.server_address[1])
+        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+        self._thread.start()
+
+    @property
+    def base_url(self) -> str:
+        return f"http://127.0.0.1:{self.port}"
+
+    def close(self) -> None:
+        self._server.shutdown()
+        self._server.server_close()
+        self._thread.join(timeout=10)
+
+
+@pytest.mark.parametrize(
+    ("fail_on_call", "lost_spec", "lost_step", "kept_proposed", "calls_made", "filed"),
+    [
+        # call 2 is the first spec's review: its proposal already landed, so the
+        # pass still makes all six calls and still counts three proposals.
+        (2, "first", "review", True, 6, 3),
+        # call 3 is the second spec's propose: no review follows it, so five calls.
+        (3, "second", "propose", False, 5, 2),
+    ],
+)
+@pytest.mark.asyncio
+async def test_a_real_dropped_connection_costs_one_spec_and_nothing_else(
+    fail_on_call: int,
+    lost_spec: str,
+    lost_step: str,
+    kept_proposed: bool,
+    calls_made: int,
+    filed: int,
+):
+    """Real client, real server, real transport failure, mid-pass.
+
+    Both halves matter. A dropped *propose* loses that spec entirely. A dropped
+    *review* must not undo the proposal that already landed on the gate, because
+    the gate is now holding a PROPOSED patch with no review and throwing that
+    away would discard work that genuinely succeeded.
+    """
+    gate = _DroppingGate(fail_on_call=fail_on_call)
+    try:
+        specs = [
+            WatchSpec(**{**_SPEC.as_dict(), "name": name})
+            for name in ("first", "second", "third")
+        ]
+        trigger = RepairTrigger(
+            HttpxGateClient(gate.base_url, api_key="k", timeout=10.0),
+            proposal_factory=_Proposer,
+            reviewer_factory=_Reviewer,
+        )
+        outcomes = await trigger.run_once(specs)
+    finally:
+        gate.close()
+
+    assert gate.requests == calls_made, (
+        "the run stopped early instead of finishing the pass"
+    )
+
+    lost = next(o for o in outcomes if o.spec == lost_spec)
+    assert lost.call_failed is True
+    assert lost.has_result is False
+    assert f"{lost_step} call failed" in lost.call_detail
+    assert "RemoteProtocolError" in lost.call_detail
+    assert "NO RESULT" in lost.summary
+    # Whatever had already succeeded for this spec is still reported.
+    assert lost.proposed is kept_proposed
+
+    healthy = [o for o in outcomes if o.spec != lost_spec]
+    assert len(healthy) == 2
+    for outcome in healthy:
+        assert outcome.call_failed is False
+        assert outcome.proposed is True
+        assert outcome.waiting_on_owner is True
+
+    text = render_summary(outcomes)
+    assert "no result at all    : 1" in text
+    assert "INCOMPLETE PASS" in text
+    assert f"proposals filed     : {filed}" in text
+
+
 # ── structural guarantees, read from the source ───────────────────────────
 
 
@@ -442,6 +689,31 @@ def test_render_summary_reports_the_halves_separately():
     assert "proposals filed     : 1" in text
     assert "this trigger never approves or applies" in text
     assert "test still fails" in text
+    assert "INCOMPLETE PASS" not in text, "a clean pass must not cry wolf"
+    assert "no result at all    : 0" in text
+
+
+def test_render_summary_cannot_present_a_lost_call_as_a_quiet_pass():
+    """The failure mode this guards: zeros that read like 'nothing was wrong'."""
+    outcomes = [
+        TriggerOutcome(spec="a", call_failed=True, call_detail="propose call failed: x"),
+    ]
+    text = render_summary(outcomes)
+    assert "proposals filed     : 0" in text
+    assert "no result at all    : 1" in text
+    assert "INCOMPLETE PASS" in text
+    assert "NOT evidence that nothing was wrong" in text
+    assert "NO RESULT" in text
+
+
+def test_outcomes_json_keeps_a_lost_call_visible_to_whatever_reads_it():
+    """A dashboard built on as_dict must not be able to drop the negative."""
+    payload = json.loads(
+        outcomes_as_json([TriggerOutcome(spec="a", call_failed=True, call_detail="boom")])
+    )[0]
+    assert payload["call_failed"] is True
+    assert payload["call_detail"] == "boom"
+    assert payload["waiting_on_owner"] is False
 
 
 def test_outcomes_are_json_serialisable_and_keep_the_negative_facts():
@@ -454,8 +726,6 @@ def test_outcomes_are_json_serialisable_and_keep_the_negative_facts():
         signature_verified=False,
         findings=["nothing was filed"],
     )
-    import json
-
     payload = json.loads(outcomes_as_json([outcome]))[0]
     assert payload["proposed"] is False
     assert payload["signature_verified"] is False

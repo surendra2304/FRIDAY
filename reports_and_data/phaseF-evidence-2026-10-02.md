@@ -71,8 +71,8 @@ the owner's, and it is the only step that is.
 ### 2.2 The driver — `research/repair_trigger_run.py`
 
 Proves the trigger over real HTTP against a real git repository. Run it with
-`python research/repair_trigger_run.py`. Latest run: **28 checks, 0 failures, exit 0.**
-(An earlier version of this file said 26. The driver runs 28; the count was
+`python research/repair_trigger_run.py`. Latest run: **29 checks, 0 failures, exit 0.**
+(An earlier version of this file said 26. The driver runs 29; the count was
 understated and is corrected here rather than quietly left.)
 
 What it does, in order, on this machine:
@@ -199,6 +199,41 @@ lifecycle, carried across two process deaths.
   That is a fail-closed outcome, not a hazard, but it means the deployed gate is
   not a working pipeline and must not be reported as one.
 
+### 2.5 One unreachable spec must not cost the pass
+
+An audit found the trigger wrapping `propose` and `review` per-spec but leaving both
+`client.post` calls bare. Measured, with a client that fails on its second call:
+
+```
+run_once ABORTED with ConnectError
+outcomes already gathered for specs 1 and 2 were discarded
+```
+
+So a transport blip — the single most likely failure on a free-tier host — turned
+into an empty report, which is the one reading nobody can act on. It could also read
+as "nothing was broken".
+
+**Fixed.** A failed call is now a *third* kind of outcome, kept distinct from the
+other two on purpose: a refusal means the gate answered "no", a declined proposal
+means Forge answered "no", and a failed call means **nobody answered**, so that spec
+has no result and nothing may be inferred about it. `TriggerOutcome.call_failed` and
+`has_result` carry that, the summary line reads `NO RESULT - gate call failed`, and
+`render_summary` prints a `no result at all` count plus an `INCOMPLETE PASS` banner
+that states the other counts are not evidence the spec was fine. `run_once` also
+keeps a net under everything `run_spec` does not handle itself.
+
+A dropped *review* call deliberately keeps the proposal: the gate is then holding a
+PROPOSED patch with no review, which is a safe and truthful state, and discarding it
+would throw away work that genuinely landed.
+
+**Proven against a real socket**, not a stub that raises: the real `HttpxGateClient`
+pointed at a real threaded HTTP server on a real port, which closes the connection
+with no response on a chosen call — `RemoteProtocolError: Server disconnected without
+sending a response`, which is what a cold start or a cut request actually looks like.
+Parametrized over both halves: a dropped propose costs that spec entirely; a dropped
+review costs only the review. In both cases the other two specs complete with their
+real outcomes and the summary shows `INCOMPLETE PASS`.
+
 ## 3. Defects this phase actually found and fixed
 
 Not a list of things that were already right. Each of these was reproduced by a
@@ -212,6 +247,7 @@ real run, then fixed, then pinned by a test.
 | 4 | F2 driver | The reviewer wrote `sentinel.db`, `-wal` and `-shm` **into the repository it was auditing**, because the runner pointed Sentinel's persistence at the repo path. Found by the "working tree was never touched" check failing with three untracked files. | Reviewer state moved to its own directory outside the repo; a check now fails if any `*.db*` appears in the repo. |
 | 5 | Repair trigger | A trigger built without a proposer or a reviewer **reported "no proposal" for every spec** instead of failing — indistinguishable, in the summary, from a fleet where nothing was broken. | `TriggerNotConfigured`, deliberately not caught by the per-spec handler, so an inert trigger fails loudly on its first pass. |
 | 6 | Repair trigger | A caller was **detached at a commit of their own** and would have been restored onto the default branch — their working tree would have changed underneath them without a word. | Covered by a new Forge test (`test_a_detached_caller_is_returned_to_the_same_commit_not_the_default_branch`). |
+| 7 | Repair trigger | **A single transport error aborted the whole pass** and discarded every outcome already gathered. | A failed call is now its own outcome (`call_failed`, `NO RESULT`), contained to its spec, counted in the summary with an `INCOMPLETE PASS` banner; `run_once` nets anything else. Proven by dropping a real connection mid-pass (section 2.5). |
 
 Also fixed: the F2 driver originally stopped at `REVIEWED`, so no real apply commit
 existed on the F2 surface. It now completes the loop as a distinct owner caller.
@@ -226,11 +262,11 @@ found it, and it was the most consequential defect in the phase.
 |---|---|
 | `Forge/tests/unit/` (whole repo) | **294 passed** |
 | `Forge/tests/unit/test_selfrepair_proposer.py` | 23 passed |
-| `FRIDAY` self-repair + fleet-truth suites (gate, signatures, HTTP driver, restart, trigger, fleet truth) | **79 passed** |
-| `FRIDAY/tests/test_repair_trigger.py` | 22 passed |
+| `FRIDAY` self-repair + fleet-truth suites (gate, signatures, HTTP driver, restart, trigger, fleet truth) | **88 passed** |
+| `FRIDAY/tests/test_repair_trigger.py` | 31 passed |
 | `FRIDAY/tests/test_self_repair_survives_restart.py` | **3 passed** (three real process generations) |
 | `research/self_repair_loop.py` (E1 regression, re-run) | 42 assertions, 12 gate steps, **0 failures** |
-| `research/repair_trigger_run.py` (F2 driver) | 28 checks, **0 failures**, exit 0 |
+| `research/repair_trigger_run.py` (F2 driver) | 29 checks, **0 failures**, exit 0 |
 | `python -m ruff check` (both repos) | clean |
 
 mypy cannot be run locally — Application Control blocks it on this machine. CI runs
