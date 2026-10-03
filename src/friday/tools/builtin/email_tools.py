@@ -8,7 +8,7 @@ import email.mime.multipart
 import email.mime.text
 import os
 import smtplib
-from typing import Any, Sequence
+from typing import Any, NamedTuple, Sequence
 
 from friday.core.config import get_settings
 from friday.core.logging import get_logger
@@ -18,6 +18,20 @@ from friday.tools.base import BaseTool
 logger = get_logger("tools.email")
 
 _SMTP_TIMEOUT = 12.0
+
+
+class SendOutcome(NamedTuple):
+    """What the server actually said about a send.
+
+    ``refused`` is separate from ``sent`` so a caller never has to read the
+    prose to tell a refusal from a transport failure. They lead to different
+    decisions: a refused address must not be offered to a second transport,
+    while an unreachable server still can be.
+    """
+
+    sent: bool
+    detail: str
+    refused: bool = False
 
 
 def _recipients_from(to_address: "str | Sequence[str]") -> list[str]:
@@ -34,12 +48,14 @@ def _recipients_from(to_address: "str | Sequence[str]") -> list[str]:
 def _describe_refusals(
     recipients: Sequence[str], refused: "dict[str, tuple[int, bytes]]"
 ) -> str:
-    """Report a partial send as the refusal it is.
+    """Report a send the server turned down as the refusal it is.
 
-    ``sendmail`` raises only when *every* recipient is refused. A partial
-    refusal comes back as a dict and no exception at all, so ignoring the
-    return value is how a message the server rejected came to be reported as
-    delivered.
+    ``sendmail`` reports refusals two ways, and both arrive here. It returns a
+    dict and raises nothing when *some* recipients are refused; when *every*
+    recipient is refused it raises ``SMTPRecipientsRefused`` instead. Ignoring
+    the return value is how a message the server rejected came to be reported as
+    delivered, and ignoring the exception is how the ordinary one-recipient
+    refusal came to be reported as a Python dict.
     """
     accepted = [addr for addr in recipients if addr not in refused]
     parts = []
@@ -67,12 +83,13 @@ def _send_smtp_email(
     app_password: str | None = None,
     smtp_host: str | None = None,
     smtp_port: int | None = None,
-) -> tuple[bool, str]:
+) -> SendOutcome:
     """Connect to SMTP server and send MIME text email.
 
-    Returns True only when the server accepted every recipient. A recipient it
-    refused is never reported as sent, whether the refusal arrived as an
-    exception or as ``sendmail``'s return value.
+    ``sent`` is true only when the server accepted every recipient. A recipient
+    it refused is never reported as sent, whether the refusal arrived as
+    ``sendmail``'s return value or as the exception the stdlib raises once every
+    recipient has been turned down.
     """
     settings = get_settings()
     sender = from_address or getattr(settings, "email_address", None) or os.getenv("FRIDAY_EMAIL_ADDRESS")
@@ -81,11 +98,11 @@ def _send_smtp_email(
     port = smtp_port or getattr(settings, "email_smtp_port", 587) or int(os.getenv("FRIDAY_EMAIL_SMTP_PORT", 587))
 
     if not sender or not password:
-        return False, "Email sender credentials not configured. Please set FRIDAY_EMAIL_ADDRESS and FRIDAY_EMAIL_APP_PASSWORD in your .env file."
+        return SendOutcome(False, "Email sender credentials not configured. Please set FRIDAY_EMAIL_ADDRESS and FRIDAY_EMAIL_APP_PASSWORD in your .env file.")
 
     recipients = _recipients_from(to_address)
     if not recipients:
-        return False, "No recipient address was given, so there was nothing to send."
+        return SendOutcome(False, "No recipient address was given, so there was nothing to send.")
 
     msg = email.mime.multipart.MIMEMultipart()
     msg["From"] = sender
@@ -102,23 +119,31 @@ def _send_smtp_email(
             refused = server.sendmail(sender, recipients, msg.as_string())
         # A refusal the server already reported is still a refusal. This is the
         # only place a send is called sent, so it is the only place that has to
-        # know sendmail answers with a dict rather than raising. Keyed on the
-        # mapping type because that is the contract, not on truthiness.
+        # know sendmail's two refusal shapes. Keyed on the mapping type because
+        # that is the contract, not on truthiness.
         if isinstance(refused, dict) and refused:
             reason = _describe_refusals(recipients, refused)
             logger.warning(f"SMTP refused a recipient for '{subject}': {reason}")
-            return False, reason
+            return SendOutcome(False, reason, refused=True)
         logger.info(f"Email sent successfully to '{to_address}' with subject '{subject}'.")
-        return True, f"Email successfully sent to {', '.join(recipients)}."
+        return SendOutcome(True, f"Email successfully sent to {', '.join(recipients)}.")
+    except smtplib.SMTPRecipientsRefused as e:
+        # The stdlib raises this once every recipient is refused, carrying the
+        # very dict sendmail would have returned. The single bad-address case -
+        # the one refusal there is in practice - arrives only here, so without
+        # this the commonest real failure reported a raw dict instead of itself.
+        reason = _describe_refusals(recipients, e.recipients)
+        logger.warning(f"SMTP refused every recipient for '{subject}': {reason}")
+        return SendOutcome(False, reason, refused=True)
     except smtplib.SMTPAuthenticationError as e:
         logger.warning(f"SMTP authentication failed: {e}")
-        return False, f"SMTP Authentication failed: Invalid email or app password. ({e})"
+        return SendOutcome(False, f"SMTP Authentication failed: Invalid email or app password. ({e})")
     except smtplib.SMTPConnectError as e:
         logger.warning(f"SMTP connection error: {e}")
-        return False, f"Could not connect to SMTP server '{host}:{port}': {e}"
+        return SendOutcome(False, f"Could not connect to SMTP server '{host}:{port}': {e}")
     except Exception as e:
         logger.error(f"Failed to send email: {e}")
-        return False, f"Failed to send email to {to_address}: {e!s}"
+        return SendOutcome(False, f"Failed to send email to {to_address}: {e!s}")
 
 
 class SendEmailTool(BaseTool):
@@ -178,11 +203,11 @@ class SendEmailTool(BaseTool):
                 safety_level=self.safety_level,
             )
 
-        ok, msg = _send_smtp_email(to_address=recipient, subject=subj, body=content)
+        outcome = _send_smtp_email(to_address=recipient, subject=subj, body=content)
         return ToolResult(
             name=self.name,
-            content=msg,
-            is_error=not ok,
+            content=outcome.detail,
+            is_error=not outcome.sent,
             safety_level=self.safety_level,
         )
 

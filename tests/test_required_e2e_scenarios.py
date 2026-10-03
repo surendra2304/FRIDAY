@@ -25,7 +25,7 @@ from friday.devices.app_launcher import (
     find_all_installations,
     launch_desktop_app,
 )
-from friday.devices.windows_friday import windows_friday
+from friday.devices.windows_friday import GmailSend, windows_friday
 from friday.ecosystem.e2e_workflow_coordinator import (
     E2EWorkflowCoordinator,
     global_e2e_coordinator,
@@ -141,7 +141,7 @@ def test_03b_gmail_action_receipt_structure():
     """
     directive = "send an email to alice@realwork.com that the meeting moved to 3 PM"
 
-    with patch.object(windows_friday, "open_gmail", return_value=(False, "Opened a Gmail draft.")):
+    with patch.object(windows_friday, "open_gmail", return_value=GmailSend(False, "Opened a Gmail draft.", "gmail_web")):
         handled, reply, meta = windows_friday.handle_directive(directive)
 
     assert handled is True
@@ -155,7 +155,7 @@ def test_03b_gmail_action_receipt_structure():
     assert receipt["status"] == "NOT_CONFIRMED"
     assert receipt["provider"] == "gmail_web"
     assert meta["success"] is False
-    assert "NOT SENT" in reply
+    assert "no send was confirmed" in reply.lower(), "the reply must say the send was not confirmed"
 
 
 # The decline path, the saved-contact path and the confirmed-send path are all

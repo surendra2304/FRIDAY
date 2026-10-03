@@ -11,6 +11,7 @@ the platform guard for the one step that cannot be substituted lives in the
 product, so every case runs on every runner.
 """
 
+import smtplib
 import threading
 import time
 from types import SimpleNamespace
@@ -19,7 +20,8 @@ import pytest
 
 from friday.core import config as friday_config
 from friday.devices import windows_friday as wf
-from friday.devices.windows_friday import windows_friday
+from friday.devices.windows_friday import GmailSend, windows_friday
+from friday.tools.builtin.email_tools import SendOutcome
 
 ALICE = "FRIDAY, email Alice that the meeting moved to 3 PM."
 ALICE_ADDRESSED = "FRIDAY, email alice@realwork.com that the meeting moved to 3 PM"
@@ -57,7 +59,7 @@ def _install(monkeypatch, *, driver=None, hwnd=1234, title="Compose Mail - u@gma
         def _send(**kwargs):
             if isinstance(smtp, Exception):
                 raise smtp
-            return smtp
+            return smtp if hasattr(smtp, "sent") else SendOutcome(*smtp)
 
         monkeypatch.setattr(et, "_send_smtp_email", _send)
         # open_gmail imports get_settings inside its body, so the patch has to
@@ -93,7 +95,8 @@ def test_the_return_waits_for_the_keystroke_rather_than_racing_ahead_of_it(monke
     monkeypatch.setattr(wf, "_GMAIL_AUTOSEND_SETTLE_SECONDS", 0.4)
     _install(monkeypatch, driver=_Driver(log=log))
 
-    ok, _ = windows_friday.open_gmail(to="a@b.com", subject="S", body="b")
+    outcome = windows_friday.open_gmail(to="a@b.com", subject="S", body="b")
+    ok = outcome.sent
     log.append("returned")
 
     assert ("hotkey", ("ctrl", "enter")) in log, "the send keystroke was never attempted"
@@ -112,7 +115,8 @@ def test_the_keystroke_never_lands_in_a_non_gmail_window(monkeypatch):
     log: list = []
     _install(monkeypatch, driver=_Driver(log=log), title="CodeTantra-SEA")
 
-    ok, msg = windows_friday.open_gmail(to="a@b.com", subject="S", body="b")
+    outcome = windows_friday.open_gmail(to="a@b.com", subject="S", body="b")
+    ok, msg = outcome.sent, outcome.detail
 
     assert not log, "a keystroke was sent into a window that is not Gmail"
     assert "could not press send" in msg
@@ -124,7 +128,8 @@ def test_a_gmail_window_is_still_acted_on(monkeypatch):
     log: list = []
     _install(monkeypatch, driver=_Driver(log=log))
 
-    ok, msg = windows_friday.open_gmail(to="a@b.com", subject="S", body="b")
+    outcome = windows_friday.open_gmail(to="a@b.com", subject="S", body="b")
+    ok, msg = outcome.sent, outcome.detail
 
     assert ("hotkey", ("ctrl", "enter")) in log
     assert "pressed Ctrl+Enter" in msg
@@ -142,14 +147,16 @@ def test_the_wait_is_a_ceiling_not_a_fixed_cost(monkeypatch):
     _install(monkeypatch)
 
     started = time.monotonic()
-    ok, _ = windows_friday.open_gmail(to="a@b.com", subject="S", body="b")
+    outcome = windows_friday.open_gmail(to="a@b.com", subject="S", body="b")
+    ok = outcome.sent
     assert time.monotonic() - started < 2.0, "waited the full budget for a window already on screen"
     assert ok is False
 
     _install(monkeypatch, hwnd=None)  # never appears
     monkeypatch.setattr(wf, "_GMAIL_AUTOSEND_TIMEOUT_SECONDS", 0.5)
     started = time.monotonic()
-    ok, msg = windows_friday.open_gmail(to="a@b.com", subject="S", body="b")
+    outcome = windows_friday.open_gmail(to="a@b.com", subject="S", body="b")
+    ok, msg = outcome.sent, outcome.detail
     assert 0.4 < time.monotonic() - started < 3.0, "a missing window must still get the full budget"
     assert "could not press send" in msg
 
@@ -165,7 +172,8 @@ def test_a_window_that_appears_late_is_still_caught(monkeypatch):
 
     monkeypatch.setattr(windows_friday, "_get_active_browser_hwnd", _late)
 
-    ok, msg = windows_friday.open_gmail(to="a@b.com", subject="S", body="b")
+    outcome = windows_friday.open_gmail(to="a@b.com", subject="S", body="b")
+    ok, msg = outcome.sent, outcome.detail
 
     assert polls["n"] >= 4, "gave up before the browser had a fair chance"
     assert "pressed Ctrl+Enter" in msg
@@ -183,7 +191,8 @@ def test_no_failure_condition_is_reported_as_a_send(monkeypatch, condition):
     }[condition]
     _install(monkeypatch, **kwargs)
 
-    ok, msg = windows_friday.open_gmail(to="a@b.com", subject="S", body="b")
+    outcome = windows_friday.open_gmail(to="a@b.com", subject="S", body="b")
+    ok, msg = outcome.sent, outcome.detail
 
     assert ok is False
     assert "NOT sent" in msg or "NOT SENT" in msg
@@ -193,7 +202,8 @@ def test_a_failure_reason_reaches_the_user_rather_than_only_the_log(monkeypatch)
     """The blocked driver is a real condition on this machine; say why."""
     _install(monkeypatch, driver=_Driver(raises=OSError("dll load failed")))
 
-    ok, msg = windows_friday.open_gmail(to="a@b.com", subject="S", body="b")
+    outcome = windows_friday.open_gmail(to="a@b.com", subject="S", body="b")
+    ok, msg = outcome.sent, outcome.detail
 
     assert "dll load failed" in msg, "the actual cause must reach the user"
     assert ok is False
@@ -230,7 +240,8 @@ def test_a_wedged_send_thread_does_not_hang_the_agent_forever(monkeypatch):
 def test_a_confirmed_smtp_send_is_the_only_thing_that_reports_sent(monkeypatch):
     _install(monkeypatch, smtp=(True, "250 OK"))
 
-    ok, msg = windows_friday.open_gmail(to="a@b.com", subject="S", body="b")
+    outcome = windows_friday.open_gmail(to="a@b.com", subject="S", body="b")
+    ok, msg = outcome.sent, outcome.detail
 
     assert ok is True
     assert "sent successfully" in msg
@@ -240,7 +251,8 @@ def test_a_confirmed_smtp_send_is_the_only_thing_that_reports_sent(monkeypatch):
 def test_an_smtp_failure_falls_through_without_claiming_a_send(monkeypatch, smtp):
     _install(monkeypatch, smtp=smtp)
 
-    ok, _ = windows_friday.open_gmail(to="a@b.com", subject="S", body="b")
+    outcome = windows_friday.open_gmail(to="a@b.com", subject="S", body="b")
+    ok = outcome.sent
 
     assert ok is False
 
@@ -259,8 +271,15 @@ def test_an_smtp_failure_falls_through_without_claiming_a_send(monkeypatch, smtp
 # truthfulness never reached it.
 
 
-def _server_that_refuses(refused: dict, accepted: tuple = ()):
-    """A real SMTP conversation that refuses ``refused`` and takes ``accepted``."""
+def _server_that_refuses(refused: dict):
+    """A real SMTP conversation obeying smtplib's two refusal shapes.
+
+    ``smtplib.SMTP.sendmail`` returns the refusal dict when *some* recipients
+    are refused and raises ``SMTPRecipientsRefused`` once *every* one of them
+    is. A fake that always returned a dict was showing the product a state no
+    SMTP server can produce, which is how four cases came to pass against a
+    branch that never runs in production.
+    """
 
     class _Server:
         def __init__(self, *a, **k):
@@ -282,7 +301,10 @@ def _server_that_refuses(refused: dict, accepted: tuple = ()):
             pass
 
         def sendmail(self, sender, recipients, message):
-            return dict(refused)
+            errs = dict(refused)
+            if errs and len(errs) == len(recipients):
+                raise smtplib.SMTPRecipientsRefused(errs)
+            return errs
 
     return _Server
 
@@ -315,12 +337,18 @@ def test_a_refused_recipient_is_never_reported_as_sent(monkeypatch):
         _server_that_refuses({"bob@bad.invalid": (550, b"Mailbox unavailable")}),
     )
 
-    ok, message = et._send_smtp_email(to_address="bob@bad.invalid", subject="S", body="B")
+    outcome = et._send_smtp_email(to_address="bob@bad.invalid", subject="S", body="B")
+    ok, message = outcome.sent, outcome.detail
 
     assert ok is False
     assert "successfully sent" not in message
     assert "bob@bad.invalid" in message, "the refusal has to name who was refused"
     assert "550" in message, "the server's own reason has to survive into the report"
+    assert "refused every recipient" in message, (
+        "one bad address is a refusal, not a transport error - the stdlib raises "
+        "SMTPRecipientsRefused here, so this branch is the ordinary case"
+    )
+    assert "{'" not in message, "a raw Python dict is not a report to a user"
 
 
 def test_a_partial_send_names_who_arrived_and_who_did_not(monkeypatch):
@@ -333,8 +361,9 @@ def test_a_partial_send_names_who_arrived_and_who_did_not(monkeypatch):
         _server_that_refuses({"bob@bad.invalid": (550, b"Mailbox unavailable")}),
     )
 
-    ok, message = et._send_smtp_email(
+    outcome = et._send_smtp_email(
         to_address=["alice@realwork.com", "bob@bad.invalid"], subject="S", body="B")
+    ok, message = outcome.sent, outcome.detail
 
     assert ok is False, "a send that lost a recipient is not a send that succeeded"
     assert "bob@bad.invalid" in message
@@ -420,6 +449,74 @@ def test_an_accepted_recipient_still_earns_sent(monkeypatch):
     assert "successfully sent" in result.content
 
 
+# --------------------------------------------------------------------------
+# A refusal ends the attempt. It does not become somebody else's attempt.
+# --------------------------------------------------------------------------
+
+
+def test_a_refused_address_is_never_handed_to_a_second_transport(monkeypatch):
+    """The server read the address and turned it down, so no browser opens.
+
+    Opening a Gmail web compose for it buried the 550 under a draft the user
+    never asked for and left the receipt claiming a web provider had answered.
+    """
+    import friday.tools.builtin.email_tools as et
+
+    _with_credentials(monkeypatch)
+    monkeypatch.setattr(
+        et.smtplib, "SMTP",
+        _server_that_refuses({"bob@bad.invalid": (550, b"Mailbox unavailable")}),
+    )
+    opened: list = []
+    monkeypatch.setattr(windows_friday, "open_url", lambda url: opened.append(url) or True)
+
+    outcome = windows_friday.open_gmail(to="bob@bad.invalid", subject="S", body="B")
+
+    assert not opened, f"a refused address was offered to the web anyway: {opened}"
+    assert outcome.sent is False
+    assert outcome.provider == "smtp.gmail.com", "SMTP answered, so SMTP is what the receipt records"
+    assert "550" in outcome.detail and "bob@bad.invalid" in outcome.detail
+
+
+def test_a_transport_that_never_judged_the_address_still_offers_the_fallback(monkeypatch):
+    """Stopping the fallback must not cost the case it was actually for.
+
+    An unreachable server has not refused anybody, so a draft is still the
+    honest offer. Only a refusal ends the attempt.
+    """
+    _install(monkeypatch, driver=_Driver())
+    outcome = windows_friday.open_gmail(to="a@b.com", subject="S", body="b")
+
+    assert outcome.sent is False
+    assert outcome.provider == "gmail_web"
+    assert "draft" in outcome.detail.lower()
+
+
+def test_the_receipt_records_the_transport_that_actually_answered(monkeypatch):
+    """End to end: the refused run names the 550 and blames the right transport."""
+    import friday.tools.builtin.email_tools as et
+
+    _with_credentials(monkeypatch)
+    monkeypatch.setattr(
+        et.smtplib, "SMTP",
+        _server_that_refuses({"bob@bad.invalid": (550, b"Mailbox unavailable")}),
+    )
+    opened: list = []
+    monkeypatch.setattr(windows_friday, "open_url", lambda url: opened.append(url) or True)
+    monkeypatch.setattr(windows_friday, "get_all_contacts", lambda: {})
+
+    handled, reply, meta = windows_friday.handle_directive(
+        "FRIDAY, email bob@bad.invalid that the meeting moved to 3 PM")
+
+    assert handled is True
+    assert not opened, "no compose window may open for an address the server refused"
+    assert meta["receipt"]["status"] != "SENT"
+    assert meta["receipt"]["provider"] == "smtp.gmail.com"
+    assert meta["success"] is False
+    assert "550" in reply, "the user is told what the server actually said"
+    assert "successfully sent" not in reply
+
+
 @pytest.mark.parametrize("directive", [ALICE, ALICE_ADDRESSED])
 def test_no_web_send_ever_produces_a_sent_receipt(monkeypatch, directive):
     """The web path cannot observe Gmail, so it never earns SENT - by any route.
@@ -487,7 +584,8 @@ def test_the_measured_post_send_desktop_state_is_still_not_a_send(monkeypatch):
     monkeypatch.setattr(launcher, "force_window_foreground", lambda h: True)
     monkeypatch.setattr(wdrv, "WindowsNativeInputDriver", lambda: _SendsThenComposeCloses())
 
-    ok, message = windows_friday.open_gmail(to="alice@realwork.com", subject="S", body="b")
+    outcome = windows_friday.open_gmail(to="alice@realwork.com", subject="S", body="b")
+    ok, message = outcome.sent, outcome.detail
 
     assert state["title"] == "Inbox (230) - cometbrowser001@gmail.com - Gmail", (
         "the test has to actually replay the post-send title"
@@ -533,7 +631,7 @@ def test_a_saved_contact_address_is_used_when_one_exists(monkeypatch):
     _install(monkeypatch)
     monkeypatch.setattr(windows_friday, "get_all_contacts", lambda: {"alice": {"email": "alice@realwork.com"}})
     sent: list = []
-    monkeypatch.setattr(windows_friday, "open_gmail", lambda **kw: sent.append(kw) or (False, "draft"))
+    monkeypatch.setattr(windows_friday, "open_gmail", lambda **kw: sent.append(kw) or GmailSend(False, "draft", "gmail_web"))
 
     handled, reply, meta = windows_friday.handle_directive(ALICE)
 
@@ -551,7 +649,10 @@ def test_the_receipt_records_the_provider_actually_used(monkeypatch):
     assert meta["receipt"]["provider"] == "gmail_web"
     assert meta["receipt"]["recipient"] == "alice@realwork.com"
     assert "the meeting moved to 3 pm" in meta["receipt"]["body"].lower()
-    assert "NOT SENT" in reply
+    # The verdict is asserted, not its casing: what the reader must not be able
+    # to miss is that this was not a send.
+    assert "not sent" in reply.lower()
+    assert "NOT_CONFIRMED" in reply, "the receipt status belongs in the reply too"
 
 
 def test_a_confirmed_send_produces_a_sent_receipt_end_to_end(monkeypatch):

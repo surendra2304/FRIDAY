@@ -6,7 +6,7 @@ from unittest import mock
 from friday.agent.agent import FridayAgent
 from friday.core.config import Settings
 from friday.core.types import Message, Role, AgentResponse
-from friday.devices.windows_friday import windows_friday
+from friday.devices.windows_friday import GmailSend, windows_friday
 from friday.agent.goal import GoalUnderstandingEngine, GoalRequestType
 from friday.agent.cognitive import CognitiveIntelligenceEngine, CognitivePhase
 
@@ -138,12 +138,12 @@ def test_windows_friday_extended_volume_directives():
 
 def test_windows_friday_gmail_and_whatsapp_directives():
     """Verify WindowsFridayController handles Gmail and WhatsApp directives."""
-    with mock.patch.object(windows_friday, "open_gmail", return_value=(True, "Opened Gmail.")) as mock_gmail:
+    with mock.patch.object(windows_friday, "open_gmail", return_value=GmailSend(True, "Email sent successfully to alice@realwork.com.", "smtp.gmail.com")) as mock_gmail:
         handled, reply, meta = windows_friday.handle_directive("open gmail")
         assert handled
         assert meta["action"] == "open_gmail"
 
-    with mock.patch.object(windows_friday, "open_gmail", return_value=(True, "Opened Gmail.")) as mock_gmail:
+    with mock.patch.object(windows_friday, "open_gmail", return_value=GmailSend(True, "Email sent successfully to alice@realwork.com.", "smtp.gmail.com")) as mock_gmail:
         handled, reply, meta = windows_friday.handle_directive("compose email to test@example.com about Meeting")
         assert handled
         assert meta["action"] == "open_gmail"

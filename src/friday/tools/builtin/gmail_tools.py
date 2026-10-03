@@ -305,7 +305,7 @@ class SendGmailTool(BaseTool):
         # reads sendmail's refusal dict, so both callers get the same rule.
         from friday.tools.builtin.email_tools import _send_smtp_email
 
-        sent_ok, sent_msg = _send_smtp_email(
+        outcome = _send_smtp_email(
             to_address=to_address,
             subject=subject,
             body=body,
@@ -315,11 +315,13 @@ class SendGmailTool(BaseTool):
             smtp_port=_SMTP_PORT,
         )
 
-        if not sent_ok:
-            logger.warning(f"Gmail did not send to {to_address}: {sent_msg}")
+        if not outcome.sent:
+            logger.warning(f"Gmail did not send to {to_address}: {outcome.detail}")
+            # The sender's own words, once. Prefixing a message that already
+            # names the address only taught the model to read past the first one.
             return ToolResult(
                 name=self.name,
-                content=f"Failed to send email to {to_address}: {sent_msg}",
+                content=outcome.detail,
                 is_error=True,
                 safety_level=self.safety_level,
                 metadata={

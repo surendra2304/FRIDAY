@@ -29,7 +29,7 @@ import threading
 import time
 import urllib.parse
 import webbrowser
-from typing import Any, Tuple
+from typing import Any, NamedTuple, Tuple
 
 import psutil
 from friday.core.logging import get_logger
@@ -63,6 +63,24 @@ _GMAIL_AUTOSEND_POLL_SECONDS = 0.25
 # asynchronous; pressing into a window that has not yet been raised would send
 # the keystroke somewhere else.
 _GMAIL_AUTOSEND_SETTLE_SECONDS = 0.3
+
+# Which transport actually answered, recorded on the receipt. A run that was
+# refused by SMTP did not become a web send by being reported as one.
+_SMTP_PROVIDER = "smtp.gmail.com"
+_WEB_PROVIDER = "gmail_web"
+
+
+class GmailSend(NamedTuple):
+    """The one answer a Gmail send attempt gives its caller.
+
+    ``sent`` is a confirmation, never an attempt. ``provider`` names the
+    transport that actually produced that answer, so a receipt records what
+    happened instead of what would have been convenient.
+    """
+
+    sent: bool
+    detail: str
+    provider: str
 
 COMMON_WEBSITES = {
     "youtube": "https://www.youtube.com",
@@ -503,12 +521,13 @@ class WindowsFridayController:
         """Backward-compatible search wrapper."""
         return self._dispatch_whatsapp_message(hwnd, recipient=name, message="", allow_blind_fallback=True)
 
-    def open_gmail(self, to: str = "", subject: str = "", body: str = "") -> Tuple[bool, str]:
+    def open_gmail(self, to: str = "", subject: str = "", body: str = "") -> GmailSend:
         """Send email via SMTP if configured, otherwise open Gmail compose and try to auto-send.
 
-        The boolean means "a send was confirmed", never "a window was opened". The
+        ``sent`` means "a send was confirmed", never "a window was opened". The
         web fallback cannot observe Gmail, so it can never confirm a send and must
-        not report one.
+        not report one. A refusal is an answer too: it ends the attempt rather
+        than handing the same address to a second transport.
         """
         to_clean = to.strip()
         subj_clean = subject.strip()
@@ -523,14 +542,21 @@ class WindowsFridayController:
                 sender = getattr(settings, "email_address", None) or os.getenv("FRIDAY_EMAIL_ADDRESS")
                 password = getattr(settings, "email_app_password", None) or os.getenv("FRIDAY_EMAIL_APP_PASSWORD")
                 if sender and password:
-                    sent_ok, sent_msg = _send_smtp_email(
+                    outcome = _send_smtp_email(
                         to_address=to_clean,
                         subject=subj_clean or "Message from FRIDAY",
                         body=body_clean,
                     )
-                    if sent_ok:
-                        return True, f"Email sent successfully to {to_clean}."
-                    logger.debug(f"Direct SMTP send failed ({sent_msg}), falling back to Gmail Web.")
+                    if outcome.sent:
+                        return GmailSend(True, f"Email sent successfully to {to_clean}.", _SMTP_PROVIDER)
+                    if outcome.refused:
+                        # The server read this address and turned it down, and said
+                        # why. Opening a second transport for it would bury that
+                        # answer under a draft the user did not ask for, so the
+                        # refusal is the answer. Only a transport that never got
+                        # to judge the address earns the fallback below.
+                        return GmailSend(False, outcome.detail, _SMTP_PROVIDER)
+                    logger.debug(f"Direct SMTP send failed ({outcome.detail}), falling back to Gmail Web.")
             except Exception as e:
                 logger.debug(f"SMTP check failed: {e}")
 
@@ -548,7 +574,7 @@ class WindowsFridayController:
 
         # If recipient and content are provided, auto-send via Ctrl+Enter after compose loads
         if to_clean and (body_clean or subj_clean):
-            outcome: dict[str, object] = {"key_sent": False, "error": ""}
+            press: dict[str, object] = {"key_sent": False, "error": ""}
             done = threading.Event()
 
             def _auto_send_gmail() -> None:
@@ -577,14 +603,14 @@ class WindowsFridayController:
                             force_window_foreground(hwnd)
                             time.sleep(_GMAIL_AUTOSEND_SETTLE_SECONDS)
                             # Ctrl+Enter sends email in Gmail compose
-                            outcome["key_sent"] = bool(driver.hotkey(["ctrl", "enter"]))
+                            press["key_sent"] = bool(driver.hotkey(["ctrl", "enter"]))
                             break
                         # Nothing to press yet. Re-check instead of sitting out a
                         # fixed delay: the answer changes when the window
                         # appears, not when a timer happens to expire.
                         time.sleep(_GMAIL_AUTOSEND_POLL_SECONDS)
                 except Exception as e:
-                    outcome["error"] = str(e)
+                    press["error"] = str(e)
                     logger.warning(f"Gmail auto-send failed: {e}")
                 finally:
                     done.set()
@@ -596,20 +622,26 @@ class WindowsFridayController:
             done.wait(timeout=_GMAIL_AUTOSEND_TIMEOUT_SECONDS)
 
             subject = subj_clean or "(no subject)"
-            if outcome["key_sent"]:
-                return False, (
+            if press["key_sent"]:
+                return GmailSend(False, (
                     f"Opened a Gmail draft to {to_clean} with subject '{subject}' and pressed Ctrl+Enter. "
                     f"I cannot confirm the message left - check the Sent folder in Gmail. "
                     f"Reported as NOT sent."
-                )
-            reason = f" ({outcome['error']})" if outcome["error"] else ""
-            return False, (
+                ), _WEB_PROVIDER)
+            reason = f" ({press['error']})" if press["error"] else ""
+            return GmailSend(False, (
                 f"Opened a Gmail draft to {to_clean} with subject '{subject}', but could not press send"
                 f"{reason}. The message is NOT sent - press Send in the compose window."
-            )
+            ), _WEB_PROVIDER)
 
+        # Nothing to send: either no address, or an address with nothing written.
+        # A window opened over an empty compose is still not a send, so it is
+        # reported as the nothing it is instead of the tab that appeared.
         target = f" to {to_clean}" if to_clean else ""
-        return ok, f"Opened Gmail compose window{target} in Google Chrome."
+        if not ok:
+            return GmailSend(False, f"Could not open Gmail compose window{target}. Nothing was sent.", _WEB_PROVIDER)
+        why = "no recipient was given" if not to_clean else "there was nothing written to send"
+        return GmailSend(False, f"Opened Gmail compose window{target} in Google Chrome, but {why}. Nothing was sent.", _WEB_PROVIDER)
 
     # -------------------------------------------------------------------------
     # Contact Management & Resolution
@@ -1879,7 +1911,8 @@ class WindowsFridayController:
                     if not any(k in cand.lower() for k in ["email", "gmail"]):
                         body = cand
 
-            ok, send_reply = self.open_gmail(to=to_addr, subject=subject, body=body)
+            outcome = self.open_gmail(to=to_addr, subject=subject, body=body)
+            ok, send_reply = outcome.sent, outcome.detail
 
             # Generate structured ActionReceipt for Gmail. The status is derived
             # from what open_gmail actually confirmed, never asserted up front: a
@@ -1895,7 +1928,7 @@ class WindowsFridayController:
                 "recipient_name": recipient_name or to_addr,
                 "subject": subject or "Notification",
                 "body": body,
-                "provider": "smtp.gmail.com" if ok else "gmail_web",
+                "provider": outcome.provider,
                 "status": "SENT" if ok else "NOT_CONFIRMED",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
@@ -1903,7 +1936,10 @@ class WindowsFridayController:
             if ok:
                 outcome_line = f"Message sent and confirmed via SMTP (Receipt: {receipt_id})."
             else:
-                outcome_line = f"NOT SENT - no send was confirmed. {send_reply}"
+                # The reason the send failed is already in send_reply, in the server's own
+                # words. Prefixing a verdict to it only taught the reader to
+                # skip the first one, so the receipt is stated instead.
+                outcome_line = f"{send_reply} No send was confirmed; receipt {receipt_id} records it as {receipt['status']}."
             reply = (
                 f"Resolved recipient {recipient_name or to_addr} <{to_addr}>.\n"
                 f"Subject: '{subject}'\n"
@@ -1964,7 +2000,8 @@ class WindowsFridayController:
 
             # If recipient is an email address, reroute to Gmail
             if recipient and "@" in recipient:
-                ok, reply = self.open_gmail(to=recipient, body=msg)
+                outcome = self.open_gmail(to=recipient, body=msg)
+                ok, reply = outcome.sent, outcome.detail
                 return True, reply, {"action": "open_gmail", "to": recipient, "body": msg, "success": ok}
 
             # If neither recipient nor message could be extracted
