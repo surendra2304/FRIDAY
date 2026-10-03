@@ -39,6 +39,7 @@ from friday.ecosystem.fleet_client import fleet_client
 from friday.memory.event_consumer import MemoraEventConsumer
 from friday.memory.memora_client import memora_client
 from friday.autonomous import autonomous_controller
+from friday.autonomous.repair_loop import repair_loop
 from friday.autonomous.self_repair import (
     GitRepairApplier,
     RepairProposal,
@@ -133,12 +134,17 @@ async def _memora_event_loop() -> None:
 async def lifespan(_: FastAPI):
     supervision_task = asyncio.create_task(_fleet_supervision_loop(), name="friday-fleet-supervision")
     memora_task = asyncio.create_task(_memora_event_loop(), name="friday-memora-event-consumer")
+    # The unattended repair pass. Until this task existed the trigger had no
+    # caller in the running service at all, so nothing here could fire it. It
+    # stays inert unless an owner sets FRIDAY_SELF_REPAIR_TRIGGER_ENABLED, and
+    # it sleeps before its first pass so a restart is not a repair storm.
+    repair_task = asyncio.create_task(repair_loop.run_forever(), name="friday-autonomous-repair")
     try:
         yield
     finally:
-        for task in (supervision_task, memora_task):
+        for task in (supervision_task, memora_task, repair_task):
             task.cancel()
-        for task in (supervision_task, memora_task):
+        for task in (supervision_task, memora_task, repair_task):
             try:
                 await task
             except asyncio.CancelledError:
@@ -543,6 +549,21 @@ async def rollback_repair(patch_id: str, _: None = Depends(_require_control_acce
     return {"receipt": receipt.as_dict(), "record": _describe(_self_repair_gate, patch_id)}
 
 
+# Declared before ``/{patch_id}`` on purpose. FastAPI matches in registration
+# order, so a literal segment registered after a catch-all is unreachable - it
+# would be read as a patch id and answered with ``{"found": false}``.
+@app.get("/api/self-repair/autonomous")
+async def autonomous_repair_status() -> dict[str, Any]:
+    """Report what the unattended loop is configured to do and last did.
+
+    Unauthenticated on purpose, and read-only: an owner deciding whether to trust
+    this loop should not have to hold a control key to find out whether it has
+    ever run. It names the environment keys that are missing, so ``NOT_CONFIGURED``
+    here names the thing to set rather than only refusing.
+    """
+    return repair_loop.status()
+
+
 @app.get("/api/self-repair/{patch_id}")
 async def repair_status(patch_id: str, _: None = Depends(_require_control_access)) -> dict[str, Any]:
     """Return the full receipt trail for one repair."""
@@ -554,6 +575,23 @@ def _describe(gate: SelfRepairGate, patch_id: str) -> dict[str, Any]:
     if record is None:
         return {"found": False, "patch_id": patch_id}
     return {"found": True, **record.as_dict()}
+
+
+# ── Unattended repair passes (Phase F2) ─────────────────────────────────
+# The trigger above runs on an interval inside the service process. This is how
+# a pass is asked for now instead of at the next interval. It cannot approve or
+# apply: the trigger stops at the owner gate by design, and the type of the gate
+# client enforces it.
+
+
+@app.post("/api/self-repair/autonomous/run")
+async def run_autonomous_repair_now(_: None = Depends(_require_control_access)) -> dict[str, Any]:
+    """Run one unattended pass immediately, instead of waiting for the interval.
+
+    Same shape as the scheduled pass and the same refusals. It proposes and gets
+    a review filed; it never approves, applies, or rolls back.
+    """
+    return await repair_loop.run_once()
 
 
 @app.post("/api/android")
