@@ -326,12 +326,58 @@ passed: FRIDAY `3a90ec8` run `36985714594` **success** (ubuntu + windows), Forge
 
 ## 4b. Pushed heads
 
+Refreshed 2026-10-03. The previous version of this table stopped at `02fd988` and
+was missing nineteen pushes, which made the record understate both the work and the
+risk. Every head from that point is listed, **including the one that was red**.
+
 | Repo | Commit | CI run | Conclusion |
 |---|---|---|---|
 | Forge | `cbbc298` | `36985664923` | **success** |
 | FRIDAY | `22c1a07` (F1) + `3a90ec8` (F2) | `36985714594` | **success** |
 | FRIDAY | `26753ab` (CI conclusions doc) | `36986436282` | **success** |
 | FRIDAY | `56a9ddf` (durable ledger) + `02fd988` (this file) | `36988808095` | **success** |
+| FRIDAY | `93d2af9` | `36989669023` | **success** |
+| FRIDAY | `09b42d9` | `36991275067` | **success** |
+| FRIDAY | `deb0b41` | `36992622035` | **success** |
+| FRIDAY | `17c05af` | `36994068729` | **success** |
+| FRIDAY | `f2152c8` | `37015077326` | **success** |
+| FRIDAY | `82fd04e` | `37026037117` | **success** |
+| FRIDAY | `d8a76f6` | `37034059167` | **failure (ubuntu) / success (windows)** — see below |
+| FRIDAY | `eb363b6` (platform gate) | `37034966578` | **success** |
+| FRIDAY | `f064ea9` | `37036727328` | **success** |
+| FRIDAY | `cd81d6f` | `37038375380` | **success** |
+| FRIDAY | `8c16cb8` | `37039662318` | **success** |
+| FRIDAY | `ee468eb` | `37043442492` | **success** |
+| FRIDAY | `94ee67f` | `37045436000` | **success** |
+| FRIDAY | `64a27b5` | `37047676249` | **success** |
+| FRIDAY | `9665412` | `37050759056` | **success** |
+| FRIDAY | `c8449c5` | `37104234157` | **success** |
+| FRIDAY | `7690edb` (F2 caller) | `37105042011` | **success** — 1630 passed |
+| FRIDAY | `ecd4fff` (F3 checklist) | `37105256385` | **success** |
+
+### The one red head, and what it was
+
+`d8a76f6` failed on **ubuntu-latest** and passed on windows-latest. This is a real
+failure and it was pushed, so it is recorded rather than quietly dropped:
+
+```
+AssertionError: the send keystroke was never attempted
+AssertionError: the user must be told where to check for the truth
+  assert 'Sent folder' in "... (module 'ctypes' has no attribute 'windll') ..."
+```
+
+The cause was not the behaviour under test. The Gmail web fallback drives Windows
+input through `ctypes.windll`, which does not exist off Windows, so the auto-send
+thread raised before the stubbed driver was reached and the assertions were failing
+on the absence of the platform rather than on the product.
+
+Fixed in the very next push, `eb363b6`, by gating those cases on `sys.platform != "win32"`.
+Every head from `eb363b6` onward is green on both runners.
+
+This is worth stating plainly rather than as a footnote: the suite had been
+reporting a green Windows result while a whole platform was running assertions that
+could not have passed for the reason they claimed. The fix moved them to the runner
+that can actually exercise them.
 
 The earlier FRIDAY run `36974282664` (push `4d45490`, previously still in progress)
 has since completed **success**.
