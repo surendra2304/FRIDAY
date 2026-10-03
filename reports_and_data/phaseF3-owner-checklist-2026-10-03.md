@@ -172,7 +172,56 @@ the session it came from.
 
 ---
 
-## 6. The phase evidence table is out of date
+## 6. Learned lessons do not survive a redeploy, and the database path can be silently ignored
+
+**Found 2026-10-03 while producing the Phase B evidence. Not a code change I made —
+a behaviour I measured, listed here because deciding it is yours.**
+
+`MemoraClient.__init__` picks its database from a candidate list and only accepts a
+path that **already exists**:
+
+```python
+self.local_db_path = next(
+    (p for p in candidates if p and (p == ":memory:" or os.path.exists(p))),
+    default_local,
+)
+```
+
+Two consequences:
+
+- A `MEMORA_DB_PATH` pointing at a file that does not exist yet is dropped without
+  any warning, and FRIDAY writes to a relative `data/memora.db` instead.
+- On Render that relative path is **ephemeral per deploy**. Every lesson the fleet
+  learns is lost on each redeploy. The `cloud: False` on the learn result means it
+  was not published to Memora either, so nothing else holds a copy.
+- The candidate list also contains a hardcoded `d:/FRIDAY Universe/Memora/data/memora.db`,
+  so on a machine without that layout the client silently writes elsewhere or not at all.
+
+**To decide**
+
+1. Whether lessons should be durable across redeploys. If yes, point
+   `MEMORA_DB_PATH` at persistent storage, or set `DATABASE_URL` so the cloud
+   Memora holds them — the cloud path already exists and returns `cloud: True`.
+2. Whether the hardcoded absolute path should stay in the candidate list. It is
+   machine-specific and can only ever be right on one computer.
+
+**Not changed deliberately.** This decides which database the product writes to,
+which is deployment-visible. It is a one-line fix to honour an explicitly-passed
+`local_db_path` unconditionally, and it should be made alongside a decision on
+where the cloud stores lessons — not on its own, half-way.
+
+**To prove it**
+
+```bash
+python research/phaseB_recall_proof.py
+```
+
+Step 6 reopens the database and shows the lesson surviving **locally**. It does not
+show surviving a redeploy, because nothing in the current configuration can.
+
+---
+
+## 7. The phase evidence table is out of date
 
 `reports_and_data/phaseF-evidence-2026-10-02.md` §4b lists pushed heads but is
 missing eleven commits, including every one pushed on 2026-10-02 and 2026-10-03.
