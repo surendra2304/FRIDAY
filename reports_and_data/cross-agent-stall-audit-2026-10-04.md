@@ -32,7 +32,7 @@ stand-in synthesizer and times a competing SQLite writer while it runs.
 
 ### Futuris — one dead peer cost a full refresh cycle (commit `7aa2fcf`)
 
-`POST /v1/predictions/refresh-all` generated all 16 universe targets in a serial
+`POST /v1/predictions/refresh-all` generated all 18 universe targets in a serial
 loop, each making an outbound IntelX context call. `futuris/connectors/intelx_context.py`
 also caught `httpx.RequestError` and then retried a *different endpoint on the
 same host* — which cannot succeed when the transport itself failed, and doubled
