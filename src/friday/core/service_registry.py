@@ -75,7 +75,7 @@ class ServiceRegistry:
     def _load_standard_services(self) -> dict[str, ServiceConfig]:
         """Load standard service configurations using standardized environment variables."""
         # 1. Inference / ASTRA
-        inference_url = (os.getenv("FRIDAY_INFERENCE_URL") or os.getenv("INFERENCE_URL") or "https://inference-r1sn.onrender.com").rstrip("/")
+        inference_url = (os.getenv("FRIDAY_INFERENCE_URL") or os.getenv("INFERENCE_URL") or "https://inference-h7bn.onrender.com").rstrip("/")
         inference_key = os.getenv("FRIDAY_INFERENCE_API_KEY") or os.getenv("INFERENCE_API_KEY", "")
 
         # 2. Memora

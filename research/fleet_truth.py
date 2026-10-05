@@ -46,7 +46,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 #: The nine deployed services, and the local checkout each one is built from.
 FLEET: tuple[tuple[str, str, str], ...] = (
     ("FRIDAY", "https://friday-zw59.onrender.com", "FRIDAY"),
-    ("Inference", "https://inference-r1sn.onrender.com", "Inference"),
+    ("Inference", "https://inference-h7bn.onrender.com", "Inference"),
     ("Memora", "https://memora-cavc.onrender.com", "Memora"),
     ("Stratex", "https://stratex-8wj1.onrender.com", "Stratex"),
     ("IntelX", "https://intelx-mygl.onrender.com", "IntelX"),
