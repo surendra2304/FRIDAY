@@ -58,6 +58,10 @@ from friday.tools.builtin.os_settings import (
     ToggleWifiTool,
 )
 from friday.tools.builtin.remember import RememberFactTool
+from friday.tools.builtin.self_development import (
+    SelfDevelopTool,
+    SelfRepairTool,
+)
 from friday.tools.builtin.screen_ocr import (
     FindOnScreenTool,
     GetActiveAppContextTool,
@@ -146,6 +150,8 @@ __all__ = [
     "RunTestsTool",
     "ScreenPredictionTool",
     "ScreenSnapshotTool",
+    "SelfDevelopTool",
+    "SelfRepairTool",
     "SendEmailTool",
     "SendGmailTool",
     "SendWhatsAppMessageTool",

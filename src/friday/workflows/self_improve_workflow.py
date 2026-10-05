@@ -144,7 +144,17 @@ class SelfImprovementWorkflow:
                 f"    safety_level = SafetyLevel.SAFE\n"
                 f'    parameters = {{"type": "object", "properties": {{}}, "required": []}}\n\n'
                 f"    def execute(self, **kwargs: Any) -> ToolResult:\n"
-                f'        return ToolResult(name=self.name, content="Executed {feature_desc} successfully.", is_error=False, safety_level=self.safety_level)\n'
+                f'        return ToolResult(\n'
+                f'            name=self.name,\n'
+                f'            content=(\n'
+                f'                "This tool was scaffolded for \\"{feature_desc}\\" while no model was "\n'
+                f'                "reachable to write the implementation. It is registered so the plan "\n'
+                f'                "stays visible, and it reports its own incompleteness rather than "\n'
+                f'                "claiming to have run."\n'
+                f'            ),\n'
+                f"            is_error=True,\n"
+                f"            safety_level=self.safety_level,\n"
+                f"        )\n"
             )
 
         steps.append(f"Code Generation: Synthesized {len(generated_code)} characters of Python code.")

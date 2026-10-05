@@ -95,6 +95,8 @@ from friday.tools.builtin import (
     RunTestsTool,
     ScreenPredictionTool,
     ScreenSnapshotTool,
+    SelfDevelopTool,
+    SelfRepairTool,
     SendEmailTool,
     SendGmailTool,
     SendWhatsAppMessageTool,
@@ -218,6 +220,11 @@ class ToolExecutionMixin:
                 pass
             registry.register(GetAIUniverseStatusTool())
             registry.register(ScreenPredictionTool())
+            # BUG-003: the system prompt tells the model to use these two by name.
+            # They must be in the registry the model's schemas come from, or the
+            # instruction produces a phantom tool call and FRIDAY appears to refuse.
+            registry.register(SelfDevelopTool())
+            registry.register(SelfRepairTool())
             return registry
 
     def _init_default_agent_registry(self) -> AgentRegistry:
