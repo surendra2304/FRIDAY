@@ -40,6 +40,9 @@ from friday.memory.event_consumer import MemoraEventConsumer
 from friday.memory.memora_client import memora_client
 from friday.autonomous import autonomous_controller
 from friday.autonomous.repair_loop import repair_loop
+from friday.cognition.reflex import IncidentKind, get_reflex_brain
+from friday.cognition.mesh import get_mesh
+from friday.cognition.mind import get_mind_registry
 from friday.autonomous.self_repair import (
     GitRepairApplier,
     RepairProposal,
@@ -130,6 +133,41 @@ async def _memora_event_loop() -> None:
         memora_event_state["running"] = False
 
 
+async def _reflex_loop() -> None:
+    """Run the cognition reflex for as long as the service lives.
+
+    A failure inside the loop is logged and the loop stops rather than spins: a
+    brain that keeps crashing should be visible in the log, not silent.
+    """
+    brain = get_reflex_brain()
+    if not brain.enabled:
+        logger.info("Reflex brain is disabled by FRIDAY_REFLEX_ENABLED")
+        return
+    try:
+        await brain.run_forever()
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("Reflex brain loop stopped with an error")
+
+
+async def _configure_memory_mirror() -> None:
+    """Point shared memory at the Memora peer, but only when asked.
+
+    Mirroring is best-effort and off by default: an unreachable memory peer must
+    never add its timeout to the path of a task that is doing real work.
+    """
+    if os.getenv("FRIDAY_MEMORY_MIRROR", "").strip().lower() not in {"1", "true", "yes", "on"}:
+        return
+    try:
+        from friday.cognition.memory_bridge import mesh_mirror, set_shared_memory, SharedMemory
+
+        set_shared_memory(SharedMemory(mirror=mesh_mirror(get_mesh())))
+        logger.info("Shared memory will mirror episodes to Memora (FRIDAY_MEMORY_MIRROR is on)")
+    except Exception:
+        logger.exception("Shared memory mirroring could not be configured")
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     supervision_task = asyncio.create_task(_fleet_supervision_loop(), name="friday-fleet-supervision")
@@ -139,12 +177,21 @@ async def lifespan(_: FastAPI):
     # stays inert unless an owner sets FRIDAY_SELF_REPAIR_TRIGGER_ENABLED, and
     # it sleeps before its first pass so a restart is not a repair storm.
     repair_task = asyncio.create_task(repair_loop.run_forever(), name="friday-autonomous-repair")
+    # The cognition reflex: detect a fault anywhere in FRIDAY's own code, runtime
+    # or fleet, prove a repair in a sandbox, and apply it under a standing mandate.
+    # `run_forever` sleeps before its first pass, so a restart is not a repair
+    # storm. Set FRIDAY_REFLEX_ENABLED=false to keep it out of this process.
+    reflex_task = asyncio.create_task(_reflex_loop(), name="friday-reflex-brain")
+    memory_mirror_task = asyncio.create_task(_configure_memory_mirror(), name="friday-memory-mirror")
     try:
         yield
     finally:
-        for task in (supervision_task, memora_task, repair_task):
+        # Named literally, not through a variable: a task that outlives shutdown is
+        # a repair pass firing into a dead process, and the invariant that every
+        # task created above is cancelled here is checked by parsing this loop.
+        for task in (supervision_task, memora_task, repair_task, reflex_task, memory_mirror_task):
             task.cancel()
-        for task in (supervision_task, memora_task, repair_task):
+        for task in (supervision_task, memora_task, repair_task, reflex_task, memory_mirror_task):
             try:
                 await task
             except asyncio.CancelledError:
@@ -538,6 +585,12 @@ _self_repair_gate = SelfRepairGate(
 )
 
 
+class ReflexRunRequest(BaseModel):
+    """Which incident classes to examine; empty means all of them."""
+
+    scope: str = ""
+
+
 class RepairProposalRequest(BaseModel):
     repo_path: str = ""
     branch: str
@@ -668,6 +721,56 @@ async def run_autonomous_repair_now(_: None = Depends(_require_control_access)) 
     a review filed; it never approves, applies, or rolls back.
     """
     return await repair_loop.run_once()
+
+
+# ── The cognition surfaces: reflex, mesh, minds ─────────────────────────
+# Status is readable without a control key: an owner deciding whether to trust
+# an autonomous loop should be able to look at what it has actually done. Every
+# state-changing call goes through the same origin-and-key gate as the rest.
+
+
+@app.get("/api/reflex/status")
+async def reflex_status() -> dict[str, Any]:
+    """What the reflex brain is configured to do, and what it last did."""
+    return get_reflex_brain().status()
+
+
+@app.post("/api/reflex/run")
+async def reflex_run_now(
+    req: ReflexRunRequest, _: None = Depends(_require_control_access)
+) -> dict[str, Any]:
+    """Run one reflex pass immediately. Refusals are reported, never hidden.
+
+    Nothing about this endpoint grants authority: a repair that needs a standing
+    mandate and does not have one comes back as ``AWAITING_MANDATE``.
+    """
+    include: set[IncidentKind] | None = None
+    if req.scope.strip():
+        mapping = {
+            "imports": IncidentKind.IMPORT_FAILURE,
+            "tests": IncidentKind.TEST_FAILURE,
+            "fleet": IncidentKind.PEER_UNREACHABLE,
+            "resources": IncidentKind.RESOURCE_PRESSURE,
+            "logs": IncidentKind.LOG_ERROR,
+        }
+        include = {
+            mapping[name.strip().lower()]
+            for name in req.scope.split(",")
+            if name.strip().lower() in mapping
+        } or None
+    return await get_reflex_brain().run_once(include=include)
+
+
+@app.get("/api/mesh/status")
+async def mesh_status() -> dict[str, Any]:
+    """The peer mesh: configured peers, recent typed outcomes, and its breaker."""
+    return get_mesh().status()
+
+
+@app.get("/api/minds")
+async def minds_status() -> dict[str, Any]:
+    """Every agent's self-model, its learned capabilities, and the shared memory."""
+    return get_mind_registry().fleet_status()
 
 
 @app.post("/api/android")

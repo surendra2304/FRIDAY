@@ -345,6 +345,19 @@ Modes:
                              List and validate registered safe action surface
   python -m friday --text    Start explicitly in interactive text conversation mode
   python -m friday --debug   Enable verbose diagnostic logs in the console
+  python -m friday --generate-autonomy-key
+                             Print a fresh key for FRIDAY_AUTONOMY_KEY (put it in .env)
+  python -m friday --grant-autonomy
+                             Grant standing autonomy: FRIDAY repairs itself unattended
+  python -m friday --autonomy-status   Show the mandates in force, or why none is
+  python -m friday --revoke-autonomy [MANDATE_ID|all]
+                             Revoke one mandate, or every mandate
+  python -m friday --reflex-status     What the reflex brain is configured to do
+  python -m friday --reflex-run [SCOPE]
+                             Run one reflex pass now (scope: imports,tests,fleet,
+                             resources,logs; empty means all of them)
+  python -m friday --approve-repair PATCH_ID
+                             Approve one proven, reviewed repair for application
 """,
     )
     parser.add_argument("--voice", action="store_true", help="Start in real-time Gemini Live bidirectional voice mode (uses configured provider/quota)")
@@ -361,6 +374,19 @@ Modes:
     parser.add_argument("--port", type=int, default=None, help="Port for --serve (default: $PORT or 9000)")
     parser.add_argument("--text", action="store_true", help="Start explicitly in interactive text conversation mode")
     parser.add_argument("--debug", action="store_true", help="Enable verbose debug logging in terminal console")
+    autonomy = parser.add_argument_group("autonomy (self-repair without being asked)")
+    autonomy.add_argument("--generate-autonomy-key", action="store_true", help="Print a fresh key for FRIDAY_AUTONOMY_KEY and exit")
+    autonomy.add_argument("--grant-autonomy", action="store_true", help="Issue a signed standing mandate: FRIDAY may repair itself unattended")
+    autonomy.add_argument("--autonomy-scope", type=str, default="", help="Comma-separated scopes to grant (default: all known scopes)")
+    autonomy.add_argument("--autonomy-hours", type=float, default=12.0, help="How long the mandate stays valid (default: 12)")
+    autonomy.add_argument("--autonomy-paths", type=str, default="", help="Comma-separated repository paths the mandate covers (default: FRIDAY's own source)")
+    autonomy.add_argument("--autonomy-max-files", type=int, default=3, help="Maximum files one authorised change may touch (default: 3)")
+    autonomy.add_argument("--autonomy-max-changes", type=int, default=0, help="Maximum changes the mandate permits; 0 means unlimited until expiry")
+    autonomy.add_argument("--autonomy-status", action="store_true", help="Show standing mandates, or the reason none is in force")
+    autonomy.add_argument("--revoke-autonomy", type=str, nargs="?", const="all", default=None, help="Revoke one mandate by id, or all of them")
+    autonomy.add_argument("--reflex-status", action="store_true", help="Report the reflex brain's configuration and recent outcomes")
+    autonomy.add_argument("--reflex-run", type=str, nargs="?", const="", default=None, help="Run one reflex pass now (optionally limited to a scope)")
+    autonomy.add_argument("--approve-repair", type=str, default=None, help="Approve one proven, reviewed repair so it can be applied")
     args, unknown = parser.parse_known_args()
 
     _normalize_voice_mode(args)
@@ -446,6 +472,151 @@ Modes:
         except ImportError as e:
             print(f"Desktop UI dependencies not met: {e}. Run 'pip install PyQt6 keyboard'")
             return 1
+    if args.generate_autonomy_key:
+        from friday.cognition.mandate import MandateAuthority
+
+        print("\nStanding autonomy key generated. Put this line in your .env:\n")
+        print(f"  FRIDAY_AUTONOMY_KEY={MandateAuthority.generate_key()}\n")
+        print(
+            "Keep it secret and keep it stable. FRIDAY uses it to verify that a mandate "
+            "came from you; anyone holding it can grant autonomy, and losing it invalidates "
+            "every mandate already issued."
+        )
+        return
+
+    if args.autonomy_status:
+        from friday.cognition.mandate import MandateAuthority
+
+        authority = MandateAuthority()
+        status = authority.status()
+        print(f"\nAutonomy: {status['status']}\n{status['detail']}\n")
+        for mandate in status.get("active_mandates", []):
+            print(
+                f"  - {mandate['mandate_id']} issued by {mandate['issued_by']} "
+                f"until {mandate['expires_at']} scopes={mandate['scopes']}"
+            )
+        return
+
+    if args.grant_autonomy:
+        from friday.cognition.mandate import ALL_SCOPES, MANDATE_KEY_ENV, MandateAuthority
+
+        authority = MandateAuthority()
+        if not authority.has_key:
+            print(
+                f"\n{MANDATE_KEY_ENV} is not configured, so no mandate can be signed.\n"
+                "Run `python -m friday --generate-autonomy-key` and put the result in your .env, "
+                "then run this again.\n"
+            )
+            sys.exit(1)
+        scopes = [item.strip() for item in args.autonomy_scope.split(",") if item.strip()] or None
+        unknown = [s for s in (scopes or []) if s not in ALL_SCOPES]
+        if unknown:
+            print(f"\nUnknown scope(s): {unknown}. Known scopes: {list(ALL_SCOPES)}\n")
+            sys.exit(1)
+        paths = [item.strip() for item in args.autonomy_paths.split(",") if item.strip()] or None
+        try:
+            document = authority.issue(
+                settings.user_name or "owner",
+                scopes=scopes,
+                allowed_paths=paths,
+                ttl_seconds=max(60, int(args.autonomy_hours * 3600)),
+                max_files_per_change=max(1, args.autonomy_max_files),
+                max_changes=max(0, args.autonomy_max_changes),
+                note="granted from the CLI",
+            )
+        except ValueError as exc:
+            print(f"\nAutonomy was not granted: {exc}\n")
+            sys.exit(1)
+        from datetime import datetime, timezone
+
+        expires = datetime.fromtimestamp(float(document["expires_at"]), tz=timezone.utc).isoformat()
+        print(
+            f"\nStanding autonomy granted.\n"
+            f"  mandate: {document['mandate_id']}\n"
+            f"  scopes:  {document['scopes']}\n"
+            f"  paths:   {document['allowed_paths']}\n"
+            f"  expires: {expires}\n"
+            "\nEvery unattended change must still come with a test that failed before and passes "
+            "after, stays inside the paths above, and is rolled back if it regresses. "
+            "Revoke with `python -m friday --revoke-autonomy <mandate_id>`.\n"
+        )
+        return
+
+    if args.revoke_autonomy is not None:
+        from friday.cognition.mandate import MandateAuthority
+
+        authority = MandateAuthority()
+        if args.revoke_autonomy == "all":
+            revoked = [m.mandate_id for m in authority.active() if authority.revoke(m.mandate_id, "revoked from the CLI")]
+            print(f"\nRevoked {len(revoked)} mandate(s): {revoked or 'none were active'}\n")
+        else:
+            ok = authority.revoke(args.revoke_autonomy, "revoked from the CLI")
+            print(
+                f"\n{'Revoked' if ok else 'No active mandate named'} {args.revoke_autonomy}\n"
+            )
+        return
+
+    if args.reflex_status:
+        import json as _json
+
+        from friday.cognition.reflex import get_reflex_brain
+
+        print(_json.dumps(get_reflex_brain().status(), indent=2, default=str))
+        return
+
+    if args.reflex_run is not None:
+        import asyncio as _asyncio
+        import json as _json
+
+        from friday.cognition.reflex import IncidentKind, get_reflex_brain
+
+        mapping = {
+            "imports": IncidentKind.IMPORT_FAILURE,
+            "tests": IncidentKind.TEST_FAILURE,
+            "fleet": IncidentKind.PEER_UNREACHABLE,
+            "resources": IncidentKind.RESOURCE_PRESSURE,
+            "logs": IncidentKind.LOG_ERROR,
+        }
+        include = {
+            mapping[item.strip().lower()]
+            for item in args.reflex_run.split(",")
+            if item.strip().lower() in mapping
+        } or None
+        result = _asyncio.run(get_reflex_brain().run_once(include=include))
+        print(_json.dumps(result, indent=2, default=str))
+        return
+
+    if args.approve_repair:
+        from friday.api.server import _self_repair_gate
+        from friday.cognition.mandate import MandateAuthority
+
+        authority = MandateAuthority()
+        patch_id = args.approve_repair
+        record = _self_repair_gate.get(patch_id)
+        if record is None:
+            print(f"\nNo repair named {patch_id}. Nothing was approved.\n")
+            sys.exit(1)
+        described = record.as_dict()
+        verdict = authority.evaluate(
+            "source_repair",
+            paths=(described.get("target_file"),) if described.get("target_file") else (),
+            has_test_evidence=bool(described.get("tests")),
+        )
+        if not verdict.allowed:
+            print(f"\nAPPROVAL REFUSED: {verdict.refusal} - {verdict.reason}\n")
+            if verdict.refusal == "NO_MANDATE":
+                print("Grant standing autonomy first: `python -m friday --grant-autonomy`\n")
+            sys.exit(1)
+        try:
+            receipt = _self_repair_gate.record_owner_decision(
+                patch_id, approver=f"{settings.user_name or 'owner'} (CLI)", approve=True
+            )
+        except Exception as exc:
+            print(f"\nApproval refused by the gate: {exc}\n")
+            sys.exit(1)
+        print(f"\nApproved. Receipt: {receipt.as_dict()}\n")
+        return
+
     if args.action_audit:
         from friday.memory.in_memory import InMemoryConversationMemory
 
