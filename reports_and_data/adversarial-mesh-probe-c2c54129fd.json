@@ -1,0 +1,330 @@
+{
+  "checks": [
+    {
+      "check": "memora: rejects no credential",
+      "clean": true,
+      "detail": "HTTP 201"
+    },
+    {
+      "check": "memora: rejects unrelated key",
+      "clean": true,
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "memora: key with trailing space",
+      "clean": true,
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "futuris: rejects no credential",
+      "clean": true,
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "futuris: rejects unrelated key",
+      "clean": true,
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "futuris: key with trailing space",
+      "clean": true,
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "intelx: rejects no credential",
+      "clean": true,
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "intelx: rejects unrelated key",
+      "clean": true,
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "intelx: key with trailing space",
+      "clean": false,
+      "detail": "HTTP 200 <- ACCEPTED"
+    },
+    {
+      "check": "cortex: rejects no credential",
+      "clean": true,
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "cortex: rejects unrelated key",
+      "clean": true,
+      "detail": "HTTP 403"
+    },
+    {
+      "check": "cortex: key with trailing space",
+      "clean": true,
+      "detail": "HTTP 403"
+    },
+    {
+      "check": "forge: rejects no credential",
+      "clean": true,
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "forge: rejects unrelated key",
+      "clean": true,
+      "detail": "HTTP 403"
+    },
+    {
+      "check": "forge: key with trailing space",
+      "clean": true,
+      "detail": "HTTP 403"
+    },
+    {
+      "check": "memora: empty_body",
+      "clean": true,
+      "detail": "HTTP 422 17ms"
+    },
+    {
+      "check": "memora: null_fields",
+      "clean": true,
+      "detail": "HTTP 422 16ms"
+    },
+    {
+      "check": "memora: wrong_type",
+      "clean": true,
+      "detail": "HTTP 422 16ms"
+    },
+    {
+      "check": "memora: sql_fragment",
+      "clean": true,
+      "detail": "HTTP 422 21ms"
+    },
+    {
+      "check": "memora: path_traversal",
+      "clean": true,
+      "detail": "HTTP 201 102ms"
+    },
+    {
+      "check": "memora: control_chars",
+      "clean": true,
+      "detail": "HTTP 201 191ms"
+    },
+    {
+      "check": "memora: unicode_bomb",
+      "clean": true,
+      "detail": "HTTP 201 241ms"
+    },
+    {
+      "check": "memora: huge_string",
+      "clean": true,
+      "detail": "HTTP 201 33402ms"
+    },
+    {
+      "check": "futuris: empty_body",
+      "clean": true,
+      "detail": "HTTP 422 20ms"
+    },
+    {
+      "check": "futuris: null_fields",
+      "clean": true,
+      "detail": "HTTP 422 5ms"
+    },
+    {
+      "check": "futuris: wrong_type",
+      "clean": true,
+      "detail": "HTTP 422 1ms"
+    },
+    {
+      "check": "futuris: sql_fragment",
+      "clean": true,
+      "detail": "HTTP 422 3ms"
+    },
+    {
+      "check": "futuris: path_traversal",
+      "clean": true,
+      "detail": "HTTP 422 0ms"
+    },
+    {
+      "check": "futuris: control_chars",
+      "clean": true,
+      "detail": "HTTP 422 4ms"
+    },
+    {
+      "check": "futuris: unicode_bomb",
+      "clean": true,
+      "detail": "HTTP 422 0ms"
+    },
+    {
+      "check": "futuris: huge_string",
+      "clean": true,
+      "detail": "HTTP 422 32ms"
+    },
+    {
+      "check": "intelx: empty_body",
+      "clean": true,
+      "detail": "HTTP 422 5ms"
+    },
+    {
+      "check": "intelx: null_fields",
+      "clean": true,
+      "detail": "HTTP 422 4ms"
+    },
+    {
+      "check": "intelx: wrong_type",
+      "clean": true,
+      "detail": "HTTP 422 2ms"
+    },
+    {
+      "check": "intelx: sql_fragment",
+      "clean": true,
+      "detail": "HTTP 422 4ms"
+    },
+    {
+      "check": "intelx: path_traversal",
+      "clean": true,
+      "detail": "HTTP 422 3ms"
+    },
+    {
+      "check": "intelx: control_chars",
+      "clean": true,
+      "detail": "HTTP 422 20ms"
+    },
+    {
+      "check": "intelx: unicode_bomb",
+      "clean": true,
+      "detail": "HTTP 422 9ms"
+    },
+    {
+      "check": "intelx: huge_string",
+      "clean": true,
+      "detail": "HTTP 422 34ms"
+    },
+    {
+      "check": "cortex: empty_body",
+      "clean": true,
+      "detail": "HTTP 422 3ms"
+    },
+    {
+      "check": "cortex: null_fields",
+      "clean": true,
+      "detail": "HTTP 422 3ms"
+    },
+    {
+      "check": "cortex: wrong_type",
+      "clean": true,
+      "detail": "HTTP 422 17ms"
+    },
+    {
+      "check": "cortex: sql_fragment",
+      "clean": true,
+      "detail": "HTTP 422 2ms"
+    },
+    {
+      "check": "cortex: path_traversal",
+      "clean": true,
+      "detail": "HTTP 422 11ms"
+    },
+    {
+      "check": "cortex: control_chars",
+      "clean": true,
+      "detail": "HTTP 422 5ms"
+    },
+    {
+      "check": "cortex: unicode_bomb",
+      "clean": true,
+      "detail": "HTTP 422 28ms"
+    },
+    {
+      "check": "cortex: huge_string",
+      "clean": true,
+      "detail": "HTTP 422 85ms"
+    },
+    {
+      "check": "forge: empty_body",
+      "clean": true,
+      "detail": "HTTP 405 2ms"
+    },
+    {
+      "check": "forge: null_fields",
+      "clean": true,
+      "detail": "HTTP 405 0ms"
+    },
+    {
+      "check": "forge: wrong_type",
+      "clean": true,
+      "detail": "HTTP 405 5ms"
+    },
+    {
+      "check": "forge: sql_fragment",
+      "clean": true,
+      "detail": "HTTP 405 2ms"
+    },
+    {
+      "check": "forge: path_traversal",
+      "clean": true,
+      "detail": "HTTP 405 3ms"
+    },
+    {
+      "check": "forge: control_chars",
+      "clean": true,
+      "detail": "HTTP 405 1ms"
+    },
+    {
+      "check": "forge: unicode_bomb",
+      "clean": true,
+      "detail": "HTTP 405 0ms"
+    },
+    {
+      "check": "forge: huge_string",
+      "clean": true,
+      "detail": "HTTP 405 5ms"
+    },
+    {
+      "check": "memora write accepted",
+      "clean": true,
+      "detail": "HTTP 201"
+    },
+    {
+      "check": "memora immediate read-after-write",
+      "clean": true,
+      "detail": "HTTP 200 visible=True 26ms"
+    },
+    {
+      "check": "memora duplicate submit is handled",
+      "clean": true,
+      "detail": "HTTP 201"
+    },
+    {
+      "check": "memora 8 concurrent writes",
+      "clean": true,
+      "detail": "all handled"
+    },
+    {
+      "check": "memora: /health",
+      "clean": true,
+      "detail": "HTTP 200 {\"status\": \"healthy\", \"evidence_class\": \"server_live_probe\", \"observed_at\": \"2026-10-03T17:43:46.043170+00:00\", \"service\": \"memora-api\"}"
+    },
+    {
+      "check": "inference: /health/ready",
+      "clean": true,
+      "detail": "HTTP 200 {\"status\": \"registry_configured\", \"evidence_class\": \"agent_registry_configuration\", \"evidence_scope\": \"Checks only the configured specialist registry "
+    },
+    {
+      "check": "forge: /health/ready",
+      "clean": true,
+      "detail": "HTTP 200 {\"status\": \"ready\", \"database_connected\": true, \"workspaces_writable\": true, \"evidence_class\": \"dependency_readiness\"}"
+    },
+    {
+      "check": "cortex: /health/ready",
+      "clean": true,
+      "detail": "HTTP 503 {\"status\": \"NOT_READY\", \"evidence_class\": \"dependency_readiness\", \"observed_at\": \"2026-10-03T17:43:50.154333+00:00\", \"dependencies\": {\"postgres\": \"UP\""
+    },
+    {
+      "check": "sentinel: /health",
+      "clean": true,
+      "detail": "HTTP 200 {\"status\": \"ok\", \"evidence_class\": \"process_liveness\", \"service\": \"SENTINEL\", \"version\": \"1.0.0\"}"
+    },
+    {
+      "check": "intelx: /api/v1/health",
+      "clean": true,
+      "detail": "HTTP 200 {\"status\": \"ok\", \"evidence_class\": \"process_liveness\", \"observed_at\": \"2026-10-03T17:43:50.166480+00:00\", \"service\": \"INTELX\"}"
+    }
+  ],
+  "findings": []
+}

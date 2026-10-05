@@ -1,0 +1,97 @@
+[
+  {
+    "check": "friday /api/health",
+    "passed": true,
+    "detail": "HTTP 200 4ms ['overall', 'evidence_class', 'observed_at', 'checks']"
+  },
+  {
+    "check": "inference /health",
+    "passed": true,
+    "detail": "HTTP 200 1ms {'status': 'responding'}"
+  },
+  {
+    "check": "memora /health",
+    "passed": true,
+    "detail": "HTTP 200 0ms {'status': 'healthy'}"
+  },
+  {
+    "check": "intelx /api/v1/healthz",
+    "passed": true,
+    "detail": "HTTP 200 6ms {'status': 'ok'}"
+  },
+  {
+    "check": "futuris /health",
+    "passed": true,
+    "detail": "HTTP 200 27ms {'status': 'ok'}"
+  },
+  {
+    "check": "cortex /health",
+    "passed": true,
+    "detail": "HTTP 200 2ms {'status': 'UP'}"
+  },
+  {
+    "check": "forge /health",
+    "passed": true,
+    "detail": "HTTP 200 29ms {'status': 'ok'}"
+  },
+  {
+    "check": "sentinel /health",
+    "passed": true,
+    "detail": "HTTP 200 17ms {'status': 'ok'}"
+  },
+  {
+    "check": "stratex /api/status",
+    "passed": true,
+    "detail": "HTTP 200 7143ms ['alerts', 'available_risk', 'bot_start_time', 'capability_reasons', 'cash', 'components', 'crypto_holdings_value', 'engine_data', 'engine_healthy', 'engine_status', 'engine_tradin"
+  },
+  {
+    "check": "memora record memory",
+    "passed": true,
+    "detail": "HTTP 201 288ms ['id', 'tenant_id', 'user_id', 'agent_id', 'workspace_id', 'device_id', 'task_id', 'idempotency_key', 'namespace_id', 'owner_id', 'memory_type', 'content_text', 'source', 'provenan"
+  },
+  {
+    "check": "memora assigned a durable id",
+    "passed": true,
+    "detail": "HTTP 201 288ms id_present=True"
+  },
+  {
+    "check": "memora recalls the stored memory",
+    "passed": true,
+    "detail": "HTTP 200 7ms content_matched=True"
+  },
+  {
+    "check": "inference /ask",
+    "passed": true,
+    "detail": "HTTP 200 4722ms ['task_id', 'run_id', 'answer', 'mode_used', 'provider', 'models_used', 'agents_used', 'confidence', 'latency_seconds', 'total_tokens', 'unresolved_disagreements', 'key_evidence']"
+  },
+  {
+    "check": "intelx trigger research",
+    "passed": false,
+    "detail": "HTTP 422 6ms {'detail': 'Missing mandatory research contract parameter: query_scope (minimum 5 characters required)'}"
+  },
+  {
+    "check": "futuris forecast",
+    "passed": true,
+    "detail": "HTTP 201 12228ms {'status': 'active'}"
+  },
+  {
+    "check": "forge capabilities",
+    "passed": true,
+    "detail": "HTTP 200 5ms ['engine_name', 'version', 'supported_modes', 'lifecycle_states', 'features', 'provider']"
+  },
+  {
+    "check": "cortex friday command",
+    "passed": true,
+    "detail": "HTTP 200 2895ms {'status': 'success'}"
+  },
+  {
+    "check": "stratex closed trades visible",
+    "passed": true,
+    "detail": "HTTP 200 7446ms count=5"
+  },
+  {
+    "check": "friday agent roster",
+    "passed": true,
+    "detail": "HTTP 200 2102ms entries=8"
+  }
+]

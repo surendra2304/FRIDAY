@@ -1,0 +1,38 @@
+{
+  "friday": {
+    "up": true,
+    "detail": "HTTP 200"
+  },
+  "inference": {
+    "up": true,
+    "detail": "HTTP 200"
+  },
+  "memora": {
+    "up": true,
+    "detail": "HTTP 200"
+  },
+  "stratex": {
+    "up": true,
+    "detail": "HTTP 200"
+  },
+  "intelx": {
+    "up": true,
+    "detail": "HTTP 200"
+  },
+  "futuris": {
+    "up": true,
+    "detail": "HTTP 200"
+  },
+  "cortex": {
+    "up": true,
+    "detail": "HTTP 200"
+  },
+  "forge": {
+    "up": true,
+    "detail": "HTTP 200"
+  },
+  "sentinel": {
+    "up": true,
+    "detail": "HTTP 200"
+  }
+}

@@ -1,0 +1,339 @@
+{
+  "checks": [
+    {
+      "check": "memora: rejects no credential",
+      "clean": true,
+      "detail": "HTTP 201"
+    },
+    {
+      "check": "memora: rejects unrelated key",
+      "clean": true,
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "memora: key with trailing space",
+      "clean": true,
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "futuris: rejects no credential",
+      "clean": true,
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "futuris: rejects unrelated key",
+      "clean": true,
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "futuris: key with trailing space",
+      "clean": true,
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "intelx: rejects no credential",
+      "clean": true,
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "intelx: rejects unrelated key",
+      "clean": true,
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "intelx: key with trailing space",
+      "clean": false,
+      "detail": "HTTP 201 <- ACCEPTED"
+    },
+    {
+      "check": "cortex: rejects no credential",
+      "clean": true,
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "cortex: accepts an unrelated key",
+      "clean": false,
+      "detail": "HTTP 200 {\"status\":\"success\",\"command_id\":\"fri_49630af9c7\",\"cortex_loop_id\":\"loop_197ea9c0\",\"agent_id\":\"agent_reliability\",\"decision\":\"NO_ACTION\",\"executed_actions\":0,\"trace\":[{\"phase\":\"1.O"
+    },
+    {
+      "check": "cortex: key with trailing space",
+      "clean": false,
+      "detail": "HTTP 200 <- ACCEPTED"
+    },
+    {
+      "check": "forge: rejects no credential",
+      "clean": true,
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "forge: rejects unrelated key",
+      "clean": true,
+      "detail": "HTTP 403"
+    },
+    {
+      "check": "forge: key with trailing space",
+      "clean": true,
+      "detail": "HTTP 403"
+    },
+    {
+      "check": "memora: empty_body",
+      "clean": true,
+      "detail": "HTTP 422 4ms"
+    },
+    {
+      "check": "memora: null_fields",
+      "clean": true,
+      "detail": "HTTP 422 27ms"
+    },
+    {
+      "check": "memora: wrong_type",
+      "clean": true,
+      "detail": "HTTP 422 5ms"
+    },
+    {
+      "check": "memora: sql_fragment",
+      "clean": true,
+      "detail": "HTTP 422 11ms"
+    },
+    {
+      "check": "memora: path_traversal",
+      "clean": true,
+      "detail": "HTTP 201 307ms"
+    },
+    {
+      "check": "memora: control_chars",
+      "clean": true,
+      "detail": "HTTP 201 229ms"
+    },
+    {
+      "check": "memora: unicode_bomb",
+      "clean": true,
+      "detail": "HTTP 201 378ms"
+    },
+    {
+      "check": "memora: huge_string",
+      "clean": true,
+      "detail": "HTTP 201 33074ms"
+    },
+    {
+      "check": "futuris: empty_body",
+      "clean": true,
+      "detail": "HTTP 422 28ms"
+    },
+    {
+      "check": "futuris: null_fields",
+      "clean": true,
+      "detail": "HTTP 422 16ms"
+    },
+    {
+      "check": "futuris: wrong_type",
+      "clean": true,
+      "detail": "HTTP 422 12ms"
+    },
+    {
+      "check": "futuris: sql_fragment",
+      "clean": true,
+      "detail": "HTTP 422 4ms"
+    },
+    {
+      "check": "futuris: path_traversal",
+      "clean": true,
+      "detail": "HTTP 422 2ms"
+    },
+    {
+      "check": "futuris: control_chars",
+      "clean": true,
+      "detail": "HTTP 422 26ms"
+    },
+    {
+      "check": "futuris: unicode_bomb",
+      "clean": true,
+      "detail": "HTTP 422 4ms"
+    },
+    {
+      "check": "futuris: huge_string",
+      "clean": true,
+      "detail": "HTTP 422 33ms"
+    },
+    {
+      "check": "intelx: empty_body",
+      "clean": true,
+      "detail": "HTTP 422 151ms"
+    },
+    {
+      "check": "intelx: null_fields",
+      "clean": true,
+      "detail": "HTTP 422 17ms"
+    },
+    {
+      "check": "intelx: wrong_type",
+      "clean": true,
+      "detail": "HTTP 422 5ms"
+    },
+    {
+      "check": "intelx: sql_fragment",
+      "clean": true,
+      "detail": "HTTP 422 3ms"
+    },
+    {
+      "check": "intelx: path_traversal",
+      "clean": true,
+      "detail": "HTTP 422 4ms"
+    },
+    {
+      "check": "intelx: control_chars",
+      "clean": true,
+      "detail": "HTTP 422 2ms"
+    },
+    {
+      "check": "intelx: unicode_bomb",
+      "clean": true,
+      "detail": "HTTP 422 3ms"
+    },
+    {
+      "check": "intelx: huge_string",
+      "clean": true,
+      "detail": "HTTP 422 41ms"
+    },
+    {
+      "check": "cortex: empty_body",
+      "clean": true,
+      "detail": "HTTP 422 4ms"
+    },
+    {
+      "check": "cortex: null_fields",
+      "clean": true,
+      "detail": "HTTP 422 3ms"
+    },
+    {
+      "check": "cortex: wrong_type",
+      "clean": true,
+      "detail": "HTTP 422 4ms"
+    },
+    {
+      "check": "cortex: sql_fragment",
+      "clean": true,
+      "detail": "HTTP 422 3ms"
+    },
+    {
+      "check": "cortex: path_traversal",
+      "clean": true,
+      "detail": "HTTP 422 4ms"
+    },
+    {
+      "check": "cortex: control_chars",
+      "clean": true,
+      "detail": "HTTP 422 2ms"
+    },
+    {
+      "check": "cortex: unicode_bomb",
+      "clean": true,
+      "detail": "HTTP 422 29ms"
+    },
+    {
+      "check": "cortex: huge_string",
+      "clean": true,
+      "detail": "HTTP 422 84ms"
+    },
+    {
+      "check": "forge: empty_body",
+      "clean": true,
+      "detail": "HTTP 405 48ms"
+    },
+    {
+      "check": "forge: null_fields",
+      "clean": true,
+      "detail": "HTTP 405 3ms"
+    },
+    {
+      "check": "forge: wrong_type",
+      "clean": true,
+      "detail": "HTTP 405 2ms"
+    },
+    {
+      "check": "forge: sql_fragment",
+      "clean": true,
+      "detail": "HTTP 405 2ms"
+    },
+    {
+      "check": "forge: path_traversal",
+      "clean": true,
+      "detail": "HTTP 405 2ms"
+    },
+    {
+      "check": "forge: control_chars",
+      "clean": true,
+      "detail": "HTTP 405 2ms"
+    },
+    {
+      "check": "forge: unicode_bomb",
+      "clean": true,
+      "detail": "HTTP 405 1ms"
+    },
+    {
+      "check": "forge: huge_string",
+      "clean": false,
+      "detail": "transport failure [WinError 10054] An existing connection was forcibly closed by the remote host"
+    },
+    {
+      "check": "memora write accepted",
+      "clean": true,
+      "detail": "HTTP 201"
+    },
+    {
+      "check": "memora immediate read-after-write",
+      "clean": true,
+      "detail": "HTTP 200 visible=True 8ms"
+    },
+    {
+      "check": "memora duplicate submit is handled",
+      "clean": true,
+      "detail": "HTTP 201"
+    },
+    {
+      "check": "memora 8 concurrent writes",
+      "clean": true,
+      "detail": "all handled"
+    },
+    {
+      "check": "memora: /health",
+      "clean": true,
+      "detail": "HTTP 200 {\"status\": \"healthy\", \"evidence_class\": \"server_live_probe\", \"observed_at\": \"2026-10-03T17:41:22.100925+00:00\", \"service\": \"memora-api\"}"
+    },
+    {
+      "check": "inference: /health/ready",
+      "clean": true,
+      "detail": "HTTP 200 {\"status\": \"registry_configured\", \"evidence_class\": \"agent_registry_configuration\", \"evidence_scope\": \"Checks only the configured specialist registry "
+    },
+    {
+      "check": "forge: /health/ready",
+      "clean": true,
+      "detail": "HTTP 200 {\"status\": \"ready\", \"database_connected\": true, \"workspaces_writable\": true, \"evidence_class\": \"dependency_readiness\"}"
+    },
+    {
+      "check": "cortex: /health/ready",
+      "clean": false,
+      "detail": "HTTP 503"
+    },
+    {
+      "check": "sentinel: /health",
+      "clean": true,
+      "detail": "HTTP 200 {\"status\": \"ok\", \"evidence_class\": \"process_liveness\", \"service\": \"SENTINEL\", \"version\": \"1.0.0\"}"
+    },
+    {
+      "check": "intelx: /api/v1/health/ready",
+      "clean": false,
+      "detail": "HTTP 404"
+    }
+  ],
+  "findings": [
+    {
+      "finding": "cortex: accepts an unrelated key",
+      "detail": "HTTP 200 {\"status\":\"success\",\"command_id\":\"fri_49630af9c7\",\"cortex_loop_id\":\"loop_197ea9c0\",\"agent_id\":\"agent_reliability\",\"decision\":\"NO_ACTION\",\"executed_actions\":0,\"trace\":[{\"phase\":\"1.O"
+    },
+    {
+      "finding": "forge: huge_string",
+      "detail": "transport failure [WinError 10054] An existing connection was forcibly closed by the remote host"
+    }
+  ]
+}

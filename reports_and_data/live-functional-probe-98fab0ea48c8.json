@@ -1,0 +1,188 @@
+{
+  "run_id": "98fab0ea48c8",
+  "observed_at": "2026-10-03T10:48:33.526377+00:00",
+  "summary": {
+    "total": 16,
+    "pass": 7,
+    "fail": 9,
+    "suspect": 0
+  },
+  "results": [
+    {
+      "agent": "Memora",
+      "proves": "writes a memory durably over HTTP",
+      "request": "POST https://memora-cavc.onrender.com/v1/memories",
+      "http_status": 401,
+      "latency_ms": 959,
+      "response_bytes": 38,
+      "response_head": "{\"detail\":\"Invalid agent credentials\"}",
+      "verdict": "FAIL",
+      "reason": "HTTP 401"
+    },
+    {
+      "agent": "Memora",
+      "proves": "serves its durable event feed with a real cursor",
+      "request": "GET https://memora-cavc.onrender.com/v1/events?limit=3",
+      "http_status": 401,
+      "latency_ms": 964,
+      "response_bytes": 38,
+      "response_head": "{\"detail\":\"Invalid agent credentials\"}",
+      "verdict": "FAIL",
+      "reason": "HTTP 401"
+    },
+    {
+      "agent": "Inference",
+      "proves": "reports its real model panel",
+      "request": "GET https://inference-r1sn.onrender.com/models",
+      "http_status": 200,
+      "latency_ms": 1009,
+      "response_bytes": 2017,
+      "response_head": "{\"models\":[{\"provider\":\"gemini\",\"model\":\"gemini-3.8-flash\",\"capabilities\":[\"chat\",\"stream\",\"json\",\"tools\",\"vision\",\"thinking\"],\"context_window\":2097152},{\"provider\":\"gemini\",\"model\":\"gemini-3.7-flash\",\"capabilities\":[\"chat\",\"stream\",\"json\",\"tools\",\"vision\",\"thinking\"],\"context_window\":2097152},{\"provider\":\"gemini\",\"model\":\"gemini-3.6-flash\",\"capabilities\":[\"chat\",\"stream\",\"json\",\"tools\",\"vision\"],\"context_window\":2097152},{\"provider\":\"gemini\",\"model\":\"gemini-3.5-flash\",\"capabilities\":[\"chat\",\"stream\",\"json\",\"tools\",\"vision\"],\"context_window\":1048576},{\"provider\":\"groq\",\"model\":\"openai/gpt-oss-",
+      "verdict": "PASS",
+      "reason": "returned substantive work"
+    },
+    {
+      "agent": "IntelX",
+      "proves": "reports its configured news sources",
+      "request": "GET https://intelx-mygl.onrender.com/api/v1/friday-universe/status",
+      "http_status": 200,
+      "latency_ms": 1074,
+      "response_bytes": 244,
+      "response_head": "{\"status\":\"active\",\"total_intelligence_items\":49,\"by_agent\":{\"stratex\":0,\"futuris\":0,\"sentinel\":0,\"friday\":0,\"cortex\":0,\"forge\":0,\"inference\":0},\"message\":\"IntelX is continuously ingesting targeted intelligence for all FRIDAY Universe agents.\"}",
+      "verdict": "PASS",
+      "reason": "returned substantive work"
+    },
+    {
+      "agent": "IntelX",
+      "proves": "starts a real research job over the network",
+      "request": "POST https://intelx-mygl.onrender.com/api/v1/research/jobs",
+      "http_status": 202,
+      "latency_ms": 1147,
+      "response_bytes": 267,
+      "response_head": "{\"id\":\"bd993655578e4b54a15be9aac20601c0\",\"objective\":\"Bitcoin price outlook today\",\"status\":\"QUEUED\",\"outcome\":null,\"created_at\":\"2026-10-03T10:48:34.807558+00:00\",\"started_at\":null,\"completed_at\":null,\"input_tokens\":0,\"output_tokens\":0,\"usd_cost\":0.0,\"tool_calls\":0}",
+      "verdict": "PASS",
+      "reason": "returned substantive work"
+    },
+    {
+      "agent": "Inference",
+      "proves": "routes a task to a real provider and generates text",
+      "request": "POST https://inference-r1sn.onrender.com/v1/ask",
+      "http_status": 200,
+      "latency_ms": 1363,
+      "response_bytes": 1137,
+      "response_head": "{\"task_id\":\"task_486c60154ffe\",\"trace_id\":\"trace_9cb3f494\",\"answer\":\"[system_architect] Analysis completed for prompt: [ASTRA DELIBERATIVE REASONING COUNCIL - Central Deliberative Reasoning Council & Consensus Synthesizer]\\nEvidence Policy: STRICT_EMPIRICAL\\nAnalyze the ... Response synthesized under standard operating protocols.\",\"reasoning_summary\":\"Synthesized across deliberative council via nvidia (nvidia/nemotron-3-super-120b-a12b).\",\"confidence\":0.92,\"uncertainty\":0.08,\"evidence\":[\"Empirical provider verification via nvidia:nvidia/nemotron-3-super-120b-a12b\"],\"agents_used\":[\"astra_counci",
+      "verdict": "PASS",
+      "reason": "returned substantive work"
+    },
+    {
+      "agent": "Futuris",
+      "proves": "reports its real calibration accuracy",
+      "request": "GET https://futuris-th6f.onrender.com/v1/evaluation/calibration",
+      "http_status": 200,
+      "latency_ms": 919,
+      "response_bytes": 404,
+      "response_head": "{\"target\":\"service:checkout:capacity_exceedance_24h\",\"bin_centers\":[0.05,0.15000000000000002,0.25,0.35000000000000003,0.45,0.55,0.6500000000000001,0.75,0.8500000000000001,0.95],\"observed_frequencies\":[0.0,0.0,0.0,0.0,0.0,1.0,0.0,1.0,0.0,1.0],\"bin_counts\":[0,1,2,0,0,1,0,1,0,1],\"expected_calibration_error\":0.2333,\"sample_count\":6,\"calibration_method\":\"empirical_binned\",\"data_freshness\":\"live_persisted\"}",
+      "verdict": "PASS",
+      "reason": "returned substantive work"
+    },
+    {
+      "agent": "Forge",
+      "proves": "generates real code through a real model",
+      "request": "POST https://forge-e9kl.onrender.com/api/v1/ask-inference",
+      "http_status": 503,
+      "latency_ms": 768,
+      "response_bytes": 84,
+      "response_head": "{\"error\":\"service_auth_unconfigured\",\"detail\":\"A unique FORGE_API_KEY is required.\"}",
+      "verdict": "FAIL",
+      "reason": "HTTP 503"
+    },
+    {
+      "agent": "Forge",
+      "proves": "reports its real capability set",
+      "request": "GET https://forge-e9kl.onrender.com/api/v1/capabilities",
+      "http_status": 503,
+      "latency_ms": 562,
+      "response_bytes": 84,
+      "response_head": "{\"error\":\"service_auth_unconfigured\",\"detail\":\"A unique FORGE_API_KEY is required.\"}",
+      "verdict": "FAIL",
+      "reason": "HTTP 503"
+    },
+    {
+      "agent": "Stratex",
+      "proves": "reports its open paper positions",
+      "request": "GET https://stratex-8wj1.onrender.com/api/positions",
+      "http_status": 200,
+      "latency_ms": 996,
+      "response_bytes": 119,
+      "response_head": "{\"count\":0,\"data_age\":0.0,\"filter\":\"OPEN\",\"positions\":[],\"status\":\"SUCCESS\",\"timestamp\":\"2026-10-03T10:48:35.760575Z\"}\n",
+      "verdict": "PASS",
+      "reason": "returned substantive work"
+    },
+    {
+      "agent": "Futuris",
+      "proves": "produces a real probability forecast",
+      "request": "POST https://futuris-th6f.onrender.com/v1/market/forecast",
+      "http_status": 503,
+      "latency_ms": 1199,
+      "response_bytes": 176,
+      "response_head": "{\"error\":{\"code\":\"http_error\",\"message\":\"Fresh Stratex volatility and drawdown telemetry are required. No market forecast was generated from placeholder values.\",\"details\":{}}}",
+      "verdict": "FAIL",
+      "reason": "HTTP 503"
+    },
+    {
+      "agent": "Cortex",
+      "proves": "answers a real command from FRIDAY",
+      "request": "POST https://cortex-0m7c.onrender.com/v1/friday/command",
+      "http_status": 503,
+      "latency_ms": 677,
+      "response_bytes": 74,
+      "response_head": "{\"detail\":\"FRIDAY service key is not configured securely for production.\"}",
+      "verdict": "FAIL",
+      "reason": "HTTP 503"
+    },
+    {
+      "agent": "Sentinel",
+      "proves": "verifies its audit hash chain",
+      "request": "GET https://sentinel-a861.onrender.com/api/v1/audit/verify",
+      "http_status": 503,
+      "latency_ms": 835,
+      "response_bytes": 87,
+      "response_head": "{\"error\":\"service_auth_unconfigured\",\"detail\":\"A unique SENTINEL_API_KEY is required.\"}",
+      "verdict": "FAIL",
+      "reason": "HTTP 503"
+    },
+    {
+      "agent": "Sentinel",
+      "proves": "runs a real security scan",
+      "request": "GET https://sentinel-a861.onrender.com/api/v1/scan",
+      "http_status": 503,
+      "latency_ms": 869,
+      "response_bytes": 87,
+      "response_head": "{\"error\":\"service_auth_unconfigured\",\"detail\":\"A unique SENTINEL_API_KEY is required.\"}",
+      "verdict": "FAIL",
+      "reason": "HTTP 503"
+    },
+    {
+      "agent": "Cortex",
+      "proves": "returns real lead data",
+      "request": "GET https://cortex-0m7c.onrender.com/v1/leads",
+      "http_status": 401,
+      "latency_ms": 849,
+      "response_bytes": 72,
+      "response_head": "{\"detail\":\"Insecure or placeholder credentials rejected in production.\"}",
+      "verdict": "FAIL",
+      "reason": "HTTP 401"
+    },
+    {
+      "agent": "Stratex",
+      "proves": "analyses a real symbol and stays paper-only",
+      "request": "GET https://stratex-8wj1.onrender.com/api/status",
+      "http_status": 200,
+      "latency_ms": 2783,
+      "response_bytes": 1860,
+      "response_head": "{\"alerts\":[],\"available_risk\":5.0,\"bot_start_time\":\"2026-10-02T06:30:17.489661Z\",\"cash\":4995.05,\"components\":{\"binance\":\"OK\",\"data\":\"OK\",\"engine\":\"OK\",\"execution\":\"OK\",\"strategy\":\"OK\"},\"crypto_holdings_value\":0.0,\"engine_data\":{\"active_strategy\":\"none\",\"binance_connected\":true,\"engine_status\":\"ONLINE\",\"healthy\":true,\"heartbeat_age_seconds\":1.58,\"last_candle_close\":\"2026-10-03T10:02:13.780492Z\",\"last_market_update\":\"2026-10-03T10:48:06.962244Z\",\"last_strategy_evaluation\":\"2026-10-03T10:02:13.889472Z\",\"paper_runner_heartbeat_age_seconds\":29.4,\"paper_runner_last_error\":null,\"paper_runner_restarts",
+      "verdict": "PASS",
+      "reason": "returned substantive work"
+    }
+  ]
+}

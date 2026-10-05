@@ -1,0 +1,188 @@
+{
+  "run_id": "ac6a581b7255",
+  "observed_at": "2026-10-03T07:38:22.388738+00:00",
+  "summary": {
+    "total": 16,
+    "pass": 4,
+    "fail": 12,
+    "suspect": 0
+  },
+  "results": [
+    {
+      "agent": "Memora",
+      "proves": "writes a memory durably over HTTP",
+      "request": "POST https://memora-cavc.onrender.com/v1/memories",
+      "http_status": 401,
+      "latency_ms": 1068,
+      "response_bytes": 38,
+      "response_head": "{\"detail\":\"Invalid agent credentials\"}",
+      "verdict": "FAIL",
+      "reason": "HTTP 401"
+    },
+    {
+      "agent": "Memora",
+      "proves": "serves its durable event feed with a real cursor",
+      "request": "GET https://memora-cavc.onrender.com/v1/events?limit=3",
+      "http_status": 401,
+      "latency_ms": 1215,
+      "response_bytes": 38,
+      "response_head": "{\"detail\":\"Invalid agent credentials\"}",
+      "verdict": "FAIL",
+      "reason": "HTTP 401"
+    },
+    {
+      "agent": "Inference",
+      "proves": "reports its real model panel",
+      "request": "GET https://inference-r1sn.onrender.com/models",
+      "http_status": 200,
+      "latency_ms": 1215,
+      "response_bytes": 2017,
+      "response_head": "{\"models\":[{\"provider\":\"gemini\",\"model\":\"gemini-3.8-flash\",\"capabilities\":[\"chat\",\"stream\",\"json\",\"tools\",\"vision\",\"thinking\"],\"context_window\":2097152},{\"provider\":\"gemini\",\"model\":\"gemini-3.7-flash\",\"capabilities\":[\"chat\",\"stream\",\"json\",\"tools\",\"vision\",\"thinking\"],\"context_window\":2097152},{\"provider\":\"gemini\",\"model\":\"gemini-3.6-flash\",\"capabilities\":[\"chat\",\"stream\",\"json\",\"tools\",\"vision\"],\"context_window\":2097152},{\"provider\":\"gemini\",\"model\":\"gemini-3.5-flash\",\"capabilities\":[\"chat\",\"stream\",\"json\",\"tools\",\"vision\"],\"context_window\":1048576},{\"provider\":\"groq\",\"model\":\"openai/gpt-oss-",
+      "verdict": "PASS",
+      "reason": "returned substantive work"
+    },
+    {
+      "agent": "IntelX",
+      "proves": "reports its configured news sources",
+      "request": "GET https://intelx-mygl.onrender.com/api/v1/friday-universe/status",
+      "http_status": 200,
+      "latency_ms": 1219,
+      "response_bytes": 244,
+      "response_head": "{\"status\":\"active\",\"total_intelligence_items\":13,\"by_agent\":{\"stratex\":0,\"futuris\":0,\"sentinel\":0,\"friday\":0,\"cortex\":0,\"forge\":0,\"inference\":0},\"message\":\"IntelX is continuously ingesting targeted intelligence for all FRIDAY Universe agents.\"}",
+      "verdict": "PASS",
+      "reason": "returned substantive work"
+    },
+    {
+      "agent": "IntelX",
+      "proves": "starts a real research job over the network",
+      "request": "POST https://intelx-mygl.onrender.com/api/v1/research/jobs",
+      "http_status": 422,
+      "latency_ms": 1222,
+      "response_bytes": 187,
+      "response_head": "{\"detail\":[{\"type\":\"missing\",\"loc\":[\"body\",\"objective\"],\"msg\":\"Field required\",\"input\":{\"query\":\"Bitcoin price outlook today\",\"depth\":\"quick\",\"correlation_id\":\"liveprobe-ac6a581b7255\"}}]}",
+      "verdict": "FAIL",
+      "reason": "HTTP 422"
+    },
+    {
+      "agent": "Stratex",
+      "proves": "reports its open paper positions",
+      "request": "GET https://stratex-8wj1.onrender.com/api/v1/positions",
+      "http_status": 503,
+      "latency_ms": 914,
+      "response_bytes": 147,
+      "response_head": "{\"error\":\"AUTH_NOT_CONFIGURED\",\"message\":\"Unique TRADING_BOT_API_KEY_READ and TRADING_BOT_API_KEY_CONTROL secrets are required.\",\"status\":\"ERROR\"}\n",
+      "verdict": "FAIL",
+      "reason": "HTTP 503"
+    },
+    {
+      "agent": "Stratex",
+      "proves": "analyses a real symbol and stays paper-only",
+      "request": "GET https://stratex-8wj1.onrender.com/api/v1/analysis/BTCUSDT",
+      "http_status": 404,
+      "latency_ms": 918,
+      "response_bytes": 207,
+      "response_head": "<!doctype html>\n<html lang=en>\n<title>404 Not Found</title>\n<h1>Not Found</h1>\n<p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>\n",
+      "verdict": "FAIL",
+      "reason": "HTTP 404"
+    },
+    {
+      "agent": "Futuris",
+      "proves": "produces a real probability forecast",
+      "request": "POST https://futuris-th6f.onrender.com/v1/market/forecast",
+      "http_status": 503,
+      "latency_ms": 1073,
+      "response_bytes": 176,
+      "response_head": "{\"error\":{\"code\":\"http_error\",\"message\":\"Fresh Stratex volatility and drawdown telemetry are required. No market forecast was generated from placeholder values.\",\"details\":{}}}",
+      "verdict": "FAIL",
+      "reason": "HTTP 503"
+    },
+    {
+      "agent": "Futuris",
+      "proves": "reports its real calibration accuracy",
+      "request": "GET https://futuris-th6f.onrender.com/v1/evaluation/calibration",
+      "http_status": 200,
+      "latency_ms": 1052,
+      "response_bytes": 404,
+      "response_head": "{\"target\":\"service:checkout:capacity_exceedance_24h\",\"bin_centers\":[0.05,0.15000000000000002,0.25,0.35000000000000003,0.45,0.55,0.6500000000000001,0.75,0.8500000000000001,0.95],\"observed_frequencies\":[0.0,0.0,0.0,0.0,0.0,1.0,0.0,1.0,0.0,1.0],\"bin_counts\":[0,1,2,0,0,1,0,1,0,1],\"expected_calibration_error\":0.2333,\"sample_count\":6,\"calibration_method\":\"empirical_binned\",\"data_freshness\":\"live_persisted\"}",
+      "verdict": "PASS",
+      "reason": "returned substantive work"
+    },
+    {
+      "agent": "Forge",
+      "proves": "generates real code through a real model",
+      "request": "POST https://forge-e9kl.onrender.com/api/v1/ask-inference",
+      "http_status": 503,
+      "latency_ms": 1166,
+      "response_bytes": 84,
+      "response_head": "{\"error\":\"service_auth_unconfigured\",\"detail\":\"A unique FORGE_API_KEY is required.\"}",
+      "verdict": "FAIL",
+      "reason": "HTTP 503"
+    },
+    {
+      "agent": "Sentinel",
+      "proves": "runs a real security scan",
+      "request": "GET https://sentinel-a861.onrender.com/api/v1/scan",
+      "http_status": 503,
+      "latency_ms": 760,
+      "response_bytes": 87,
+      "response_head": "{\"error\":\"service_auth_unconfigured\",\"detail\":\"A unique SENTINEL_API_KEY is required.\"}",
+      "verdict": "FAIL",
+      "reason": "HTTP 503"
+    },
+    {
+      "agent": "Forge",
+      "proves": "reports its real capability set",
+      "request": "GET https://forge-e9kl.onrender.com/api/v1/capabilities",
+      "http_status": 503,
+      "latency_ms": 760,
+      "response_bytes": 84,
+      "response_head": "{\"error\":\"service_auth_unconfigured\",\"detail\":\"A unique FORGE_API_KEY is required.\"}",
+      "verdict": "FAIL",
+      "reason": "HTTP 503"
+    },
+    {
+      "agent": "Sentinel",
+      "proves": "verifies its audit hash chain",
+      "request": "GET https://sentinel-a861.onrender.com/api/v1/audit/verify",
+      "http_status": 503,
+      "latency_ms": 910,
+      "response_bytes": 87,
+      "response_head": "{\"error\":\"service_auth_unconfigured\",\"detail\":\"A unique SENTINEL_API_KEY is required.\"}",
+      "verdict": "FAIL",
+      "reason": "HTTP 503"
+    },
+    {
+      "agent": "Cortex",
+      "proves": "returns real lead data",
+      "request": "GET https://cortex-0m7c.onrender.com/v1/leads",
+      "http_status": 401,
+      "latency_ms": 893,
+      "response_bytes": 72,
+      "response_head": "{\"detail\":\"Insecure or placeholder credentials rejected in production.\"}",
+      "verdict": "FAIL",
+      "reason": "HTTP 401"
+    },
+    {
+      "agent": "Cortex",
+      "proves": "answers a real command from FRIDAY",
+      "request": "POST https://cortex-0m7c.onrender.com/v1/friday/command",
+      "http_status": 503,
+      "latency_ms": 776,
+      "response_bytes": 74,
+      "response_head": "{\"detail\":\"FRIDAY service key is not configured securely for production.\"}",
+      "verdict": "FAIL",
+      "reason": "HTTP 503"
+    },
+    {
+      "agent": "Inference",
+      "proves": "routes a task to a real provider and generates text",
+      "request": "POST https://inference-r1sn.onrender.com/v1/ask",
+      "http_status": 200,
+      "latency_ms": 5692,
+      "response_bytes": 897,
+      "response_head": "{\"task_id\":\"task_2bd6dc2830f4\",\"trace_id\":\"trace_3d907fcd\",\"answer\":\"INFERENCE_LIVE_OK\",\"reasoning_summary\":\"Synthesized across deliberative council via nvidia (nvidia/nemotron-3-super-120b-a12b).\",\"confidence\":0.92,\"uncertainty\":0.08,\"evidence\":[\"Empirical provider verification via nvidia:nvidia/nemotron-3-super-120b-a12b\"],\"agents_used\":[\"astra_council\",\"system_architect\"],\"recommendations\":[\"Review deliberative findings before initiating state-changing actions.\"],\"proposed_actions\":[],\"authorization_required\":false,\"provider_metadata\":{\"provider\":\"nvidia\",\"model\":\"nvidia/nemotron-3-super-12",
+      "verdict": "PASS",
+      "reason": "returned substantive work"
+    }
+  ]
+}

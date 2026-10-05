@@ -1,0 +1,188 @@
+{
+  "run_id": "95048eb8a7a0",
+  "observed_at": "2026-10-03T11:15:03.130663+00:00",
+  "summary": {
+    "total": 16,
+    "pass": 4,
+    "fail": 12,
+    "suspect": 0
+  },
+  "results": [
+    {
+      "agent": "IntelX",
+      "proves": "starts a real research job over the network",
+      "request": "POST https://intelx-mygl.onrender.com/api/v1/research/jobs",
+      "http_status": 401,
+      "latency_ms": 1216,
+      "response_bytes": 28,
+      "response_head": "{\"detail\":\"Invalid API key\"}",
+      "verdict": "FAIL",
+      "reason": "HTTP 401"
+    },
+    {
+      "agent": "Memora",
+      "proves": "writes a memory durably over HTTP",
+      "request": "POST https://memora-cavc.onrender.com/v1/memories",
+      "http_status": 401,
+      "latency_ms": 1221,
+      "response_bytes": 38,
+      "response_head": "{\"detail\":\"Invalid agent credentials\"}",
+      "verdict": "FAIL",
+      "reason": "HTTP 401"
+    },
+    {
+      "agent": "Memora",
+      "proves": "serves its durable event feed with a real cursor",
+      "request": "GET https://memora-cavc.onrender.com/v1/events?limit=3",
+      "http_status": 401,
+      "latency_ms": 1220,
+      "response_bytes": 38,
+      "response_head": "{\"detail\":\"Invalid agent credentials\"}",
+      "verdict": "FAIL",
+      "reason": "HTTP 401"
+    },
+    {
+      "agent": "Inference",
+      "proves": "reports its real model panel",
+      "request": "GET https://inference-r1sn.onrender.com/models",
+      "http_status": 200,
+      "latency_ms": 1224,
+      "response_bytes": 2017,
+      "response_head": "{\"models\":[{\"provider\":\"gemini\",\"model\":\"gemini-3.8-flash\",\"capabilities\":[\"chat\",\"stream\",\"json\",\"tools\",\"vision\",\"thinking\"],\"context_window\":2097152},{\"provider\":\"gemini\",\"model\":\"gemini-3.7-flash\",\"capabilities\":[\"chat\",\"stream\",\"json\",\"tools\",\"vision\",\"thinking\"],\"context_window\":2097152},{\"provider\":\"gemini\",\"model\":\"gemini-3.6-flash\",\"capabilities\":[\"chat\",\"stream\",\"json\",\"tools\",\"vision\"],\"context_window\":2097152},{\"provider\":\"gemini\",\"model\":\"gemini-3.5-flash\",\"capabilities\":[\"chat\",\"stream\",\"json\",\"tools\",\"vision\"],\"context_window\":1048576},{\"provider\":\"groq\",\"model\":\"openai/gpt-oss-",
+      "verdict": "PASS",
+      "reason": "returned substantive work"
+    },
+    {
+      "agent": "IntelX",
+      "proves": "reports its configured news sources",
+      "request": "GET https://intelx-mygl.onrender.com/api/v1/friday-universe/status",
+      "http_status": 401,
+      "latency_ms": 1223,
+      "response_bytes": 28,
+      "response_head": "{\"detail\":\"Invalid API key\"}",
+      "verdict": "FAIL",
+      "reason": "HTTP 401"
+    },
+    {
+      "agent": "Inference",
+      "proves": "routes a task to a real provider and generates text",
+      "request": "POST https://inference-r1sn.onrender.com/v1/ask",
+      "http_status": 200,
+      "latency_ms": 1434,
+      "response_bytes": 1137,
+      "response_head": "{\"task_id\":\"task_e31369acdaaf\",\"trace_id\":\"trace_8888ca57\",\"answer\":\"[system_architect] Analysis completed for prompt: [ASTRA DELIBERATIVE REASONING COUNCIL - Central Deliberative Reasoning Council & Consensus Synthesizer]\\nEvidence Policy: STRICT_EMPIRICAL\\nAnalyze the ... Response synthesized under standard operating protocols.\",\"reasoning_summary\":\"Synthesized across deliberative council via nvidia (nvidia/nemotron-3-super-120b-a12b).\",\"confidence\":0.92,\"uncertainty\":0.08,\"evidence\":[\"Empirical provider verification via nvidia:nvidia/nemotron-3-super-120b-a12b\"],\"agents_used\":[\"astra_counci",
+      "verdict": "PASS",
+      "reason": "returned substantive work"
+    },
+    {
+      "agent": "Futuris",
+      "proves": "reports its real calibration accuracy",
+      "request": "GET https://futuris-th6f.onrender.com/v1/evaluation/calibration",
+      "http_status": 401,
+      "latency_ms": 898,
+      "response_bytes": 85,
+      "response_head": "{\"error\":{\"code\":\"unauthorized\",\"message\":\"Invalid or revoked API Key\",\"details\":{}}}",
+      "verdict": "FAIL",
+      "reason": "HTTP 401"
+    },
+    {
+      "agent": "Forge",
+      "proves": "reports its real capability set",
+      "request": "GET https://forge-e9kl.onrender.com/api/v1/capabilities",
+      "http_status": 503,
+      "latency_ms": 751,
+      "response_bytes": 84,
+      "response_head": "{\"error\":\"service_auth_unconfigured\",\"detail\":\"A unique FORGE_API_KEY is required.\"}",
+      "verdict": "FAIL",
+      "reason": "HTTP 503"
+    },
+    {
+      "agent": "Forge",
+      "proves": "generates real code through a real model",
+      "request": "POST https://forge-e9kl.onrender.com/api/v1/ask-inference",
+      "http_status": 503,
+      "latency_ms": 960,
+      "response_bytes": 84,
+      "response_head": "{\"error\":\"service_auth_unconfigured\",\"detail\":\"A unique FORGE_API_KEY is required.\"}",
+      "verdict": "FAIL",
+      "reason": "HTTP 503"
+    },
+    {
+      "agent": "Stratex",
+      "proves": "reports its open paper positions",
+      "request": "GET https://stratex-8wj1.onrender.com/api/positions",
+      "http_status": 200,
+      "latency_ms": 1074,
+      "response_bytes": 119,
+      "response_head": "{\"count\":0,\"data_age\":0.0,\"filter\":\"OPEN\",\"positions\":[],\"status\":\"SUCCESS\",\"timestamp\":\"2026-10-03T11:15:05.570832Z\"}\n",
+      "verdict": "PASS",
+      "reason": "returned substantive work"
+    },
+    {
+      "agent": "Futuris",
+      "proves": "produces a real probability forecast",
+      "request": "POST https://futuris-th6f.onrender.com/v1/market/forecast",
+      "http_status": 503,
+      "latency_ms": 1199,
+      "response_bytes": 176,
+      "response_head": "{\"error\":{\"code\":\"http_error\",\"message\":\"Fresh Stratex volatility and drawdown telemetry are required. No market forecast was generated from placeholder values.\",\"details\":{}}}",
+      "verdict": "FAIL",
+      "reason": "HTTP 503"
+    },
+    {
+      "agent": "Sentinel",
+      "proves": "runs a real security scan",
+      "request": "GET https://sentinel-a861.onrender.com/api/v1/scan",
+      "http_status": 503,
+      "latency_ms": 948,
+      "response_bytes": 87,
+      "response_head": "{\"error\":\"service_auth_unconfigured\",\"detail\":\"A unique SENTINEL_API_KEY is required.\"}",
+      "verdict": "FAIL",
+      "reason": "HTTP 503"
+    },
+    {
+      "agent": "Sentinel",
+      "proves": "verifies its audit hash chain",
+      "request": "GET https://sentinel-a861.onrender.com/api/v1/audit/verify",
+      "http_status": 503,
+      "latency_ms": 974,
+      "response_bytes": 87,
+      "response_head": "{\"error\":\"service_auth_unconfigured\",\"detail\":\"A unique SENTINEL_API_KEY is required.\"}",
+      "verdict": "FAIL",
+      "reason": "HTTP 503"
+    },
+    {
+      "agent": "Cortex",
+      "proves": "returns real lead data",
+      "request": "GET https://cortex-0m7c.onrender.com/v1/leads",
+      "http_status": 401,
+      "latency_ms": 970,
+      "response_bytes": 68,
+      "response_head": "{\"detail\":\"Could not validate JWT credentials: Not enough segments\"}",
+      "verdict": "FAIL",
+      "reason": "HTTP 401"
+    },
+    {
+      "agent": "Cortex",
+      "proves": "answers a real command from FRIDAY",
+      "request": "POST https://cortex-0m7c.onrender.com/v1/friday/command",
+      "http_status": 503,
+      "latency_ms": 856,
+      "response_bytes": 74,
+      "response_head": "{\"detail\":\"FRIDAY service key is not configured securely for production.\"}",
+      "verdict": "FAIL",
+      "reason": "HTTP 503"
+    },
+    {
+      "agent": "Stratex",
+      "proves": "analyses a real symbol and stays paper-only",
+      "request": "GET https://stratex-8wj1.onrender.com/api/status",
+      "http_status": 200,
+      "latency_ms": 2625,
+      "response_bytes": 1860,
+      "response_head": "{\"alerts\":[],\"available_risk\":5.0,\"bot_start_time\":\"2026-10-02T06:30:17.489661Z\",\"cash\":4995.05,\"components\":{\"binance\":\"OK\",\"data\":\"OK\",\"engine\":\"OK\",\"execution\":\"OK\",\"strategy\":\"OK\"},\"crypto_holdings_value\":0.0,\"engine_data\":{\"active_strategy\":\"none\",\"binance_connected\":true,\"engine_status\":\"ONLINE\",\"healthy\":true,\"heartbeat_age_seconds\":0.81,\"last_candle_close\":\"2026-10-03T11:02:57.790792Z\",\"last_market_update\":\"2026-10-03T11:14:55.327422Z\",\"last_strategy_evaluation\":\"2026-10-03T11:02:57.989195Z\",\"paper_runner_heartbeat_age_seconds\":29.0,\"paper_runner_last_error\":null,\"paper_runner_restarts",
+      "verdict": "PASS",
+      "reason": "returned substantive work"
+    }
+  ]
+}
