@@ -1421,11 +1421,25 @@ _reflex_brain: ReflexBrain | None = None
 
 
 def get_reflex_brain(repo_root: str | Path | None = None) -> ReflexBrain:
-    """Return the process-wide reflex brain, creating it on first use."""
+    """Return the process-wide reflex brain, creating it on first use.
+
+    The brain is given the process-wide mesh, so a peer that cannot be reached
+    gets an actual reconnect attempt rather than "no mesh client is attached".
+    Without this the fleet half of the reflex was inert in every real deployment:
+    the mesh existed, and nothing that ran automatically ever used it.
+    """
     global _reflex_brain
     if _reflex_brain is None:
         root = repo_root or os.getenv("FRIDAY_REFLEX_REPO", "").strip() or _default_repo_root()
-        _reflex_brain = ReflexBrain(root)
+        mesh = None
+        try:
+            from friday.cognition.mesh import get_mesh
+
+            mesh = get_mesh()
+            logger.info("reflex brain attached to the peer mesh (%d peers)", len(mesh.contracts))
+        except Exception as exc:  # a mesh that cannot be built must not stop the brain
+            logger.warning("reflex brain is running without a mesh: %s", exc)
+        _reflex_brain = ReflexBrain(root, mesh=mesh)
     return _reflex_brain
 
 

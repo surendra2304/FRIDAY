@@ -369,7 +369,23 @@ class AutonomousController:
                 for item in fleet_statuses:
                     state = str(item.status).upper()
                     counts[state] = counts.get(state, 0) + 1
-                checks.append({"name": "peer_health_endpoints", "status": "OBSERVED" if fleet_statuses else "UNAVAILABLE", "evidence": {"responses": len(fleet_statuses), "status_counts": counts, "scope": "HTTP health/status endpoint responses only; task execution and inter-agent delivery are not verified."}})
+                # A peer that never answered must not be counted as an answer.
+                # The probes used to report a connection error as DEGRADED, so
+                # eight unreachable peers produced {"status": "OBSERVED",
+                # "responses": 8}: the evidence said the opposite of the truth.
+                responded = [item for item in fleet_statuses if str(item.status).upper() != "UNREACHABLE"]
+                unreachable = [item for item in fleet_statuses if str(item.status).upper() == "UNREACHABLE"]
+                checks.append({
+                    "name": "peer_health_endpoints",
+                    "status": "OBSERVED" if responded else "UNAVAILABLE",
+                    "evidence": {
+                        "responded": len(responded),
+                        "unreachable": len(unreachable),
+                        "unreachable_peers": sorted(str(item.id) for item in unreachable),
+                        "status_counts": counts,
+                        "scope": "HTTP health/status endpoint responses only; task execution and inter-agent delivery are not verified.",
+                    },
+                })
             except Exception as exc:
                 checks.append({"name": "peer_health_endpoints", "status": "UNAVAILABLE", "evidence": type(exc).__name__})
 

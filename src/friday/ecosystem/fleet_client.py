@@ -63,7 +63,7 @@ class AgentStatus:
     name: str
     role: str
     icon: str
-    status: str  # ONLINE, REACHABLE, DEGRADED, or OFFLINE
+    status: str  # ONLINE, REACHABLE, DEGRADED, UNREACHABLE, or OFFLINE
     latency_ms: int
     endpoint: str
     details: str
@@ -139,7 +139,7 @@ class FleetClient:
             lat = int((time.time() - t0) * 1000)
             return AgentStatus(
                 id="inference", name="Inference", role="Cloud AI Gateway", icon="⚡",
-                status="DEGRADED", latency_ms=lat, endpoint=self.inference_url,
+                status="UNREACHABLE", latency_ms=lat, endpoint=self.inference_url,
                 details=f"Inference gateway error: {e}",
                 last_checked=datetime.now(timezone.utc).isoformat(),
             )
@@ -169,7 +169,7 @@ class FleetClient:
             lat = int((time.time() - t0) * 1000)
             return AgentStatus(
                 id="memora", name="Memora", role="Persistent Memory", icon="🧠",
-                status="DEGRADED", latency_ms=lat, endpoint=self.memora_url,
+                status="UNREACHABLE", latency_ms=lat, endpoint=self.memora_url,
                 details=f"Cloud memory probe error: {e}",
                 last_checked=datetime.now(timezone.utc).isoformat(),
             )
@@ -201,7 +201,7 @@ class FleetClient:
             lat = int((time.time() - t0) * 1000)
             return AgentStatus(
                 id="stratex", name="Stratex", role="Algorithmic Trading", icon="📈",
-                status="DEGRADED", latency_ms=lat, endpoint=self.stratex_url,
+                status="UNREACHABLE", latency_ms=lat, endpoint=self.stratex_url,
                 details=f"Trading engine probe error: {e}",
                 last_checked=datetime.now(timezone.utc).isoformat(),
             )
@@ -231,7 +231,7 @@ class FleetClient:
             lat = int((time.time() - t0) * 1000)
             return AgentStatus(
                 id="intelx", name="IntelX", role="Macro Research", icon="🔍",
-                status="DEGRADED", latency_ms=lat, endpoint=self.intelx_url,
+                status="UNREACHABLE", latency_ms=lat, endpoint=self.intelx_url,
                 details=f"Research engine error: {e}",
                 last_checked=datetime.now(timezone.utc).isoformat(),
             )
@@ -275,7 +275,7 @@ class FleetClient:
                 )
             return AgentStatus(
                 id="futuris", name="Futuris", role="Predictive Forecaster", icon="🔮",
-                status="DEGRADED", latency_ms=lat, endpoint=self.futuris_url,
+                status="UNREACHABLE", latency_ms=lat, endpoint=self.futuris_url,
                 details=f"Forecasting engine returned status {r.status_code}",
                 last_checked=datetime.now(timezone.utc).isoformat(),
             )
@@ -283,7 +283,7 @@ class FleetClient:
             lat_err = int((time.time() - t0) * 1000)
             return AgentStatus(
                 id="futuris", name="Futuris", role="Predictive Forecaster", icon="🔮",
-                status="DEGRADED", latency_ms=lat_err, endpoint=self.futuris_url,
+                status="UNREACHABLE", latency_ms=lat_err, endpoint=self.futuris_url,
                 details=f"Forecasting engine unreachable: {e}",
                 last_checked=datetime.now(timezone.utc).isoformat(),
             )
@@ -307,7 +307,7 @@ class FleetClient:
             lat = int((time.time() - t0) * 1000)
             return AgentStatus(
                 id="cortex", name="Cortex", role="Web Operations", icon="🌐",
-                status="DEGRADED", latency_ms=lat, endpoint=self.cortex_url,
+                status="UNREACHABLE", latency_ms=lat, endpoint=self.cortex_url,
                 details=f"Web operations probe error: {e}",
                 last_checked=datetime.now(timezone.utc).isoformat(),
             )
@@ -337,7 +337,7 @@ class FleetClient:
             lat = int((time.time() - t0) * 1000)
             return AgentStatus(
                 id="forge", name="Forge", role="Software Engineering", icon="🛠️",
-                status="DEGRADED", latency_ms=lat, endpoint=self.forge_url,
+                status="UNREACHABLE", latency_ms=lat, endpoint=self.forge_url,
                 details=f"Forge local daemon unreachable ({lat}ms): {e}",
                 last_checked=datetime.now(timezone.utc).isoformat(),
             )
@@ -367,7 +367,7 @@ class FleetClient:
             lat = int((time.time() - t0) * 1000)
             return AgentStatus(
                 id="sentinel", name="Sentinel", role="Cybersecurity Shield", icon="🛡️",
-                status="DEGRADED", latency_ms=lat, endpoint=self.sentinel_url,
+                status="UNREACHABLE", latency_ms=lat, endpoint=self.sentinel_url,
                 details=f"Sentinel local daemon unreachable ({lat}ms): {e}",
                 last_checked=datetime.now(timezone.utc).isoformat(),
             )
