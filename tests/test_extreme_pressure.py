@@ -1,22 +1,30 @@
 """Extreme-pressure tests: the parts a green unit suite never touches.
 
 Everything here is deliberately hostile, and every test was written to be able to
-*find* something rather than to confirm what was already believed. Doing this
-found three real defects, all of them on paths a polite test would have missed:
+*find* something rather than to confirm what was already believed. Running them
+found two real defects, both on paths a polite test would have missed:
 
 * a hung transport hung the mesh forever - no transport had a bound the mesh
   itself enforced, so a peer that accepted a connection and never answered was
   indistinguishable from a frozen process. Now every request is bounded by
   `Mesh.request_timeout`, whatever transport is in use;
-* the circuit breaker counted each unreachable attempt twice, and a locally
-  blocked call reset it - so a breaker that read correctly never tripped at the
-  threshold, and could be cleared by the very outage it existed to survive;
-* an autonomous repair commit ran `git add -A` and swept the owner's work in
-  progress and the agent's own runtime state into the repair (fixed and covered
-  in tests/test_repair_commit_scope.py).
+* the circuit breaker counted one failure per *dispatch* rather than per attempt:
+  only the terminal outcome reached `_record`, so five dead attempts were one
+  measurement and the circuit opened far later than it was configured to. The
+  count is now one per attempt, and `BLOCKED` outcomes neither count nor forgive
+  (`tests/test_extreme_pressure.py::test_the_breaker_counts_every_attempt_once`).
 
-The rest of these tests are the pressure that keeps those three honest: hundreds
-of concurrent dispatches, megabytes of junk from a peer, thousands of episodes,
+Two premises this file started with were **disproved by its own runs**, and the
+claims were removed rather than kept: a locally blocked call does *not* reset the
+breaker (`test_a_locally_blocked_call_does_not_forgive_a_dead_peer` passes), and
+the detector is not unbounded - `IncidentDetector.test_timeout` bounds the suite
+and reports "did not finish within Ns", which
+`test_one_sleeping_test_is_bounded_by_the_runner_timeout` now proves with a 3s
+budget instead of measuring 120s of sleep. A test that asserts what the code
+does, rather than what the author expected, is the only kind worth keeping.
+
+The rest of these tests are the pressure that keeps those honest: hundreds of
+concurrent dispatches, megabytes of junk from a peer, thousands of episodes,
 dozens of agents writing from threads, many faults at once, and an incident whose
 file changed underneath it before the repair could land.
 """
