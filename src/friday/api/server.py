@@ -157,11 +157,32 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Allow WebGL frontend (Next.js / Vite / Electron) to connect
+# Allow the command centre to connect without ever reflecting an untrusted origin.
+# `allow_origins=["*"]` cannot be combined with credentials and Starlette resolves
+# the pair by echoing whatever origin asked. The list below is explicit; the
+# authoritative gate for state-changing calls is `_origin_allowed` in
+# `_require_control_access`, which also covers WebSocket upgrades that CORS
+# middleware does not police.
+def _configured_origins() -> list[str]:
+    raw = getattr(get_settings(), "allowed_origins", "") or ""
+    return sorted({item.strip().rstrip("/") for item in raw.split(",") if item.strip()})
+
+
+def _live_settings() -> Any:
+    """Read settings at call time.
+
+    The module-level `settings` object is bound once at import, so a reload (or a
+    `FRIDAY_*` override applied after import) would not be seen by the
+    authorisation path. Authorisation must always reflect the configuration that
+    is in force now, not the one that was in force when the process started.
+    """
+    return get_settings()
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_configured_origins(),
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -174,8 +195,53 @@ if memora_api_key:
     memora_client.remote_enabled = True
 
 
+_IDEMPOTENT_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+def _origin_allowed(origin: str, request: Request) -> bool:
+    """Decide whether a browser origin may drive this API.
+
+    An empty `Origin` means the caller is not a browser (curl, the MCP client, a
+    server-to-server peer) and is judged by the credential rules instead. Every
+    other value must match either this service's own origin or the configured
+    allow-list. `null` is refused outright: it is what a sandboxed iframe, a
+    `data:` URL or a `file://` page sends, and none of those are the owner.
+    """
+    if not origin:
+        return True
+    if origin == "null":
+        return False
+    allowed = set(_configured_origins())
+    host = request.headers.get("host", "")
+    if host:
+        allowed.add(f"{request.url.scheme}://{host}".rstrip("/"))
+    return origin.rstrip("/") in allowed
+
+
 async def _require_control_access(request: Request) -> None:
-    """Require a configured secret for control APIs exposed beyond localhost."""
+    """Authorise a control request.
+
+    Three independent gates, cheapest first:
+
+    1. **Origin.** A browser attaches `Origin` to cross-origin state-changing
+       requests, so a request from a page the owner merely has open cannot reach
+       this API at all. This is the gate that stops drive-by command execution
+       from an arbitrary website, and it applies to loopback callers too — the
+       owner's own browser is a loopback caller.
+    2. **Network exposure.** Requests arriving from beyond this machine, or from
+       a cloud deployment, must present the control API key.
+    3. **Opt-in loopback hardening.** With `require_api_key_on_loopback`, the key
+       is demanded for state-changing calls from this machine as well.
+    """
+    if not _origin_allowed(request.headers.get("origin", "").strip(), request):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "This browser origin is not permitted to reach the FRIDAY control API. "
+                "Add it to FRIDAY_ALLOWED_ORIGINS if it is a trusted frontend."
+            ),
+        )
+
     client_host = request.client.host if request.client else ""
     client_is_remote = False
     try:
@@ -183,10 +249,15 @@ async def _require_control_access(request: Request) -> None:
     except ValueError:
         pass
     remotely_exposed = bool(os.getenv("RENDER") or client_is_remote)
-    if not remotely_exposed:
+    live = _live_settings()
+    loopback_hardening = bool(
+        getattr(live, "require_api_key_on_loopback", False)
+        and getattr(request, "method", "GET").upper() not in _IDEMPOTENT_METHODS
+    )
+    if not remotely_exposed and not loopback_hardening:
         return
 
-    expected = (getattr(settings, "api_key", None) or os.getenv("FRIDAY_API_KEY") or os.getenv("FRIDAY_UNIVERSE_API_KEY") or "").strip()
+    expected = (getattr(live, "api_key", None) or os.getenv("FRIDAY_API_KEY") or os.getenv("FRIDAY_UNIVERSE_API_KEY") or "").strip()
     if not expected or expected.lower() in {"friday_universe_api", "changeme", "change-me", "your_api_key"}:
         raise HTTPException(status_code=503, detail="Remote control is disabled until a non-example FRIDAY_API_KEY is configured.")
 
@@ -197,6 +268,11 @@ async def _require_control_access(request: Request) -> None:
     import hmac
     if not provided or not hmac.compare_digest(provided, expected):
         raise HTTPException(status_code=401, detail="A valid FRIDAY control API key is required.")
+
+
+def _websocket_origin_allowed(websocket: WebSocket) -> bool:
+    """Apply the same origin policy to WebSocket upgrades, which CORS never sees."""
+    return _origin_allowed(websocket.headers.get("origin", "").strip(), websocket)  # type: ignore[arg-type]
 
 # Initialize global agent and Android controller
 agent = FridayAgent(
