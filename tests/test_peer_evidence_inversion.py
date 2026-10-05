@@ -127,3 +127,27 @@ def test_the_agent_status_vocabulary_names_the_fifth_state() -> None:
         __import__("pathlib").Path(fleet_client_module.__file__).read_text(encoding="utf-8")
     )
     assert "ONLINE, REACHABLE, DEGRADED, UNREACHABLE, or OFFLINE" in source
+
+
+@pytest.mark.asyncio
+async def test_the_fast_lane_does_not_claim_consensus_it_never_measured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BUG-014: `consensus_reached: True` on any HTTP 200, from one model."""
+    client = FleetClient()
+
+    class OneModelAnswered:
+        async def post(self, *args, **kwargs):
+            return SimpleNamespace(
+                status_code=200,
+                json=lambda: {"response": "yes", "model_used": "m1", "provider_used": "p1"},
+                text="",
+            )
+
+    monkeypatch.setattr(client, "get_shared_client", lambda: OneModelAnswered())
+    result = await client.ask_inference("is the sky blue?")
+    metadata = result["metadata"]
+
+    assert metadata["consensus_reached"] is False, "one answer is not a consensus"
+    assert "not measured" in metadata["consensus_note"]
+    assert metadata["model_used"] == "m1"

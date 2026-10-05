@@ -443,7 +443,15 @@ class FleetClient:
                     "metadata": {
                         "agent_id": "inference", "agent_name": "Inference",
                         "model_used": model_used, "provider_used": provider_used,
-                        "consensus_reached": True,
+                        # One model answered one request. Consensus is agreement
+                        # between independent answers, and nothing here asked a
+                        # second model, so claiming it was a fabricated result
+                        # (BUG-014). The field is kept, and kept false, because
+                        # callers key off it.
+                        "consensus_reached": False,
+                        "consensus_note": (
+                            "single-model response; consensus is not measured on the fast lane"
+                        ),
                     },
                 }
             else:
