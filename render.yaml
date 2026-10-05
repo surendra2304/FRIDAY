@@ -38,9 +38,9 @@ services:
       - key: FUTURIS_URL
         value: "https://futuris-th6f.onrender.com"
       - key: FRIDAY_INFERENCE_URL
-        value: "https://inference-r1sn.onrender.com"
+        value: "https://inference-h7bn.onrender.com"
       - key: INFERENCE_URL
-        value: "https://inference-r1sn.onrender.com"
+        value: "https://inference-h7bn.onrender.com"
       - key: FRIDAY_INTELX_URL
         value: "https://intelx-mygl.onrender.com"
       - key: INTELX_URL

@@ -203,7 +203,7 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
             getattr(settings, "inference_url", None)
             or os.getenv("INFERENCE_URL")
             or os.getenv("FRIDAY_INFERENCE_URL")
-            or "https://inference-r1sn.onrender.com"
+            or "https://inference-h7bn.onrender.com"
         )
         inf_key = (
             getattr(settings, "inference_api_key", None)
