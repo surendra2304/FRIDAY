@@ -133,6 +133,11 @@ def _stamp(moment: datetime) -> str:
     return moment.isoformat()
 
 
+def _iso_from_epoch(epoch: float) -> str:
+    """Render a mandate expiry (a POSIX timestamp) the same way as every other stamp."""
+    return datetime.fromtimestamp(epoch, tz=timezone.utc).isoformat()
+
+
 class RepairState(str, Enum):
     """Lifecycle of a single repair proposal."""
 
@@ -169,6 +174,13 @@ class GateRefusal(str, Enum):
     NO_CHECKPOINT = "NO_CHECKPOINT"
     NOTHING_TO_ROLL_BACK = "NOTHING_TO_ROLL_BACK"
     GIT_FAILED = "GIT_FAILED"
+    # Standing-mandate refusals. An agent still cannot approve a repair; these
+    # record whether the *owner's* pre-signed delegation covers it.
+    MALFORMED_MANDATE = "MALFORMED_MANDATE"
+    BAD_MANDATE_SIGNATURE = "BAD_MANDATE_SIGNATURE"
+    MANDATE_EXPIRED = "MANDATE_EXPIRED"
+    MANDATE_SCOPE = "MANDATE_SCOPE"
+    MANDATE_PATH = "MANDATE_PATH"
 
 
 #: Refusals that end the pipeline. Everything else refuses *this attempt* and leaves
@@ -697,6 +709,20 @@ class SelfRepairGate:
             record.state = RepairState.BLOCKED
         return receipt
 
+    # ── the checkpoint a proposal should branch from ───────────────────────
+    def head_commit(self) -> str | None:
+        """The commit a proposal should be based on, or ``None`` if unknowable.
+
+        Public because every caller that builds a proposal needs it: a proposal
+        with an empty ``base_commit`` reaches ``git checkout -b`` as an empty
+        pathspec and fails with a message that names git rather than the real
+        problem. Asking the gate for its own checkpoint is the honest way to fill
+        the field.
+        """
+        if self._applier is None:
+            return None
+        return self._applier.current_commit()
+
     # ── step 1: propose ────────────────────────────────────────────────────
     def propose(self, proposal: RepairProposal) -> tuple[RepairRecord, Receipt]:
         """Accept a proposal onto the books. Touches no files.
@@ -931,6 +957,133 @@ class SelfRepairGate:
                 "approval_id": record.approval.approval_id,
                 "bound_fingerprint": record.approval.patch_fingerprint,
                 "expires_at": _stamp(record.approval.expires_at),
+            },
+        )
+
+    # ── step 3b: owner's standing mandate ──────────────────────────────────
+    def record_mandate_decision(
+        self,
+        patch_id: str,
+        document: dict[str, Any],
+        verification_key: bytes,
+    ) -> Receipt:
+        """Approve a repair under the owner's signed standing mandate.
+
+        This is the owner's authority exercised in advance, not an agent
+        approving itself. The difference is that the authority is *proven*, not
+        asserted: the mandate is a signed document issued by the owner, bound to
+        an expiry, a set of scopes and a set of permitted paths, and this method
+        verifies all of it before the state machine advances.
+
+        An agent still cannot approve anything. `record_owner_decision` continues
+        to refuse every agent name, and this path refuses an issuer from the same
+        set — a delegate cannot redelegate.
+
+        The downstream property is unchanged and is the point: the approval is
+        single-use, expires, and is bound to the patch fingerprint, so `apply`
+        still refuses a replayed approval or a patch edited after consent.
+        """
+        record = self._records.get(patch_id)
+        if record is None:
+            return Receipt(
+                step="mandate_decision",
+                outcome="REFUSED",
+                at=_stamp(_now()),
+                detail=f"{GateRefusal.NOT_PROPOSED.value}: unknown patch {patch_id}",
+            )
+        if record.state is not RepairState.REVIEWED:
+            return self._refuse(
+                record,
+                "mandate_decision",
+                GateRefusal.NOT_REVIEWED,
+                f"state is {record.state.value}; a mandate does not replace the review step",
+            )
+        if not isinstance(document, dict) or not document:
+            return self._refuse(
+                record,
+                "mandate_decision",
+                GateRefusal.MALFORMED_MANDATE,
+                "no mandate document was supplied",
+            )
+
+        # Imported lazily so the gate stays loadable without the cognition
+        # package, and so a verifier never executes the issuer's code.
+        from friday.cognition.mandate import (
+            NON_OWNER_ISSUERS,
+            SCOPE_CONFIG_REPAIR,
+            SCOPE_SOURCE_REPAIR,
+            AutonomyMandate,
+            verify_mandate,
+        )
+
+        if not verification_key:
+            return self._refuse(
+                record,
+                "mandate_decision",
+                GateRefusal.BAD_MANDATE_SIGNATURE,
+                "no verification key is configured, so no mandate can be trusted",
+            )
+        if not verify_mandate(document, verification_key):
+            return self._refuse(
+                record,
+                "mandate_decision",
+                GateRefusal.BAD_MANDATE_SIGNATURE,
+                "the mandate's signature does not verify; it was altered or signed with another key",
+            )
+
+        mandate = AutonomyMandate.from_document(document)
+        if (mandate.issued_by or "").strip().lower() in NON_OWNER_ISSUERS:
+            return self._refuse(
+                record,
+                "mandate_decision",
+                GateRefusal.WRONG_APPROVER,
+                f"{mandate.issued_by!r} is an agent, not the owner; a delegate cannot redelegate",
+            )
+        if mandate.is_expired():
+            return self._refuse(
+                record,
+                "mandate_decision",
+                GateRefusal.MANDATE_EXPIRED,
+                f"mandate {mandate.mandate_id} expired at {_iso_from_epoch(mandate.expires_at)}",
+            )
+        if not mandate.grants(SCOPE_SOURCE_REPAIR) and not mandate.grants(SCOPE_CONFIG_REPAIR):
+            return self._refuse(
+                record,
+                "mandate_decision",
+                GateRefusal.MANDATE_SCOPE,
+                "the mandate grants neither source_repair nor config_repair",
+            )
+        if not mandate.permits_path(record.proposal.target_file):
+            return self._refuse(
+                record,
+                "mandate_decision",
+                GateRefusal.MANDATE_PATH,
+                f"the mandate does not permit changes to {record.proposal.target_file!r}",
+            )
+
+        record.approval = OwnerApproval(
+            patch_fingerprint=record.proposal.fingerprint(),
+            approver=f"{mandate.issued_by} (standing mandate {mandate.mandate_id})",
+            approval_id=self._next_id("appr"),
+        )
+        record.state = RepairState.APPROVED
+        return self._record(
+            record,
+            "mandate_decision",
+            "ACCEPTED",
+            detail=(
+                f"approved under standing mandate {mandate.mandate_id}; "
+                "approval is single-use, expiring and fingerprint-bound"
+            ),
+            evidence={
+                "approver": mandate.issued_by,
+                "mandate_id": mandate.mandate_id,
+                "mandate_expires_at": _iso_from_epoch(mandate.expires_at),
+                "scopes": list(mandate.scopes),
+                "allowed_paths": list(mandate.allowed_paths),
+                "signature_verified": True,
+                "approval_id": record.approval.approval_id,
+                "bound_fingerprint": record.approval.patch_fingerprint,
             },
         )
 
