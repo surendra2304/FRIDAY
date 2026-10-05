@@ -485,6 +485,9 @@ class GitRepairApplier:
     """
 
     def __init__(self, repo_path: str, timeout: float = 30.0) -> None:
+        #: Every path this applier has actually rewritten, so a commit stages
+        #: exactly those and nothing else. See `commit_touched`.
+        self.touched: set[str] = set()
         self.repo_path = str(Path(repo_path).resolve())
         self.timeout = timeout
         if not (Path(self.repo_path) / ".git").exists():
@@ -541,8 +544,41 @@ class GitRepairApplier:
                 f"{relative_path}; refusing to guess which occurrence was meant"
             )
         path.write_text(current.replace(original, replacement, 1), encoding="utf-8")
+        self.touched.add(Path(relative_path).as_posix())
+
+    def commit_touched(self, message: str) -> str:
+        """Commit exactly the files this applier rewrote, and nothing else.
+
+        This method used to run ``git add -A``, which swept *whatever happened to
+        be dirty* into an autonomous repair commit: the owner's work in progress,
+        runtime state files, ``__pycache__``. A real repair run on a real
+        repository committed the reflex brain's own state file and a ``.pyc``
+        alongside the fix, and said nothing about it. An unattended agent has no
+        business committing files it was not asked to change, so this stages the
+        paths it touched and refuses when there are none.
+        """
+        if not self.touched:
+            raise RuntimeError(
+                "this applier has not rewritten any file, so there is nothing of its own to "
+                "commit; refusing rather than staging the rest of the working tree"
+            )
+        code, out, err = self._git("add", "--", *sorted(self.touched))
+        if code != 0:
+            raise RuntimeError(f"git add failed: {err or out}")
+        code, out, err = self._git("commit", "-m", message, "--", *sorted(self.touched))
+        if code != 0:
+            raise RuntimeError(f"git commit failed: {err or out}")
+        code, out, _ = self._git("rev-parse", "HEAD")
+        if code != 0:
+            raise RuntimeError("commit created but HEAD is unreadable")
+        return out
 
     def commit_all(self, message: str) -> str:
+        """Deprecated name for :meth:`commit_touched`. Stages only repaired files."""
+        return self.commit_touched(message)
+
+    def _commit_everything_for_tests(self, message: str) -> str:
+        """The old sweep-everything commit. Kept for tests that prove it is gone."""
         code, out, err = self._git("add", "-A")
         if code != 0:
             raise RuntimeError(f"git add failed: {err or out}")
@@ -1154,7 +1190,7 @@ class SelfRepairGate:
             self._applier.apply_snippet(
                 proposal.target_file, proposal.original_snippet, proposal.replacement_snippet
             )
-            record.applied_commit = self._applier.commit_all(
+            record.applied_commit = self._applier.commit_touched(
                 f"repair({record.patch_id}): {proposal.rationale.splitlines()[0][:120]}"
             )
         except (RuntimeError, FileNotFoundError, LookupError, subprocess.SubprocessError) as exc:

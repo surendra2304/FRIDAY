@@ -539,6 +539,10 @@ class RepairRunner:
         self.repo_root = Path(repo_root).resolve()
         self.patcher = patcher
         self.python = python_executable or sys.executable
+        #: One test run may take this long. It is deliberately shorter than the
+        #: detector's budget for the whole suite: a stuck test has to be caught
+        #: and reported, not waited on until the process that is diagnosing it
+        #: also stops responding.
         self.timeout = timeout
 
     # -- helpers ----------------------------------------------------------

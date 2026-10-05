@@ -596,10 +596,15 @@ class Mesh:
         backoff_seconds: float = 0.25,
         breaker: CircuitBreaker | None = None,
         on_outcome: Callable[[PeerOutcome], None] | None = None,
+        request_timeout: float = 30.0,
     ) -> None:
         self.contracts = contracts if contracts is not None else build_contracts()
         self.transport: Transport = transport or HttpTransport()
         self.attempts = max(1, attempts)
+        #: A transport that never returns must not become a mesh that never
+        #: returns. `HttpTransport` has its own httpx timeout; this is the bound
+        #: that holds for *any* transport, including one supplied by a caller.
+        self.request_timeout = max(0.05, float(request_timeout))
         self.backoff_seconds = backoff_seconds
         self.breaker = breaker or CircuitBreaker()
         self._on_outcome = on_outcome
@@ -615,6 +620,13 @@ class Mesh:
         return mesh, transport
 
     def _record(self, outcome: PeerOutcome) -> PeerOutcome:
+        """The single place an outcome is remembered, and counted by the breaker.
+
+        Deliberately the only call site for `breaker.record`. Two call sites - the
+        attempt and the dispatch - double-counted every unreachable attempt, so
+        the breaker tripped at half its configured threshold instead of at it.
+        One measurement per outcome is the whole value of a breaker.
+        """
         self.breaker.record(outcome.peer, outcome.state)
         self.history.append(outcome)
         if len(self.history) > 500:
@@ -717,9 +729,16 @@ class Mesh:
             outcome = await self._attempt(peer, contract, task, attempt, started)
             last = outcome
             if outcome.state not in RETRYABLE_STATES:
+                # A terminal outcome: `_record` counts it against the breaker.
                 return self._record(outcome)
-            if attempt < budget and self.backoff_seconds:
-                await asyncio.sleep(self.backoff_seconds * attempt)
+            if attempt < budget:
+                # This attempt is about to be retried, so it never reaches
+                # `_record`. Count it here: an attempt that got no answer is a
+                # measurement, and only counting the last one per dispatch makes
+                # a breaker trip at one attempt in N instead of at N.
+                self.breaker.record(peer, outcome.state)
+                if self.backoff_seconds:
+                    await asyncio.sleep(self.backoff_seconds * attempt)
         assert last is not None
         return self._record(last)
 
@@ -741,7 +760,22 @@ class Mesh:
         )
 
         try:
-            response = await self.transport.send(request)
+            response = await asyncio.wait_for(
+                self.transport.send(request), timeout=self.request_timeout
+            )
+        except (asyncio.TimeoutError, TimeoutError):
+            return PeerOutcome(
+                peer=peer,
+                state=OutcomeState.UNREACHABLE,
+                detail=(
+                    f"no response was received from {peer} within {self.request_timeout:.1f}s; "
+                    "a peer that does not answer in time is unreachable, not unhealthy"
+                ),
+                attempts=attempt,
+                task_id=envelope.task_id,
+                contract_used=contract.task_path,
+                latency_ms=int((time.time() - started) * 1000),
+            )
         except TransportError as exc:
             return PeerOutcome(
                 peer=peer,
@@ -840,7 +874,9 @@ class Mesh:
             json_body=envelope.model_dump() if contract.fallback_method == "POST" else None,
         )
         try:
-            response = await self.transport.send(request)
+            response = await asyncio.wait_for(
+                self.transport.send(request), timeout=self.request_timeout
+            )
         except Exception as exc:
             return PeerOutcome(
                 peer=peer,
@@ -1029,7 +1065,9 @@ class Mesh:
             headers=contract.headers(),
         )
         try:
-            response = await self.transport.send(request)
+            response = await asyncio.wait_for(
+                self.transport.send(request), timeout=self.request_timeout
+            )
         except Exception as exc:
             return self._record(
                 PeerOutcome(
