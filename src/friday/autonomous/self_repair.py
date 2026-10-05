@@ -47,9 +47,10 @@ logger = get_logger("autonomous.self_repair")
 REVIEWER = "sentinel"
 
 #: Agents in the universe. None of them may authorize a repair — least of all
-#: FRIDAY, which is the component that would carry the repair out. Approval is a
-#: human act, so this is a deny-list by role rather than an allow-list by name: a
-#: new agent added tomorrow is excluded by default rather than admitted by omission.
+#: FRIDAY, which is the component that would carry the repair out. This set is the
+#: *second* refusal: `friday.cognition.identity.is_owner_identity` decides whether
+#: the approver is the owner at all, positively. The name list alone could only
+#: refuse names somebody had remembered to add, which is not a security property.
 NON_OWNER_ACTORS = frozenset(
     {
         "",
@@ -959,13 +960,20 @@ class SelfRepairGate:
                 GateRefusal.NOT_REVIEWED,
                 f"state is {record.state.value}; an unreviewed patch cannot be approved",
             )
-        if (approver or "").strip().lower() in NON_OWNER_ACTORS:
-            return self._refuse(
-                record,
-                "owner_decision",
-                GateRefusal.WRONG_APPROVER,
-                f"{approver!r} is an agent, not the owner; no agent may approve a repair",
+        from friday.cognition.identity import is_agent_namespace, is_owner_identity
+
+        if not is_owner_identity(approver):
+            # Two different refusals, because they mean different things: an agent
+            # trying to approve its own work, versus a name nobody recognises.
+            detail = (
+                f"{approver!r} is an agent, not the owner; no agent may approve a repair"
+                if is_agent_namespace(approver)
+                else (
+                    f"{approver!r} is not an identified owner; approval is the owner's own act. "
+                    "Set FRIDAY_USER_NAME to the owner's name, or approve from the CLI."
+                )
             )
+            return self._refuse(record, "owner_decision", GateRefusal.WRONG_APPROVER, detail)
 
         if not approve:
             record.state = RepairState.REJECTED
@@ -1044,8 +1052,8 @@ class SelfRepairGate:
 
         # Imported lazily so the gate stays loadable without the cognition
         # package, and so a verifier never executes the issuer's code.
+        from friday.cognition.identity import is_owner_identity
         from friday.cognition.mandate import (
-            NON_OWNER_ISSUERS,
             SCOPE_CONFIG_REPAIR,
             SCOPE_SOURCE_REPAIR,
             AutonomyMandate,
@@ -1068,12 +1076,22 @@ class SelfRepairGate:
             )
 
         mandate = AutonomyMandate.from_document(document)
-        if (mandate.issued_by or "").strip().lower() in NON_OWNER_ISSUERS:
+        if not is_owner_identity(mandate.issued_by):
+            # The wording distinguishes the two cases on purpose: an agent that
+            # signed a mandate is attempting to widen its own authority, while an
+            # unrecognised name is most likely a configuration mistake.
+            from friday.cognition.identity import is_agent_namespace
+
+            detail = (
+                f"{mandate.issued_by!r} is an agent, not the owner; a delegate cannot redelegate"
+                if is_agent_namespace(mandate.issued_by)
+                else f"{mandate.issued_by!r} is not an identified owner; a delegate cannot redelegate"
+            )
             return self._refuse(
                 record,
                 "mandate_decision",
                 GateRefusal.WRONG_APPROVER,
-                f"{mandate.issued_by!r} is an agent, not the owner; a delegate cannot redelegate",
+                detail,
             )
         if mandate.is_expired():
             return self._refuse(

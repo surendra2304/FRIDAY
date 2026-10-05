@@ -47,6 +47,7 @@ from datetime import datetime, timezone
 from fnmatch import fnmatch
 from typing import Any, Literal
 
+from friday.cognition.identity import AGENT_NAMESPACE, is_agent_namespace, is_owner_identity
 from friday.core.logging import get_logger
 
 logger = get_logger("cognition.mandate")
@@ -69,26 +70,9 @@ DEFAULT_TTL_SECONDS = 12 * 3600
 
 #: A mandate is an owner document. An agent may never issue one, for the same
 #: reason it may never approve a repair: the authority being delegated is the
-#: owner's, and an agent cannot delegate what it does not hold.
-NON_OWNER_ISSUERS = frozenset(
-    {
-        "",
-        "friday",
-        "forge",
-        "sentinel",
-        "inference",
-        "memora",
-        "stratex",
-        "intelx",
-        "futuris",
-        "cortex",
-        "system",
-        "bot",
-        "agent",
-        "automation",
-        "self",
-    }
-)
+#: owner's, and an agent cannot delegate what it does not hold. Kept in step with
+#: the shared namespace so the two rules cannot drift apart.
+NON_OWNER_ISSUERS = AGENT_NAMESPACE
 
 #: What a mandate may permit. Kept as an explicit vocabulary so a mandate cannot
 #: silently widen: an unknown scope is refused rather than ignored.
@@ -462,9 +446,17 @@ class MandateAuthority:
         lifetime. Each refusal is a ``ValueError`` because issuing is an owner
         action taken interactively; there is no pipeline to keep alive here.
         """
-        if (issued_by or "").strip().lower() in NON_OWNER_ISSUERS:
+        if not is_owner_identity(issued_by):
+            # The two cases get different sentences: an agent issuing a mandate is
+            # an attempt to widen its own authority, while an unrecognised name is
+            # usually an operator whose FRIDAY_USER_NAME does not match.
+            if is_agent_namespace(issued_by):
+                raise ValueError(
+                    f"{issued_by!r} is an agent, not the owner; no agent may issue a standing mandate"
+                )
             raise ValueError(
-                f"{issued_by!r} is an agent, not the owner; no agent may issue a standing mandate"
+                f"{issued_by!r} is not an identified owner; no unknown name may issue a standing "
+                "mandate. Set FRIDAY_USER_NAME to the owner's name."
             )
         if ttl_seconds <= 0:
             raise ValueError("a mandate must have a positive lifetime")
