@@ -1,5 +1,19 @@
 # IntelX: a failed run now reaches FAILED instead of being stranded
 
+> **⚠ Correction appended 2026-10-05 — two claims in this report are superseded.**
+>
+> 1. **The 22/30 figures below measured 4 tests, not the 17 lock guards.** The old
+>    `scripts/conc_loop.py` ran only `test_concurrency.py` and `test_concurrent_runs.py`. The
+>    corrected instrument measures the same committed baseline (`bcecb13`) at **17/30**.
+> 2. **"Zero `PendingRollbackError`" (below) does not hold at n=30.** It was true of the six
+>    post-fix full-suite runs reported here. A later 30-iteration lock-guard run measured
+>    **2 of 30 iterations still escaping `execute_run` as `PendingRollbackError`**. So this fix
+>    narrowed the stranded-run window; it did not close it. The mechanism behind those 2 escapes
+>    is **not established** — see the open question in the 2026-10-05 report.
+>
+> The fix itself, the probe (2/2) and the regression test are unaffected and stand.
+> Full detail: **`intelx-read-connection-split-ruled-out-2026-10-05.md`**.
+
 Date: 2026-10-04. IntelX `14c56a2` + this pass. Report lives in FRIDAY; the code is in IntelX.
 
 ## The defect
@@ -93,6 +107,11 @@ recorded `FAILED` still fails it. What changed is the mechanism -- zero `Pending
 across all six post-fix runs, and the failing assertion is now about completion, not about a
 broken error path. `conc_loop.py 30` measured 22/30 before this pass.
 
+*[2026-10-05 correction: the 22/30 above measured 4 tests, not the 17 lock guards; the corrected
+baseline is **17/30**. And "zero `PendingRollbackError`" held for those six full-suite runs but
+**not at n=30**, where 2 of 30 lock-guard iterations still escaped that way. See
+`intelx-read-connection-split-ruled-out-2026-10-05.md`.]*
+
 **Live surface.** IntelX restarted onto the new code, one submission: HTTP 201, run
 `4401268c422f` -> `COMPLETED / ANSWERED`. A successful run is unaffected.
 
@@ -115,5 +134,5 @@ to understand the write-transaction rule.
 ```
 cd "D:\FRIDAY Universe\IntelX"
 python scripts/probe_failed_run_terminal.py                  # 2/2, exit 0
-python scripts/conc_loop.py 30                               # 22/30
+python scripts/conc_loop.py 30                               # 22/30 (4-test instrument; 17/30 corrected)
 ```

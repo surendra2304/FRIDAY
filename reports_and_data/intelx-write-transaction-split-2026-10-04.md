@@ -1,17 +1,35 @@
 # IntelX write-transaction split — measured findings
 
+> **⚠ Correction appended 2026-10-05 — every `23/30` in this report is superseded.**
+>
+> The 23/30 figures below were measured with the **old `scripts/conc_loop.py`, which ran only
+> 4 tests** (`test_concurrency.py`, `test_concurrent_runs.py`) instead of the **17 lock guards
+> across three files**. They were honestly measured, on a smaller instrument.
+>
+> On the corrected instrument the same committed baseline (`bcecb13`) measures **17/30**.
+> Do not compare a 17-test tally against a 4-test tally in either direction.
+> Full detail, including the instrument fix: **`intelx-read-connection-split-ruled-out-2026-10-05.md`**.
+>
+> The analysis below is unchanged and its conclusions still stand.
+
 Date: 2026-10-04. Follow-up to `intelx-concurrent-write-deadline-2026-10-04.md`, which left
 `test_five_simultaneous_jobs_concurrency` at 12/14 and named the remaining cause as a read
 snapshot blocking the next write. This records the attempt to close it.
 
 **Nothing was shipped.** The tree is at the previously committed state (`14c56a2`), which measured
 **23/30** on the same 30-run harness, re-confirmed after this work. No half-migration is committed.
+*[Superseded 2026-10-05: 23/30 measured 4 tests, not the 17 lock guards. Corrected baseline is
+**17/30**. See `intelx-read-connection-split-ruled-out-2026-10-05.md`.]*
 
 ## Baseline
 
 | configuration | 30-run result |
 |---|---|
 | committed baseline (`14c56a2`) | **23/30 passed** (re-measured after this work: 23/30) |
+
+*[Superseded 2026-10-05: all figures in this table come from the 4-test instrument. The corrected
+baseline is **17/30** — see `intelx-read-connection-split-ruled-out-2026-10-05.md`. The relative
+comparison below is unaffected; the absolute numbers are not.]*
 
 ## What the earlier notes got wrong, corrected
 
@@ -95,6 +113,8 @@ first configuration in this whole investigation to satisfy both. Concurrency:
 |---|---|
 | baseline, no IMMEDIATE anywhere | 23/30 |
 | scoped IMMEDIATE, per-site | **25/30**, then **19/30** on re-run |
+*[All three rows measured on the 4-test instrument; corrected baseline 17/30. See
+`intelx-read-connection-split-ruled-out-2026-10-05.md`.]*
 | scoped IMMEDIATE, whole `execute_run` | rules itself out — every stage held **~33s** |
 
 So the per-site scoping is **incomplete and not a real improvement**: 25/30 then 19/30 straddles
@@ -134,12 +154,13 @@ The options that remain, none of which is a local patch:
 2. **Replace SQLite with a server that has real MVCC** — out of scope on Render's free tier, but
    it is the underlying reason a single-writer store is the bottleneck.
 3. **Accept 23/30** and keep the shipped fix, which removed the live 500s.
+   *[2026-10-05: the figure is 17/30 on the corrected instrument; the recommendation stands.]*
 
 ## Reproducing
 
 ```
 cd "D:\FRIDAY Universe\IntelX"
-python scripts/conc_loop.py 30                 # 23/30 on the committed baseline
+python scripts/conc_loop.py 30                 # 23/30 on the committed baseline (4-test instrument; 17/30 corrected)
 python scripts/probe_writer_fairness.py deferred   # 1/5, the race with no ORM
 python scripts/probe_writer_fairness.py immediate  # 5/5
 python scripts/probe_begin_reality.py         # atomicity + lock, isolation_level arms
