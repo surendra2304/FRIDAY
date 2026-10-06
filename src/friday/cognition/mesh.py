@@ -295,6 +295,10 @@ class HarnessBehaviour:
     raise_transport_error: bool = False
     receipt: bool = True
     latency_ms: int = 0
+    #: Extra fields for the result payload of a normal receipt-bearing answer. The
+    #: receipt itself is still the harness's own, so a peer can be modelled as
+    #: "authorised for this, and this is what it found" without hand-forging one.
+    result: dict[str, Any] | None = None
 
 
 class ContractTransport:
@@ -307,20 +311,37 @@ class ContractTransport:
 
     def __init__(self, contracts: dict[str, PeerContract] | None = None) -> None:
         self.contracts = contracts or {}
-        self.behaviours: dict[tuple[str, str], HarnessBehaviour] = {}
+        self.behaviours: dict[tuple[str, str, str], HarnessBehaviour] = {}
         self.calls: list[PeerRequest] = []
 
     def behave(
-        self, peer: str, behaviour: HarnessBehaviour, *, path: str | None = None
+        self,
+        peer: str,
+        behaviour: HarnessBehaviour,
+        *,
+        path: str | None = None,
+        action: str | None = None,
     ) -> ContractTransport:
-        """Set how a peer behaves. ``path`` targets one endpoint; omit it for all."""
-        self.behaviours[(peer, path or "*")] = behaviour
+        """Set how a peer behaves.
+
+        ``path`` targets one endpoint and ``action`` one action; omit either for all
+        of them. Action matters because peers authorise per action: a peer that can
+        answer a question about its memory is not necessarily one that will take the
+        work, and a harness that cannot express that cannot test it.
+        """
+        self.behaviours[(peer, path or "*", action or "*")] = behaviour
         return self
 
-    def behaviour_for(self, peer: str, path: str) -> HarnessBehaviour:
-        return self.behaviours.get(
-            (peer, path), self.behaviours.get((peer, "*"), HarnessBehaviour())
-        )
+    def behaviour_for(self, peer: str, path: str, action: str = "*") -> HarnessBehaviour:
+        for key in (
+            (peer, path, action),
+            (peer, path, "*"),
+            (peer, "*", action),
+            (peer, "*", "*"),
+        ):
+            if key in self.behaviours:
+                return self.behaviours[key]
+        return HarnessBehaviour()
 
     def _known_paths(self, contract: PeerContract) -> set[str]:
         return {contract.task_path, contract.fallback_path, contract.health_path} - {""}
@@ -333,7 +354,8 @@ class ContractTransport:
 
         raw_path = request.url[len(contract.base_url.rstrip("/")) :] or "/"
         path = raw_path.split("?", 1)[0]
-        behaviour = self.behaviour_for(request.peer, path)
+        action = str((request.json_body or {}).get("action") or "")
+        behaviour = self.behaviour_for(request.peer, path, action)
         if behaviour.latency_ms:
             await asyncio.sleep(behaviour.latency_ms / 1000.0)
         if behaviour.raise_transport_error:
@@ -383,7 +405,7 @@ class ContractTransport:
             "task_id": envelope.get("task_id", ""),
             "status": "success",
             "summary": f"{contract.name} completed the task",
-            "result": {"echo": envelope.get("objective", "")},
+            "result": {"echo": envelope.get("objective", ""), **(behaviour.result or {})},
             "receipt": {
                 "requested_action": envelope.get("action", ""),
                 "target": contract.name,

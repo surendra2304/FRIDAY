@@ -74,6 +74,61 @@ class HelpOutcome:
         return f"No help came from {self.helper}: {self.reason or self.answer or 'no answer'}"
 
 
+def _memories_from(
+    peer: str, outcome: Any, capability: str
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """The memories in one verified answer, and the ones that had to be dropped.
+
+    Returns ``(accepted, dropped)``. An entry about another capability, an entry
+    that carries no answer, and a result that is not a list of memories at all are
+    all reported as dropped, with the reason, rather than quietly ignored.
+    """
+    result = getattr(outcome, "result", None)
+    if not isinstance(result, dict):
+        return [], []
+
+    # The wire shape the mesh produces is the whole response body: the payload a peer
+    # carries sits under its "result" key, next to the receipt. A peer that answers
+    # flat is still read, because a contract is read as it arrives, not as it was
+    # imagined - the first draft of this function assumed the flat shape and silently
+    # found no memories at all in a verified answer.
+    raw = None
+    for candidate in (result.get("result"), result):
+        if isinstance(candidate, dict) and isinstance(candidate.get("memories"), list):
+            raw = candidate["memories"]
+            break
+    if not isinstance(raw, list):
+        return [], []
+
+    accepted: list[dict[str, Any]] = []
+    dropped: list[dict[str, Any]] = []
+    wanted = capability.strip().lower()
+    for entry in raw:
+        if not isinstance(entry, dict):
+            dropped.append({"peer": peer, "reason": "not a memory object", "entry": str(entry)[:80]})
+            continue
+        entry_capability = str(entry.get("capability") or "").strip()
+        if wanted and entry_capability and entry_capability.lower() != wanted:
+            dropped.append(
+                {"peer": peer, "reason": "about a different capability", "capability": entry_capability}
+            )
+            continue
+        answer = str(entry.get("answer") or entry.get("detail") or "").strip()
+        if not answer:
+            dropped.append({"peer": peer, "reason": "carries no answer"})
+            continue
+        accepted.append(
+            {
+                "peer": peer,
+                "capability": entry_capability or capability,
+                "answer": answer,
+                "peer_says_verified": bool(entry.get("verified", False)),
+                "state": "COMPLETED",
+            }
+        )
+    return accepted, dropped
+
+
 class AssistanceBroker:
     """One agent asking another, locally or across the mesh."""
 
@@ -317,6 +372,131 @@ class AssistanceBroker:
             reason=getattr(outcome, "detail", ""),
             attempt=outcome.as_dict() if hasattr(outcome, "as_dict") else {"state": state},
         )
+
+    async def recall_from_peers(
+        self,
+        capability: str,
+        *,
+        question: str = "",
+        caller: str = "friday",
+        peers: tuple[str, ...] | None = None,
+        inputs: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Ask the fleet what it remembers about this, before asking it to act.
+
+        A peer that has already repaired this kind of fault is a better target than a
+        broadcast, and a peer's memory is a real, checkable thing: it comes back
+        through the same envelope and the same verified receipt as any other task, so
+        an unreachable peer, a peer with nothing to say and a peer that answers
+        without a receipt stay three different answers.
+
+        What comes back is *knowledge*, never work: a memory is labelled with the peer
+        it came from, the capability it is about, and whether the peer says it came
+        from a repair it verified. Nothing here claims a peer did anything.
+
+        Two honesty rules are enforced on the way in, because a fleet's memory is
+        exactly the place a plausible-sounding answer is easiest to accept:
+
+        * a memory about a different capability is dropped, not used to target the
+          peer - retrieving the wrong thing confidently is worse than retrieving
+          nothing; and
+        * the caller is never asked to recall to itself. That is the same loopback
+          refusal as the rest of the ladder: it is not an attempt, so it is not
+          reported as one.
+        """
+        mesh = self.mesh()
+        empty: dict[str, Any] = {
+            "capability": capability,
+            "question": question,
+            "asked": [],
+            "excluded": [],
+            "memories": [],
+            "dropped": [],
+            "answered_by": [],
+            "answered_but_empty": [],
+            "unreachable": [],
+            "attempts": {},
+        }
+        if mesh is None:
+            return {**empty, "reason": "no mesh client is attached, so no peer could be asked"}
+
+        known = {peer: contract for peer, contract in getattr(mesh, "contracts", {}).items()}
+        chosen = tuple(peers) if peers else tuple(sorted(known))
+        asked = [peer for peer in chosen if peer in known and peer != caller]
+        excluded = [peer for peer in chosen if peer in known and peer == caller]
+        if not asked:
+            return {
+                **empty,
+                "excluded": excluded,
+                "reason": (
+                    "only the caller itself was named; asking yourself is not an attempt"
+                    if excluded
+                    else "no known peer matches the peers that were named"
+                ),
+            }
+
+        payload = dict(inputs or {})
+        payload.setdefault("capability", capability)
+        if question:
+            payload.setdefault("question", question)
+        outcomes = await mesh.dispatch_many(
+            {peer: ("memory_recall", payload) for peer in asked},
+            objective=(
+                f"A fault here could not be repaired locally and the fleet is asked whether it "
+                f"has met it before. Capability: {capability}. {question}".strip()
+            ),
+            capability=capability,
+            actor=caller,
+            attempts=1,
+        )
+
+        memories: list[dict[str, Any]] = []
+        dropped: list[dict[str, Any]] = []
+        answered_by: list[str] = []
+        answered_but_empty: list[str] = []
+        unreachable: list[str] = []
+        attempts: dict[str, Any] = {}
+        for peer in asked:
+            outcome = outcomes.get(peer)
+            if outcome is None:
+                continue
+            state = str(getattr(outcome.state, "value", outcome.state))
+            attempts[peer] = {
+                "state": state,
+                "detail": getattr(outcome, "detail", ""),
+                "evidence": getattr(outcome, "evidence", {}) or {},
+            }
+            if state == "UNREACHABLE":
+                unreachable.append(peer)
+                continue
+            if state != "COMPLETED":
+                continue
+            recalled, rejected = _memories_from(peer, outcome, capability)
+            dropped.extend(rejected)
+            if recalled:
+                memories.extend(recalled)
+                answered_by.append(peer)
+            else:
+                answered_but_empty.append(peer)
+
+        reason = (
+            f"{', '.join(answered_by)} remembered this kind of fault"
+            if answered_by
+            else "no peer remembered this kind of fault"
+        )
+        return {
+            "capability": capability,
+            "question": question,
+            "asked": asked,
+            "excluded": excluded,
+            "memories": memories,
+            "dropped": dropped,
+            "answered_by": answered_by,
+            "answered_but_empty": answered_but_empty,
+            "unreachable": unreachable,
+            "attempts": attempts,
+            "reason": reason,
+        }
 
     async def _run_local(
         self,

@@ -918,7 +918,8 @@ class ReflexBrain:
     # -- asking for help --------------------------------------------------
 
     async def _ask_peers_for_help(self, incident: Incident, local: ActionOutcome) -> ActionOutcome:
-        """The last rung: this host could not fix it, so ask the peers that might.
+        """The last rungs: this host could not fix it, so ask the fleet what it remembers,
+        then ask it to do the work.
 
         Deliberately *after* the local attempt, not instead of it: asking someone
         else to do what you can do yourself is the expensive way to be slow. The
@@ -944,15 +945,35 @@ class ReflexBrain:
             f"Report a repair you can verify, or say you cannot."
         )
         broker = AssistanceBroker(mesh=self.mesh)
+        evidence = {
+            "incident": incident.as_dict() if hasattr(incident, "as_dict") else {},
+            "test_node_id": node_id,
+        }
+
+        # Before asking anyone to do the work, ask what the fleet already knows. A
+        # peer that has met this fault is a better target than a broadcast, and this
+        # costs one round trip. It is best-effort: a fleet that cannot be asked does
+        # not stop the work from being asked for.
+        recalled_peers: tuple[str, ...] = ()
+        recall: dict[str, Any] = {}
+        try:
+            recall = await broker.recall_from_peers(
+                capability,
+                question=f"{incident.kind.value} in {incident.source}: {incident.summary}",
+                caller="friday",
+                inputs=evidence,
+            )
+            recalled_peers = tuple(dict.fromkeys(item["peer"] for item in recall.get("memories", ())))
+        except Exception as exc:
+            recall = {"error": f"{type(exc).__name__}: {exc}", "memories": [], "reason": "recall failed"}
+
         try:
             asked = await broker.request_help_from_peers(
                 caller="friday",
                 capability=capability,
                 objective=objective,
-                inputs={
-                    "incident": incident.as_dict() if hasattr(incident, "as_dict") else {},
-                    "test_node_id": node_id,
-                },
+                peers=recalled_peers or None,
+                inputs=evidence,
             )
         except Exception as exc:
             return ActionOutcome(
@@ -965,6 +986,7 @@ class ReflexBrain:
             )
 
         if asked["performed"]:
+            remembered = bool(recalled_peers)
             return ActionOutcome(
                 incident=incident,
                 status=OutcomeStatus.RESOLVED,
@@ -973,10 +995,18 @@ class ReflexBrain:
                     f"This host could not repair it, so the peers were asked and "
                     f"{asked['completed_by']} completed the request with a verified receipt. "
                     f"The work is {asked['completed_by']}'s, not this host's."
+                    + (
+                        f" It was asked first because its own memory held a fix for this kind of "
+                        f"fault ({recalled_peers[0]})."
+                        if remembered and asked["completed_by"] in recalled_peers
+                        else ""
+                    )
                 ),
                 evidence={
                     **local.evidence,
                     "delegation": asked,
+                    "fleet_recall": recall,
+                    "targeted_by_memory": remembered,
                     "local_attempt": local.detail,
                 },
                 evidence_class="peer_verified_work",
@@ -989,8 +1019,14 @@ class ReflexBrain:
             detail=(
                 f"{local.detail} The peers were then asked and none of them completed it either; "
                 "each peer's own answer is in the evidence."
+                + (
+                    f" The fleet's memory was consulted first and {recalled_peers[0]} remembered "
+                    "this kind of fault, so it was asked directly."
+                    if recalled_peers
+                    else " No peer remembered this kind of fault either."
+                )
             ),
-            evidence={**local.evidence, "peer_escalation": asked},
+            evidence={**local.evidence, "peer_escalation": asked, "fleet_recall": recall},
             evidence_class=local.evidence_class,
         )
 
