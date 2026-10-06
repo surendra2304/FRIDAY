@@ -302,7 +302,13 @@ def test_the_whole_lifecycle_survives_two_real_process_restarts(repo: Path) -> N
         assert applied_commit == _git(repo, "rev-parse", "HEAD"), (
             "the receipt names a commit that is not the repository head"
         )
-        assert _git(repo, "rev-parse", "--abbrev-ref", "HEAD") == "repair/add"
+        assert _git(repo, "rev-parse", "--abbrev-ref", "HEAD") == "main", (
+            "the restart left the repository checked out on the side branch"
+        )
+        assert _git(repo, "rev-parse", "repair/add") == applied_commit, (
+            "the repair branch does not point at the commit that was applied"
+        )
+        assert applied["receipt"]["evidence"]["merged_into"] == "main"
         assert "a + b" in (repo / "calc.py").read_text(encoding="utf-8")
 
         second.stop()

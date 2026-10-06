@@ -134,10 +134,26 @@ def test_an_authorised_capability_is_installed_reviewed_and_committed(repo: Path
     assert outcome.reachable is True
     assert destination.is_file(), "the tool was reported installed and is not on disk"
 
-    # It is committed, on its own branch, and the commit contains exactly this file.
+    # It is committed, the commit contains exactly this file, and the work is on the
+    # branch the owner was on — the capability branch remains as the evidence of how
+    # the tool arrived. A fresh clone with no git identity once ended up parked on
+    # capability/sum_numbers with the tools staged and uncommitted; this is the test
+    # that keeps that from coming back.
     head = _git(repo, "rev-parse", "HEAD")
     assert head == outcome.commit
-    assert _git(repo, "branch", "--show-current") == "capability/count_words_in_note"
+    assert _git(repo, "branch", "--show-current") == "main", (
+        "the install left the repository checked out on the capability branch"
+    )
+    assert _git(repo, "rev-parse", "capability/count_words_in_note") == outcome.commit
+    # Nothing staged, nothing modified, and the tool itself is committed rather than
+    # sitting untracked. (Bytecode caches are ignored here: they are a byproduct of
+    # importing the tool, not a claim about the repository's contents.)
+    assert _git(repo, "status", "--porcelain", "--untracked-files=no") == "", (
+        "the install left files staged or modified in the owner's tree"
+    )
+    assert _git(repo, "status", "--porcelain", "--", TOOL_PATH) == "", (
+        "the installed tool is not committed"
+    )
     changed = _git(repo, "show", "--name-only", "--pretty=format:", head).split()
     assert changed == [TOOL_PATH], f"the install commit touched {changed}"
 
@@ -497,3 +513,111 @@ def _python() -> str:
     import sys
 
     return sys.executable
+
+
+# ── a refused install must leave no trace at all ────────────────────────────
+# Both of these were found by driving real installs in a clone of the live branch.
+
+
+def test_a_repository_with_no_commit_identity_refuses_before_writing_anything(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The live clone had no git identity, so the commit failed *after* the write.
+
+    What the owner was left with: the tool on disk, staged as an addition, the
+    repository parked on capability/sum_numbers, and a refusal in the ledger. The
+    refusal was honest, but its side effects were not its own to leave. The fix asks
+    the identity question first: one command, and the tree is never touched.
+    """
+    for key in ("user.name", "user.email"):
+        subprocess.run(
+            ["git", "config", "--unset", key], cwd=repo, capture_output=True, text=True
+        )
+    # Neutralise the machine's own configuration, so this test proves the same thing
+    # on a laptop with a global identity as it does on a bare runner.
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    ident = subprocess.run(
+        ["git", "var", "GIT_COMMITTER_IDENT"], cwd=repo, capture_output=True, text=True
+    )
+    assert ident.returncode != 0, f"the fixture still has an identity: {ident.stdout!r}"
+    before_head = _git(repo, "rev-parse", "HEAD")
+    before_branch = _git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+    before_branches = _git(repo, "branch", "--format=%(refname:short)").split()
+
+    installer = _installer(repo)
+    staging = repo / ".." / "staging_tool.py"
+    staging.write_text(CANDIDATE, encoding="utf-8")
+    smoke = installer.smoke_test(staging, "count_words_in_note")
+    assert smoke["ok"] is True, smoke
+    outcome = installer.install(
+        tool_name="count_words_in_note",
+        source=CANDIDATE,
+        capability="count the words in a note",
+        rationale="install count_words_in_note for the owner's request",
+        smoke_check={**smoke, "command": "smoke test in a fresh interpreter"},
+        relative_path=TOOL_PATH,
+    )
+
+    assert outcome.outcome == "REFUSED", outcome.as_dict()
+    assert outcome.gate_step == "apply"
+    assert "cannot commit" in outcome.detail, outcome.detail
+    assert not (repo / TOOL_PATH).exists(), "a refused install left the tool on disk"
+    assert _git(repo, "rev-parse", "HEAD") == before_head, "the refusal moved HEAD"
+    assert _git(repo, "rev-parse", "--abbrev-ref", "HEAD") == before_branch, (
+        "the refusal left the repository on a side branch"
+    )
+    assert _git(repo, "branch", "--format=%(refname:short)").split() == before_branches, (
+        "the refusal created a branch"
+    )
+    assert _git(repo, "status", "--porcelain", "--untracked-files=no") == "", (
+        "the refusal left staged or modified files"
+    )
+
+
+def test_a_commit_that_fails_after_the_write_removes_the_tool(repo: Path) -> None:
+    """A refusal that happens *after* the write must still leave nothing runnable.
+
+    A failing pre-commit hook is the honest way to reach that state: the file is
+    written and staged, the commit is rejected. Before the fix the tool stayed on
+    disk, and the offline answer path imported and ran it — so the refusal the ledger
+    recorded had stopped nothing.
+    """
+    hook = repo / ".git" / "hooks" / "pre-commit"
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    hook.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    hook.chmod(0o755)
+    before_head = _git(repo, "rev-parse", "HEAD")
+    before_branch = _git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+
+    installer = _installer(repo)
+    staging = repo / ".." / "staging_tool.py"
+    staging.write_text(CANDIDATE, encoding="utf-8")
+    smoke = installer.smoke_test(staging, "count_words_in_note")
+    assert smoke["ok"] is True, smoke
+    outcome = installer.install(
+        tool_name="count_words_in_note",
+        source=CANDIDATE,
+        capability="count the words in a note",
+        rationale="install count_words_in_note for the owner's request",
+        smoke_check={**smoke, "command": "smoke test in a fresh interpreter"},
+        relative_path=TOOL_PATH,
+    )
+
+    assert outcome.outcome == "REFUSED", outcome.as_dict()
+    assert outcome.gate_step == "apply"
+    assert "pre-commit" in outcome.detail or "git commit failed" in outcome.detail, outcome.detail
+    assert not (repo / TOOL_PATH).exists(), (
+        "the refused install left the tool on disk, where the registry scan would import it"
+    )
+    assert _git(repo, "rev-parse", "HEAD") == before_head
+    assert _git(repo, "rev-parse", "--abbrev-ref", "HEAD") == before_branch, (
+        "a failed install left the repository on the capability branch"
+    )
+    assert _git(repo, "status", "--porcelain", "--untracked-files=no") == "", (
+        "the failed install left files staged"
+    )
+    # And the smoke test that verified the candidate is now the one that says the file
+    # is gone: nothing runnable survived the refusal.
+    after = installer.smoke_test(repo / TOOL_PATH, "count_words_in_note")
+    assert after["ok"] is False, after

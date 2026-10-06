@@ -318,6 +318,11 @@ class RepairRecord:
     applied_commit: str | None = None
     checkpoint_commit: str | None = None
     branch_created: str | None = None
+    #: The branch the process was on when it started, and the one the work was put
+    #: back on. Both are evidence: an unattended change that quietly leaves the
+    #: repository checked out somewhere else is not the change that was authorised.
+    branch_before: str | None = None
+    merged_into: str | None = None
     receipts: list[Receipt] = field(default_factory=list)
 
     @property
@@ -356,6 +361,8 @@ class RepairRecord:
             ),
             "applied_commit": self.applied_commit,
             "checkpoint_commit": self.checkpoint_commit,
+            "branch_before": self.branch_before,
+            "merged_into": self.merged_into,
             "receipts": [r.as_dict() for r in self.receipts],
         }
 
@@ -413,6 +420,8 @@ def _record_to_dict(record: RepairRecord) -> dict[str, Any]:
         "applied_commit": record.applied_commit,
         "checkpoint_commit": record.checkpoint_commit,
         "branch_created": record.branch_created,
+        "branch_before": record.branch_before,
+        "merged_into": record.merged_into,
         "receipts": [r.as_dict() for r in record.receipts],
     }
 
@@ -464,6 +473,10 @@ def _record_from_dict(raw: dict[str, Any]) -> RepairRecord:
         applied_commit=raw.get("applied_commit"),
         checkpoint_commit=raw.get("checkpoint_commit"),
         branch_created=raw.get("branch_created"),
+        # Absent in a ledger written before these fields existed: an old repair
+        # honestly has no recorded branch_before, and saying None is the truth.
+        branch_before=raw.get("branch_before"),
+        merged_into=raw.get("merged_into"),
         receipts=[
             Receipt(
                 step=str(x["step"]),
@@ -508,6 +521,97 @@ class GitRepairApplier:
     def current_commit(self) -> str | None:
         code, out, _ = self._git("rev-parse", "HEAD")
         return out if code == 0 else None
+
+    def current_branch(self) -> str | None:
+        """The branch the process is on, or None when HEAD is detached."""
+        code, out, _ = self._git("rev-parse", "--abbrev-ref", "HEAD")
+        if code != 0 or not out or out == "HEAD":
+            return None
+        return out
+
+    def can_commit(self) -> tuple[bool, str]:
+        """Whether this repository can make a commit at all, before anything is written.
+
+        Found by running FRIDAY in a fresh clone: a repository with no commit identity
+        (user.name/user.email, local or global) fails `git commit` with "Author
+        identity unknown". By then the apply step had written the file and staged it,
+        so the owner's tree was left dirty, on a side branch, and the failure was
+        reported as a repair that could not be applied. Asking first costs one command
+        and keeps the tree untouched.
+        """
+        code, out, err = self._git("var", "GIT_COMMITTER_IDENT")
+        if code == 0 and out:
+            return True, out
+        return False, (err or out or "git could not determine a commit identity").strip()
+
+    def checkout_branch(self, branch: str) -> None:
+        code, out, err = self._git("checkout", branch)
+        if code != 0:
+            raise RuntimeError(f"git checkout {branch} failed: {err or out}")
+
+    def merge_ff(self, branch: str) -> None:
+        """Bring ``branch`` into the checked-out branch, fast-forward only.
+
+        Fast-forward only, on purpose: a merge commit would need a message nobody
+        chose and would make `git revert HEAD` ambiguous, and rollback is a real
+        revert. If the owner's branch has moved since the patch was reviewed, the
+        honest answer is to refuse rather than to merge behind their back.
+        """
+        code, out, err = self._git("merge", "--ff-only", branch)
+        if code != 0:
+            raise RuntimeError(f"git merge --ff-only {branch} failed: {err or out}")
+
+    def unstage(self, paths: tuple[str, ...] | list[str] = ()) -> None:
+        """Take paths out of the index, leaving their contents on disk."""
+        if paths:
+            self._git("reset", "-q", "--", *paths)
+        else:
+            self._git("reset", "-q")
+
+    def content_at(self, commit: str, relative_path: str) -> str | None:
+        """The content of ``relative_path`` at ``commit``, or None if it was not there."""
+        code, out, _ = self._git("show", f"{commit}:{relative_path}")
+        return out if code == 0 else None
+
+    def is_tracked(self, relative_path: str) -> bool:
+        code, _, _ = self._git("ls-files", "--error-unmatch", "--", relative_path)
+        return code == 0
+
+    def restore_path(self, commit: str, relative_path: str) -> None:
+        """Put one file back the way it was at ``commit``."""
+        code, out, err = self._git("checkout", commit, "--", relative_path)
+        if code != 0:
+            raise RuntimeError(f"git checkout {commit} -- {relative_path} failed: {err or out}")
+
+    def remove_if_exactly(self, relative_path: str, expected: str) -> bool:
+        """Delete a file this attempt created, but only byte-for-byte its own write.
+
+        Called when an apply is refused. A file whose contents are exactly the
+        candidate the gate declined is this attempt's own write and must not be left
+        behind: found live, a refused install left the tool on disk, and the offline
+        answer path then imported and ran it — an unreviewed, uncommitted capability
+        that a refusal had supposedly stopped. Anything else at that path belongs to
+        the owner, and is left strictly alone.
+
+        Returns True when the file was removed.
+        """
+        path = Path(self.repo_path) / relative_path
+        if not path.is_file():
+            return False
+        if self.is_tracked(relative_path):
+            return False
+        try:
+            current = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return False
+        if current != expected:
+            return False
+        path.unlink()
+        cache = path.parent / "__pycache__"
+        if cache.is_dir():
+            for stale in cache.glob(f"{path.stem}.*.pyc"):
+                stale.unlink(missing_ok=True)
+        return True
 
     def read_file(self, relative_path: str) -> str | None:
         code, out, _ = self._git("show", f"HEAD:{relative_path}")
@@ -678,6 +782,63 @@ class SelfRepairGate:
             str(state_path or os.environ.get(STATE_ENV, "").strip()) or None
         )
         self._restore()
+
+    def _restore_after_failed_apply(self, record: RepairRecord) -> None:
+        """Undo the *side effects* of a failed apply. A refusal must leave no trace.
+
+        Three things a refused unattended change has no right to leave behind, each
+        found by driving real installs in a clone:
+
+        * a moved HEAD (the run parked the repository on ``capability/...``),
+        * staged changes (the tools sat in the index as ``A`` forever),
+        * the file itself — a refused install left the tool on disk and the offline
+          answer path imported and ran it, so a refusal had stopped nothing.
+
+        The file is restored to its reviewed content when it existed, and deleted
+        when it is exactly this attempt's write. Anything else is left alone.
+        """
+        checkpoint = record.checkpoint_commit
+        # Only the files *this attempt* rewrote. The applier records them as it writes
+        # them, and that record is the whole safety argument for touching a file at
+        # all: a repair refused for content drift never wrote anything, so its cleanup
+        # must not "restore" the owner's file and wipe the edit that caused the drift.
+        # (Found by tests/test_extreme_pressure.py: the owner edited the function
+        # between review and apply, the apply was correctly refused, and the cleanup
+        # put the owner's file back to the reviewed revision.)
+        own_paths = tuple(sorted(getattr(self._applier, "touched", ())))
+        if own_paths:
+            try:
+                self._applier.unstage(own_paths)
+            except Exception as exc:  # pragma: no cover - best effort
+                logger.warning("could not unstage the refused apply's paths: %s", exc)
+        for relative in own_paths:
+            try:
+                path = Path(self._applier.repo_path) / relative
+                existed_before = (
+                    checkpoint and self._applier.content_at(str(checkpoint), relative) is not None
+                )
+                if existed_before:
+                    self._applier.restore_path(str(checkpoint), relative)
+                elif path.is_file():
+                    removed = self._applier.remove_if_exactly(
+                        relative, record.proposal.replacement_snippet
+                    )
+                    if not removed:
+                        logger.warning(
+                            "the refused apply left %s on disk and it is not this attempt's own "
+                            "write, so it was left untouched",
+                            relative,
+                        )
+            except Exception as exc:  # pragma: no cover - best effort
+                logger.warning("could not put %s back after a failed apply: %s", relative, exc)
+        try:
+            current = self._applier.current_branch()
+            if record.branch_before and current != record.branch_before:
+                self._applier.checkout_branch(record.branch_before)
+        except Exception as exc:  # pragma: no cover - best effort, reported below
+            logger.warning(
+                "could not return to %s after a failed apply: %s", record.branch_before, exc
+            )
 
     @staticmethod
     def _load_review_key() -> bytes | None:
@@ -1256,6 +1417,21 @@ class SelfRepairGate:
                     record, "apply", GateRefusal.NO_CHECKPOINT, "repository has no readable HEAD"
                 )
             record.checkpoint_commit = checkpoint
+
+            # Can this repository commit at all? Asking first means a missing git
+            # identity refuses before a file is written, instead of after.
+            can_commit, ident = self._applier.can_commit()
+            if not can_commit:
+                return self._refuse(
+                    record,
+                    "apply",
+                    GateRefusal.GIT_FAILED,
+                    "this repository cannot commit, so nothing was written: "
+                    f"{ident}. Set user.name and user.email (git config --local) and "
+                    "apply again.",
+                )
+
+            record.branch_before = self._applier.current_branch()
             branch_used, branch_commit = self._applier.create_branch(
                 proposal.base_commit, proposal.branch
             )
@@ -1266,7 +1442,29 @@ class SelfRepairGate:
             record.applied_commit = self._applier.commit_touched(
                 f"repair({record.patch_id}): {proposal.rationale.splitlines()[0][:120]}"
             )
+
+            # Put the work back where the owner was. A repair that leaves the
+            # repository checked out on a side branch is not applied to the tree the
+            # owner is looking at, and the next install would stack on top of it.
+            if record.branch_before and record.branch_before != record.branch_created:
+                self._applier.checkout_branch(record.branch_before)
+                try:
+                    self._applier.merge_ff(record.branch_created)
+                    record.merged_into = record.branch_before
+                except RuntimeError as merge_error:
+                    # The owner's branch moved while this was being reviewed. Nothing
+                    # is forced: the commit stays on its own branch, and the refusal
+                    # says exactly where it is.
+                    return self._refuse(
+                        record,
+                        "apply",
+                        GateRefusal.CONTENT_DRIFTED,
+                        "the repository moved while this patch was being applied, so the "
+                        f"commit was left on {record.branch_created} and "
+                        f"{record.branch_before} was not moved: {merge_error}",
+                    )
         except (RuntimeError, FileNotFoundError, LookupError, subprocess.SubprocessError) as exc:
+            self._restore_after_failed_apply(record)
             return self._refuse(record, "apply", GateRefusal.GIT_FAILED, str(exc))
 
         # Burn the approval only once the work is actually done, so a failed apply
@@ -1283,6 +1481,8 @@ class SelfRepairGate:
                 "branch_point": branch_commit,
                 "applied_commit": record.applied_commit,
                 "rollback_point": record.checkpoint_commit,
+                "branch_before": record.branch_before,
+                "merged_into": record.merged_into,
                 "files_touched": 1,
             },
         )
