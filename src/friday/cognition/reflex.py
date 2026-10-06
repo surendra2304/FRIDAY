@@ -879,9 +879,15 @@ class ReflexBrain:
 
     async def handle(self, incident: Incident) -> ActionOutcome:
         if incident.kind is IncidentKind.TEST_FAILURE:
-            return await asyncio.to_thread(self._repair_test_failure, incident)
+            outcome = await asyncio.to_thread(self._repair_test_failure, incident)
+            if outcome.status is OutcomeStatus.NO_FIX_KNOWN:
+                return await self._ask_peers_for_help(incident, outcome)
+            return outcome
         if incident.kind is IncidentKind.IMPORT_FAILURE:
-            return await asyncio.to_thread(self._repair_import_failure, incident)
+            outcome = await asyncio.to_thread(self._repair_import_failure, incident)
+            if outcome.status is OutcomeStatus.NO_FIX_KNOWN:
+                return await self._ask_peers_for_help(incident, outcome)
+            return outcome
         if incident.kind in (IncidentKind.PEER_UNREACHABLE, IncidentKind.PEER_DEGRADED):
             return await self._respond_to_peer(incident)
         if incident.kind is IncidentKind.RESOURCE_PRESSURE:
@@ -907,6 +913,85 @@ class ReflexBrain:
             status=OutcomeStatus.NO_FIX_KNOWN,
             action="none",
             detail=f"No strategy is registered for {incident.kind.value}.",
+        )
+
+    # -- asking for help --------------------------------------------------
+
+    async def _ask_peers_for_help(self, incident: Incident, local: ActionOutcome) -> ActionOutcome:
+        """The last rung: this host could not fix it, so ask the peers that might.
+
+        Deliberately *after* the local attempt, not instead of it: asking someone
+        else to do what you can do yourself is the expensive way to be slow. The
+        peers are asked in parallel, each answer is reported as that peer's, and
+        the outcome never claims a peer did work the peer's own receipt does not
+        prove. If no mesh is attached the local answer stands, unchanged.
+        """
+        if self.mesh is None:
+            return local
+
+        from friday.cognition.assistance import AssistanceBroker
+
+        capability = (
+            "source_repair"
+            if incident.kind is IncidentKind.TEST_FAILURE
+            else "source_repair"
+        )
+        node_id = str(incident.evidence.get("test_node_id") or incident.source or "")
+        objective = (
+            f"A fault on the FRIDAY host could not be repaired locally. Incident {incident.kind.value} "
+            f"in {incident.source}: {incident.summary}. "
+            f"Failing test: {node_id or 'not named'}. "
+            f"Report a repair you can verify, or say you cannot."
+        )
+        broker = AssistanceBroker(mesh=self.mesh)
+        try:
+            asked = await broker.request_help_from_peers(
+                caller="friday",
+                capability=capability,
+                objective=objective,
+                inputs={
+                    "incident": incident.as_dict() if hasattr(incident, "as_dict") else {},
+                    "test_node_id": node_id,
+                },
+            )
+        except Exception as exc:
+            return ActionOutcome(
+                incident=incident,
+                status=local.status,
+                action=local.action,
+                detail=f"{local.detail} (asking the peers raised {type(exc).__name__}: {exc})",
+                evidence={**local.evidence, "peer_escalation_error": f"{type(exc).__name__}: {exc}"},
+                evidence_class=local.evidence_class,
+            )
+
+        if asked["performed"]:
+            return ActionOutcome(
+                incident=incident,
+                status=OutcomeStatus.RESOLVED,
+                action="delegated_to_peer",
+                detail=(
+                    f"This host could not repair it, so the peers were asked and "
+                    f"{asked['completed_by']} completed the request with a verified receipt. "
+                    f"The work is {asked['completed_by']}'s, not this host's."
+                ),
+                evidence={
+                    **local.evidence,
+                    "delegation": asked,
+                    "local_attempt": local.detail,
+                },
+                evidence_class="peer_verified_work",
+            )
+
+        return ActionOutcome(
+            incident=incident,
+            status=local.status,
+            action=local.action,
+            detail=(
+                f"{local.detail} The peers were then asked and none of them completed it either; "
+                "each peer's own answer is in the evidence."
+            ),
+            evidence={**local.evidence, "peer_escalation": asked},
+            evidence_class=local.evidence_class,
         )
 
     # -- code faults ------------------------------------------------------
