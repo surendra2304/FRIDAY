@@ -515,15 +515,58 @@ class GitRepairApplier:
             return None
         return out
 
-    def create_branch(self, base_commit: str, branch: str) -> str:
-        """Branch from a known commit, so the repair is reproducible from a pin."""
-        code, out, err = self._git("checkout", "-b", branch, base_commit)
+    def branch_exists(self, branch: str) -> bool:
+        code, _, _ = self._git("rev-parse", "--verify", "--quiet", f"refs/heads/{branch}")
+        return code == 0
+
+    def is_ancestor(self, maybe_ancestor: str, of_commit: str) -> bool:
+        code, _, _ = self._git("merge-base", "--is-ancestor", maybe_ancestor, of_commit)
+        return code == 0
+
+    def branch_name_for(self, base_commit: str, branch: str) -> tuple[str, bool]:
+        """The branch to use, and whether it already exists and may be moved.
+
+        A repair branch left behind by an earlier attempt must not make the next
+        attempt impossible, and it must never be quietly destroyed. So:
+
+        * a free name is used as it is;
+        * a branch whose tip is already contained in the base commit holds nothing
+          that would be lost by moving it, and is reused;
+        * anything else is left exactly where it is, and the repair takes the next
+          free name (``-2``, ``-3``, ...), because a previous attempt's commits are
+          still evidence even after its work was rolled back.
+        """
+        if not self.branch_exists(branch):
+            return branch, False
+        tip = self._git("rev-parse", f"refs/heads/{branch}")[1]
+        if tip and self.is_ancestor(tip, base_commit):
+            return branch, True
+        for suffix in range(2, 21):
+            candidate = f"{branch}-{suffix}"
+            if not self.branch_exists(candidate):
+                return candidate, False
+        raise RuntimeError(
+            f"branches {branch} and {branch}-2..20 all exist and none is contained in "
+            f"{base_commit[:12]}; nothing was moved and nothing was written"
+        )
+
+    def create_branch(self, base_commit: str, branch: str) -> tuple[str, str]:
+        """Branch from a known commit, and say which branch name was actually used.
+
+        Returns ``(branch_used, commit)``. The name differs from the one asked for
+        only when a previous attempt's branch is in the way - see
+        :meth:`branch_name_for`, which is where the "never quietly destroy an earlier
+        attempt" rule lives.
+        """
+        name, reuse = self.branch_name_for(base_commit, branch)
+        flag = "-B" if reuse else "-b"
+        code, out, err = self._git("checkout", flag, name, base_commit)
         if code != 0:
-            raise RuntimeError(f"git checkout -b failed: {err or out}")
+            raise RuntimeError(f"git checkout {flag} failed: {err or out}")
         code, out, _ = self._git("rev-parse", "HEAD")
         if code != 0:
             raise RuntimeError("branch created but HEAD is unreadable")
-        return out
+        return name, out
 
     def apply_snippet(self, relative_path: str, original: str, replacement: str) -> None:
         """Write the replacement, but only if the file still holds the original.
@@ -1213,8 +1256,10 @@ class SelfRepairGate:
                     record, "apply", GateRefusal.NO_CHECKPOINT, "repository has no readable HEAD"
                 )
             record.checkpoint_commit = checkpoint
-            branch_commit = self._applier.create_branch(proposal.base_commit, proposal.branch)
-            record.branch_created = proposal.branch
+            branch_used, branch_commit = self._applier.create_branch(
+                proposal.base_commit, proposal.branch
+            )
+            record.branch_created = branch_used
             self._applier.apply_snippet(
                 proposal.target_file, proposal.original_snippet, proposal.replacement_snippet
             )
@@ -1232,9 +1277,9 @@ class SelfRepairGate:
             record,
             "apply",
             "ACCEPTED",
-            detail=f"applied on branch {proposal.branch}",
+            detail=f"applied on branch {record.branch_created}",
             evidence={
-                "branch": proposal.branch,
+                "branch": record.branch_created,
                 "branch_point": branch_commit,
                 "applied_commit": record.applied_commit,
                 "rollback_point": record.checkpoint_commit,
