@@ -31,6 +31,7 @@ from pydantic import BaseModel
 
 from friday.agent.agent import FridayAgent
 from friday.cli.auth import CLIAuthorizer
+from friday.core.auth import DefaultSecureAuthorizer
 from friday.core.config import get_settings
 from friday.core.logging import get_logger
 from friday.devices.android_controller import AndroidDeviceController
@@ -324,7 +325,11 @@ def _websocket_origin_allowed(websocket: WebSocket) -> bool:
 # Initialize global agent and Android controller
 agent = FridayAgent(
     settings=settings,
-    authorizer=CLIAuthorizer(),
+    # A web server has no terminal, so an interactive authorizer would either block a
+    # request thread on a stdin nobody is typing into or report the resulting EOF as a
+    # refusal. The headless authorizer refuses the same consequential calls and says
+    # why; a human is never asked a question they cannot see.
+    authorizer=CLIAuthorizer() if CLIAuthorizer._has_a_terminal() else DefaultSecureAuthorizer(),
 )
 android = AndroidDeviceController()
 

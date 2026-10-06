@@ -1,5 +1,15 @@
-"""Interactive CLI implementation of BaseAuthorizer for FRIDAY."""
+"""Interactive CLI implementation of BaseAuthorizer for FRIDAY.
 
+An interactive authorizer may only prompt when it has somewhere to prompt. Found by
+driving the API: the server was built with this class, a SENSITIVE tool call printed
+"[AUTHORIZATION REQUEST] ... Authorize execution? [y/N]:" into the server's log, read
+a stdin nobody was typing into, and reported the resulting EOF as a refusal — or, on
+a deployment where stdin stays open, would have blocked the request thread for as long
+as the pipe lived. A question a human cannot see is not a question, and silence is not
+consent.
+"""
+
+import sys
 from typing import Any
 
 from friday.core.auth import BaseAuthorizer
@@ -32,6 +42,13 @@ def _prompt_user(prompt_str: str) -> str:
                 pass
 
 
+#: The prompt function that reads *this process's* stdin. Kept by identity so the
+#: terminal guard can tell "nobody can answer this" from "somebody installed another
+#: way to ask" — a UI, an automation harness, a test double. An injected channel is
+#: not this process's terminal, so the terminal check does not speak for it.
+_terminal_prompt_user = _prompt_user
+
+
 class CLIAuthorizer(BaseAuthorizer):
     """Interactive CLI authorizer that supports autonomous mode or prompts for confirmations."""
 
@@ -44,6 +61,14 @@ class CLIAuthorizer(BaseAuthorizer):
         else:
             self.auto_approve_all = getattr(self.settings, "autonomous_mode", False)
         self.full_access = getattr(self.settings, "full_access_mode", False)
+
+    @staticmethod
+    def _has_a_terminal() -> bool:
+        """Whether a human could actually answer a prompt here."""
+        try:
+            return bool(sys.stdin) and sys.stdin.isatty()
+        except Exception:
+            return False
 
     def authorize(self, request: AuthorizationRequest) -> AuthorizationResponse:
         # Only safe tools auto-approve by default. Consequential actions require a
@@ -60,8 +85,23 @@ class CLIAuthorizer(BaseAuthorizer):
         # Print authorization box headers and details
         border = "=" * 72
         divider = "-" * 72
+
+        # Nothing to ask with: say so, and do not read stdin. This is a refusal, not a
+        # cancellation, because no human was asked and none declined. This applies only
+        # while confirmations come from this process's own stdin; a caller that installs
+        # its own prompt function (a UI, a harness, a test) still gets asked through it,
+        # so the interactive protocol stays testable and the server stays fail-closed.
+        if _prompt_user is _terminal_prompt_user and not self._has_a_terminal():
+            return AuthorizationResponse(
+                decision=AuthorizationDecision.DENIED,
+                reason=(
+                    f"Safety Block: no interactive terminal is attached, so the confirmation "
+                    f"for tool '{request.tool_name}' cannot be asked. Nothing was run."
+                ),
+            )
+
         print(f"\n{border}")
-        
+
         # 2. Handle SENSITIVE confirmation
         if request.safety_level == SafetyLevel.SENSITIVE:
             print(f"[AUTHORIZATION REQUEST] Safety Level: {request.safety_level.value}")

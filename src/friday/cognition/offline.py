@@ -538,8 +538,12 @@ def _run_tool(
                 if decided.endswith("APPROVED"):
                     capability = getattr(decision, "capability", None)
                     authorized_by = "the authorizer approved it"
-                elif "requires explicit user confirmation" in str(
-                    getattr(decision, "reason", "")
+                elif any(
+                    phrase in str(getattr(decision, "reason", ""))
+                    for phrase in (
+                        "requires explicit user confirmation",
+                        "no interactive terminal is attached",
+                    )
                 ):
                     # The tool is SENSITIVE because nothing human has reviewed it yet,
                     # and the owner's answer to that is a standing mandate, not a
