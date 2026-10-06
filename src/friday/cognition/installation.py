@@ -158,8 +158,14 @@ class CapabilityInstaller:
         smoke_check: dict[str, Any],
         relative_path: str = "",
         requested_by: str = "friday",
+        self_test: dict[str, Any] | None = None,
     ) -> InstallOutcome:
-        """Put one candidate tool through propose → review → authority → apply → verify."""
+        """Put one candidate tool through propose → review → authority → apply → verify.
+
+        ``self_test`` is the author's stated example, when there is one. It is run
+        against the candidate before the gate sees it *and again on the applied tree*,
+        where the file that will actually be imported is the one being tested.
+        """
         relative = relative_path or f"src/friday/tools/builtin/{tool_name}.py"
         relative = relative.lstrip("./")
         outcome = InstallOutcome(tool=tool_name, capability=capability, path=relative)
@@ -298,7 +304,7 @@ class CapabilityInstaller:
         outcome.commit = getattr(gate.get(record.patch_id), "applied_commit", None)
 
         # Verify on the applied tree, with the same smoke test, then decide.
-        verification = self.smoke_test(destination, tool_name)
+        verification = self.smoke_test(destination, tool_name, self_test=self_test)
         outcome.verification["applied_tree"] = verification
         outcome.gate_step = "verify"
         if not verification.get("ok"):
@@ -333,18 +339,30 @@ class CapabilityInstaller:
             return None
         return proc.stdout.strip() if proc.returncode == 0 else None
 
-    def smoke_test(self, path: Path, tool_name: str) -> dict[str, Any]:
+    def smoke_test(
+        self, path: Path, tool_name: str, self_test: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Import the candidate in a fresh interpreter and call it once.
 
         Reuses the synthesiser's driver so the check that admitted the candidate is
-        exactly the check that verifies it landed.
+        exactly the check that verifies it landed. When the author stated an example,
+        the driver runs it here too: "the file that landed behaves as claimed" is a
+        stronger statement than "a file with this source once did".
         """
         from friday.cognition.capability import ToolSynthesiser
 
         driver = ToolSynthesiser._SMOKE_DRIVER
         try:
             proc = subprocess.run(
-                [self.python, "-c", driver, str(path), f"friday_capability_{tool_name}", tool_name],
+                [
+                    self.python,
+                    "-c",
+                    driver,
+                    str(path),
+                    f"friday_capability_{tool_name}",
+                    tool_name,
+                    json.dumps(self_test) if self_test else "",
+                ],
                 cwd=self.repo_root,
                 capture_output=True,
                 text=True,

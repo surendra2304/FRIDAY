@@ -35,7 +35,15 @@ class NoModelProvider:
 
 
 class FakeProvider:
-    """A model that returns a canned plan, so planning is tested without egress."""
+    """A model that returns a canned plan, so planning is tested without egress.
+
+    It answers the planner's question and refuses the code-writing one. That
+    distinction is not decoration: the resolver pins its provider into the
+    synthesiser, so without it this fake's plan JSON would be handed over as the
+    body of a new tool - a dict literal is valid Python, so it would parse, import,
+    and then return None from execute(). A planner that cannot write code is what
+    such a model actually is, and saying so keeps each test measuring one thing.
+    """
 
     def __init__(self, payload: str) -> None:
         self.payload = payload
@@ -43,6 +51,8 @@ class FakeProvider:
 
     def generate(self, messages: list[Message], **_: Any) -> Message:
         self.calls.append(messages)
+        if any("Write the body of one Python method" in (m.content or "") for m in messages):
+            raise RuntimeError("this fake plans; it cannot author code")
         return Message(role=Role.ASSISTANT, content=self.payload)
 
 
@@ -202,6 +212,10 @@ def test_a_missing_capability_becomes_a_real_verified_tool(synthesis_repo: Path)
         "instantiates",
         "schema_valid",
         "returns_tool_result",
+        # The composed body states what it does and the example that proves it, so the
+        # smoke test runs that example too. Same five structural checks, plus the one
+        # that says the tool did the work rather than merely returning a ToolResult.
+        "behaves_as_specified",
     ]
 
     written = synthesis_repo / outcome["path"]

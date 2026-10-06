@@ -113,6 +113,7 @@ def test_the_resolver_takes_the_request_all_the_way_to_the_gate(repo: Path) -> N
         "instantiates",
         "schema_valid",
         "returns_tool_result",
+        "behaves_as_specified",
     ]
 
     # No reviewer is configured in this fixture, so installation must stop there and
