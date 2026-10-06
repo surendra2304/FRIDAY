@@ -304,6 +304,36 @@ class ToolCatalogue:
         return "\n".join(lines)
 
 
+#: Verbs that name something a tool can do. A request whose only content is talk
+#: ("hello", "why is the sky blue") contains none of these, which is how the
+#: offline planner tells work from conversation.
+ACTION_VERBS = frozenset(
+    {
+        "add", "analyse", "analyze", "annotate", "archive", "build", "calculate", "check",
+        "clean", "compare", "compress", "convert", "count", "crop", "decode", "delete",
+        "detect", "download", "draft", "encode", "export", "extract", "fetch", "filter",
+        "find", "fix", "format", "generate", "group", "import", "install", "list", "log",
+        "merge", "monitor", "move", "name", "parse", "plot", "print", "read", "record",
+        "rename", "render", "reorder", "replace", "resize", "reverse", "run", "scan",
+        "schedule", "search", "send", "sort", "split", "strip", "summarise", "summarize",
+        "sync", "transcribe", "translate", "trim", "upload", "validate", "verify", "watch",
+        "write", "zip",
+    }
+)
+
+#: Words that carry no capability of their own; dropped when naming a tool. Kept
+#: short deliberately: over-filtering produces names that no longer read as what
+#: the tool does.
+FILLER_WORDS = frozenset(
+    {
+        "a", "an", "and", "any", "can", "could", "for", "from", "in", "into", "it", "its",
+        "he", "her", "him", "i", "me", "my", "of", "on", "or", "our", "please", "she",
+        "that", "the", "their", "them", "they", "we",
+        "then", "these", "this", "those", "to", "up", "us", "with", "you", "your",
+    }
+)
+
+
 class CapabilityResolver:
     """Turns a request into a plan, and a missing capability into a real tool."""
 
@@ -405,14 +435,28 @@ class CapabilityResolver:
         words = {word for word in re.findall(r"[a-z]{4,}", request.lower())}
         if not words:
             return []
-        scored: list[tuple[int, str]] = []
-        for name in self.catalogue.names():
+        names = self.catalogue.names()
+        # A word that appears in many tool names carries no information: matching
+        # "file" against a catalogue where six tools mention files tells us nothing
+        # about which one, or whether any of them is right. Weighting each overlap
+        # by how rare the word is, and refusing to answer when the best two tools
+        # tie, is what keeps this planner honest. "read the tests" still resolves to
+        # `run_tests`, because "tests" appears in few names and no other tool
+        # matches as well; "transcribe the meeting notes file" no longer resolves to
+        # `file_operations` just because it shares the word "file".
+        documents = {word: sum(1 for name in names if word in name.lower().split("_")) for word in words}
+        scored: list[tuple[float, str]] = []
+        for name in names:
             name_words = set(name.lower().split("_"))
-            overlap = len(name_words & words)
-            if overlap:
-                scored.append((overlap, name))
+            overlap = name_words & words
+            if not overlap:
+                continue
+            score = sum(1.0 / documents[word] for word in overlap)
+            scored.append((score, name))
         scored.sort(key=lambda item: (-item[0], item[1]))
         if not scored:
+            return []
+        if len(scored) > 1 and abs(scored[0][0] - scored[1][0]) < 1e-9:
             return []
         best = scored[0][1]
         return [
@@ -425,6 +469,48 @@ class CapabilityResolver:
             )
         ]
 
+    def _plan_by_intent(self, request: str) -> list[PlanStep]:
+        """Name the capability a request asks for, when nothing else can plan it.
+
+        This exists because of the answer it replaces. With no model reachable and
+        no keyword overlap, the resolver used to say it could not break the request
+        into steps at all — which is technically honest and practically useless: it
+        is the "I don't know how" the owner objected to, on a host that can build a
+        tool. A request with a real action verb and an object names a capability, so
+        the step is emitted with no tool and the resolver goes on to synthesise one.
+
+        Bounded on purpose: a verb must be present and there must be an object, so
+        conversation ("hello", "why is the sky blue") still gets the honest "no plan"
+        rather than a junk tool. What it produces is a plan, and the implementation
+        is a scaffold unless a model authors it — which the resolution says out loud.
+        """
+        tokens = re.findall(r"[a-z0-9']+", request.lower())
+        verb = next((token for token in tokens if token in ACTION_VERBS), None)
+        if verb is None:
+            return []
+        object_words = [
+            word
+            for word in tokens[tokens.index(verb) + 1 :]
+            if word not in FILLER_WORDS and len(word) > 1
+        ][:4]
+        if not object_words:
+            return []
+        capability = " ".join([verb, *object_words])
+        return [
+            PlanStep(
+                intent=capability,
+                tool=None,
+                arguments={},
+                available=False,
+                note=(
+                    "No tool exists for this and no model was reachable to plan it. The step is "
+                    "named from the owner's own words, so it can be built, proven and installed "
+                    "like any other tool; without a model its implementation is a scaffold that "
+                    "reports its own incompleteness."
+                ),
+            )
+        ]
+
     def plan(self, request: str) -> tuple[list[PlanStep], str]:
         steps = self._plan_with_model(request)
         if steps:
@@ -432,6 +518,9 @@ class CapabilityResolver:
         steps = self._plan_by_keyword(request)
         if steps:
             return steps, "keyword"
+        steps = self._plan_by_intent(request)
+        if steps:
+            return steps, "intent"
         return [], "none"
 
     # -- gap analysis ------------------------------------------------------
