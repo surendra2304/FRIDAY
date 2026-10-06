@@ -199,3 +199,29 @@ def should_embed_message(message: Message) -> bool:
     # Retain substantive messages
     words = text.split()
     return len(words) >= 3
+
+#: Tool-call guard notices. These are the loop protecting itself, not something
+#: learned about the world: they carry no information a later question could
+#: want. Persisted, they are recalled into unrelated conversations as if they
+#: were knowledge - a brand-new question once came back with an error string
+#: about a duplicate tool-call ID from a different loop (BUG-010).
+NON_INFORMATIVE_TOOL_NOTICES = (
+    "duplicate tool call id",
+    "repeated tool operation",
+    "repeat guard",
+)
+
+
+def is_non_informative_tool_notice(message: Message) -> bool:
+    """True when a tool message is a repeat-guard notice rather than a result.
+
+    Deliberately narrow: only the loop's own anti-repetition notices are
+    excluded. A tool that genuinely failed still has something to say, and
+    remembering "that command does not work on this machine" is useful.
+    """
+    if message.role != Role.TOOL:
+        return False
+    text = (message.content or "").strip().lower()
+    if not text:
+        return False
+    return any(notice in text for notice in NON_INFORMATIVE_TOOL_NOTICES)

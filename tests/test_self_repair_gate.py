@@ -116,6 +116,8 @@ def _fully_approved(
 
 def test_approved_repair_applies_and_rolls_back_for_real(repo: Path):
     base = _git(repo, "rev-parse", "HEAD")
+    base_branch = _git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+    assert base_branch == "main", "the fixture is not on the branch the owner works on"
     gate = SelfRepairGate(GitRepairApplier(str(repo)), review_verification_key=REVIEW_KEY)
 
     record, receipt = gate.propose(_proposal(repo, base))
@@ -133,11 +135,30 @@ def test_approved_repair_applies_and_rolls_back_for_real(repo: Path):
     assert applied.outcome == "ACCEPTED"
     assert record.state is RepairState.APPLIED
 
-    # Real commits on a real branch, and the file really changed.
+    # Real commits on a real branch, and the file really changed. The work lands on
+    # the branch the owner is working on: a repair that leaves the repository checked
+    # out on a side branch is not applied to the tree the owner is looking at, and
+    # the next install would stack on top of it. Found by driving a real install in a
+    # fresh clone, where the tools ended up on capability/* while HEAD sat there.
     assert applied.evidence["branch"] == "repair/add-operator"
-    assert _git(repo, "rev-parse", "--abbrev-ref", "HEAD") == "repair/add-operator"
+    assert applied.evidence["branch_before"] == "main"
+    assert applied.evidence["merged_into"] == "main"
+    assert _git(repo, "rev-parse", "--abbrev-ref", "HEAD") == "main", (
+        "the repair left the repository checked out on the side branch"
+    )
+    assert applied.evidence["applied_commit"] == _git(repo, "rev-parse", "HEAD"), (
+        "the owner's branch does not hold the repair that was reported applied"
+    )
+    assert _git(repo, "rev-parse", "repair/add-operator") == applied.evidence["applied_commit"], (
+        "the repair branch does not point at the commit that was applied"
+    )
+    assert _git(repo, "diff", "--stat", "repair/add-operator", "HEAD") == "", (
+        "the owner's branch and the repair branch disagree"
+    )
+    assert _git(repo, "status", "--porcelain") == "", (
+        "the repair left files staged or modified in the owner's tree"
+    )
     assert _git(repo, "show", "HEAD:calc.py").strip().endswith("return a + b")
-    assert applied.evidence["applied_commit"] == _git(repo, "rev-parse", "HEAD")
     assert applied.evidence["rollback_point"] == base
 
     reverted = gate.rollback(record.patch_id)
@@ -428,3 +449,49 @@ def test_every_attempt_leaves_a_receipt_with_honest_labels(repo: Path):
     apply_receipt = next(r for r in payload["receipts"] if r["step"] == "apply")
     assert propose_receipt["evidence"]["files_touched"] == 0
     assert apply_receipt["evidence"]["files_touched"] == 1
+
+
+def test_a_repair_whose_commit_is_rejected_restores_the_file_it_rewrote(repo: Path):
+    """A refusal after the write must leave the reviewed file exactly as it was.
+
+    The installer's version of this is a new file that must disappear. A repair of an
+    existing file is the other half: the file is *modified* before the commit is
+    rejected, so "leave no trace" means putting the reviewed content back — not
+    deleting the owner's file.
+    """
+    base = _git(repo, "rev-parse", "HEAD")
+    base_branch = _git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+    before = (repo / "calc.py").read_text(encoding="utf-8")
+
+    hook = repo / ".git" / "hooks" / "pre-commit"
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    hook.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    hook.chmod(0o755)
+
+    gate = SelfRepairGate(GitRepairApplier(str(repo)), review_verification_key=REVIEW_KEY)
+    record, receipt = gate.propose(_proposal(repo, base))
+    assert receipt.outcome == "ACCEPTED"
+    _fully_approved(gate, record.patch_id)
+
+    applied = gate.apply(record.patch_id)
+    assert applied.outcome == "REFUSED", applied.as_dict()
+    assert "GIT_FAILED" in applied.detail
+    assert record.state is RepairState.APPROVED, "a refused apply consumed the approval"
+
+    # The file is back, byte for byte, and the repository is where the owner left it.
+    assert (repo / "calc.py").read_text(encoding="utf-8") == before, (
+        "the refused repair left the half-applied content in the owner's file"
+    )
+    assert _git(repo, "rev-parse", "HEAD") == base, "the refused repair moved HEAD"
+    assert _git(repo, "rev-parse", "--abbrev-ref", "HEAD") == base_branch, (
+        "the refused repair left the repository on the repair branch"
+    )
+    assert _git(repo, "status", "--porcelain", "--untracked-files=no") == "", (
+        "the refused repair left the change staged"
+    )
+
+    # The approval is intact, so the owner can fix the repository and apply again.
+    hook.unlink()
+    retried = gate.apply(record.patch_id)
+    assert retried.outcome == "ACCEPTED", retried.as_dict()
+    assert _git(repo, "show", "HEAD:calc.py").strip().endswith("return a + b")

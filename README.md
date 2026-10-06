@@ -69,11 +69,11 @@ FRIDAY is a modular, extensible, **Autonomous Multi-Agent AI Operating System** 
 | **Persistent Event-Driven Operators** | `src/friday/operators/` | ✅ PASS | **PRODUCTION** |
 | **Trace-Based Learning & Dynamic Routing** | `src/friday/learning/` | ✅ PASS | **PRODUCTION** |
 | **Device Control Abstractions (Windows / Android)** | `src/friday/devices/` | ✅ PASS | **PRODUCTION** |
-| **Recursive Self-Improvement & SelfDevAgent** | `src/friday/workflows/self_improve_workflow.py` | ✅ PASS | **PRODUCTION** |
+| **Self-Development Tools (`self_develop`, `self_repair`)** | `src/friday/tools/builtin/self_development.py` | ✅ PASS | **PRODUCTION (tools)** — `SelfImprovementWorkflow` itself is **CONFIGURED-BUT-UNVERIFIED**: it is not wired into a live tool path, and its Phase-31 test exercises mocks (BUG-003 remainder) |
 | **Autonomous Web Research Specialist (`ResearchAgent`)** | `src/friday/agents/specialists/research_agent.py` | ✅ PASS | **PRODUCTION** |
-| **Autonomous Self-Coding Dev Agent (`DeveloperAgent`)** | `src/friday/workflows/dev_workflow.py` | ✅ PASS | **PRODUCTION** |
+| **Autonomous Self-Coding Dev Agent (`DeveloperAgent`)** | `src/friday/workflows/dev_workflow.py` | ✅ PASS | **CONFIGURED-BUT-UNVERIFIED** — the pipeline is tested, but no live run has pulled a real GitHub issue or opened a real PR from this checkout |
 | **Unified Multi-Provider AI Gateway (Groq->Mistral->OpenRouter->AI Universe)** | `src/friday/llm/factory.py` | ✅ PASS | **PRODUCTION** |
-| **Multi-Agent Specialist Delegation (BaseAgent, Registry, Decomposer, Router)** | `src/friday/agents/` | ✅ PASS | **PRODUCTION** |
+| **Multi-Agent Specialist Delegation (BaseAgent, Registry, Decomposer, Router)** | `src/friday/agents/` | ✅ PASS | **REAL in-process** — the eight *cloud* peers are **CONFIGURED-BUT-UNVERIFIED**: `ask_*` still reads health endpoints rather than dispatching tasks (BUG-004) |
 | **Memory 2.0 Knowledge Base & Compactor (4-Layer, BM25, FTS5)** | `src/friday/memory/` | ✅ PASS | **PRODUCTION** |
 | **Full-Duplex Gemini Live Voice Streaming (Server-Side VAD)** | `src/friday/voice/gemini_live_session.py` | ✅ PASS | **PRODUCTION** |
 | **Windows Computer Control & Auto-Focus Typing** | `src/friday/tools/builtin/type_text.py` | ✅ PASS | **PRODUCTION** |
@@ -92,6 +92,46 @@ FRIDAY is a modular, extensible, **Autonomous Multi-Agent AI Operating System** 
 | **FridayDoctor System Health Diagnostics** | `src/friday/core/doctor.py` | ✅ PASS | **PRODUCTION** |
 | **HMAC-SHA256 Authorization & Safety Gating** | `src/friday/core/auth.py` | ✅ PASS | **PRODUCTION** |
 | **Trading Bot Operator (Binance Futures Testnet)** | `src/friday/skills/trading_bot_operator.py` | ✅ PASS | **PRODUCTION** |
+| **Standing-Mandate Autonomy & Gated Self-Repair** | `src/friday/autonomous/`, `src/friday/cognition/` | ✅ PASS | **PRODUCTION (proven on a real repo, unattended; rollback exercised)** |
+| **Cognition Mesh / Minds / Memory Bridge** | `src/friday/cognition/mesh.py`, `mind.py`, `memory_bridge.py` | ✅ PASS | **REAL in-process**; live cloud peer calls **CONFIGURED-BUT-UNVERIFIED** (no egress here) |
+| **Peer Task Delegation** | `src/friday/ecosystem/fleet_client.py` | ⚠️ PARTIAL | **CONFIGURED-BUT-UNVERIFIED** — `ask_*` currently reads health endpoints (BUG-004) |
+
+### Autonomous Self-Repair & Cognition (2026-10-05)
+
+The autonomy layer is real and was proven on a real repository, unattended:
+
+- **Standing autonomy mandates** — `python -m friday --grant-autonomy [--autonomy-hours N]
+  [--autonomy-scope …] [--autonomy-paths …]` issues a signed, expiring, scoped, revocable
+  mandate; `--autonomy-status` reports `ACTIVE` / `AWAITING_MANDATE` / `NO_KEY`, and
+  `--revoke-autonomy` withdraws it. Nothing is applied without one.
+- **The repair loop** — detect → diagnose → prove in a sandbox copy → signed review →
+  gate → apply → verify on the real tree, with **automatic rollback** if the real tree
+  rejects a sandbox-proven patch. `python -m friday --reflex-run [imports,tests,fleet,…]`
+  runs one pass now; the API service runs the same brain on an interval.
+- **Owner-only approval** — approval authority is a positively identified owner
+  (`FRIDAY_USER_NAME`, or `owner`); no agent, and no name nobody configured, can approve.
+- **Evidence honesty** — an unreachable peer is `UNREACHABLE`, never "degraded"; a
+  non-answer is not counted as a response; failure is never formatted as success.
+
+What has been proven, with commands and output, is in
+`docs/reports/phase5-autonomy-proof-2026-10-05.md`. What has **not** been proven —
+live cloud peers, live LLM providers, semantic recall, peer *task delegation* — is
+listed there as **CONFIGURED-BUT-UNVERIFIED** with the reason. Open defects are in
+`docs/FRIDAY_KNOWN_ISSUES.md`.
+
+#### LIVE-DEPLOYMENT CHECK (do this on a machine with internet)
+
+```bash
+python -m pytest tests/test_extreme_pressure.py -q      # hostile conditions, expect 23 passed
+export FRIDAY_REFLEX_REPO=/path/to/a/real/repo
+export FRIDAY_SELF_REPAIR_REVIEW_KEY=<review-key>
+export FRIDAY_AUTONOMY_KEY=<owner-key>                  # never commit this
+python -m friday --reflex-run tests                     # expect NO changes, AWAITING_MANDATE
+python -m friday --grant-autonomy --autonomy-hours 1 --autonomy-scope source_repair
+python -m friday --reflex-run tests                     # expect RESOLVED or ROLLED_BACK, never a silent edit
+python -m friday --reflex-run fleet                     # expect honest per-peer results, not eight successes
+python -m friday --revoke-autonomy all
+```
 
 ### Cloud Fleet Supervision
 

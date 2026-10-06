@@ -25,7 +25,11 @@ from friday.core.types import (
     TrustLevel,
 )
 from friday.memory.base import BaseMemory
-from friday.memory.policies import should_embed_message, should_retrieve_memory
+from friday.memory.policies import (
+    is_non_informative_tool_notice,
+    should_embed_message,
+    should_retrieve_memory,
+)
 
 logger = get_logger("memory.sqlite")
 
@@ -411,6 +415,14 @@ class SQLiteConversationMemory(BaseMemory):
         # Tool Output Bloat Truncation: truncate tool responses in LLM context to 1000 chars
         if message.role == Role.TOOL and content and len(content) > 1000:
             content = content[:1000] + "... [truncated to 1000 chars]"
+
+        # A repeat-guard notice is control flow, not memory. Written down, it is
+        # recalled later as though it were knowledge, and recall for an unrelated
+        # question comes back with an error from a different loop (BUG-010). It
+        # stays in the log, where an operator can see that the guard fired.
+        if is_non_informative_tool_notice(message):
+            logger.info("Not storing a repeat-guard notice as memory: %s", content[:120])
+            return
 
         # Deduplication check
         with self._lock:

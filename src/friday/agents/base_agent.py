@@ -65,6 +65,11 @@ class BaseAgent:
         self.memory_scope = memory_scope
         self.max_iterations = max_iterations
         self.memory = InMemoryConversationMemory()
+        # Every agent gets a mind: a self-model, a capability ledger learned from
+        # its own outcomes, and access to the fleet's shared episodic memory.
+        from friday.cognition.mind import get_mind_registry
+
+        self.mind = get_mind_registry().attach(self)
 
     def get_scoped_tool_schemas(self) -> list[dict[str, Any]] | None:
         """Return tool schemas filtered by allowed_tools if specified."""
@@ -95,12 +100,19 @@ class BaseAgent:
         import asyncio
         task = AgentTask(goal=goal, context=context or {})
         if not self.llm:
+            # Reporting success here would be a fabricated result: no model is
+            # attached, so no reasoning and no tool loop ever ran.
+            self.mind.finish(goal, success=False, capability=f"{self.role}.no_model", output="no model attached")
             return AgentTaskResult(
                 task_id=task.task_id,
                 agent_id=self.agent_id,
                 role=self.role,
-                success=True,
-                output=f"Executed task '{goal}' via {self.role}.",
+                success=False,
+                output=(
+                    f"No model is attached to agent '{self.agent_id}', so the task was not "
+                    "attempted. Attach an LLM provider and retry."
+                ),
+                metadata={"error": "no_llm_provider", "attempted": False},
             )
         try:
             loop = asyncio.get_event_loop()
@@ -121,12 +133,14 @@ class BaseAgent:
         if self.memory_scope == "task":
             self.memory.clear()
 
+        prior = self._recall_prior_experience(task.goal)
         system_prompt = (
             f"You are the specialist agent '{self.role}' (ID: {self.agent_id}) in FRIDAY.\n"
             f"Role Instructions: {self.instructions}\n"
             f"Current Goal: {task.goal}\n"
             f"Context: {task.context}\n"
-            f"Perform the task efficiently and return a direct, concise outcome."
+            + (f"Relevant prior experience (from shared memory):\n{prior}\n" if prior else "")
+            + "Perform the task efficiently and return a direct, concise outcome."
         )
         
         messages = [
@@ -152,6 +166,12 @@ class BaseAgent:
                 assistant_msg = self.llm.generate(messages=context_window, tools=tool_schemas)
             except Exception as e:
                 logger.error(f"Agent [{self.role}] generation failed: {e}")
+                self.mind.finish(
+                    task.goal,
+                    success=False,
+                    capability=f"{self.role}.generate",
+                    output=f"{type(e).__name__}: {e}",
+                )
                 return AgentTaskResult(
                     task_id=task.task_id,
                     agent_id=self.agent_id,
@@ -220,6 +240,13 @@ class BaseAgent:
             terminal_error = terminal_error or f"Agent reached iteration limit ({self.max_iterations})."
             final_output = terminal_error
 
+        self.mind.finish(
+            task.goal,
+            success=success,
+            output=final_output if success else (terminal_error or final_output),
+            tool_calls=[call.name for call in executed_calls],
+        )
+
         return AgentTaskResult(
             task_id=task.task_id,
             agent_id=self.agent_id,
@@ -230,6 +257,26 @@ class BaseAgent:
             tool_results=executed_results,
             metadata={"iterations": iterations},
         )
+
+    def _recall_prior_experience(self, goal: str, limit: int = 3) -> str:
+        """What this agent — or any other — already learned about a goal like this.
+
+        Recall failures must never break a task: a memory that is unavailable is
+        reported as absent, not raised.
+        """
+        try:
+            hits = self.mind.recall(goal, limit=limit)
+        except Exception as exc:
+            logger.warning("shared recall failed for agent %s: %s", self.agent_id, exc)
+            return ""
+        if not hits:
+            return ""
+        lines = []
+        for hit in hits:
+            episode = hit.episode
+            verdict = "worked" if episode.success is True else "failed" if episode.success is False else "unknown"
+            lines.append(f"- ({episode.agent}/{verdict}) {episode.summary} [{hit.why}]")
+        return "\n".join(lines)
 
     def close(self) -> None:
         """Clean up working memory and agent resources."""

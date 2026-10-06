@@ -343,6 +343,20 @@ class Settings(BaseSettings):
         default=None,
         description="API Key for authenticating FRIDAY with external AI Universe services",
     )
+    # Browser-origin allow-list for the control API. A browser always attaches an
+    # `Origin` header to cross-origin state-changing requests, so an explicit list
+    # is what stops a page the owner happens to have open from driving FRIDAY.
+    # Same-origin requests (no `Origin`, or an `Origin` matching this service) are
+    # always accepted; these entries are the *additional* trusted frontends, e.g.
+    # the Next.js dev server on :3000 and the deployed command centre.
+    allowed_origins: str = Field(
+        default="http://localhost:3000,http://127.0.0.1:3000",
+        description="Comma-separated extra browser origins permitted to reach the control API",
+    )
+    require_api_key_on_loopback: bool = Field(
+        default=False,
+        description="Also demand the control API key for state-changing requests from this machine",
+    )
 
     # Face Biometrics Authentication Settings
     face_auth_enabled: bool = Field(

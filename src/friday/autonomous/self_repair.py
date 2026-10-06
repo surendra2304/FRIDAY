@@ -47,9 +47,10 @@ logger = get_logger("autonomous.self_repair")
 REVIEWER = "sentinel"
 
 #: Agents in the universe. None of them may authorize a repair — least of all
-#: FRIDAY, which is the component that would carry the repair out. Approval is a
-#: human act, so this is a deny-list by role rather than an allow-list by name: a
-#: new agent added tomorrow is excluded by default rather than admitted by omission.
+#: FRIDAY, which is the component that would carry the repair out. This set is the
+#: *second* refusal: `friday.cognition.identity.is_owner_identity` decides whether
+#: the approver is the owner at all, positively. The name list alone could only
+#: refuse names somebody had remembered to add, which is not a security property.
 NON_OWNER_ACTORS = frozenset(
     {
         "",
@@ -133,6 +134,11 @@ def _stamp(moment: datetime) -> str:
     return moment.isoformat()
 
 
+def _iso_from_epoch(epoch: float) -> str:
+    """Render a mandate expiry (a POSIX timestamp) the same way as every other stamp."""
+    return datetime.fromtimestamp(epoch, tz=timezone.utc).isoformat()
+
+
 class RepairState(str, Enum):
     """Lifecycle of a single repair proposal."""
 
@@ -169,6 +175,13 @@ class GateRefusal(str, Enum):
     NO_CHECKPOINT = "NO_CHECKPOINT"
     NOTHING_TO_ROLL_BACK = "NOTHING_TO_ROLL_BACK"
     GIT_FAILED = "GIT_FAILED"
+    # Standing-mandate refusals. An agent still cannot approve a repair; these
+    # record whether the *owner's* pre-signed delegation covers it.
+    MALFORMED_MANDATE = "MALFORMED_MANDATE"
+    BAD_MANDATE_SIGNATURE = "BAD_MANDATE_SIGNATURE"
+    MANDATE_EXPIRED = "MANDATE_EXPIRED"
+    MANDATE_SCOPE = "MANDATE_SCOPE"
+    MANDATE_PATH = "MANDATE_PATH"
 
 
 #: Refusals that end the pipeline. Everything else refuses *this attempt* and leaves
@@ -305,6 +318,11 @@ class RepairRecord:
     applied_commit: str | None = None
     checkpoint_commit: str | None = None
     branch_created: str | None = None
+    #: The branch the process was on when it started, and the one the work was put
+    #: back on. Both are evidence: an unattended change that quietly leaves the
+    #: repository checked out somewhere else is not the change that was authorised.
+    branch_before: str | None = None
+    merged_into: str | None = None
     receipts: list[Receipt] = field(default_factory=list)
 
     @property
@@ -343,6 +361,8 @@ class RepairRecord:
             ),
             "applied_commit": self.applied_commit,
             "checkpoint_commit": self.checkpoint_commit,
+            "branch_before": self.branch_before,
+            "merged_into": self.merged_into,
             "receipts": [r.as_dict() for r in self.receipts],
         }
 
@@ -400,6 +420,8 @@ def _record_to_dict(record: RepairRecord) -> dict[str, Any]:
         "applied_commit": record.applied_commit,
         "checkpoint_commit": record.checkpoint_commit,
         "branch_created": record.branch_created,
+        "branch_before": record.branch_before,
+        "merged_into": record.merged_into,
         "receipts": [r.as_dict() for r in record.receipts],
     }
 
@@ -451,6 +473,10 @@ def _record_from_dict(raw: dict[str, Any]) -> RepairRecord:
         applied_commit=raw.get("applied_commit"),
         checkpoint_commit=raw.get("checkpoint_commit"),
         branch_created=raw.get("branch_created"),
+        # Absent in a ledger written before these fields existed: an old repair
+        # honestly has no recorded branch_before, and saying None is the truth.
+        branch_before=raw.get("branch_before"),
+        merged_into=raw.get("merged_into"),
         receipts=[
             Receipt(
                 step=str(x["step"]),
@@ -473,6 +499,9 @@ class GitRepairApplier:
     """
 
     def __init__(self, repo_path: str, timeout: float = 30.0) -> None:
+        #: Every path this applier has actually rewritten, so a commit stages
+        #: exactly those and nothing else. See `commit_touched`.
+        self.touched: set[str] = set()
         self.repo_path = str(Path(repo_path).resolve())
         self.timeout = timeout
         if not (Path(self.repo_path) / ".git").exists():
@@ -493,21 +522,155 @@ class GitRepairApplier:
         code, out, _ = self._git("rev-parse", "HEAD")
         return out if code == 0 else None
 
+    def current_branch(self) -> str | None:
+        """The branch the process is on, or None when HEAD is detached."""
+        code, out, _ = self._git("rev-parse", "--abbrev-ref", "HEAD")
+        if code != 0 or not out or out == "HEAD":
+            return None
+        return out
+
+    def can_commit(self) -> tuple[bool, str]:
+        """Whether this repository can make a commit at all, before anything is written.
+
+        Found by running FRIDAY in a fresh clone: a repository with no commit identity
+        (user.name/user.email, local or global) fails `git commit` with "Author
+        identity unknown". By then the apply step had written the file and staged it,
+        so the owner's tree was left dirty, on a side branch, and the failure was
+        reported as a repair that could not be applied. Asking first costs one command
+        and keeps the tree untouched.
+        """
+        code, out, err = self._git("var", "GIT_COMMITTER_IDENT")
+        if code == 0 and out:
+            return True, out
+        return False, (err or out or "git could not determine a commit identity").strip()
+
+    def checkout_branch(self, branch: str) -> None:
+        code, out, err = self._git("checkout", branch)
+        if code != 0:
+            raise RuntimeError(f"git checkout {branch} failed: {err or out}")
+
+    def merge_ff(self, branch: str) -> None:
+        """Bring ``branch`` into the checked-out branch, fast-forward only.
+
+        Fast-forward only, on purpose: a merge commit would need a message nobody
+        chose and would make `git revert HEAD` ambiguous, and rollback is a real
+        revert. If the owner's branch has moved since the patch was reviewed, the
+        honest answer is to refuse rather than to merge behind their back.
+        """
+        code, out, err = self._git("merge", "--ff-only", branch)
+        if code != 0:
+            raise RuntimeError(f"git merge --ff-only {branch} failed: {err or out}")
+
+    def unstage(self, paths: tuple[str, ...] | list[str] = ()) -> None:
+        """Take paths out of the index, leaving their contents on disk."""
+        if paths:
+            self._git("reset", "-q", "--", *paths)
+        else:
+            self._git("reset", "-q")
+
+    def content_at(self, commit: str, relative_path: str) -> str | None:
+        """The content of ``relative_path`` at ``commit``, or None if it was not there."""
+        code, out, _ = self._git("show", f"{commit}:{relative_path}")
+        return out if code == 0 else None
+
+    def is_tracked(self, relative_path: str) -> bool:
+        code, _, _ = self._git("ls-files", "--error-unmatch", "--", relative_path)
+        return code == 0
+
+    def restore_path(self, commit: str, relative_path: str) -> None:
+        """Put one file back the way it was at ``commit``."""
+        code, out, err = self._git("checkout", commit, "--", relative_path)
+        if code != 0:
+            raise RuntimeError(f"git checkout {commit} -- {relative_path} failed: {err or out}")
+
+    def remove_if_exactly(self, relative_path: str, expected: str) -> bool:
+        """Delete a file this attempt created, but only byte-for-byte its own write.
+
+        Called when an apply is refused. A file whose contents are exactly the
+        candidate the gate declined is this attempt's own write and must not be left
+        behind: found live, a refused install left the tool on disk, and the offline
+        answer path then imported and ran it — an unreviewed, uncommitted capability
+        that a refusal had supposedly stopped. Anything else at that path belongs to
+        the owner, and is left strictly alone.
+
+        Returns True when the file was removed.
+        """
+        path = Path(self.repo_path) / relative_path
+        if not path.is_file():
+            return False
+        if self.is_tracked(relative_path):
+            return False
+        try:
+            current = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return False
+        if current != expected:
+            return False
+        path.unlink()
+        cache = path.parent / "__pycache__"
+        if cache.is_dir():
+            for stale in cache.glob(f"{path.stem}.*.pyc"):
+                stale.unlink(missing_ok=True)
+        return True
+
     def read_file(self, relative_path: str) -> str | None:
         code, out, _ = self._git("show", f"HEAD:{relative_path}")
         if code != 0:
             return None
         return out
 
-    def create_branch(self, base_commit: str, branch: str) -> str:
-        """Branch from a known commit, so the repair is reproducible from a pin."""
-        code, out, err = self._git("checkout", "-b", branch, base_commit)
+    def branch_exists(self, branch: str) -> bool:
+        code, _, _ = self._git("rev-parse", "--verify", "--quiet", f"refs/heads/{branch}")
+        return code == 0
+
+    def is_ancestor(self, maybe_ancestor: str, of_commit: str) -> bool:
+        code, _, _ = self._git("merge-base", "--is-ancestor", maybe_ancestor, of_commit)
+        return code == 0
+
+    def branch_name_for(self, base_commit: str, branch: str) -> tuple[str, bool]:
+        """The branch to use, and whether it already exists and may be moved.
+
+        A repair branch left behind by an earlier attempt must not make the next
+        attempt impossible, and it must never be quietly destroyed. So:
+
+        * a free name is used as it is;
+        * a branch whose tip is already contained in the base commit holds nothing
+          that would be lost by moving it, and is reused;
+        * anything else is left exactly where it is, and the repair takes the next
+          free name (``-2``, ``-3``, ...), because a previous attempt's commits are
+          still evidence even after its work was rolled back.
+        """
+        if not self.branch_exists(branch):
+            return branch, False
+        tip = self._git("rev-parse", f"refs/heads/{branch}")[1]
+        if tip and self.is_ancestor(tip, base_commit):
+            return branch, True
+        for suffix in range(2, 21):
+            candidate = f"{branch}-{suffix}"
+            if not self.branch_exists(candidate):
+                return candidate, False
+        raise RuntimeError(
+            f"branches {branch} and {branch}-2..20 all exist and none is contained in "
+            f"{base_commit[:12]}; nothing was moved and nothing was written"
+        )
+
+    def create_branch(self, base_commit: str, branch: str) -> tuple[str, str]:
+        """Branch from a known commit, and say which branch name was actually used.
+
+        Returns ``(branch_used, commit)``. The name differs from the one asked for
+        only when a previous attempt's branch is in the way - see
+        :meth:`branch_name_for`, which is where the "never quietly destroy an earlier
+        attempt" rule lives.
+        """
+        name, reuse = self.branch_name_for(base_commit, branch)
+        flag = "-B" if reuse else "-b"
+        code, out, err = self._git("checkout", flag, name, base_commit)
         if code != 0:
-            raise RuntimeError(f"git checkout -b failed: {err or out}")
+            raise RuntimeError(f"git checkout {flag} failed: {err or out}")
         code, out, _ = self._git("rev-parse", "HEAD")
         if code != 0:
             raise RuntimeError("branch created but HEAD is unreadable")
-        return out
+        return name, out
 
     def apply_snippet(self, relative_path: str, original: str, replacement: str) -> None:
         """Write the replacement, but only if the file still holds the original.
@@ -517,6 +680,16 @@ class GitRepairApplier:
         """
         path = Path(self.repo_path) / relative_path
         if not path.is_file():
+            # Creating a file is the one case where "the reviewed content is no
+            # longer present" has no meaning: there is nothing to compare against.
+            # It is allowed only when the proposal asked for exactly that — an
+            # empty original — and only when the path is genuinely new, so a
+            # proposal can never overwrite a file that has appeared meanwhile.
+            if original == "" and replacement.strip():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(replacement, encoding="utf-8")
+                self.touched.add(Path(relative_path).as_posix())
+                return
             raise FileNotFoundError(relative_path)
         current = path.read_text(encoding="utf-8")
         if original not in current:
@@ -529,8 +702,41 @@ class GitRepairApplier:
                 f"{relative_path}; refusing to guess which occurrence was meant"
             )
         path.write_text(current.replace(original, replacement, 1), encoding="utf-8")
+        self.touched.add(Path(relative_path).as_posix())
+
+    def commit_touched(self, message: str) -> str:
+        """Commit exactly the files this applier rewrote, and nothing else.
+
+        This method used to run ``git add -A``, which swept *whatever happened to
+        be dirty* into an autonomous repair commit: the owner's work in progress,
+        runtime state files, ``__pycache__``. A real repair run on a real
+        repository committed the reflex brain's own state file and a ``.pyc``
+        alongside the fix, and said nothing about it. An unattended agent has no
+        business committing files it was not asked to change, so this stages the
+        paths it touched and refuses when there are none.
+        """
+        if not self.touched:
+            raise RuntimeError(
+                "this applier has not rewritten any file, so there is nothing of its own to "
+                "commit; refusing rather than staging the rest of the working tree"
+            )
+        code, out, err = self._git("add", "--", *sorted(self.touched))
+        if code != 0:
+            raise RuntimeError(f"git add failed: {err or out}")
+        code, out, err = self._git("commit", "-m", message, "--", *sorted(self.touched))
+        if code != 0:
+            raise RuntimeError(f"git commit failed: {err or out}")
+        code, out, _ = self._git("rev-parse", "HEAD")
+        if code != 0:
+            raise RuntimeError("commit created but HEAD is unreadable")
+        return out
 
     def commit_all(self, message: str) -> str:
+        """Deprecated name for :meth:`commit_touched`. Stages only repaired files."""
+        return self.commit_touched(message)
+
+    def _commit_everything_for_tests(self, message: str) -> str:
+        """The old sweep-everything commit. Kept for tests that prove it is gone."""
         code, out, err = self._git("add", "-A")
         if code != 0:
             raise RuntimeError(f"git add failed: {err or out}")
@@ -576,6 +782,63 @@ class SelfRepairGate:
             str(state_path or os.environ.get(STATE_ENV, "").strip()) or None
         )
         self._restore()
+
+    def _restore_after_failed_apply(self, record: RepairRecord) -> None:
+        """Undo the *side effects* of a failed apply. A refusal must leave no trace.
+
+        Three things a refused unattended change has no right to leave behind, each
+        found by driving real installs in a clone:
+
+        * a moved HEAD (the run parked the repository on ``capability/...``),
+        * staged changes (the tools sat in the index as ``A`` forever),
+        * the file itself — a refused install left the tool on disk and the offline
+          answer path imported and ran it, so a refusal had stopped nothing.
+
+        The file is restored to its reviewed content when it existed, and deleted
+        when it is exactly this attempt's write. Anything else is left alone.
+        """
+        checkpoint = record.checkpoint_commit
+        # Only the files *this attempt* rewrote. The applier records them as it writes
+        # them, and that record is the whole safety argument for touching a file at
+        # all: a repair refused for content drift never wrote anything, so its cleanup
+        # must not "restore" the owner's file and wipe the edit that caused the drift.
+        # (Found by tests/test_extreme_pressure.py: the owner edited the function
+        # between review and apply, the apply was correctly refused, and the cleanup
+        # put the owner's file back to the reviewed revision.)
+        own_paths = tuple(sorted(getattr(self._applier, "touched", ())))
+        if own_paths:
+            try:
+                self._applier.unstage(own_paths)
+            except Exception as exc:  # pragma: no cover - best effort
+                logger.warning("could not unstage the refused apply's paths: %s", exc)
+        for relative in own_paths:
+            try:
+                path = Path(self._applier.repo_path) / relative
+                existed_before = (
+                    checkpoint and self._applier.content_at(str(checkpoint), relative) is not None
+                )
+                if existed_before:
+                    self._applier.restore_path(str(checkpoint), relative)
+                elif path.is_file():
+                    removed = self._applier.remove_if_exactly(
+                        relative, record.proposal.replacement_snippet
+                    )
+                    if not removed:
+                        logger.warning(
+                            "the refused apply left %s on disk and it is not this attempt's own "
+                            "write, so it was left untouched",
+                            relative,
+                        )
+            except Exception as exc:  # pragma: no cover - best effort
+                logger.warning("could not put %s back after a failed apply: %s", relative, exc)
+        try:
+            current = self._applier.current_branch()
+            if record.branch_before and current != record.branch_before:
+                self._applier.checkout_branch(record.branch_before)
+        except Exception as exc:  # pragma: no cover - best effort, reported below
+            logger.warning(
+                "could not return to %s after a failed apply: %s", record.branch_before, exc
+            )
 
     @staticmethod
     def _load_review_key() -> bytes | None:
@@ -696,6 +959,20 @@ class SelfRepairGate:
         if reason in TERMINAL_REFUSALS:
             record.state = RepairState.BLOCKED
         return receipt
+
+    # ── the checkpoint a proposal should branch from ───────────────────────
+    def head_commit(self) -> str | None:
+        """The commit a proposal should be based on, or ``None`` if unknowable.
+
+        Public because every caller that builds a proposal needs it: a proposal
+        with an empty ``base_commit`` reaches ``git checkout -b`` as an empty
+        pathspec and fails with a message that names git rather than the real
+        problem. Asking the gate for its own checkpoint is the honest way to fill
+        the field.
+        """
+        if self._applier is None:
+            return None
+        return self._applier.current_commit()
 
     # ── step 1: propose ────────────────────────────────────────────────────
     def propose(self, proposal: RepairProposal) -> tuple[RepairRecord, Receipt]:
@@ -897,13 +1174,20 @@ class SelfRepairGate:
                 GateRefusal.NOT_REVIEWED,
                 f"state is {record.state.value}; an unreviewed patch cannot be approved",
             )
-        if (approver or "").strip().lower() in NON_OWNER_ACTORS:
-            return self._refuse(
-                record,
-                "owner_decision",
-                GateRefusal.WRONG_APPROVER,
-                f"{approver!r} is an agent, not the owner; no agent may approve a repair",
+        from friday.cognition.identity import is_agent_namespace, is_owner_identity
+
+        if not is_owner_identity(approver):
+            # Two different refusals, because they mean different things: an agent
+            # trying to approve its own work, versus a name nobody recognises.
+            detail = (
+                f"{approver!r} is an agent, not the owner; no agent may approve a repair"
+                if is_agent_namespace(approver)
+                else (
+                    f"{approver!r} is not an identified owner; approval is the owner's own act. "
+                    "Set FRIDAY_USER_NAME to the owner's name, or approve from the CLI."
+                )
             )
+            return self._refuse(record, "owner_decision", GateRefusal.WRONG_APPROVER, detail)
 
         if not approve:
             record.state = RepairState.REJECTED
@@ -931,6 +1215,143 @@ class SelfRepairGate:
                 "approval_id": record.approval.approval_id,
                 "bound_fingerprint": record.approval.patch_fingerprint,
                 "expires_at": _stamp(record.approval.expires_at),
+            },
+        )
+
+    # ── step 3b: owner's standing mandate ──────────────────────────────────
+    def record_mandate_decision(
+        self,
+        patch_id: str,
+        document: dict[str, Any],
+        verification_key: bytes,
+    ) -> Receipt:
+        """Approve a repair under the owner's signed standing mandate.
+
+        This is the owner's authority exercised in advance, not an agent
+        approving itself. The difference is that the authority is *proven*, not
+        asserted: the mandate is a signed document issued by the owner, bound to
+        an expiry, a set of scopes and a set of permitted paths, and this method
+        verifies all of it before the state machine advances.
+
+        An agent still cannot approve anything. `record_owner_decision` continues
+        to refuse every agent name, and this path refuses an issuer from the same
+        set — a delegate cannot redelegate.
+
+        The downstream property is unchanged and is the point: the approval is
+        single-use, expires, and is bound to the patch fingerprint, so `apply`
+        still refuses a replayed approval or a patch edited after consent.
+        """
+        record = self._records.get(patch_id)
+        if record is None:
+            return Receipt(
+                step="mandate_decision",
+                outcome="REFUSED",
+                at=_stamp(_now()),
+                detail=f"{GateRefusal.NOT_PROPOSED.value}: unknown patch {patch_id}",
+            )
+        if record.state is not RepairState.REVIEWED:
+            return self._refuse(
+                record,
+                "mandate_decision",
+                GateRefusal.NOT_REVIEWED,
+                f"state is {record.state.value}; a mandate does not replace the review step",
+            )
+        if not isinstance(document, dict) or not document:
+            return self._refuse(
+                record,
+                "mandate_decision",
+                GateRefusal.MALFORMED_MANDATE,
+                "no mandate document was supplied",
+            )
+
+        # Imported lazily so the gate stays loadable without the cognition
+        # package, and so a verifier never executes the issuer's code.
+        from friday.cognition.identity import is_owner_identity
+        from friday.cognition.mandate import (
+            SCOPE_CONFIG_REPAIR,
+            SCOPE_SOURCE_REPAIR,
+            AutonomyMandate,
+            verify_mandate,
+        )
+
+        if not verification_key:
+            return self._refuse(
+                record,
+                "mandate_decision",
+                GateRefusal.BAD_MANDATE_SIGNATURE,
+                "no verification key is configured, so no mandate can be trusted",
+            )
+        if not verify_mandate(document, verification_key):
+            return self._refuse(
+                record,
+                "mandate_decision",
+                GateRefusal.BAD_MANDATE_SIGNATURE,
+                "the mandate's signature does not verify; it was altered or signed with another key",
+            )
+
+        mandate = AutonomyMandate.from_document(document)
+        if not is_owner_identity(mandate.issued_by):
+            # The wording distinguishes the two cases on purpose: an agent that
+            # signed a mandate is attempting to widen its own authority, while an
+            # unrecognised name is most likely a configuration mistake.
+            from friday.cognition.identity import is_agent_namespace
+
+            detail = (
+                f"{mandate.issued_by!r} is an agent, not the owner; a delegate cannot redelegate"
+                if is_agent_namespace(mandate.issued_by)
+                else f"{mandate.issued_by!r} is not an identified owner; a delegate cannot redelegate"
+            )
+            return self._refuse(
+                record,
+                "mandate_decision",
+                GateRefusal.WRONG_APPROVER,
+                detail,
+            )
+        if mandate.is_expired():
+            return self._refuse(
+                record,
+                "mandate_decision",
+                GateRefusal.MANDATE_EXPIRED,
+                f"mandate {mandate.mandate_id} expired at {_iso_from_epoch(mandate.expires_at)}",
+            )
+        if not mandate.grants(SCOPE_SOURCE_REPAIR) and not mandate.grants(SCOPE_CONFIG_REPAIR):
+            return self._refuse(
+                record,
+                "mandate_decision",
+                GateRefusal.MANDATE_SCOPE,
+                "the mandate grants neither source_repair nor config_repair",
+            )
+        if not mandate.permits_path(record.proposal.target_file):
+            return self._refuse(
+                record,
+                "mandate_decision",
+                GateRefusal.MANDATE_PATH,
+                f"the mandate does not permit changes to {record.proposal.target_file!r}",
+            )
+
+        record.approval = OwnerApproval(
+            patch_fingerprint=record.proposal.fingerprint(),
+            approver=f"{mandate.issued_by} (standing mandate {mandate.mandate_id})",
+            approval_id=self._next_id("appr"),
+        )
+        record.state = RepairState.APPROVED
+        return self._record(
+            record,
+            "mandate_decision",
+            "ACCEPTED",
+            detail=(
+                f"approved under standing mandate {mandate.mandate_id}; "
+                "approval is single-use, expiring and fingerprint-bound"
+            ),
+            evidence={
+                "approver": mandate.issued_by,
+                "mandate_id": mandate.mandate_id,
+                "mandate_expires_at": _iso_from_epoch(mandate.expires_at),
+                "scopes": list(mandate.scopes),
+                "allowed_paths": list(mandate.allowed_paths),
+                "signature_verified": True,
+                "approval_id": record.approval.approval_id,
+                "bound_fingerprint": record.approval.patch_fingerprint,
             },
         )
 
@@ -996,15 +1417,54 @@ class SelfRepairGate:
                     record, "apply", GateRefusal.NO_CHECKPOINT, "repository has no readable HEAD"
                 )
             record.checkpoint_commit = checkpoint
-            branch_commit = self._applier.create_branch(proposal.base_commit, proposal.branch)
-            record.branch_created = proposal.branch
+
+            # Can this repository commit at all? Asking first means a missing git
+            # identity refuses before a file is written, instead of after.
+            can_commit, ident = self._applier.can_commit()
+            if not can_commit:
+                return self._refuse(
+                    record,
+                    "apply",
+                    GateRefusal.GIT_FAILED,
+                    "this repository cannot commit, so nothing was written: "
+                    f"{ident}. Set user.name and user.email (git config --local) and "
+                    "apply again.",
+                )
+
+            record.branch_before = self._applier.current_branch()
+            branch_used, branch_commit = self._applier.create_branch(
+                proposal.base_commit, proposal.branch
+            )
+            record.branch_created = branch_used
             self._applier.apply_snippet(
                 proposal.target_file, proposal.original_snippet, proposal.replacement_snippet
             )
-            record.applied_commit = self._applier.commit_all(
+            record.applied_commit = self._applier.commit_touched(
                 f"repair({record.patch_id}): {proposal.rationale.splitlines()[0][:120]}"
             )
+
+            # Put the work back where the owner was. A repair that leaves the
+            # repository checked out on a side branch is not applied to the tree the
+            # owner is looking at, and the next install would stack on top of it.
+            if record.branch_before and record.branch_before != record.branch_created:
+                self._applier.checkout_branch(record.branch_before)
+                try:
+                    self._applier.merge_ff(record.branch_created)
+                    record.merged_into = record.branch_before
+                except RuntimeError as merge_error:
+                    # The owner's branch moved while this was being reviewed. Nothing
+                    # is forced: the commit stays on its own branch, and the refusal
+                    # says exactly where it is.
+                    return self._refuse(
+                        record,
+                        "apply",
+                        GateRefusal.CONTENT_DRIFTED,
+                        "the repository moved while this patch was being applied, so the "
+                        f"commit was left on {record.branch_created} and "
+                        f"{record.branch_before} was not moved: {merge_error}",
+                    )
         except (RuntimeError, FileNotFoundError, LookupError, subprocess.SubprocessError) as exc:
+            self._restore_after_failed_apply(record)
             return self._refuse(record, "apply", GateRefusal.GIT_FAILED, str(exc))
 
         # Burn the approval only once the work is actually done, so a failed apply
@@ -1015,12 +1475,14 @@ class SelfRepairGate:
             record,
             "apply",
             "ACCEPTED",
-            detail=f"applied on branch {proposal.branch}",
+            detail=f"applied on branch {record.branch_created}",
             evidence={
-                "branch": proposal.branch,
+                "branch": record.branch_created,
                 "branch_point": branch_commit,
                 "applied_commit": record.applied_commit,
                 "rollback_point": record.checkpoint_commit,
+                "branch_before": record.branch_before,
+                "merged_into": record.merged_into,
                 "files_touched": 1,
             },
         )

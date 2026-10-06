@@ -95,3 +95,26 @@ def tool_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(SystemInfoTool())
     return reg
+
+
+# The cognition layer remembers things: each agent owns a mind (a capability
+# ledger) and the fleet shares one episodic memory. Both persist to disk by
+# default, which is the point in production — and exactly wrong in a test suite,
+# where a ledger written by one run would silently change the next one's answers.
+# `tmp_path_factory` keeps every write inside the test session.
+@pytest.fixture(autouse=True)
+def isolate_cognition_stores(tmp_path_factory, monkeypatch):
+    """Keep mind ledgers and shared episodes out of the repository's data/."""
+    root = tmp_path_factory.mktemp("cognition")
+    monkeypatch.setenv("FRIDAY_MIND_DIR", str(root / "minds"))
+    monkeypatch.setenv("FRIDAY_EPISODE_LOG", str(root / "episodes.jsonl"))
+    monkeypatch.setenv("FRIDAY_AUTONOMY_LEDGER", str(root / "autonomy_mandates.json"))
+    monkeypatch.setenv("FRIDAY_SELF_REPAIR_STATE", str(root / "self_repair_state.json"))
+    # The process-wide singletons must be rebuilt, or they keep the previous
+    # test's directory for the rest of the session.
+    import friday.cognition.memory_bridge as memory_bridge
+    import friday.cognition.mind as mind_module
+
+    monkeypatch.setattr(memory_bridge, "_SHARED", None)
+    monkeypatch.setattr(mind_module, "_REGISTRY", None)
+    yield
