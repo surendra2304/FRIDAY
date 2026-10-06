@@ -533,6 +533,16 @@ class GitRepairApplier:
         """
         path = Path(self.repo_path) / relative_path
         if not path.is_file():
+            # Creating a file is the one case where "the reviewed content is no
+            # longer present" has no meaning: there is nothing to compare against.
+            # It is allowed only when the proposal asked for exactly that — an
+            # empty original — and only when the path is genuinely new, so a
+            # proposal can never overwrite a file that has appeared meanwhile.
+            if original == "" and replacement.strip():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(replacement, encoding="utf-8")
+                self.touched.add(Path(relative_path).as_posix())
+                return
             raise FileNotFoundError(relative_path)
         current = path.read_text(encoding="utf-8")
         if original not in current:

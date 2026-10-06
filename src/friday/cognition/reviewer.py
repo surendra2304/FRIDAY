@@ -98,7 +98,13 @@ def _sign(document: dict[str, Any], key: bytes) -> dict[str, Any]:
 class LocalReviewer:
     """Runs the Sentinel review contract locally and signs the result."""
 
-    def __init__(self, signing_key: bytes, reviewer_id: str = LOCAL_REVIEWER_KIND) -> None:
+    def __init__(
+        self,
+        signing_key: bytes,
+        reviewer_id: str = LOCAL_REVIEWER_KIND,
+        *,
+        max_replacement_lines: int = MAX_REPLACEMENT_LINES,
+    ) -> None:
         if not signing_key:
             raise ValueError(
                 "a signing key is required; a reviewer that cannot sign cannot be verified, "
@@ -106,6 +112,10 @@ class LocalReviewer:
             )
         self._key = signing_key
         self._id = reviewer_id
+        #: The bound this reviewer applies to a replacement's size. A repair
+        #: keeps the default; a capability install raises it deliberately, and
+        #: the raise is recorded in the proposal's evidence rather than hidden.
+        self._max_replacement_lines = max(1, int(max_replacement_lines))
 
     # ── individual checks ──────────────────────────────────────────────────
 
@@ -192,10 +202,11 @@ class LocalReviewer:
 
     def _check_bounded_diff(self, replacement: str, reasons: list[str]) -> str:
         lines = [line for line in replacement.splitlines() if line.strip()]
-        if len(lines) > MAX_REPLACEMENT_LINES:
+        if len(lines) > self._max_replacement_lines:
             reasons.append(
-                f"the replacement is {len(lines)} significant lines, over the {MAX_REPLACEMENT_LINES}-line "
-                "limit for a repair; large rewrites need an owner-approved plan, not a repair pipeline"
+                f"the replacement is {len(lines)} significant lines, over the "
+                f"{self._max_replacement_lines}-line limit this reviewer was built with; large "
+                "rewrites need an owner-approved plan, not a repair pipeline"
             )
         return "repair_is_bounded"
 
