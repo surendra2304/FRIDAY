@@ -133,9 +133,18 @@ class Resolution:
 
         if self.synthesised:
             for item in self.synthesised:
+                installation = item.get("installation") or {}
+                if installation.get("reachable"):
+                    lines.append(
+                        f"I built the missing piece: {item.get('tool')} at {item.get('path')} "
+                        f"({item.get('verification')}). It is installed and verified on the real "
+                        f"tree ({installation.get('commit', '')[:8]})."
+                    )
+                    continue
                 lines.append(
-                    f"I built the missing piece: {item.get('tool')} at {item.get('path')} "
-                    f"({item.get('verification')}). {item.get('gate_step', '')}".strip()
+                    f"I built and self-tested the missing piece: {item.get('tool')} at "
+                    f"{item.get('path')} ({item.get('verification')}). "
+                    f"{item.get('gate_step', '')} {installation.get('detail', '')}".strip()
                 )
 
         for gap in self.gaps:
@@ -304,11 +313,16 @@ class CapabilityResolver:
         llm: Any | None = None,
         repository_root: str | Path | None = None,
         synthesiser: Any | None = None,
+        installer: Any | None = None,
     ) -> None:
         self.catalogue = ToolCatalogue(registry)
         self._llm = llm
         self.repo_root = Path(repository_root or _repository_root()).resolve()
         self._synthesiser = synthesiser
+        #: Where a synthesised candidate goes to be reviewed and authorised. When
+        #: it is None one is built on first use, because writing code into the
+        #: tree without the gate is the defect this closes, not a supported mode.
+        self._installer = installer
 
     # -- planning ----------------------------------------------------------
 
@@ -490,23 +504,58 @@ class CapabilityResolver:
                     # Nothing to build: the missing piece is hardware or a
                     # credential, and building a tool would not supply it.
                     continue
-                outcome = synthesiser.synthesise(gap, request=request, target_path=target_path)
+                outcome = synthesiser.synthesise(
+                    gap, request=request, target_path=target_path, install=True
+                )
+                outcome["installation"] = self._install(outcome, gap)
                 resolution.synthesised.append(outcome)
-                if outcome.get("verified"):
+                if outcome["installation"].get("reachable"):
                     resolution.plan_feasible = True
 
         if not gaps:
             resolution.detail = "Every step maps to a tool that exists."
+        elif any(item.get("installation", {}).get("reachable") for item in resolution.synthesised):
+            resolution.detail = (
+                "The plan is complete: the missing capability was synthesised, reviewed, "
+                "authorised and installed on the real tree."
+            )
         elif any(item.get("verified") for item in resolution.synthesised):
             resolution.detail = (
-                "The plan is complete: the missing capability was synthesised and verified. "
-                "It reaches the repository through the same gate as any other change."
+                "The missing capability was synthesised and passed its smoke test, but it is not "
+                "installed yet; each item says which gate step it reached and what it needs."
             )
         else:
             resolution.detail = (
                 "The plan is incomplete. The gaps are listed with what each one needs."
             )
         return resolution
+
+    def _install(self, outcome: dict[str, Any], gap: CapabilityGap) -> dict[str, Any]:
+        """Send a candidate to the gate, or say why it never got there."""
+        if not outcome.get("verified") or not outcome.get("source"):
+            return {
+                "outcome": "NOT_INSTALLED",
+                "reachable": False,
+                "detail": "there was no verified candidate to install",
+            }
+        if self._installer is None:
+            from friday.cognition.installation import CapabilityInstaller
+
+            self._installer = CapabilityInstaller(self.repo_root)
+        installed = self._installer.install(
+            tool_name=outcome["tool"],
+            source=outcome["source"],
+            capability=gap.capability,
+            rationale=f"install the capability {gap.capability!r}, requested in FRIDAY's own words",
+            smoke_check={
+                "ok": bool(outcome.get("verified")),
+                "checks": outcome.get("checks") or [],
+                "detail": outcome.get("detail", ""),
+                "command": outcome.get("smoke_command", "smoke test in a fresh interpreter"),
+            },
+            relative_path=outcome.get("path", ""),
+        )
+        return installed.as_dict()
 
 
 # ── synthesis ──────────────────────────────────────────────────────────────
@@ -656,7 +705,22 @@ class ToolSynthesiser:
 
     # -- the whole synthesis ----------------------------------------------
 
-    def synthesise(self, gap: CapabilityGap, *, request: str = "", target_path: str = "") -> dict[str, Any]:
+    def synthesise(
+        self,
+        gap: CapabilityGap,
+        *,
+        request: str = "",
+        target_path: str = "",
+        install: bool = False,
+    ) -> dict[str, Any]:
+        """Produce a candidate tool, verify it, and hand it wherever it belongs.
+
+        ``install=False`` (the historical behaviour) writes the candidate into the
+        working tree. That is an ungoverned write — no commit, no review, no
+        mandate — so the returned dict says exactly that instead of claiming a
+        gate it never reached. ``install=True`` returns the source *without writing
+        anything*, for `CapabilityInstaller` to put through the gate.
+        """
         if gap.external_requirement:
             return {
                 "tool": None,
@@ -689,6 +753,7 @@ class ToolSynthesiser:
             }
 
         body, authorship = self._body_for(gap, request)
+        smoke_command = "smoke test in a fresh interpreter"
         source = TOOL_TEMPLATE.format(
             title=gap.capability,
             request=request or gap.capability,
@@ -706,10 +771,29 @@ class ToolSynthesiser:
                 "tool": tool_name,
                 "capability": gap.capability,
                 "path": relative,
+                "source": None,
                 "verified": False,
                 "verification": "smoke_test",
+                "smoke_command": smoke_command,
                 "authorship": authorship,
                 "gate_step": "Not written: the generated tool failed its own smoke test.",
+                "detail": check["detail"],
+            }
+
+        if install:
+            # Nothing is written here. The candidate goes to the gate, which owns
+            # the only write in this pipeline.
+            return {
+                "tool": tool_name,
+                "capability": gap.capability,
+                "path": relative,
+                "source": source,
+                "verified": True,
+                "verification": "smoke_test",
+                "smoke_command": smoke_command,
+                "authorship": authorship,
+                "checks": check["checks"],
+                "gate_step": "Candidate ready for the gate; nothing has been written yet.",
                 "detail": check["detail"],
             }
 
@@ -721,13 +805,15 @@ class ToolSynthesiser:
             "tool": tool_name,
             "capability": gap.capability,
             "path": relative,
+            "source": source,
             "verified": True,
             "verification": "smoke_test",
+            "smoke_command": smoke_command,
             "authorship": authorship,
             "checks": check["checks"],
             "gate_step": (
-                "Written to the working tree. It is not committed: it reaches the repository "
-                "through the same gate as any other change, with test evidence and a review."
+                "Written to the working tree, uncommitted and unreviewed: no gate ran, because "
+                "install=False was requested. This file is not governed code yet."
             ),
             "detail": check["detail"],
         }

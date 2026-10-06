@@ -166,7 +166,24 @@ def test_an_external_requirement_is_not_synthesised_into_a_fake_tool() -> None:
 
 @pytest.fixture()
 def synthesis_repo(tmp_path: Path) -> Path:
+    """A real, commit-containing checkout.
+
+    Installing a capability is a gated change to a repository, so the fixture is a
+    repository: with nothing to commit into, the gate cannot be built and the
+    installer would be tested against a condition that cannot occur in production.
+    """
+    import subprocess
+
     (tmp_path / "src/friday/tools/builtin").mkdir(parents=True)
+    (tmp_path / "README.md").write_text("# scratch\n", encoding="utf-8")
+    for args in (
+        ("init", "-q", "-b", "main"),
+        ("config", "user.email", "o@example.invalid"),
+        ("config", "user.name", "Owner"),
+        ("add", "-A"),
+        ("commit", "-qm", "base"),
+    ):
+        subprocess.run(["git", *args], cwd=tmp_path, capture_output=True, text=True, check=True)
     return tmp_path
 
 
@@ -305,9 +322,23 @@ def test_a_request_needing_a_new_tool_is_synthesised_and_reported_as_such(
     assert len(result.gaps) == 1
     assert result.synthesised and result.synthesised[0]["verified"] is True
     assert result.synthesised[0]["verification"] == "smoke_test"
-    assert (synthesis_repo / result.synthesised[0]["path"]).exists()
+
+    # The candidate passed its smoke test and was handed to the gate. This used to
+    # assert that the resolver wrote the file straight into the working tree, with
+    # no commit, no review and no mandate; that write was the defect. With no
+    # reviewer configured on this machine the installation must stop at the review
+    # step and the tree must stay untouched - which is more than the old assertion
+    # checked, not less.
+    installed = result.synthesised[0]["installation"]
+    assert installed["outcome"] == "AWAITING_REVIEWER", installed
+    assert not (synthesis_repo / result.synthesised[0]["path"]).exists(), (
+        "a synthesised capability reached the working tree without passing the gate"
+    )
+    assert installed["gate_step"] == "review"
+
     spoken = result.spoken_summary()
-    assert "I built the missing piece" in spoken
+    assert "self-tested the missing piece" in spoken
+    assert "no reviewer is configured" in spoken
     assert "needs building" in spoken
 
 
