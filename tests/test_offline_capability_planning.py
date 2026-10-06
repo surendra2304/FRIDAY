@@ -65,6 +65,11 @@ def _resolver(repo: Path) -> CapabilityResolver:
         ("please summarise this article for me", "summarise article"),
         ("convert the spreadsheet into json", "convert spreadsheet json"),
         ("transcribe the meeting notes file", "transcribe meeting notes file"),
+        # Found by using it: "sum" was missing from the verb vocabulary, so "sum the
+        # numbers: 12 30 8" - a request the composition library answers exactly -
+        # fell through to the model and failed with it.
+        ("sum the numbers: 12 30 8", "sum numbers"),
+        ("average these numbers 4 8 12", "average numbers"),
     ],
 )
 def test_a_capability_request_is_planned_from_its_own_words(

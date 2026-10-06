@@ -281,6 +281,28 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
             self._goal_orchestrator = orch
         return self._goal_orchestrator
 
+    def _answer_without_a_model(self, goal: str):
+        """FRIDAY's own tooling, for a request that does not need a model.
+
+        Deliberately conservative: `None` from the planner means the original error
+        stands, because a confident wrong answer is worse than an honest failure. The
+        work goes through the same registry, gate and mandate as any other change -
+        this is a second way to answer, not a second set of rules.
+        """
+        try:
+            from friday.cognition.offline import answer_without_a_model
+
+            return answer_without_a_model(
+                goal,
+                registry=getattr(self, "tools", None),
+                # The same authorizer the cognitive loop uses: the fallback does not
+                # get its own rules, and it does not bypass the check either.
+                authorizer=getattr(self, "authorizer", None),
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("offline fallback failed: %s", exc)
+            return None
+
     def execute_complex_task(self, goal: str, context: dict | None = None) -> AgentResponse:
         """Execute a goal through FRIDAY's bounded, authorized tool loop."""
         import time
@@ -360,6 +382,28 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
             try:
                 response = self.llm.generate(messages, tools=self.tools.get_schemas())
             except Exception as exc:
+                # The model is unreachable. Before reporting that, ask whether this
+                # request is one FRIDAY can carry out with its own tooling - counting
+                # words needs nobody's intelligence, and answering "I cannot reach my
+                # model" while holding a working tool for the job is the worst of both
+                # worlds: slow and unhelpful.
+                offline = self._answer_without_a_model(goal)
+                if offline is not None and offline.success:
+                    return AgentResponse(
+                        content=offline.spoken,
+                        tool_results=tool_results or None,
+                        tool_calls=tool_calls or None,
+                        is_done=True,
+                        metadata={
+                            "goal_orchestration": False,
+                            "offline_fallback": True,
+                            "offline_detail": offline.as_dict(),
+                            "llm_error": f"{type(exc).__name__}: {exc}",
+                            "duration_seconds": time.perf_counter() - start_time,
+                            "is_successful": True,
+                            "iterations": max(iterations, 1),
+                        },
+                    )
                 return AgentResponse(
                     content=f"LLM generation failed. I'm having trouble connecting to my intelligence core: {exc}",
                     tool_results=tool_results or None,
@@ -367,6 +411,8 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
                     is_done=True,
                     metadata={
                         "goal_orchestration": False,
+                        "offline_fallback": False,
+                        "offline_detail": offline.as_dict() if offline is not None else None,
                         "duration_seconds": time.perf_counter() - start_time,
                         "is_successful": False,
                         "iterations": max(iterations, 1),

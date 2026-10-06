@@ -247,6 +247,14 @@ class ToolCatalogue:
         if self._scanned is not None:
             return self._scanned
         found: dict[str, Any] = {}
+
+        # Tools the agent holds live are authoritative for the names they cover.
+        registry = getattr(self, "_registry", None)
+        if registry is not None and hasattr(registry, "list_tools"):
+            for tool in registry.list_tools():
+                name = getattr(tool, "name", "")
+                if isinstance(name, str) and name:
+                    found[name] = tool
         try:
             import friday.tools.builtin as builtins_package
             from friday.tools.base import BaseTool
@@ -270,9 +278,9 @@ class ToolCatalogue:
                     continue
                 name = getattr(obj, "name", "") or ""
                 if not isinstance(name, str) or not name or name in found:
-                    # A property or other descriptor rather than a class
-                    # attribute: not a tool name we can put in a schema.
-                    continue
+                    # Already known from the live registry, or a property or other
+                    # descriptor rather than a class attribute: either way, not a
+                    # name to add.
                     continue
                 instance = self._instantiate(obj)
                 if instance is not None:
@@ -282,12 +290,26 @@ class ToolCatalogue:
         return found
 
     def entries(self) -> dict[str, Any]:
-        if self._registry is not None:
-            try:
-                return {tool.name: tool for tool in self._registry.list_tools()}
-            except Exception as exc:
-                logger.warning("supplied registry could not be listed: %s", exc)
-        return self._scan()
+        """Every tool that exists, live registry first and everything else beside it.
+
+        The registry used to replace the scan outright when it was supplied, which
+        meant a tool that had been installed a moment ago - a real file in the tools
+        directory, importable, executable - was invisible to every planner that had a
+        registry to look at. That is exactly the case the offline fallback runs in:
+        the registry was built at start-up, the capability was installed after it, and
+        the request was answered "nothing could be carried out" while holding a
+        working tool for the job. The registry still wins for any name it has, so
+        nothing it holds is overridden.
+        """
+        scanned = self._scan()
+        if self._registry is None:
+            return scanned
+        try:
+            live = {tool.name: tool for tool in self._registry.list_tools()}
+        except Exception as exc:
+            logger.warning("supplied registry could not be listed: %s", exc)
+            return scanned
+        return {**scanned, **live}
 
     def names(self) -> list[str]:
         return sorted(self.entries())
@@ -325,17 +347,22 @@ class AuthoredBody:
 #: offline planner tells work from conversation.
 ACTION_VERBS = frozenset(
     {
-        "add", "analyse", "analyze", "annotate", "archive", "build", "calculate", "check",
+        "add", "analyse", "analyze", "annotate", "archive", "average", "beautify", "build",
+        "calculate", "check",
         "clean", "compare", "compress", "convert", "count", "crop", "decode", "delete",
         "detect", "download", "draft", "encode", "export", "extract", "fetch", "filter",
         "find", "fix", "format", "generate", "group", "import", "install", "list", "log",
-        "merge", "monitor", "move", "name", "parse", "plot", "print", "read", "record",
+        "dedupe", "deduplicate", "mean", "merge", "monitor", "move", "name", "parse", "plot",
+        "prettify", "print", "read", "record",
         "rename", "render", "reorder", "replace", "resize", "reverse", "run", "scan",
-        "schedule", "search", "send", "sort", "split", "strip", "summarise", "summarize",
-        "sync", "transcribe", "translate", "trim", "upload", "validate", "verify", "watch",
-        "write", "zip",
+        "schedule", "search", "send", "sort", "split", "strip", "sum", "summarise", "summarize",
+        "sync", "total", "transcribe", "translate", "trim", "upload", "validate", "verify",
+        "watch", "write", "zip",
     }
 )
+
+#: A quoted span: data the owner supplied, not part of the task's name.
+_QUOTED = re.compile(r"[\"']([^\"']*)[\"']")
 
 #: Words that carry no capability of their own; dropped when naming a tool. Kept
 #: short deliberately: over-filtering produces names that no longer read as what
@@ -500,15 +527,26 @@ class CapabilityResolver:
         rather than a junk tool. What it produces is a plan, and the implementation
         is a scaffold unless a model authors it — which the resolution says out loud.
         """
-        tokens = re.findall(r"[a-z0-9']+", request.lower())
+        # Only the instruction names the capability. "count the words in this note:
+        # the quick brown fox" asks for a word count, and the note is what to count -
+        # folding the payload into the name produced "count words note quick brown",
+        # a capability nobody can implement and a name that hides what was asked for.
+        instruction = request
+        if ":" in instruction:
+            instruction = instruction.split(":", 1)[0]
+        instruction = re.sub(_QUOTED, " ", instruction)
+        tokens = re.findall(r"[a-z0-9']+", instruction.lower())
         verb = next((token for token in tokens if token in ACTION_VERBS), None)
         if verb is None:
             return []
         object_words = [
             word
             for word in tokens[tokens.index(verb) + 1 :]
-            if word not in FILLER_WORDS and len(word) > 1
-        ][:4]
+            if word not in FILLER_WORDS and len(word) > 1 and not word.isdigit()
+            # Digits are data, not the name of a capability: "average these numbers
+            # 4 8 12" asks for an average of some numbers, and "average numbers 12"
+            # is not a capability - it is a sentence fragment that leaked into a name.
+        ][:3]
         if not object_words:
             return []
         capability = " ".join([verb, *object_words])
