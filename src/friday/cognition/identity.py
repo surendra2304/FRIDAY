@@ -49,16 +49,25 @@ def _identity_part(actor: str) -> str:
 
 
 def configured_owner_name() -> str:
-    """The owner's configured name, from the environment first, then the settings."""
-    from_env = os.getenv("FRIDAY_USER_NAME", "").strip()
-    if from_env:
-        return from_env
+    """The owner's configured name, from the one source the running code uses.
+
+    Settings first, because that is what the CLI and the API read when they decide
+    what to call the owner; the environment variable is the fallback for a machine
+    where settings cannot be loaded. Reading the environment first looked
+    equivalent and was not: settings are cached for the life of the process, so a
+    name changed after the first read produced two different answers to "who is the
+    owner", and the CLI could be refused for approving as somebody it had just
+    called the owner.
+    """
     try:
         from friday.core.config import get_settings
 
-        return (get_settings().user_name or "").strip()
-    except Exception:  # a configuration that cannot load grants nobody authority
-        return ""
+        name = (get_settings().user_name or "").strip()
+        if name:
+            return name
+    except Exception:  # a configuration that cannot load falls through to the env
+        pass
+    return os.getenv("FRIDAY_USER_NAME", "").strip()
 
 
 def is_agent_namespace(actor: str) -> bool:

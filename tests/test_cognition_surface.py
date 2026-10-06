@@ -247,10 +247,15 @@ def test_approve_repair_refuses_a_patch_that_does_not_exist(
     assert "Nothing was approved" in capsys.readouterr().out
 
 
-def test_approve_repair_refuses_without_a_mandate(
+def test_approve_repair_refuses_a_proposal_that_was_never_reviewed(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Any
 ) -> None:
-    """A real proposal that has not been proven is refused by the gate, not approved."""
+    """A real proposal that has not been reviewed is refused by the gate, not approved.
+
+    The old name for this test was "refuses_without_a_mandate", which described a
+    rule that no longer exists: the owner may approve by hand with no mandate, and
+    what refuses this proposal is that nothing has reviewed it.
+    """
     from friday.api.server import _self_repair_gate
 
     monkeypatch.setenv("FRIDAY_AUTONOMY_KEY", "cli-test-key")
@@ -265,6 +270,112 @@ def test_approve_repair_refuses_without_a_mandate(
     assert exit_info.value.code == 1
     out = capsys.readouterr().out
     assert "APPROVAL REFUSED" in out
+    assert "Approved." not in out, "a refusal was reported as an approval"
+
+
+def _gate_with_a_reviewed_patch(tmp_path: Any) -> tuple[Any, str]:
+    """A real gate, a real applier, a real repo, and a review that actually passes."""
+    import subprocess
+
+    from friday.autonomous.self_repair import (
+        GitRepairApplier,
+        RepairProposal,
+        SelfRepairGate,
+    )
+    from friday.cognition.reviewer import LocalReviewer
+
+    key = b"cli-approval-review-key"
+    repo = tmp_path / "gate-repo"
+    repo.mkdir()
+    for args in (
+        ("init", "-q", "-b", "main"),
+        ("config", "user.email", "o@example.invalid"),
+        ("config", "user.name", "Owner"),
+    ):
+        subprocess.run(["git", *args], cwd=repo, capture_output=True, check=True)
+    (repo / "mod.py").write_text("def value():\n    return 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, capture_output=True, check=True)
+    subprocess.run(["git", "commit", "-qm", "base"], cwd=repo, capture_output=True, check=True)
+    base = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True
+    ).stdout.strip()
+
+    gate = SelfRepairGate(GitRepairApplier(str(repo)), review_verification_key=key)
+    proposal = RepairProposal(
+        repo_path=str(repo),
+        branch="friday/cli-approval",
+        base_commit=base,
+        target_file="mod.py",
+        original_snippet="def value():\n    return 1\n",
+        replacement_snippet="def value():\n    return 2\n",
+        rationale="return the documented value",
+        proposed_by="forge",
+        test_evidence={"command": "pytest -q tests/test_x.py", "passed": True, "summary": "1 passed"},
+    )
+    record, _ = gate.propose(proposal)
+    reviewer = LocalReviewer(key, reviewer_id="sentinel")
+    outcome = reviewer.review(
+        patch_fingerprint=record.proposal.fingerprint(),
+        target_file="mod.py",
+        original_snippet=record.proposal.original_snippet,
+        replacement_snippet=record.proposal.replacement_snippet,
+        current_source="def value():\n    return 1\n",
+        test_evidence=proposal.test_evidence,
+        approval_id="cli_approval",
+    )
+    assert outcome.cleared is True, outcome.reasons
+    receipt = gate.record_review(record.patch_id, outcome.document)
+    assert receipt.outcome == "ACCEPTED", receipt.detail
+    return gate, record.patch_id
+
+
+def test_the_owner_may_approve_by_hand_with_no_mandate(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Any
+) -> None:
+    """Revoking autonomy must not lock the owner out of their own approval path."""
+    import friday.api.server as server
+
+    monkeypatch.setenv("FRIDAY_AUTONOMY_KEY", "cli-test-key")
+    monkeypatch.setenv("FRIDAY_AUTONOMY_LEDGER", str(tmp_path / "mandates.json"))
+    # The CLI reads the owner's name from settings, and settings are cached for the
+    # life of the process, so this is where the name has to be set for the call to
+    # exercise what the running code does.
+    from friday.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "user_name", "Surendra")
+    gate, patch_id = _gate_with_a_reviewed_patch(tmp_path)
+    monkeypatch.setattr(server, "_self_repair_gate", gate)
+
+    _cli(monkeypatch, "--approve-repair", patch_id)
+
+    out = capsys.readouterr().out
+    assert "Standing autonomy is not in force" in out
+    assert "Approved." in out, out
+    assert gate.get(patch_id).state.value == "APPROVED"
+
+
+def test_the_cli_cannot_be_used_to_approve_as_an_agent(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Any
+) -> None:
+    """The owner's identity, not a mandate, is what the gate checks on this path."""
+    import friday.api.server as server
+
+    monkeypatch.setenv("FRIDAY_AUTONOMY_KEY", "cli-test-key")
+    monkeypatch.setenv("FRIDAY_AUTONOMY_LEDGER", str(tmp_path / "mandates.json"))
+    from friday.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "user_name", "forge")   # an agent, not the owner
+    gate, patch_id = _gate_with_a_reviewed_patch(tmp_path)
+    monkeypatch.setattr(server, "_self_repair_gate", gate)
+
+    with pytest.raises(SystemExit) as exit_info:
+        _cli(monkeypatch, "--approve-repair", patch_id)
+
+    assert exit_info.value.code == 1
+    out = capsys.readouterr().out
+    assert "APPROVAL REFUSED" in out
+    assert "not the owner" in out or "agent" in out
+    assert gate.get(patch_id).state.value == "REVIEWED"
 
 
 def _a_proposal_without_evidence(tmp_path: Any) -> Any:

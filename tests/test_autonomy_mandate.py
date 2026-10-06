@@ -108,9 +108,34 @@ class TestEvaluation:
         assert verdict.refusal == "NO_KEY"
 
     def test_no_mandate_means_no_autonomy(self, authority: MandateAuthority) -> None:
+        """Denied, and labelled for what is actually missing.
+
+        This assertion used to read `NO_KEY`, and the key *is* configured in this
+        fixture: the label sent the owner to check a key that was already there,
+        while the CLI's "grant standing autonomy" hint keyed off a refusal name
+        that did not exist in the vocabulary at all.
+        """
         verdict = authority.evaluate(SCOPE_SOURCE_REPAIR, paths=("src/friday/x.py",))
         assert verdict.allowed is False
-        assert verdict.refusal == "NO_KEY"
+        assert verdict.refusal == "NO_MANDATE"
+        assert "ever been granted" in verdict.reason
+
+    def test_an_expired_mandate_is_labelled_expired_not_missing(self, authority: MandateAuthority) -> None:
+        """A grant that ran out and a machine never granted are different problems."""
+        document = authority.issue("surendra", scopes=(SCOPE_SOURCE_REPAIR,), ttl_seconds=600)
+        document["expires_at"] = 1.0   # long past; the ledger stores what it is given
+        authority._ledger.record_grant(document)
+        verdict = authority.evaluate(SCOPE_SOURCE_REPAIR, paths=("src/friday/x.py",))
+        assert verdict.allowed is False
+        assert verdict.refusal == "EXPIRED"
+        assert "expired or been revoked" in verdict.reason
+
+    def test_a_revoked_mandate_is_labelled_revoked(self, authority: MandateAuthority) -> None:
+        document = authority.issue("surendra", scopes=(SCOPE_SOURCE_REPAIR,), ttl_seconds=600)
+        authority.revoke(document["mandate_id"], "the owner withdrew it")
+        verdict = authority.evaluate(SCOPE_SOURCE_REPAIR, paths=("src/friday/x.py",))
+        assert verdict.allowed is False
+        assert verdict.refusal in {"EXPIRED", "REVOKED"}
 
     def test_an_active_mandate_permits_a_granted_scope(self, authority: MandateAuthority) -> None:
         authority.issue("surendra", scopes=(SCOPE_SOURCE_REPAIR,), ttl_seconds=600)

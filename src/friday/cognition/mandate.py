@@ -101,6 +101,7 @@ OPERATIONAL_SCOPES = frozenset({SCOPE_DEPENDENCY_INSTALL, SCOPE_PEER_RECONNECT, 
 
 MandateRefusal = Literal[
     "NO_KEY",
+    "NO_MANDATE",
     "MALFORMED",
     "BAD_SIGNATURE",
     "WRONG_ISSUER",
@@ -560,9 +561,22 @@ class MandateAuthority:
 
         candidates = self._ledger.active(self._key)
         if not candidates:
+            # Three different situations, three different labels, because the owner
+            # acts on the label: a missing key needs a key, a mandate that has run
+            # out needs a new grant, and a machine that has never been granted
+            # autonomy needs the first grant. Reporting "NO_KEY" for the last two
+            # sent the owner to look for a key that was already configured, and the
+            # CLI's "grant standing autonomy" hint keyed off a name that did not
+            # exist in this vocabulary at all.
+            granted = self._ledger.granted_raw()
+            if not granted:
+                return MandateVerdict.deny(
+                    "NO_MANDATE",
+                    "no standing mandate has ever been granted on this machine",
+                )
             return MandateVerdict.deny(
-                "EXPIRED" if self._ledger.granted_raw() else "NO_KEY",
-                "no active mandate is in force",
+                "EXPIRED",
+                "every mandate granted on this machine has expired or been revoked",
             )
 
         # Prefer the mandate that actually covers this request, so a narrow

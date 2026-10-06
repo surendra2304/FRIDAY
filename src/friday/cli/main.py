@@ -597,22 +597,35 @@ Modes:
             print(f"\nNo repair named {patch_id}. Nothing was approved.\n")
             sys.exit(1)
         described = record.as_dict()
+        # The autonomy verdict is reported, not required: someone typing this
+        # command is the owner, and a standing mandate is the *pre-recorded*
+        # version of that owner's consent. Requiring a mandate here meant that
+        # revoking autonomy locked the owner out of approving anything by hand -
+        # the one path that needs no delegation. What still guards this call is
+        # the gate itself: a signed review must already exist, the approval binds
+        # to the exact patch fingerprint, it is single-use and it expires.
         verdict = authority.evaluate(
             "source_repair",
             paths=(described.get("target_file"),) if described.get("target_file") else (),
             has_test_evidence=bool(described.get("tests")),
         )
-        if not verdict.allowed:
-            print(f"\nAPPROVAL REFUSED: {verdict.refusal} - {verdict.reason}\n")
-            if verdict.refusal == "NO_MANDATE":
-                print("Grant standing autonomy first: `python -m friday --grant-autonomy`\n")
-            sys.exit(1)
+        if verdict.allowed:
+            print(f"\nStanding autonomy covers this change ({verdict.mandate_id or 'mandate'}).")
+        else:
+            print(
+                f"\nStanding autonomy is not in force ({verdict.refusal}: {verdict.reason}). "
+                "Approving by hand now; grant unattended operation with "
+                "`python -m friday --grant-autonomy` when you want it.\n"
+            )
         try:
             receipt = _self_repair_gate.record_owner_decision(
                 patch_id, approver=f"{settings.user_name or 'owner'} (CLI)", approve=True
             )
         except Exception as exc:
-            print(f"\nApproval refused by the gate: {exc}\n")
+            print(f"\nAPPROVAL REFUSED: the gate raised {type(exc).__name__}: {exc}\n")
+            sys.exit(1)
+        if getattr(receipt, "outcome", "REFUSED") != "ACCEPTED":
+            print(f"\nAPPROVAL REFUSED: {receipt.detail}\n")
             sys.exit(1)
         print(f"\nApproved. Receipt: {receipt.as_dict()}\n")
         return
