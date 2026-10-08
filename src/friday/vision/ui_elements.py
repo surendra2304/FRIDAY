@@ -120,7 +120,7 @@ class UIElement:
             element_type=etype,
             label=str(data.get("label", "")),
             bounding_box=bbox,
-            confidence=float(data.get("confidence", 1.0)),
+            confidence=float(data.get("confidence", 0.0)),
             is_interactive=bool(data.get("is_interactive", True)),
             attributes=data.get("attributes", {}) if isinstance(data.get("attributes"), dict) else {},
             observed_text=data.get("observed_text"),

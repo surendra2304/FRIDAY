@@ -78,6 +78,40 @@ class IncidentKind(str, Enum):
     LOG_ERROR = "LOG_ERROR"
 
 
+_INCIDENT_SCOPE_MAP = {
+    "imports": IncidentKind.IMPORT_FAILURE,
+    "tests": IncidentKind.TEST_FAILURE,
+    "fleet": IncidentKind.PEER_UNREACHABLE,
+    "resources": IncidentKind.RESOURCE_PRESSURE,
+    "logs": IncidentKind.LOG_ERROR,
+}
+
+
+def parse_incident_scope(scope: str | None = None) -> set[IncidentKind] | None:
+    """Parse a user-facing incident scope without silently broadening typos.
+
+    An omitted or blank scope means all incident kinds. Once the caller supplies
+    a non-empty scope, every non-empty item must be known or the whole request is
+    refused; a delimiter-only value is malformed rather than an "all" alias.
+    """
+    raw = str(scope or "")
+    if not raw.strip():
+        return None
+
+    requested = [part.strip().lower() for part in raw.split(",") if part.strip()]
+    if not requested:
+        raise ValueError("a non-empty reflex scope must name at least one supported scope")
+
+    unknown = sorted(set(requested).difference(_INCIDENT_SCOPE_MAP))
+    if unknown:
+        raise ValueError(
+            f"unknown reflex scope(s): {', '.join(unknown)}; "
+            f"choose from: {', '.join(_INCIDENT_SCOPE_MAP)}"
+        )
+
+    return {_INCIDENT_SCOPE_MAP[name] for name in requested}
+
+
 class IncidentSeverity(str, Enum):
     CRITICAL = "CRITICAL"
     HIGH = "HIGH"
@@ -463,7 +497,7 @@ class IncidentDetector:
 
     async def scan(self, *, include: set[IncidentKind] | None = None) -> list[Incident]:
         """Run every scanner, tolerating one failing without losing the others."""
-        wanted = include or set(IncidentKind)
+        wanted = set(IncidentKind) if include is None else include
         found: list[Incident] = []
 
         async def guarded(coro: Any, label: str) -> list[Incident]:

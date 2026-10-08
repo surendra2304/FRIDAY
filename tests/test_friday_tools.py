@@ -140,7 +140,13 @@ def test_weather_tool():
             "precipitation_probability_max": [10],
         },
     }
-    with patch("friday.tools.builtin.weather.geocode_city", return_value=(17.38, 78.48, "Hyderabad, India")):
+    # geocode_city now reports *why* it failed, so the tool can tell a typo
+    # apart from an unreachable service. Patch the function that carries the
+    # reason; the thin geocode_city() wrapper still resolves the success case.
+    with patch(
+        "friday.tools.builtin.weather.geocode_city_detailed",
+        return_value=((17.38, 78.48, "Hyderabad, India"), ""),
+    ):
         with patch("httpx.Client.get") as mock_get:
             mock_get.return_value = MagicMock(status_code=200, json=lambda: fake_weather)
             res = tool.execute(city="Hyderabad")

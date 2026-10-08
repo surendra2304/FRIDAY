@@ -230,10 +230,19 @@ class VoiceOperationsCenter:
             # 3. "Show my current portfolio risk"
             if any(k in clean for k in ["portfolio risk", "risk exposure", "show risk"]):
                 risk = self.risk_dashboard.evaluate_risk()
-                spoken = (
-                    f"Current portfolio risk is rated {risk.concentration_rating}. Total exposure is ${risk.total_exposure_usdt:,.2f} USDT "
-                    f"with an effective leverage of {risk.effective_leverage:.2f}x. 1-day 95% Value at Risk is ${risk.var_95_usdt:,.2f} USDT."
-                )
+                if not risk.available:
+                    spoken = (
+                        "I have no portfolio to assess: neither an equity figure nor a position "
+                        "list has been reported to me, so I cannot give you exposure, leverage or "
+                        "Value at Risk. I will not invent a book to report on."
+                    )
+                else:
+                    spoken = (
+                        f"Reported portfolio risk is rated {risk.concentration_rating}. Total exposure is "
+                        f"${risk.total_exposure_usdt:,.2f} USDT with an effective leverage of "
+                        f"{risk.effective_leverage:.2f}x. 1-day 95% Value at Risk is "
+                        f"${risk.var_95_usdt:,.2f} USDT."
+                    )
                 return {
                     "success": True,
                     "spoken_response": spoken,
@@ -243,10 +252,18 @@ class VoiceOperationsCenter:
             # 4. "What's the market regime analysis?"
             if any(k in clean for k in ["market regime", "regime analysis"]):
                 regime = self.regime_detector.detect_regime()
-                spoken = (
-                    f"Market regime analysis indicates a {regime.primary_regime.value} state ({regime.timeframe_consensus}). "
-                    f"Position sizing multiplier is currently {regime.position_sizing_multiplier}x."
-                )
+                if not regime.available:
+                    spoken = (
+                        "I cannot classify the market regime: no ADX, Bollinger-band width or ATR "
+                        "reading has been supplied. The regime decides position sizing, so I will not "
+                        "guess at it."
+                    )
+                else:
+                    spoken = (
+                        f"Market regime analysis indicates a {regime.primary_regime.value} state "
+                        f"({regime.timeframe_consensus}). Position sizing multiplier is "
+                        f"{regime.position_sizing_multiplier}x."
+                    )
                 return {
                     "success": True,
                     "spoken_response": spoken,
@@ -280,15 +297,46 @@ class VoiceOperationsCenter:
     # =========================================================================
 
     def generate_scheduled_briefing(self) -> str:
-        """Generates clear spoken audio briefing of current system and market conditions."""
+        """Spoken operations briefing, from what has actually been reported.
+
+        The sentence this replaces asserted four things in one breath: "All three
+        system tiers are online and healthy", an equity figure, a VaR figure and
+        "No critical alerts are currently pending". All four came from defaults in
+        this class, not from a probe or an alert store.
+        """
+        from friday.core.readings import format_money, format_number
+
         regime = self.regime_detector.detect_regime()
         risk = self.risk_dashboard.evaluate_risk()
+        alerts = self.alert_manager.get_active_alerts() if getattr(self, "alert_manager", None) else []
+
+        if risk.available:
+            money_part = (
+                f"Reported portfolio equity is {format_money(risk.total_portfolio_equity)} USDT with a "
+                f"95% daily Value at Risk of {format_money(risk.var_95_usdt)} USDT."
+            )
+        else:
+            money_part = (
+                "No portfolio equity or position list has been reported, so I have no equity or "
+                "Value at Risk figure for you."
+            )
+        alert_part = (
+            f"{len(alerts)} active alert(s) are on record."
+            if alerts
+            else "No alert is on record; nothing here is watching for new ones."
+        )
+        regime_part = (
+            f"The primary market regime is {regime.primary_regime.value} "
+            f"({regime.timeframe_consensus}) with a recommended position multiplier of "
+            f"{format_number(regime.position_sizing_multiplier, 2, 'x')}."
+            if regime.available
+            else "No market data was supplied, so no regime was classified and no position-sizing "
+            "recommendation was made."
+        )
         return (
-            f"Good morning Operator. This is your FRIDAY live operations briefing. "
-            f"All three system tiers are online and healthy. The primary market regime is {regime.primary_regime.value} "
-            f"with a recommended position multiplier of {regime.position_sizing_multiplier}x. "
-            f"Total portfolio equity stands at ${risk.total_portfolio_equity:,.2f} USDT with a 95% daily Value at Risk of ${risk.var_95_usdt:,.2f} USDT. "
-            f"No critical alerts are currently pending."
+            "Good morning Operator. This is your FRIDAY live operations briefing. "
+            "I can only report on subsystems that have reported to me, and none did in this run. "
+            f"{regime_part} {money_part} {alert_part}"
         )
 
     def format_voice_error(self, error: Exception, context: str) -> dict[str, Any]:

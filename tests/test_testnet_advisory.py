@@ -53,7 +53,10 @@ def test_testnet_skill_get_status(testnet_setup):
     assert status["health"] == "HEALTHY"
     assert status["equity"] == 10540.25
     assert status["drawdown_pct"] == 1.85
-    assert "Testnet Advisory is currently ENABLED in SHADOW mode" in status["spoken_text"]
+    # Honest wording: the fields are what the bridge reported.
+    assert "Testnet Advisory is reported as ENABLED in SHADOW mode" in status["spoken_text"]
+    assert "Testnet equity is $10,540.25 USDT with a drawdown of 1.85%" in status["spoken_text"]
+    assert "(reported safety threshold: 5.00%)" in status["spoken_text"]
 
 
 def test_testnet_skill_get_log(testnet_setup):
@@ -109,12 +112,14 @@ def test_testnet_skill_toggle_and_rollback_actions(testnet_setup):
     # 1. Toggle mode to APPLY
     tog = skill.toggle_advisory_mode(enabled=True, mode="APPLY", authorizer=mock_auth)
     assert tog["success"] is True
-    assert "Testnet advisory mode successfully updated to APPLY" in tog["message"]
+    assert "Testnet advisory mode toggle sent: APPLY (Enabled: True)." in tog["message"]
+    assert "The bridge confirmed mode APPLY." in tog["message"]
 
     # 2. Rollback parameters
     roll = skill.rollback_parameters(authorizer=mock_auth)
     assert roll["success"] is True
-    assert "Emergency rollback executed" in roll["message"]
+    assert "Rollback request sent" in roll["message"]
+    assert "Confirm the active overlay in a status query" in roll["message"]
 
 
 def test_testnet_skill_execute_commands(testnet_setup):
@@ -214,3 +219,46 @@ def test_testnet_skill_registered_in_registry():
     assert skill is not None
     assert "network_access" in skill.required_capabilities
     assert "trading_bot_control" in skill.required_capabilities
+
+
+# =========================================================================
+# Honesty pins: an unreported field is reported as unreported
+# =========================================================================
+
+def test_testnet_skill_says_unreported_when_the_bridge_reports_nothing(testnet_setup):
+    """A bridge payload carrying only a mode invents no equity, drawdown or threshold."""
+    skill, watchdog, operator, memory, mock_notif, server = testnet_setup
+    server.state.testnet_override = {"mode": "SHADOW"}
+    try:
+        status = skill.get_testnet_advisory_status()
+        assert status["active"] is True
+        assert status["equity"] is None
+        assert status["drawdown_pct"] is None
+        assert status["max_drawdown_limit"] is None
+        assert status["enabled"] is None
+        assert status["last_consult_time"] == "not reported"
+        assert "in an unreported enabled state" in status["spoken_text"]
+        assert "unknown (no reading) USDT" in status["spoken_text"]
+        assert "(no safety threshold was reported)" in status["spoken_text"]
+        # No plausible literal may appear in its place.
+        assert "10,540" not in status["spoken_text"]
+        assert "1.85" not in status["spoken_text"]
+    finally:
+        server.state.testnet_override = None
+
+
+def test_testnet_comparison_without_metrics_asserts_no_cause(testnet_setup):
+    """The paper-vs-testnet table shows unknown cells and names no unmeasured cause."""
+    skill, watchdog, operator, memory, mock_notif, server = testnet_setup
+    server.set_scenario("testnet_shadow")
+
+    comp = skill.compare_testnet_paper()
+    if not comp["active"]:
+        pytest.skip("scenario reports no comparison payload")
+
+    # Whatever the scenario sends, an unmeasured cell must never be a number and
+    # the diagnostic must not claim a cause.
+    assert "exchange matching engine queue times" not in comp["comparison_text"]
+    assert "no cause is asserted here" in comp["comparison_text"] or "no diagnostic is offered" in comp["comparison_text"]
+    if comp["delta_return_pct"] is None:
+        assert "unknown (no reading)" in comp["comparison_text"]

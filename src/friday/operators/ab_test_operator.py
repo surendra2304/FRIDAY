@@ -84,7 +84,7 @@ class ABTestOperator(BaseOperator):
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
-        status = str(raw.get("status", "RUNNING")).upper()
+        status = str(raw.get("status") or "UNREPORTED").upper()
         test_name = str(raw.get("test_name", "AI_Universe_AB_Test"))
         control = raw.get("control_arm", raw.get("control", {}))
         treatment = raw.get("treatment_arm", raw.get("treatment", {}))

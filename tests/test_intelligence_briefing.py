@@ -15,11 +15,17 @@ from friday.workflows.intel_briefing import MorningIntelligenceBriefingWorkflow
 def intel_setup():
     memory = InMemoryConversationMemory()
     alert_mgr = ProductionAlertManager(memory=memory)
-    intel_engine = IntelligenceEngine()
+    # The engine's market view is sample data now; a test that asserts on specific
+    # forecasts must ask for it by name (and is thereby on record that the numbers
+    # are invented).
+    intel_engine = IntelligenceEngine(demo_data=True)
     operator = IntelligenceVigilanceOperator(
         intelligence_engine=intel_engine,
         alert_manager=alert_mgr,
         memory=memory,
+        # The operator no longer assumes a long ETH position; a test that wants an
+        # adverse-prediction alert must say which position is actually held.
+        held_positions={"ETHUSDT": {"side": "LONG", "size": 1.5}},
     )
     skill = IntelligenceBriefingSkill(intelligence_engine=intel_engine)
     briefing_wf = MorningIntelligenceBriefingWorkflow(intelligence_engine=intel_engine)
@@ -100,6 +106,9 @@ def test_voice_intelligence_briefing_commands(intel_setup):
     assert res4.success is True
     assert "Prediction accuracy report:" in res4.output
     assert "78.5% directional accuracy" in res4.output
+    # The per-asset breakdown is derived from the report, not from three literals
+    # with their own defaults.
+    assert "BTCUSDT at 82.5%" in res4.output
 
     # 5. "Any intelligence alerts?"
     res5 = skill.execute("Any intelligence alerts?")
@@ -120,8 +129,47 @@ def test_morning_intelligence_briefing_workflow(intel_setup):
     snapshot = briefing_wf.generate_briefing()
     assert "Good morning Operator Surendra" in snapshot.spoken_briefing
     assert "# 🧠 FRIDAY Morning Market Intelligence Briefing" in snapshot.markdown_report
+    # Values come from the sample report this test asked for, and the snapshot
+    # says so rather than leaving a reader to assume a live feed.
     assert snapshot.fear_and_greed_index == 68
     assert snapshot.btc_probability_pct == 76.0
+    assert snapshot.has_any_reading is True
+    assert "Sample data" in snapshot.markdown_report
+
+
+def test_an_engine_with_no_data_briefs_the_operator_that_it_has_none():
+    """A fresh engine used to seed a complete market view; now it says it has nothing."""
+    empty = IntelligenceEngine(demo_data=False)
+    empty_skill = IntelligenceBriefingSkill(intelligence_engine=empty)
+    empty_wf = MorningIntelligenceBriefingWorkflow(intelligence_engine=empty)
+
+    assert empty.get_prediction("BTCUSDT") is None
+    assert empty.get_accuracy_report() is None
+
+    report = empty_skill.execute("Market intelligence report")
+    assert report.success is True
+    assert "no market data on record" in report.output
+
+    accuracy = empty_skill.execute("How accurate have predictions been?")
+    assert "No accuracy history has been recorded" in accuracy.output
+
+    alerts = empty_skill.execute("Any intelligence alerts?")
+    assert "not the same as no anomaly" in alerts.output
+
+    snapshot = empty_wf.generate_briefing()
+    assert snapshot.has_any_reading is False
+    assert snapshot.fear_and_greed_index is None
+    assert snapshot.btc_probability_pct is None
+    assert "I have nothing to brief you on" in snapshot.spoken_briefing
+
+
+def test_a_prediction_request_for_an_unrecorded_asset_is_not_another_assets_forecast():
+    """`get_prediction("SOLUSDT")` used to fall back to the BTC prediction."""
+    engine = IntelligenceEngine(demo_data=True)
+    engine._predictions.pop("SOLUSDT", None)
+
+    assert engine.get_prediction("SOLUSDT") is None
+    assert engine.get_prediction("BTCUSDT") is not None
 
 
 def test_intelligence_briefing_registered_in_registry():
@@ -132,3 +180,34 @@ def test_intelligence_briefing_registered_in_registry():
     skill = reg.get("intelligence_briefing")
     assert skill is not None
     assert "network_access" in skill.required_capabilities
+
+
+def test_the_vigilance_operator_does_not_invent_a_position_to_worry_about():
+    """It used to assume a long ETH position and warn about risk in it."""
+    memory = InMemoryConversationMemory()
+    alert_mgr = ProductionAlertManager(memory=memory)
+    engine = IntelligenceEngine(demo_data=True)
+    operator = IntelligenceVigilanceOperator(
+        intelligence_engine=engine, alert_manager=alert_mgr, memory=memory
+    )
+
+    types = [e["type"] for e in operator.tick()]
+
+    assert "ADVERSE_PREDICTION_ALERT" not in types, (
+        "no position was reported, so there is no held asset to warn about"
+    )
+    # The parts that do have data still fire: sentiment is 68 and the whale flow
+    # is -6,500 BTC in the sample set this test asked for.
+    assert "SENTIMENT_ELEVATION_ALERT" in types
+    assert "WHALE_FLOW_ALERT" in types
+
+
+def test_the_vigilance_operator_reports_nothing_when_there_is_no_data():
+    memory = InMemoryConversationMemory()
+    alert_mgr = ProductionAlertManager(memory=memory)
+    engine = IntelligenceEngine(demo_data=False)
+    operator = IntelligenceVigilanceOperator(
+        intelligence_engine=engine, alert_manager=alert_mgr, memory=memory
+    )
+
+    assert operator.tick() == [], "an empty engine must not produce alarms"

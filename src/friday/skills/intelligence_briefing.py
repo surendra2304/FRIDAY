@@ -66,31 +66,60 @@ class IntelligenceBriefingSkill(BaseSkill):
         step_results: list[dict[str, Any]] = []
 
         try:
+            from friday.core.readings import UNKNOWN_LABEL, read_number, read_text
+
             # 1. "What does the model predict for BTC / ETH / SOL?"
             match_pred = re.search(r"predict\s+for\s+([a-z0-9]+)", clean)
             if match_pred:
                 symbol = match_pred.group(1).upper()
                 pred = self.intel_engine.get_prediction(symbol)
-                if pred:
-                    sign = "+" if pred.expected_move_24h_pct >= 0 else ""
+                if pred is None:
                     spoken = (
-                        f"Prediction for {pred.symbol}: The model is {pred.direction_probability_pct:.0f}% {pred.direction} "
-                        f"with an expected 24-hour move of {sign}{pred.expected_move_24h_pct:.1f}% (confidence: {pred.model_confidence*100:.0f}%). "
-                        f"Key drivers: {', '.join(pred.key_drivers[:2])}. "
-                        f"Key support sits at ${pred.support_level:,.0f} with resistance at ${pred.resistance_level:,.0f}."
+                        f"I have no recorded prediction for {symbol}. I will not read you one that "
+                        f"does not exist."
                     )
-                    step_results.append({"action": "asset_prediction", "symbol": pred.symbol})
+                    step_results.append({"action": "asset_prediction", "symbol": symbol, "found": False})
                     return SkillExecutionResult(skill_name=self.name, success=True, output=spoken, step_results=step_results)
+
+                entry = pred.__dict__ if hasattr(pred, "__dict__") else {}
+                probability = read_number(entry, "direction_probability_pct", source=pred.symbol)
+                move = read_number(entry, "expected_move_24h_pct", source=pred.symbol)
+                confidence = read_number(entry, "model_confidence", source=pred.symbol)
+                support = read_number(entry, "support_level", source=pred.symbol)
+                resistance = read_number(entry, "resistance_level", source=pred.symbol)
+                spoken = (
+                    f"Prediction for {pred.symbol}: The model is {probability.number(0, '%')} {pred.direction} "
+                    f"with an expected 24-hour move of {move.number(1, '%')} "
+                    f"(confidence: {confidence.percent(0)}). "
+                    f"Key drivers: {', '.join(pred.key_drivers[:2]) or 'none recorded'}. "
+                    f"Key support sits at ${support.number(0)} with resistance at ${resistance.number(0)}."
+                )
+                step_results.append({"action": "asset_prediction", "symbol": pred.symbol})
+                return SkillExecutionResult(skill_name=self.name, success=True, output=spoken, step_results=step_results)
 
             # 2. "How accurate have predictions been?"
             if any(k in clean for k in ["accurate have predictions been", "prediction accuracy", "model accuracy"]):
                 acc = self.intel_engine.get_accuracy_report()
+                if acc is None:
+                    # The fallback used to be AccuracyReport(78.5, 0.142, 120,
+                    # {"BTCUSDT": 82.5}, "WELL_CALIBRATED") - invented and then
+                    # spoken as a measurement.
+                    spoken = (
+                        "No accuracy history has been recorded, so I cannot tell you how accurate the "
+                        "predictions have been. I will not quote a number I do not have."
+                    )
+                    step_results.append({"action": "accuracy_report", "recorded": False})
+                    return SkillExecutionResult(skill_name=self.name, success=True, output=spoken, step_results=step_results)
+
+                entry = acc.__dict__ if hasattr(acc, "__dict__") else {}
+                per_asset = acc.asset_accuracies or {}
+                breakdown = ", ".join(
+                    f"{symbol} at {value:.1f}%" for symbol, value in sorted(per_asset.items())
+                ) or "no per-asset breakdown recorded"
                 spoken = (
                     f"Prediction accuracy report: Over the last 30 days ({acc.total_predictions_evaluated} evaluated forecasts), "
                     f"the model achieved {acc.rolling_30d_directional_accuracy_pct:.1f}% directional accuracy with a Brier calibration score of {acc.brier_score:.3f}. "
-                    f"Asset breakdown: BTC at {acc.asset_accuracies.get('BTCUSDT', 82.5):.1f}%, "
-                    f"SOL at {acc.asset_accuracies.get('SOLUSDT', 79.0):.1f}%, and "
-                    f"ETH at {acc.asset_accuracies.get('ETHUSDT', 74.0):.1f}%. "
+                    f"Asset breakdown: {breakdown}. "
                     f"Overall calibration status is {acc.calibration_status}."
                 )
                 step_results.append({"action": "accuracy_report", "accuracy_pct": acc.rolling_30d_directional_accuracy_pct})
@@ -105,24 +134,61 @@ class IntelligenceBriefingSkill(BaseSkill):
                         lines.append(f"• **[{a.severity}] {a.alert_type}** ({a.symbol}): {a.message}")
                     spoken = "\n".join(lines)
                 else:
-                    spoken = "There are currently no anomalous intelligence or whale alerts active."
+                    # "No anomalous alerts active" was a claim about the market.
+                    # Nothing here observes the market; it only knows its own list.
+                    spoken = (
+                        "No intelligence alert has been recorded. That is not the same as no anomaly "
+                        "having occurred - nothing here is watching the market."
+                    )
 
                 step_results.append({"action": "intelligence_alerts", "count": len(alerts)})
                 return SkillExecutionResult(skill_name=self.name, success=True, output=spoken, step_results=step_results)
 
-            # 4. Default: "Market intelligence report"
+            # 4. Default: "Market intelligence report". Every number in the old
+            # sentence had a plausible default (BULLISH, 68, -6,500 BTC, 76%/65%/
+            # 58%, 78.5%), so an engine with nothing to report recited a complete
+            # market view.
             report = self.intel_engine.get_market_intelligence_report()
             sent = report.get("sentiment", {})
             onchain = report.get("on_chain", {})
             acc = report.get("accuracy", {})
 
-            spoken = (
-                f"Market intelligence summary: News sentiment is currently {sent.get('news_sentiment_label', 'BULLISH')} "
-                f"with a Fear & Greed index of {sent.get('fear_and_greed_index', 68)} (Greed). "
-                f"On-chain signals indicate strong accumulation with {abs(onchain.get('net_exchange_flow_btc', -6500)):,.0f} BTC in net exchange outflows. "
-                f"The model forecasts 76% bullish probability on BTC and 65% bullish on SOL, while ETH faces mild headwinds (58% bearish). "
-                f"Rolling 30-day directional prediction accuracy stands at {acc.get('rolling_30d_directional_accuracy_pct', 78.5):.1f}%."
-            )
+            if not (sent or onchain or acc):
+                spoken = (
+                    "The intelligence engine has no market data on record: no sentiment, no on-chain "
+                    "telemetry and no accuracy history. I have no market intelligence summary to give."
+                )
+            else:
+                parts = []
+                if sent:
+                    parts.append(
+                        f"News sentiment is {read_text(sent, 'news_sentiment_label')} with a Fear & Greed "
+                        f"index of {read_number(sent, 'fear_and_greed_index', source='sentiment telemetry').number(0)}."
+                    )
+                if onchain:
+                    parts.append(
+                        f"On-chain telemetry reports a net exchange flow of "
+                        f"{read_number(onchain, 'net_exchange_flow_btc', source='on-chain telemetry').number(0, ' BTC')} "
+                        f"({read_text(onchain, 'exchange_reserve_trend')})."
+                    )
+                if acc:
+                    parts.append(
+                        f"Rolling 30-day directional prediction accuracy stands at "
+                        f"{read_number(acc, 'rolling_30d_directional_accuracy_pct', source='accuracy report').percent()}."
+                    )
+                    forecasts = []
+                    for symbol in ("BTCUSDT", "SOLUSDT", "ETHUSDT"):
+                        pred = self.intel_engine.get_prediction(symbol)
+                        if pred is not None:
+                            entry = pred.__dict__
+                            forecasts.append(
+                                f"{symbol} {read_number(entry, 'direction_probability_pct', source=symbol).number(0, '%')} "
+                                f"{pred.direction}"
+                            )
+                    if forecasts:
+                        parts.append("Forecasts: " + "; ".join(forecasts) + ".")
+                spoken = "Market intelligence summary: " + " ".join(parts)
+
             step_results.append({"action": "market_intelligence_report"})
             return SkillExecutionResult(skill_name=self.name, success=True, output=spoken, step_results=step_results)
 

@@ -435,6 +435,22 @@ def verify_receipt(envelope: TaskEnvelope, result: TaskResult) -> ReceiptVerdict
     The rules are strict on purpose. A peer that it is convenient to believe is
     the most expensive kind of peer to have.
     """
+    if result.status is not TaskStatus.SUCCESS:
+        status_states = {
+            TaskStatus.PENDING: OutcomeState.PENDING,
+            TaskStatus.RUNNING: OutcomeState.PENDING,
+            TaskStatus.ERROR: OutcomeState.ERROR,
+            TaskStatus.BLOCKED: OutcomeState.BLOCKED,
+            TaskStatus.CANCELLED: OutcomeState.ERROR,
+            TaskStatus.DEGRADED: OutcomeState.DEGRADED,
+        }
+        state = status_states.get(result.status, OutcomeState.UNVERIFIED)
+        return ReceiptVerdict(
+            ok=False,
+            state=state,
+            reason=f"the peer task status is {result.status.value}; it is not completed",
+        )
+
     receipt = result.receipt
     if receipt is None:
         return ReceiptVerdict(
@@ -443,11 +459,18 @@ def verify_receipt(envelope: TaskEnvelope, result: TaskResult) -> ReceiptVerdict
             reason="the peer returned no receipt, so completion cannot be verified",
         )
 
-    if receipt.authorization_decision == "REJECTED":
+    decision = receipt.authorization_decision.strip().upper()
+    if decision == "REJECTED":
         return ReceiptVerdict(
             ok=False,
             state=OutcomeState.REFUSED,
             reason=f"the peer rejected the action: {receipt.failure_reason or 'no reason given'}",
+        )
+    if decision not in {"AUTHORIZED", "PRE_APPROVED"}:
+        return ReceiptVerdict(
+            ok=False,
+            state=OutcomeState.UNVERIFIED,
+            reason=f"the receipt has an unrecognized authorization decision {decision!r}",
         )
 
     if receipt.requested_action != (envelope.action or envelope.objective):
@@ -842,6 +865,8 @@ class Mesh:
                 contract_used=contract.task_path,
             )
         if status == 202:
+            body = response.body if isinstance(response.body, dict) else {}
+            remote_task_id = str(body.get("task_id") or envelope.task_id)
             return PeerOutcome(
                 peer=peer,
                 state=OutcomeState.PENDING,
@@ -849,8 +874,10 @@ class Mesh:
                 http_status=status,
                 latency_ms=latency,
                 attempts=attempt,
-                task_id=envelope.task_id,
+                task_id=remote_task_id,
                 contract_used=contract.task_path,
+                evidence={"body": _short(body or response.text)},
+                result=body,
             )
         if status >= 500:
             return PeerOutcome(
@@ -1248,7 +1275,10 @@ def _result_from_body(envelope: TaskEnvelope, body: dict[str, Any], latency: int
     elif declared in {"degraded", "partial"}:
         status = TaskStatus.DEGRADED
     else:
-        status = TaskStatus.SUCCESS if receipt is not None else TaskStatus.DEGRADED
+        # A status we do not recognize is not itself a failure or proof; the
+        # receipt verifier below will classify a missing/invalid receipt as
+        # UNVERIFIED rather than mislabelling it as peer degradation.
+        status = TaskStatus.SUCCESS
 
     return TaskResult(
         task_id=str(body.get("task_id") or envelope.task_id),

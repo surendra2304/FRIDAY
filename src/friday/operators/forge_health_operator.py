@@ -111,10 +111,14 @@ class ForgeHealthOperator(BaseOperator):
 
         return events
 
-    def get_uptime_ratio(self) -> float:
-        """Returns uptime percentage."""
+    def get_uptime_ratio(self) -> float | None:
+        """Successful-check share, or None when no check has been run.
+
+        100.0 used to be returned for zero checks, so a monitor that had never
+        polled reported perfect uptime.
+        """
         if self._uptime_checks_total == 0:
-            return 100.0
+            return None
         return (self._uptime_checks_successful / self._uptime_checks_total) * 100.0
 
     def _emit_alert(self, title: str, message: str, severity: AlertSeverity) -> None:

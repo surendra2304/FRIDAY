@@ -145,14 +145,17 @@ class TradingBotOperator(BaseSkill):
         today_pnl = float(raw.get("today_pnl", unrealized + realized))
         profit_factor = float(raw.get("profit_factor", 0.0))
         win_rate = float(raw.get("win_rate", raw.get("win_rate_pct", 0.0)))
-        mode = str(raw.get("trading_mode", raw.get("mode", "TESTNET"))).upper()
+        mode = str(raw.get("trading_mode") or raw.get("mode") or "UNREPORTED").upper()
         
         positions = raw.get("positions", raw.get("active_positions", []))
         if isinstance(positions, dict):
             positions = list(positions.values())
 
+        # ``raw.get("status", "ACTIVE")`` labelled a bridge that reported no
+        # status as an active one; ``mode`` defaulted to TESTNET in the line above
+        # for the same reason. An unreported field is reported as unreported.
         return BotStatus(
-            status=str(raw.get("status", "ACTIVE")).upper(),
+            status=str(raw.get("status") or "UNREPORTED").upper(),
             mode=mode,
             equity=equity,
             cash=cash,
@@ -220,7 +223,11 @@ class TradingBotOperator(BaseSkill):
 
             state_data = self.get_advisory_state()
             active_overlay = state_data.get("active_overlay", state_data.get("overlay", {}))
-            ai_health = state_data.get("ai_universe_health", state_data.get("health", "HEALTHY")).upper()
+            # An advisory state that said nothing used to be reported as HEALTHY
+            # in this sentence.
+            ai_health = str(
+                state_data.get("ai_universe_health") or state_data.get("health") or "UNREPORTED"
+            ).upper()
 
             total_count = len(advisories)
             applied_count = sum(1 for a in advisories if str(a.get("verdict", "")).upper() == "APPLY")

@@ -384,14 +384,16 @@ class PerceptionPipeline:
                         element_type=el_type,
                         label=raw_el.get("label", ""),
                         bounding_box=bbox,
-                        confidence=float(raw_el.get("confidence", 0.9)),
+                        # 0.9 was invented for an element whose confidence the
+                        # model never sent; 0.0 records that it was not reported.
+                        confidence=float(raw_el.get("confidence", 0.0)),
                         is_interactive=raw_el.get("is_interactive", True),
                     )
                 )
             except Exception:
                 continue
 
-        overall_conf = float(parsed_data.get("confidence", 0.85))
+        overall_conf = float(parsed_data.get("confidence", 0.0))
         if vision_resp.raw_response and "confidence" in vision_resp.raw_response:
             overall_conf = float(vision_resp.raw_response["confidence"])
 

@@ -30,31 +30,23 @@ class FileReaderTool(BaseTool):
     }
 
     def execute(self, path: str, max_bytes: int = 102400, **kwargs: Any) -> ToolResult:
-        # Define sandbox workspace root (current working directory)
-        workspace_root = Path.cwd().resolve()
-
         # Guard max bytes
         max_bytes = min(max(1, max_bytes), 524288)
 
-        # Defensively reject absolute paths or drive letters directly
-        path_obj = Path(path)
-        windows_path = PureWindowsPath(path)
-        if path_obj.is_absolute() or path_obj.anchor or windows_path.drive or windows_path.root:
-            return ToolResult(
-                name=self.name,
-                content="Security Error: File path is outside the allowed workspace sandbox.",
-                is_error=True,
-                safety_level=self.safety_level,
-            )
+        # One policy for every file tool. Absolute paths are accepted when they
+        # land inside an allowed root - refusing them outright made reading a
+        # file the write tools had just created depend on which spelling the
+        # model happened to use.
+        from friday.security.workspace_policy import PathPolicyError, shared_policy
 
-        secure_workspace = SecureWorkspace(workspace_root)
         try:
-            target_path = secure_workspace.resolve(path)
-        except FileAccessDenied as exc:
+            target_path = shared_policy().resolve_for_read(path, must_exist=False, label="file path")
+        except PathPolicyError as exc:
             return ToolResult(
                 name=self.name,
                 content=f"Security Error: {exc}",
                 is_error=True,
+                refused=True,
                 safety_level=self.safety_level,
             )
         except Exception as exc:
@@ -71,6 +63,7 @@ class FileReaderTool(BaseTool):
                     name=self.name,
                     content=f"Error: Path '{path}' is not a file or does not exist.",
                     is_error=True,
+                    refused=True,
                     safety_level=self.safety_level,
                 )
 

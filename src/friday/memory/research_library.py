@@ -26,7 +26,8 @@ class ArchivedFinding:
     """Archived factual claim stored in Research Library."""
     finding_id: str
     claim: str
-    confidence: float
+    #: None when the finding arrived without a confidence figure.
+    confidence: float | None
     citations: list[str] = field(default_factory=list)
     evidence_spans: list[str] = field(default_factory=list)
     is_disputed: bool = False
@@ -108,7 +109,7 @@ class ResearchLibrary:
                 ArchivedFinding(
                     finding_id=f.get("finding_id", f"f-{idx}"),
                     claim=f.get("claim", ""),
-                    confidence=float(f.get("confidence", 0.8)),
+                    confidence=float(f["confidence"]) if isinstance(f.get("confidence"), (int, float)) and not isinstance(f.get("confidence"), bool) else None,
                     citations=f.get("citations", []),
                     evidence_spans=f.get("evidence_spans", []),
                     is_disputed=bool(f.get("is_disputed", False)),

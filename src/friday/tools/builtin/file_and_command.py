@@ -58,12 +58,21 @@ class FileOperationsTool(BaseTool):
                 is_error=True, safety_level=self.safety_level,
             )
 
-        p = Path(path).expanduser()
+        from friday.security.workspace_policy import PathPolicyError, shared_policy
+
+        policy = shared_policy()
+        try:
+            policy.resolve(path, for_write=False, must_exist=False, label="path")
+        except PathPolicyError as exc:
+            return ToolResult(name=self.name, content=f"Security Error: {exc}", is_error=True,
+                              refused=True, safety_level=self.safety_level)
+
         try:
             if act == "read":
+                p = policy.resolve_for_read(path)
                 if not p.is_file():
                     return ToolResult(name=self.name, content=f"File not found: {p}", is_error=True,
-                                      safety_level=self.safety_level)
+                                      refused=True, safety_level=self.safety_level)
                 text = p.read_text(encoding="utf-8", errors="replace")
                 trimmed = text[:_MAX_READ_CHARS] + ("... [truncated]" if len(text) > _MAX_READ_CHARS else "")
                 return ToolResult(name=self.name, content=trimmed, is_error=False,
@@ -73,6 +82,7 @@ class FileOperationsTool(BaseTool):
                 if not content:
                     return ToolResult(name=self.name, content=f"action='{act}' requires content.",
                                       is_error=True, safety_level=self.safety_level)
+                p = policy.resolve_for_write(path)
                 p.parent.mkdir(parents=True, exist_ok=True)
                 if act == "write":
                     p.write_text(content, encoding="utf-8")
@@ -83,9 +93,10 @@ class FileOperationsTool(BaseTool):
                                   is_error=False, safety_level=self.safety_level)
 
             if act == "list":
+                p = policy.resolve_for_read(path)
                 if not p.is_dir():
                     return ToolResult(name=self.name, content=f"Directory not found: {p}", is_error=True,
-                                      safety_level=self.safety_level)
+                                      refused=True, safety_level=self.safety_level)
                 entries: list[str] = [f"{e.name}{'' if e.is_dir() else ''}" for e in p.iterdir()]
                 listing = "\n".join(sorted(entries)[:200]) or "(empty directory)"
                 return ToolResult(name=self.name, content=listing, is_error=False,
@@ -95,10 +106,14 @@ class FileOperationsTool(BaseTool):
                 if not destination:
                     return ToolResult(name=self.name, content=f"action='{act}' requires destination.",
                                       is_error=True, safety_level=self.safety_level)
+                p = policy.resolve_for_read(path)
                 if not p.exists():
                     return ToolResult(name=self.name, content=f"Not found: {p}", is_error=True,
                                       safety_level=self.safety_level)
-                dest = Path(destination).expanduser()
+                # The destination is a write, so the source and the target are
+                # checked against the same policy. Moving a file *into* a
+                # protected location is the same violation as writing it there.
+                dest = policy.resolve_for_write(destination, label="destination")
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 if act == "copy":
                     if p.is_dir():
@@ -113,12 +128,16 @@ class FileOperationsTool(BaseTool):
                                       is_error=False, safety_level=self.safety_level)
 
             if act == "mkdir":
+                p = policy.resolve_for_write(path)
                 p.mkdir(parents=True, exist_ok=True)
                 return ToolResult(name=self.name, content=f"Created directory: {p}",
                                   is_error=False, safety_level=self.safety_level)
 
             return ToolResult(name=self.name, content=f"Unknown action '{act}'.", is_error=True,
                               safety_level=self.safety_level)
+        except PathPolicyError as e:
+            return ToolResult(name=self.name, content=f"Security Error: {e}",
+                              is_error=True, refused=True, safety_level=self.safety_level)
         except Exception as e:
             return ToolResult(name=self.name, content=f"File operation failed: {e}",
                               is_error=True, safety_level=self.safety_level)

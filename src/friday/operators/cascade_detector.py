@@ -81,7 +81,11 @@ class CascadeFailureDetector(BaseOperator):
             # 2. Check Recovery of Previously Isolated Subsystems
             for sub, record in list(self.isolated_subsystems.items()):
                 data = subsystem_telemetry.get(sub, {})
-                if data.get("status") == "HEALTHY" and data.get("latency_ms", 9999) < 1000:
+                # A subsystem that reported no latency is not evidence of a
+                # recovery, so the check requires a reported value to pass.
+                reported_latency = data.get("latency_ms")
+                latency_ok = isinstance(reported_latency, (int, float)) and reported_latency < 1000
+                if data.get("status") == "HEALTHY" and latency_ok:
                     rec_event = self.reconnect_subsystem(sub, data_freshness_sec=data.get("data_age_sec", 5.0))
                     events.append(rec_event)
 

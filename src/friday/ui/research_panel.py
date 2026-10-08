@@ -61,10 +61,17 @@ class ResearchDashboardPanel:
         lines.append(f"## 💡 2. Recent Verified Findings Feed ({len(findings)})")
         if findings:
             for f in findings[:4]:
-                conf_pct = f.get("confidence_pct", 90.0)
-                citations_cnt = f.get("citations_count", 2)
+                # 90.0% confidence and 2 citations used to be printed for a
+                # finding that carried neither.
+                conf_value = f.get("confidence_pct")
+                if not isinstance(conf_value, (int, float)) or isinstance(conf_value, bool):
+                    confidence_text = "not reported"
+                else:
+                    confidence_text = f"{float(conf_value):.0f}%"
+                citations_cnt = f.get("citations_count")
+                citations_text = str(citations_cnt) if isinstance(citations_cnt, int) else "not reported"
                 claim = f.get("claim", "")
-                badge = f"`[CONFIDENCE: {conf_pct:.0f}%]` `[CITATIONS: {citations_cnt}]`"
+                badge = f"`[CONFIDENCE: {confidence_text}]` `[CITATIONS: {citations_text}]`"
                 lines.append(f"- {badge}")
                 lines.append(f"  *\"{claim}\"*")
                 if f.get("evidence_spans"):

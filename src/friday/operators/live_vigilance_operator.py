@@ -100,8 +100,17 @@ class LiveVigilanceOperator(BaseOperator):
 
         prox = state.risk_proximity
 
+        # A vigilance operator that cannot see a risk figure must not compare it:
+        # `prox.daily_loss_pct_used >= 100.0` raised "TypeError: '>=' not
+        # supported between instances of 'NoneType' and 'float'" the moment the
+        # proximity figure became honestly absent. The comparisons are now
+        # guarded, and an absent reading produces no alarm - there is nothing to
+        # alarm about, and it must not read as NORMAL either.
+        used = prox.daily_loss_pct_used if prox.daily_loss_pct_used is not None else -1.0
+        dd_used = prox.drawdown_pct_used if prox.drawdown_pct_used is not None else -1.0
+
         # 1. CRITICAL: Daily Loss Limit Reached (100% breach)
-        if prox.daily_loss_pct_used >= 100.0:
+        if used >= 100.0:
             ev = {
                 "type": "CRITICAL_DAILY_LOSS_BREACH",
                 "message": f"Daily loss limit REACHED! Total loss today: ${prox.current_daily_loss_usdt:,.2f} USDT >= ${prox.daily_loss_limit_usdt:,.2f} limit.",
@@ -111,7 +120,7 @@ class LiveVigilanceOperator(BaseOperator):
             self._emit_alert("CRITICAL DAILY LOSS LIMIT BREACHED", ev["message"], AlertSeverity.CRITICAL, 2)
 
         # 2. CRITICAL: Drawdown Approaching Threshold (>80% of 5.0% limit)
-        elif prox.drawdown_pct_used >= 80.0:
+        elif dd_used >= 80.0:
             ev = {
                 "type": "CRITICAL_DRAWDOWN_APPROACHING",
                 "message": f"Live drawdown critical: currently at {prox.current_drawdown_pct:.2f}% ({prox.drawdown_pct_used:.0f}% of {prox.max_drawdown_limit_pct:.1f}% max limit)!",
@@ -123,7 +132,8 @@ class LiveVigilanceOperator(BaseOperator):
         # 3. WARNING: Single Position Loss > 3% of Capital
         for pos in state.positions:
             loss_usdt = abs(min(0.0, pos.unrealized_pnl))
-            pos_loss_pct_of_capital = (loss_usdt / state.total_equity * 100.0) if state.total_equity > 0 else 0.0
+            equity = state.total_equity if isinstance(state.total_equity, (int, float)) else 0.0
+            pos_loss_pct_of_capital = (loss_usdt / equity * 100.0) if equity > 0 else 0.0
             if pos_loss_pct_of_capital >= 3.0:
                 ev = {
                     "type": "WARNING_SINGLE_POSITION_LOSS",
@@ -135,7 +145,8 @@ class LiveVigilanceOperator(BaseOperator):
                 self._emit_alert(f"POSITION LOSS WARNING: {pos.symbol}", ev["message"], AlertSeverity.WARNING, 4)
 
         # 4. WARNING: Advisory Rejection Streak (>3 in a row)
-        if state.advisory_rejection_streak >= 3 and state.advisory_rejection_streak != self._last_alerted_streak:
+        streak = state.advisory_rejection_streak if isinstance(state.advisory_rejection_streak, int) else -1
+        if streak >= 3 and streak != self._last_alerted_streak:
             self._last_alerted_streak = state.advisory_rejection_streak
             ev = {
                 "type": "WARNING_ADVISORY_REJECTION_STREAK",

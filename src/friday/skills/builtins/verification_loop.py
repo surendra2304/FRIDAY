@@ -3,6 +3,7 @@
 import subprocess
 from typing import Any
 
+from friday.core.effects import pytest_command
 from friday.core.logging import get_logger
 from friday.skills.base_skill import BaseSkill, SkillExecutionResult
 
@@ -52,7 +53,7 @@ class VerificationLoopSkill(BaseSkill):
         else:
             try:
                 proc = subprocess.run(
-                    ["pytest", "-q", "--tb=short"],
+                    pytest_command("-q", "--tb=short"),
                     capture_output=True,
                     text=True,
                     timeout=60,

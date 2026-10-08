@@ -78,16 +78,28 @@ class ReadGmailInboxTool(BaseTool):
         app_password = getattr(settings, "email_app_password", None) or os.getenv("FRIDAY_EMAIL_APP_PASSWORD")
 
         if not user_email or not app_password:
-            # Fallback: Offer to open Gmail web interface
-            webbrowser.open("https://mail.google.com")
+            # Fallback: offer the Gmail web interface.
+            #
+            # This used to return is_error=False: "read my inbox" answered with a
+            # *successful* result that contained no messages, so the model would
+            # summarise an empty reading as if it had seen the mail. Nothing was
+            # read, so the tool result says so - and the browser it opens is
+            # checked like every other browser open, because a headless machine
+            # used to be told one had opened.
+            from friday.core.effects import open_url_verified
+
+            opened = open_url_verified("https://mail.google.com")
+            tail = opened.detail if opened.ok else f"{opened.detail} Open Gmail yourself to read it."
             return ToolResult(
                 name=self.name,
                 content=(
-                    "Gmail credentials (FRIDAY_EMAIL_ADDRESS and FRIDAY_EMAIL_APP_PASSWORD) not configured in .env. "
-                    "Opened Gmail in your web browser instead."
+                    "No mail was read: FRIDAY_EMAIL_ADDRESS and FRIDAY_EMAIL_APP_PASSWORD are not "
+                    f"configured, so FRIDAY has no access to the inbox. {tail}"
                 ),
-                is_error=False,
+                is_error=True,
+                refused=True,
                 safety_level=self.safety_level,
+                metadata={"read": False, **opened.evidence},
             )
 
         limit = min(max(1, max_emails), 20)

@@ -16,6 +16,11 @@ from friday.devices.windows_friday import windows_friday
 from friday.voice.native_tts import native_tts, clean_text_for_speech
 
 
+# Desktop directives require an authorizer now; these tests cover the
+# directive mechanics, so they opt in to an approving one.
+pytestmark = pytest.mark.usefixtures("approve_directives")
+
+
 class TestWindowsFridayController:
     """Test suite executing real Windows OS controller functions for FRIDAY."""
 
@@ -125,7 +130,7 @@ class TestWindowsFridayController:
         assert windows_friday.can_handle("save contact ramesh 9876543210") is True
         assert windows_friday.can_handle("ramesh is 9876543210") is True
 
-    def test_contact_management_and_whatsapp_dispatch(self) -> None:
+    def test_contact_management_and_whatsapp_dispatch(self, approve_directives) -> None:
         """Verify contact saving, phone normalization, listing, and WhatsApp dispatch."""
         from unittest import mock
 
@@ -142,8 +147,11 @@ class TestWindowsFridayController:
         assert "+919876543210" in reply
 
         # 3. Direct WhatsApp dispatch using saved contact
-        with mock.patch.object(windows_friday, "open_url", return_value=True) as mock_url:
-            ok, reply, meta = windows_friday.handle_directive("send hi to ramesh in whatsapp")
+        with mock.patch.object(windows_friday, "open_url", return_value=True) as mock_url, mock.patch("threading.Thread"):
+            ok, reply, meta = windows_friday.handle_directive(
+                "send hi to ramesh in whatsapp",
+                authorizer=approve_directives,
+            )
             assert ok is True
             assert meta["action"] == "open_whatsapp"
             mock_url.assert_called_once()
@@ -152,8 +160,11 @@ class TestWindowsFridayController:
             assert "text=hi" in url
 
         # 4. WhatsApp dispatch to 10-digit number directly
-        with mock.patch.object(windows_friday, "open_url", return_value=True) as mock_url:
-            ok, reply, meta = windows_friday.handle_directive("send hello to 9876543210 on whatsapp")
+        with mock.patch.object(windows_friday, "open_url", return_value=True) as mock_url, mock.patch("threading.Thread"):
+            ok, reply, meta = windows_friday.handle_directive(
+                "send hello to 9876543210 on whatsapp",
+                authorizer=approve_directives,
+            )
             assert ok is True
             url = mock_url.call_args[0][0]
             assert "phone=919876543210" in url
@@ -163,7 +174,7 @@ class TestWindowsFridayController:
         assert ok is True
         assert meta["action"] == "delete_contact"
 
-    def test_phone_number_whatsapp_directives(self) -> None:
+    def test_phone_number_whatsapp_directives(self, approve_directives) -> None:
         """Verify direct phone number commands (send <msg> to <phone>, text <phone> <msg>) route to WhatsApp."""
         from unittest import mock
 
@@ -171,8 +182,11 @@ class TestWindowsFridayController:
         assert windows_friday.is_whatsapp_directive("send hi to 9014603029") is True
         assert windows_friday.can_handle("send hi to 9014603029") is True
 
-        with mock.patch.object(windows_friday, "open_url", return_value=True) as mock_url:
-            ok, reply, meta = windows_friday.handle_directive("send hi to 9014603029")
+        with mock.patch.object(windows_friday, "open_url", return_value=True) as mock_url, mock.patch("threading.Thread"):
+            ok, reply, meta = windows_friday.handle_directive(
+                "send hi to 9014603029",
+                authorizer=approve_directives,
+            )
             assert ok is True
             assert meta["action"] == "open_whatsapp"
             assert meta["message"] == "hi"
@@ -182,8 +196,11 @@ class TestWindowsFridayController:
             assert "text=hi" in url
 
         # 2. 'send hello to +919014603029'
-        with mock.patch.object(windows_friday, "open_url", return_value=True) as mock_url:
-            ok, reply, meta = windows_friday.handle_directive("send hello to +919014603029")
+        with mock.patch.object(windows_friday, "open_url", return_value=True) as mock_url, mock.patch("threading.Thread"):
+            ok, reply, meta = windows_friday.handle_directive(
+                "send hello to +919014603029",
+                authorizer=approve_directives,
+            )
             assert ok is True
             assert meta["action"] == "open_whatsapp"
             url = mock_url.call_args[0][0]
@@ -191,17 +208,254 @@ class TestWindowsFridayController:
             assert "text=hello" in url
 
         # 3. 'text 9014603029 hi'
-        with mock.patch.object(windows_friday, "open_url", return_value=True) as mock_url:
-            ok, reply, meta = windows_friday.handle_directive("text 9014603029 hi")
+        with mock.patch.object(windows_friday, "open_url", return_value=True) as mock_url, mock.patch("threading.Thread"):
+            ok, reply, meta = windows_friday.handle_directive(
+                "text 9014603029 hi",
+                authorizer=approve_directives,
+            )
             assert ok is True
             assert meta["action"] == "open_whatsapp"
             url = mock_url.call_args[0][0]
             assert "phone=919014603029" in url
             assert "text=hi" in url
 
-    def test_gmail_directives(self) -> None:
-        """Verify Gmail directives are recognized and routed with correct parameters."""
+    def test_open_gmail_opens_inbox_without_a_recipient(self, monkeypatch) -> None:
+        """Opening the inbox is not a send request and must not demand a recipient."""
+        opened_urls = []
+        monkeypatch.setattr(windows_friday, "open_url", lambda url: opened_urls.append(url) or True)
+
+        handled, reply, meta = windows_friday.handle_directive("open gmail")
+
+        assert handled is True
+        assert opened_urls == ["https://mail.google.com/"]
+        assert meta["action"] == "open_gmail"
+        assert meta["success"] is True
+        assert "recipient" not in meta
+        assert "Gmail in the default browser" in reply
+
+    def test_compose_email_never_sends_through_smtp(self, approve_directives, monkeypatch) -> None:
+        """A draft request must not be turned into an automatic SMTP send."""
+        from types import SimpleNamespace
         from unittest import mock
+
+        from friday.tools.builtin import email_tools
+
+        class EmailCredentials:
+            email_address = "fixture@example.com"
+            email_app_password = "fixture-password"
+
+        monkeypatch.setattr("friday.core.config.get_settings", lambda: EmailCredentials())
+        send_attempts = []
+        opened_urls = []
+
+        def recorded_send(**kwargs):
+            send_attempts.append(kwargs)
+            return SimpleNamespace(sent=True, refused=False, detail="local SMTP accepted")
+
+        monkeypatch.setattr(email_tools, "_send_smtp_email", recorded_send)
+        monkeypatch.setattr(
+            windows_friday,
+            "open_url",
+            lambda url: opened_urls.append(url) or True,
+        )
+
+        handled, reply, metadata = windows_friday.handle_directive(
+            "compose email to test@example.com about Meeting",
+            authorizer=approve_directives,
+        )
+
+        assert handled is True
+        assert send_attempts == []
+        assert len(opened_urls) == 1
+        assert "to=test%40example.com" in opened_urls[0]
+        assert "su=Meeting" in opened_urls[0]
+        assert metadata["action"] == "compose_email"
+        assert metadata["success"] is True
+        assert metadata["draft_opened"] is True
+        assert metadata["sent"] is False
+        assert "not sent" in reply.lower()
+
+    def test_compose_email_named_contact_resolves_the_actual_name(self, approve_directives, monkeypatch) -> None:
+        """The word 'to' is a preposition here, not the contact name."""
+        lookups = []
+        opened_urls = []
+
+        def find_contact(name):
+            lookups.append(name)
+            return {"alice": "alice@example.com"}.get(name.lower())
+
+        monkeypatch.setattr(windows_friday, "_lookup_contact_email", find_contact)
+        monkeypatch.setattr(
+            windows_friday,
+            "open_url",
+            lambda url: opened_urls.append(url) or True,
+        )
+
+        handled, _reply, metadata = windows_friday.handle_directive(
+            "compose email to Alice about Meeting",
+            authorizer=approve_directives,
+        )
+
+        assert handled is True
+        assert lookups == ["Alice"]
+        assert metadata["recipient_name"] == "Alice"
+        assert metadata["to"] == "alice@example.com"
+        assert "to=alice%40example.com" in opened_urls[0]
+
+    def test_explicit_send_to_named_contact_still_resolves_after_draft_split(
+        self, approve_directives, monkeypatch
+    ) -> None:
+        from types import SimpleNamespace
+
+        lookups = []
+        sends = []
+        monkeypatch.setattr(
+            windows_friday,
+            "_lookup_contact_email",
+            lambda name: lookups.append(name) or "alice@example.com",
+        )
+        monkeypatch.setattr(
+            windows_friday,
+            "open_gmail",
+            lambda **kwargs: sends.append(kwargs)
+            or SimpleNamespace(
+                sent=False,
+                detail="offline send result is unconfirmed",
+                provider="offline_fixture",
+            ),
+        )
+
+        handled, _reply, metadata = windows_friday.handle_directive(
+            "send email to Alice about Meeting",
+            authorizer=approve_directives,
+        )
+
+        assert handled is True
+        assert lookups == ["Alice"]
+        assert sends == [{"to": "alice@example.com", "subject": "Meeting", "body": ""}]
+        assert metadata["action"] == "open_gmail"
+        assert metadata["direct_action"] == "send_email"
+        assert metadata["to"] == "alice@example.com"
+        assert metadata["success"] is False
+
+    def test_compose_email_unknown_contact_does_not_open_a_blank_draft(
+        self, approve_directives, monkeypatch
+    ) -> None:
+        """An unresolved named recipient must not silently disappear from a draft."""
+        lookups = []
+        opened_urls = []
+        monkeypatch.setattr(
+            windows_friday,
+            "_lookup_contact_email",
+            lambda name: lookups.append(name) or None,
+        )
+        monkeypatch.setattr(
+            windows_friday,
+            "open_url",
+            lambda url: opened_urls.append(url) or True,
+        )
+
+        handled, reply, metadata = windows_friday.handle_directive(
+            "compose email to Bob about Meeting",
+            authorizer=approve_directives,
+        )
+
+        assert handled is True
+        assert lookups == ["Bob"]
+        assert opened_urls == []
+        assert metadata["action"] == "compose_email"
+        assert metadata["success"] is False
+        assert metadata["draft_opened"] is False
+        assert metadata["sent"] is False
+        assert metadata["direct_action"] == "compose_email"
+        assert "do not have an email address for bob" in reply.lower()
+        assert "did not open the draft" in reply.lower()
+
+    def test_draft_subject_without_recipient_is_not_parsed_as_a_contact(
+        self, approve_directives, monkeypatch
+    ) -> None:
+        opened_urls = []
+        lookups = []
+        monkeypatch.setattr(
+            windows_friday,
+            "_lookup_contact_email",
+            lambda name: lookups.append(name) or None,
+        )
+        monkeypatch.setattr(
+            windows_friday,
+            "open_url",
+            lambda url: opened_urls.append(url) or True,
+        )
+
+        handled, _reply, metadata = windows_friday.handle_directive(
+            "draft email about Meeting",
+            authorizer=approve_directives,
+        )
+
+        assert handled is True
+        assert lookups == []
+        assert metadata["recipient_name"] is None
+        assert metadata["subject"] == "Meeting"
+        assert len(opened_urls) == 1
+        assert "su=Meeting" in opened_urls[0]
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "compose email",
+            "draft email",
+            "write an email",
+            "new email",
+            "please draft an email",
+        ],
+    )
+    def test_email_draft_only_phrasings_open_a_draft_without_sending(
+        self, approve_directives, monkeypatch, command
+    ) -> None:
+        """Each supported draft phrasing is user-facing, authorized, and non-sending."""
+        from friday.tools.builtin import email_tools
+
+        class EmailCredentials:
+            email_address = "fixture@example.com"
+            email_app_password = "fixture-password"
+
+        monkeypatch.setattr("friday.core.config.get_settings", lambda: EmailCredentials())
+        send_attempts = []
+        opened_urls = []
+
+        def forbidden_send(**kwargs):
+            send_attempts.append(kwargs)
+            raise AssertionError("a draft-only request reached the SMTP send function")
+
+        monkeypatch.setattr(email_tools, "_send_smtp_email", forbidden_send)
+        monkeypatch.setattr(
+            windows_friday,
+            "open_url",
+            lambda url: opened_urls.append(url) or True,
+        )
+
+        handled, reply, metadata = windows_friday.handle_directive(
+            command,
+            authorizer=approve_directives,
+        )
+
+        assert handled is True
+        assert metadata["action"] == "compose_email"
+        assert metadata["success"] is True
+        assert metadata["sent"] is False
+        assert send_attempts == []
+        assert opened_urls == ["https://mail.google.com/mail/?view=cm&fs=1"]
+        assert "draft was not sent" in reply.lower()
+
+    def test_gmail_directives(self, approve_directives, monkeypatch) -> None:
+        """Verify Gmail directives are routed with local, non-sending stand-ins."""
+        from unittest import mock
+
+        class NoEmailCredentials:
+            email_address = None
+            email_app_password = None
+
+        monkeypatch.setattr("friday.core.config.get_settings", lambda: NoEmailCredentials())
 
         assert windows_friday.is_gmail_directive("open gmail") is True
         assert windows_friday.is_gmail_directive("compose email") is True
@@ -211,7 +465,10 @@ class TestWindowsFridayController:
 
         # Compose with subject and body
         with mock.patch.object(windows_friday, "open_url", return_value=True) as mock_url:
-            ok, reply, meta = windows_friday.handle_directive("send email to test@gmail.com with subject Meeting and body Hello team")
+            ok, reply, meta = windows_friday.handle_directive(
+                "send email to test@gmail.com with subject Meeting and body Hello team",
+                authorizer=approve_directives,
+            )
             assert ok is True
             assert meta["action"] == "open_gmail"
             assert meta["to"] == "test@gmail.com"

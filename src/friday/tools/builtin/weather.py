@@ -44,22 +44,49 @@ WMO_CODE_MAP = {
 }
 
 
-def geocode_city(city_name: str) -> tuple[float, float, str] | None:
-    """Resolve city name to (lat, lon, resolved_name) using Open-Meteo geocoding."""
+def geocode_city_detailed(city_name: str) -> tuple[tuple[float, float, str] | None, str]:
+    """Resolve a city name, and say *why* it could not be resolved.
+
+    The two failures are not the same thing and must not be reported as if they
+    were. A name the geocoder does not know ("Hyderabadd") is the user's typo; a
+    request that never reached the geocoder is the network. The old code returned
+    ``None`` for both and the tool told the user "Please verify spelling.", so a
+    user in Bhimavaram - a real city - was told to check a spelling that was
+    already correct, every time the machine was offline.
+
+    Returns (result, reason) where reason is "" on success and a
+    user-comprehensible explanation on failure, tagged with a kind so callers
+    can branch.
+    """
     url = f"https://geocoding-api.open-meteo.com/v1/search?name={city_name.strip()}&count=1&language=en&format=json"
     try:
         with httpx.Client(timeout=_TIMEOUT) as client:
             resp = client.get(url)
-            if resp.status_code == 200:
-                data = resp.json()
-                results = data.get("results")
-                if results and len(results) > 0:
-                    r = results[0]
-                    name = f"{r.get('name')}, {r.get('country', '')}".strip(", ")
-                    return float(r["latitude"]), float(r["longitude"]), name
     except Exception as e:
-        logger.warning(f"Geocoding failed for '{city_name}': {e}")
-    return None
+        logger.warning(f"Geocoding request for '{city_name}' did not complete: {e}")
+        return None, f"lookup_unavailable: the location service could not be reached ({type(e).__name__}: {e})"
+
+    if resp.status_code != 200:
+        return None, f"lookup_unavailable: the location service answered HTTP {resp.status_code}"
+
+    try:
+        data = resp.json()
+    except Exception as e:
+        return None, f"lookup_unavailable: the location service returned an unreadable reply ({e})"
+
+    results = data.get("results")
+    if not results:
+        return None, "unknown_place: the location service does not know that place name"
+
+    r = results[0]
+    name = f"{r.get('name')}, {r.get('country', '')}".strip(", ")
+    return (float(r["latitude"]), float(r["longitude"]), name), ""
+
+
+def geocode_city(city_name: str) -> tuple[float, float, str] | None:
+    """Resolve city name to (lat, lon, resolved_name) using Open-Meteo geocoding."""
+    result, _reason = geocode_city_detailed(city_name)
+    return result
 
 
 class WeatherTool(BaseTool):
@@ -88,15 +115,28 @@ class WeatherTool(BaseTool):
         lon: float | None = None
 
         if city and city.strip():
-            geo = geocode_city(city.strip())
+            geo, reason = geocode_city_detailed(city.strip())
             if geo:
                 lat, lon, location_name = geo
             else:
+                if reason.startswith("unknown_place"):
+                    message = (
+                        f"Could not find a place called '{city}'. Check the spelling, or give the "
+                        "nearest larger city."
+                    )
+                else:
+                    # The service, not the name, is the problem - do not blame the user.
+                    message = (
+                        f"Could not look up '{city}': the location service is unreachable from this "
+                        f"machine, so no weather was fetched. ({reason.split(': ', 1)[-1]})"
+                    )
                 return ToolResult(
                     name=self.name,
-                    content=f"Could not find coordinates for city '{city}'. Please verify spelling.",
+                    content=message,
                     is_error=True,
+                    refused=True,
                     safety_level=self.safety_level,
+                    metadata={"city": city, "reason": reason},
                 )
         else:
             # Current location fallback

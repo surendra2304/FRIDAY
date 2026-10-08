@@ -83,7 +83,9 @@ class AdvisoryWatchdogOperator(BaseOperator):
         # 2. Check AI-Universe Health in Advisory State
         try:
             state_data = self.bot_operator.get_advisory_state()
-            ai_health = str(state_data.get("ai_universe_health", state_data.get("health", "HEALTHY"))).upper()
+            ai_health = str(
+                state_data.get("ai_universe_health") or state_data.get("health") or "UNREPORTED"
+            ).upper()
             ai_enabled = state_data.get("ai_universe_enabled", state_data.get("enabled", True))
             status_info["ai_universe_health"] = ai_health
 

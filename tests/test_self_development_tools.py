@@ -222,31 +222,100 @@ def test_self_repair_renders_repairs_and_an_awaiting_mandate_notice(
     assert result.metadata["counts"]["AWAITING_MANDATE"] == 1
 
 
-def test_self_repair_dry_run_marks_everything_as_unapplied(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_self_repair_dry_run_scans_without_invoking_repair_handlers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from friday.cognition import reflex
+    from friday.cognition.reflex import Incident, IncidentKind, IncidentSeverity
 
-    class BusyBrain:
+    incident = Incident(
+        kind=IncidentKind.TEST_FAILURE,
+        severity=IncidentSeverity.HIGH,
+        source="tests/test_x.py::test_y",
+        summary="a fault needs review",
+    )
+
+    class Detector:
+        includes: list[Any] = []
+
+        async def scan(self, *, include: Any = None) -> list[Incident]:
+            self.includes.append(include)
+            return [incident]
+
+    class GuardedBrain:
+        def __init__(self) -> None:
+            self.detector = Detector()
+            self.repair_calls = 0
+
         async def run_once(self, *, include: Any = None) -> dict[str, Any]:
+            self.repair_calls += 1
             return {
                 "status": "COMPLETED",
                 "incidents": 1,
                 "acted_on": 1,
                 "counts": {"RESOLVED": 1},
-                "outcomes": [
-                    {
-                        "status": "RESOLVED",
-                        "incident": {"summary": "a fault"},
-                        "detail": "would have been repaired",
-                    }
-                ],
+                "outcomes": [{"status": "RESOLVED", "incident": incident.as_dict()}],
             }
 
-    monkeypatch.setattr(reflex, "get_reflex_brain", lambda *a, **k: BusyBrain())
+    brain = GuardedBrain()
+    monkeypatch.setattr(reflex, "get_reflex_brain", lambda *a, **k: brain)
+    result = SelfRepairTool().execute(scope="tests", dry_run=True)
+
+    assert result.is_error is False
+    assert brain.repair_calls == 0, "dry_run reached the handler that can apply repairs"
+    assert brain.detector.includes == [{IncidentKind.TEST_FAILURE}]
+    assert result.metadata["dry_run"] is True
+    assert result.metadata["acted_on"] == 0
+    assert result.metadata["outcomes"][0]["status"] == "DRY_RUN"
+    assert "no repair handler was invoked" in result.content
+
+
+def test_self_repair_empty_dry_run_does_not_claim_a_live_repair_pass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from friday.cognition import reflex
+
+    class Detector:
+        async def scan(self, *, include: Any = None) -> list[Any]:
+            return []
+
+    class GuardedBrain:
+        detector = Detector()
+
+        async def run_once(self, *, include: Any = None) -> dict[str, Any]:
+            raise AssertionError("dry_run must not enter the repair pass")
+
+    monkeypatch.setattr(reflex, "get_reflex_brain", lambda *a, **k: GuardedBrain())
     result = SelfRepairTool().execute(dry_run=True)
 
-    assert "[DRY_RUN]" in result.content
-    assert "[RESOLVED]" not in result.content
-    assert result.metadata["outcomes"][0]["status"] == "DRY_RUN"
+    assert result.is_error is False
+    assert result.metadata["dry_run"] is True
+    assert result.metadata["incidents"] == 0
+    assert "dry run complete" in result.content.lower()
+    assert "no repair handler was invoked" in result.content.lower()
+
+
+@pytest.mark.parametrize("scope", ["typo", "tests,typo", ","])
+def test_self_repair_rejects_invalid_scope_instead_of_running_everything(
+    scope: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from friday.cognition import reflex
+
+    class CountingBrain:
+        calls = 0
+
+        async def run_once(self, *, include: Any = None) -> dict[str, Any]:
+            self.calls += 1
+            return {"status": "COMPLETED", "incidents": 0, "acted_on": 0, "outcomes": []}
+
+    brain = CountingBrain()
+    monkeypatch.setattr(reflex, "get_reflex_brain", lambda *a, **k: brain)
+    result = SelfRepairTool().execute(scope=scope)
+
+    assert result.is_error is True
+    assert result.refused is True
+    assert "self-repair scope" in result.content.lower()
+    assert brain.calls == 0
 
 
 def test_self_repair_reports_a_broken_pass_instead_of_hiding_it(
@@ -263,7 +332,7 @@ def test_self_repair_reports_a_broken_pass_instead_of_hiding_it(
 
     assert result.is_error is True
     assert "RuntimeError" in result.content
-    assert "nothing is claimed" in result.content
+    assert "no completed outcome is claimed" in result.content.lower()
 
 
 def test_self_repair_runs_the_real_brain_against_a_real_repository(tmp_path: Path) -> None:

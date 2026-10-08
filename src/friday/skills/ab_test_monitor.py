@@ -4,30 +4,113 @@ Monitors and evaluates live A/B experiments on the Algorithmic Trading Bot
 (Control baseline vs. Treatment with AI-Universe advisory overlays).
 Provides real-time progress, statistical comparisons, outperformance explanations,
 and comprehensive visual/markdown reports.
+
+Every figure in this module is a *reading* taken from the trading bridge's
+``/api/ab/status`` payload. Nothing here fills a missing reading with a
+plausible-looking default: this file used to report a $10,000 arm equity, a
+168-hour plan, a p-value of 0.05, "95% confidence", "2 blocked / 5 applied"
+proposals and a specific "Dynamic Stop-Loss & Take-Profit tightening" overlay
+that no endpoint had sent, and then explained the arms' divergence with them.
+A missing figure is now ``None`` and renders as ``unknown (no reading)``, and a
+cause that was not reported is not asserted.
 """
 
 from dataclasses import dataclass, field
 from typing import Any
 
 from friday.core.logging import get_logger
+from friday.core.readings import UNKNOWN_LABEL, format_money, format_number
 from friday.skills.base_skill import BaseSkill, SkillExecutionResult
 from friday.skills.trading_bot_operator import TradingBotOperator
 
 logger = get_logger("skills.ab_test_monitor")
 
 
+def _num(mapping: Any, *keys: str) -> float | None:
+    """The first reported numeric value among ``keys``, else None.
+
+    Accepts numeric strings because bridges do send ``"1.45"``; booleans are not
+    numbers here even though Python says they are.
+    """
+    if not isinstance(mapping, dict):
+        return None
+    for key in keys:
+        value = mapping.get(key)
+        if value is None or isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            try:
+                return float(value.strip())
+            except ValueError:
+                continue
+    return None
+
+
+def _count(mapping: Any, *keys: str) -> int | None:
+    """A reported trade/position count, or None when nothing was reported."""
+    value = _num(mapping, *keys)
+    return None if value is None else int(value)
+
+
+def _text(mapping: Any, *keys: str) -> str | None:
+    """A reported, non-empty string among ``keys``, else None."""
+    if not isinstance(mapping, dict):
+        return None
+    for key in keys:
+        value = mapping.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return str(value)
+    return None
+
+
 @dataclass
 class ArmMetrics:
-    """Performance metrics for an experimental arm (Control or Treatment)."""
+    """Performance metrics for an experimental arm (Control or Treatment).
+
+    Each metric is Optional because an arm payload that omitted it has not
+    reported it. ``trade_count`` is None too: an arm whose trade count was not
+    sent has an *unknown* sample size, which is materially different from a
+    proven zero.
+    """
+
     arm_name: str
-    equity: float
-    total_return_pct: float
-    sharpe_ratio: float
-    win_rate_pct: float
-    profit_factor: float
-    max_drawdown_pct: float
-    trade_count: int
+    equity: float | None
+    total_return_pct: float | None
+    sharpe_ratio: float | None
+    win_rate_pct: float | None
+    profit_factor: float | None
+    max_drawdown_pct: float | None
+    trade_count: int | None
+    reported: bool = False
     raw: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_payload(cls, arm_name: str, payload: Any) -> "ArmMetrics":
+        data = payload if isinstance(payload, dict) else {}
+        return cls(
+            arm_name=arm_name,
+            equity=_num(data, "equity", "current_equity", "account_equity"),
+            total_return_pct=_num(data, "total_return_pct", "return_pct"),
+            sharpe_ratio=_num(data, "sharpe_ratio", "sharpe"),
+            win_rate_pct=_num(data, "win_rate_pct", "win_rate"),
+            profit_factor=_num(data, "profit_factor"),
+            max_drawdown_pct=_num(data, "max_drawdown_pct", "drawdown_pct"),
+            trade_count=_count(data, "trade_count", "trades"),
+            reported=bool(data),
+            raw=data,
+        )
+
+    def delta(self, other: "ArmMetrics", metric: str) -> float | None:
+        """This arm's metric minus ``other``'s, or None if either is missing."""
+        mine = getattr(self, metric)
+        theirs = getattr(other, metric)
+        if mine is None or theirs is None:
+            return None
+        return float(mine) - float(theirs)
 
 
 class ABTestMonitorSkill(BaseSkill):
@@ -66,23 +149,32 @@ class ABTestMonitorSkill(BaseSkill):
                 "raw": raw,
             }
 
-        test_name = str(raw.get("test_name", raw.get("experiment_name", "AI_Universe_Overlay_Evaluation")))
-        status = str(raw.get("status", "RUNNING")).upper()
-        elapsed_hours = float(raw.get("elapsed_hours", raw.get("duration_hours", 0.0)))
-        planned_hours = float(raw.get("planned_hours", raw.get("target_duration_hours", 168.0)))
-        progress_pct = float(raw.get("progress_pct", (elapsed_hours / planned_hours * 100.0) if planned_hours > 0 else 0.0))
-        progress_pct = min(100.0, max(0.0, progress_pct))
+        test_name = _text(raw, "test_name", "experiment_name") or "the unnamed experiment"
+        status = str(raw.get("status") or "UNREPORTED").upper()
+        elapsed_hours = _num(raw, "elapsed_hours", "duration_hours")
+        planned_hours = _num(raw, "planned_hours", "target_duration_hours")
+        progress_pct = _num(raw, "progress_pct")
+        if progress_pct is None and elapsed_hours is not None and planned_hours:
+            # Derived only from two readings that both exist.
+            progress_pct = elapsed_hours / planned_hours * 100.0
+        if progress_pct is not None:
+            progress_pct = min(100.0, max(0.0, progress_pct))
 
         control_data = raw.get("control_arm", raw.get("control", {}))
         treatment_data = raw.get("treatment_arm", raw.get("treatment", {}))
+        control_trades = _count(control_data, "trade_count", "trades")
+        treatment_trades = _count(treatment_data, "trade_count", "trades")
 
-        control_trades = int(control_data.get("trade_count", control_data.get("trades", 0)))
-        treatment_trades = int(treatment_data.get("trade_count", treatment_data.get("trades", 0)))
-
-        spoken_summary = (
-            f"A/B Experiment '{test_name}' is currently {status.lower()}. "
-            f"Progress: {progress_pct:.1f}% complete ({elapsed_hours:.1f} of {planned_hours:.1f} hours). "
-            f"Total sample: {control_trades} Control trades vs {treatment_trades} Treatment trades."
+        progress_clause = (
+            f"Progress: {format_number(progress_pct, 1, '%')} complete "
+            f"({format_number(elapsed_hours, 1, 'h')} of {format_number(planned_hours, 1, 'h')} planned). "
+            if progress_pct is not None or elapsed_hours is not None or planned_hours is not None
+            else "No elapsed or planned duration was reported, so I cannot state progress. "
+        )
+        sample_clause = (
+            f"Total sample so far: {control_trades} Control trades vs {treatment_trades} Treatment trades."
+            if control_trades is not None and treatment_trades is not None
+            else "No trade counts were reported for the arms, so the sample size is unknown."
         )
 
         return {
@@ -96,7 +188,9 @@ class ABTestMonitorSkill(BaseSkill):
             "treatment_trades": treatment_trades,
             "control": control_data,
             "treatment": treatment_data,
-            "spoken_summary": spoken_summary,
+            "spoken_summary": (
+                f"A/B experiment '{test_name}' is reported as {status.lower()}. " + progress_clause + sample_clause
+            ),
             "raw": raw,
         }
 
@@ -114,61 +208,108 @@ class ABTestMonitorSkill(BaseSkill):
         treatment_dict = raw.get("treatment_arm", raw.get("treatment", {}))
         stats_dict = raw.get("statistics", raw.get("stat_sig", {}))
 
-        c_arm = ArmMetrics(
-            arm_name="Control (Baseline)",
-            equity=float(control_dict.get("equity", 10000.0)),
-            total_return_pct=float(control_dict.get("total_return_pct", control_dict.get("return_pct", 0.0))),
-            sharpe_ratio=float(control_dict.get("sharpe_ratio", control_dict.get("sharpe", 0.0))),
-            win_rate_pct=float(control_dict.get("win_rate_pct", control_dict.get("win_rate", 0.0))),
-            profit_factor=float(control_dict.get("profit_factor", 0.0)),
-            max_drawdown_pct=float(control_dict.get("max_drawdown_pct", control_dict.get("drawdown_pct", 0.0))),
-            trade_count=int(control_dict.get("trade_count", 0)),
-            raw=control_dict,
+        c_arm = ArmMetrics.from_payload("Control (Baseline)", control_dict)
+        t_arm = ArmMetrics.from_payload("Treatment (AI-Universe Overlays)", treatment_dict)
+
+        delta_return = t_arm.delta(c_arm, "total_return_pct")
+        delta_str = (
+            format_number(delta_return, 2, "%")
+            if delta_return is not None
+            else UNKNOWN_LABEL
         )
 
-        t_arm = ArmMetrics(
-            arm_name="Treatment (AI-Universe Overlays)",
-            equity=float(treatment_dict.get("equity", 10000.0)),
-            total_return_pct=float(treatment_dict.get("total_return_pct", treatment_dict.get("return_pct", 0.0))),
-            sharpe_ratio=float(treatment_dict.get("sharpe_ratio", treatment_dict.get("sharpe", 0.0))),
-            win_rate_pct=float(treatment_dict.get("win_rate_pct", treatment_dict.get("win_rate", 0.0))),
-            profit_factor=float(treatment_dict.get("profit_factor", 0.0)),
-            max_drawdown_pct=float(treatment_dict.get("max_drawdown_pct", treatment_dict.get("drawdown_pct", 0.0))),
-            trade_count=int(treatment_dict.get("trade_count", 0)),
-            raw=treatment_dict,
-        )
+        p_value = _num(stats_dict, "p_value")
+        # A p-value that was not computed cannot "achieve" significance, and a
+        # missing p-value is not a 0.05 p-value with 95% confidence.
+        stat_sig = None if p_value is None else bool(stats_dict.get("stat_sig_achieved", p_value < 0.05))
+        confidence_pct = _num(stats_dict, "confidence")
+        confidence_derived = False
+        if confidence_pct is None and p_value is not None:
+            # Derived, so it is labelled as derived rather than presented as a
+            # figure the experiment computed.
+            confidence_pct = (1.0 - p_value) * 100.0
+            confidence_derived = True
 
-        delta_return = t_arm.total_return_pct - c_arm.total_return_pct
-        p_value = float(stats_dict.get("p_value", 0.05))
-        stat_sig = bool(stats_dict.get("stat_sig_achieved", p_value < 0.05))
-        confidence_pct = int(float(stats_dict.get("confidence", (1.0 - p_value) * 100.0)))
+        lead_arm = None
+        if delta_return is not None:
+            lead_arm = "Treatment" if delta_return > 0 else ("Control" if delta_return < 0 else "Neither arm")
 
-        lead_arm = "Treatment" if delta_return > 0 else "Control"
-        delta_str = f"+{delta_return:.2f}%" if delta_return >= 0 else f"{delta_return:.2f}%"
+        if lead_arm in (None, "Neither arm"):
+            lead_clause = (
+                "Neither arm is ahead: both reported the same total return."
+                if lead_arm == "Neither arm"
+                else "Neither arm can be called ahead because at least one arm did not report a total return."
+            )
+        else:
+            lead_clause = f"The {lead_arm} arm is leading by {abs(delta_return):.2f}% excess return."
 
-        spoken_summary = (
-            f"A/B Results: {lead_arm} arm is leading by {abs(delta_return):.2f}% excess return. "
-            f"Treatment return is {t_arm.total_return_pct:+.2f}% (PF {t_arm.profit_factor:.2f}, Sharpe {t_arm.sharpe_ratio:.2f}) "
-            f"vs Control return {c_arm.total_return_pct:+.2f}% (PF {c_arm.profit_factor:.2f}, Sharpe {c_arm.sharpe_ratio:.2f}). "
-            f"Statistical significance: {'ACHIEVED (p=' + f'{p_value:.3f})' if stat_sig else 'NOT YET ACHIEVED (p=' + f'{p_value:.3f})'} with {confidence_pct}% confidence."
-        )
+        def _arm_clause(arm: ArmMetrics) -> str:
+            return (
+                f"{arm.arm_name.split(' ')[0]} reported return "
+                f"{format_number(arm.total_return_pct, 2, '%')}, profit factor "
+                f"{format_number(arm.profit_factor, 2)} and Sharpe "
+                f"{format_number(arm.sharpe_ratio, 2)}"
+            )
+
+        if stat_sig is None:
+            significance_clause = (
+                "No p-value was reported by the experiment, so statistical significance is unknown, "
+                "not merely unachieved."
+            )
+        elif stat_sig:
+            significance_clause = (
+                f"Statistical significance was reported as achieved (p={p_value:.3f}"
+                + (
+                    f"; {format_number(confidence_pct, 1, '%')} confidence, derived from that p-value"
+                    if confidence_derived and confidence_pct is not None
+                    else (
+                        f", {format_number(confidence_pct, 1, '%')} confidence reported"
+                        if confidence_pct is not None
+                        else ""
+                    )
+                )
+                + ")."
+            )
+        else:
+            significance_clause = (
+                f"Statistical significance was reported as not yet achieved (p={p_value:.3f}"
+                + (
+                    f"; {format_number(confidence_pct, 1, '%')} confidence, derived from that p-value"
+                    if confidence_derived and confidence_pct is not None
+                    else (
+                        f", {format_number(confidence_pct, 1, '%')} confidence reported"
+                        if confidence_pct is not None
+                        else ""
+                    )
+                )
+                + ")."
+            )
 
         return {
             "active": True,
-            "control": c_arm.__dict__,
-            "treatment": t_arm.__dict__,
+            "control": dict(vars(c_arm)),
+            "treatment": dict(vars(t_arm)),
             "delta_return_pct": delta_return,
             "delta_return_str": delta_str,
             "p_value": p_value,
             "stat_sig_achieved": stat_sig,
             "confidence_pct": confidence_pct,
+            "confidence_derived": confidence_derived,
             "lead_arm": lead_arm,
-            "spoken_summary": spoken_summary,
+            "spoken_summary": (
+                f"A/B results: {lead_clause} {_arm_clause(t_arm)}; {_arm_clause(c_arm)}. {significance_clause}"
+            ),
             "raw": raw,
         }
 
     def explain_ab_difference(self) -> dict[str, Any]:
-        """Analyze root causes of performance delta between Control and Treatment arms."""
+        """Analyze the reported drivers of the performance delta between the arms.
+
+        Only figures the endpoint actually sent are used. The module used to
+        explain a divergence with a hardcoded ``{"blocked_by_safety": 2,
+        "applied": 5}`` rejection count and a named "Dynamic Stop-Loss &
+        Take-Profit tightening" overlay that no payload contained.
+        """
         res_data = self.get_ab_results()
         if not res_data.get("active"):
             return {
@@ -179,39 +320,89 @@ class ABTestMonitorSkill(BaseSkill):
         control = res_data["control"]
         treatment = res_data["treatment"]
         delta = res_data["delta_return_pct"]
-        p_val = res_data["p_value"]
 
         raw = res_data.get("raw", {})
-        overlays = raw.get("treatment_arm", {}).get("active_overlays", raw.get("active_overlays", {}))
-        rejection_stats = raw.get("rejection_stats", {"blocked_by_safety": 2, "applied": 5})
+        treatment_payload = raw.get("treatment_arm", raw.get("treatment", {}))
+        overlays = (
+            treatment_payload.get("active_overlays")
+            or raw.get("active_overlays")
+            or {}
+        )
+        rejection_stats = raw.get("rejection_stats") or {}
 
-        overlay_bullets = "\n".join(f"  - `{k}`: {v}" for k, v in overlays.items()) if overlays else "  - Dynamic Stop-Loss & Take-Profit tightening"
+        overlay_bullets = (
+            "\n".join(f"  - `{k}`: {v}" for k, v in overlays.items())
+            if overlays
+            else "  - No parameter overlay was reported for the treatment arm."
+        )
 
-        if delta >= 0:
-            analysis = (
-                f"### 🔬 A/B Performance Divergence Analysis\n\n"
-                f"**Outperformance Driver:** The **Treatment Arm** is outperforming Control by **+{delta:.2f}%** excess return "
-                f"with a profit factor of **{treatment['profit_factor']:.2f}** (vs {control['profit_factor']:.2f} Control).\n\n"
-                f"**Key Catalysts Identified:**\n"
-                f"1. **Adaptive Risk Parameters:** AI-Universe parameter overlays contributed to tighter risk bounds:\n{overlay_bullets}\n"
-                f"2. **Drawdown Protection:** Treatment max drawdown is **{treatment['max_drawdown_pct']:.2f}%** vs Control **{control['max_drawdown_pct']:.2f}%**, preventing tail losses during high ATR spikes.\n"
-                f"3. **Win Rate Expansion:** Win rate increased from **{control['win_rate_pct']:.1f}%** (Control) to **{treatment['win_rate_pct']:.1f}%** (Treatment).\n"
-                f"4. **Safety Gate Filtering:** {rejection_stats.get('blocked_by_safety', 0)} high-risk AI proposals were rejected by bot safety gates, maintaining structural account safety.\n\n"
-                f"**Statistical Assessment:** p-value = `{p_val:.3f}` ({res_data['confidence_pct']}% confidence). "
-                f"{'The performance delta is statistically significant.' if res_data['stat_sig_achieved'] else 'Additional sample size recommended to reach full 95% confidence.'}"
+        def _reported(arm: dict[str, Any], key: str) -> str:
+            value = arm.get(key)
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                return UNKNOWN_LABEL
+            return format_number(value, 0) if key == "trade_count" else format_number(value, 2)
+
+        blocked = rejection_stats.get("blocked_by_safety")
+        applied = rejection_stats.get("applied")
+        rejection_clause = (
+            f"{blocked} high-risk AI proposals were reported rejected by bot safety gates, "
+            f"with {applied} applied."
+            if isinstance(blocked, (int, float)) and isinstance(applied, (int, float))
+            else "No safety-gate rejection statistics were reported for this experiment."
+        )
+
+        metrics_rows = "\n".join(
+            f"| **{label}** | {_reported(control, key)} | {_reported(treatment, key)} |"
+            for label, key in (
+                ("Total Return %", "total_return_pct"),
+                ("Profit Factor", "profit_factor"),
+                ("Win Rate %", "win_rate_pct"),
+                ("Sharpe Ratio", "sharpe_ratio"),
+                ("Max Drawdown %", "max_drawdown_pct"),
+                ("Executed Trades", "trade_count"),
+            )
+        )
+
+        if delta is None:
+            headline = (
+                "**Neither arm's total return was reported in full**, so this analysis cannot say which arm "
+                "is ahead. Only the reported readings are shown below; nothing is inferred."
+            )
+        elif delta > 0:
+            headline = (
+                f"**Outperformance Driver:** the **Treatment Arm** reports **+{delta:.2f}%** excess return over "
+                f"Control on the figures the experiment sent."
+            )
+        elif delta < 0:
+            headline = (
+                f"**Underperformance Driver:** the **Control Arm** is currently ahead by **+{abs(delta):.2f}%** "
+                f"reported return. The reported overlays are listed below; no cause is asserted that the payload "
+                f"does not support."
             )
         else:
-            analysis = (
-                f"### 🔬 A/B Performance Divergence Analysis\n\n"
-                f"**Underperformance Driver:** The **Control Arm** is currently leading by **+{abs(delta):.2f}%** return.\n"
-                f"Treatment parameter overlays may have resulted in tighter stop-outs during choppy market conditions. "
-                f"Monitoring recommended before considering overlay adjustments."
+            headline = "**The two arms report identical total returns**, so there is no divergence to explain."
+
+        analysis = (
+            "### 🔬 A/B Performance Divergence Analysis\n\n"
+            f"{headline}\n\n"
+            "| Metric | Control (reported) | Treatment (reported) |\n"
+            "| :--- | :---: | :---: |\n"
+            f"{metrics_rows}\n\n"
+            "**Reported Treatment Overlays:**\n"
+            f"{overlay_bullets}\n\n"
+            f"**Safety Gate Activity:** {rejection_clause}\n\n"
+            f"**Statistical Assessment:** "
+            + (
+                f"p-value = `{res_data['p_value']:.3f}`."
+                if res_data.get("p_value") is not None
+                else "No p-value was reported, so no significance claim is made."
             )
+        )
 
         return {
             "active": True,
             "delta_return_pct": delta,
-            "p_value": p_val,
+            "p_value": res_data.get("p_value"),
             "explanation": analysis,
         }
 
@@ -230,36 +421,76 @@ class ABTestMonitorSkill(BaseSkill):
         c = results_data["control"]
         t = results_data["treatment"]
         delta = results_data["delta_return_pct"]
-        sig_badge = "✅ STATISTICALLY SIGNIFICANT" if results_data["stat_sig_achieved"] else "⏳ IN PROGRESS (Significance Not Reached)"
+        stat_sig = results_data["stat_sig_achieved"]
+        sig_badge = (
+            "✅ STATISTICALLY SIGNIFICANT"
+            if stat_sig is True
+            else ("⏳ IN PROGRESS (Significance Not Reached)" if stat_sig is False else "❔ UNKNOWN (no p-value reported)")
+        )
 
-        # Text/ASCII visual comparison bar
-        c_bar_len = max(1, int(max(0, c['total_return_pct']) * 2))
-        t_bar_len = max(1, int(max(0, t['total_return_pct']) * 2))
-        c_bar = "█" * c_bar_len
-        t_bar = "█" * t_bar_len
+        # The bars scale a reported return; an unreported return has no bar.
+        def _bar(value: Any) -> str:
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                return "(no return reported)"
+            return "█" * max(1, int(max(0.0, float(value)) * 2))
+
+        def _delta_cell(metric: str) -> str:
+            d = t.get(metric) - c.get(metric) if isinstance(t.get(metric), (int, float)) and isinstance(c.get(metric), (int, float)) else None
+            if d is None:
+                return UNKNOWN_LABEL
+            digits = 0 if metric == "trade_count" else 2
+            sign = "+" if d >= 0 else ""
+            return f"{sign}{d:.{digits}f}"
 
         report_md = (
             f"# 🧪 A/B Test Experiment Report: {status_data['test_name']}\n\n"
-            f"**Status:** `{status_data['status']}` | **Progress:** {status_data['progress_pct']:.1f}% ({status_data['elapsed_hours']:.1f}h / {status_data['planned_hours']:.1f}h)\n"
-            f"**Statistical Significance:** **{sig_badge}** ($p = {results_data['p_value']:.3f}$, {results_data['confidence_pct']}% Confidence)\n\n"
+            f"**Status:** `{status_data['status']}` | **Progress:** "
+            f"{format_number(status_data['progress_pct'], 1, '%')} "
+            f"({format_number(status_data['elapsed_hours'], 1, 'h')} / "
+            f"{format_number(status_data['planned_hours'], 1, 'h')} planned)\n"
+            f"**Statistical Significance:** **{sig_badge}** "
+            f"(`p = {format_number(results_data['p_value'], 3)}`, "
+            f"{format_number(results_data['confidence_pct'], 1, '%')} confidence"
+            f"{' derived from the p-value' if results_data.get('confidence_derived') else ' reported'})\n\n"
             f"## 📈 Comparative Equity & Return Visualization\n"
             f"```text\n"
-            f"Control Arm   [{c['total_return_pct']:+.2f}%]: {c_bar} (${c['equity']:,.2f})\n"
-            f"Treatment Arm [{t['total_return_pct']:+.2f}%]: {t_bar} (${t['equity']:,.2f})  <-- AI Overlays\n"
+            f"Control Arm   [{format_number(c['total_return_pct'], 2, '%')}]: {_bar(c['total_return_pct'])} "
+            f"({format_money(c['equity'])})\n"
+            f"Treatment Arm [{format_number(t['total_return_pct'], 2, '%')}]: {_bar(t['total_return_pct'])} "
+            f"({format_money(t['equity'])})  <-- AI Overlays\n"
             f"```\n\n"
             f"## 📊 Metrics Comparison Table\n\n"
             f"| Metric | Control (Baseline) | Treatment (AI Overlays) | Delta / Improvement |\n"
             f"| :--- | :---: | :---: | :---: |\n"
-            f"| **Current Equity** | ${c['equity']:,.2f} USDT | ${t['equity']:,.2f} USDT | **{results_data['delta_return_str']}** |\n"
-            f"| **Total Return** | {c['total_return_pct']:+.2f}% | {t['total_return_pct']:+.2f}% | **{delta:+.2f}%** |\n"
-            f"| **Profit Factor** | {c['profit_factor']:.2f} | {t['profit_factor']:.2f} | **{t['profit_factor'] - c['profit_factor']:+.2f}** |\n"
-            f"| **Win Rate** | {c['win_rate_pct']:.1f}% | {t['win_rate_pct']:.1f}% | **{t['win_rate_pct'] - c['win_rate_pct']:+.1f}%** |\n"
-            f"| **Sharpe Ratio** | {c['sharpe_ratio']:.2f} | {t['sharpe_ratio']:.2f} | **{t['sharpe_ratio'] - c['sharpe_ratio']:+.2f}** |\n"
-            f"| **Max Drawdown** | {c['max_drawdown_pct']:.2f}% | {t['max_drawdown_pct']:.2f}% | **{t['max_drawdown_pct'] - c['max_drawdown_pct']:+.2f}%** |\n"
-            f"| **Executed Trades** | {c['trade_count']} | {t['trade_count']} | {t['trade_count'] - c['trade_count']:+d} |\n\n"
+            f"| **Current Equity** | {format_money(c['equity'])} USDT | {format_money(t['equity'])} USDT | "
+            f"**{results_data['delta_return_str']} return delta** |\n"
+            f"| **Total Return** | {format_number(c['total_return_pct'], 2, '%')} | "
+            f"{format_number(t['total_return_pct'], 2, '%')} | **{format_number(delta, 2, '%')}** |\n"
+            f"| **Profit Factor** | {format_number(c['profit_factor'], 2)} | {format_number(t['profit_factor'], 2)} | "
+            f"**{_delta_cell('profit_factor')}** |\n"
+            f"| **Win Rate** | {format_number(c['win_rate_pct'], 1, '%')} | {format_number(t['win_rate_pct'], 1, '%')} | "
+            f"**{_delta_cell('win_rate_pct')}** |\n"
+            f"| **Sharpe Ratio** | {format_number(c['sharpe_ratio'], 2)} | {format_number(t['sharpe_ratio'], 2)} | "
+            f"**{_delta_cell('sharpe_ratio')}** |\n"
+            f"| **Max Drawdown** | {format_number(c['max_drawdown_pct'], 2, '%')} | "
+            f"{format_number(t['max_drawdown_pct'], 2, '%')} | **{_delta_cell('max_drawdown_pct')}** |\n"
+            f"| **Executed Trades** | {c['trade_count'] if c['trade_count'] is not None else UNKNOWN_LABEL} | "
+            f"{t['trade_count'] if t['trade_count'] is not None else UNKNOWN_LABEL} | "
+            f"**{_delta_cell('trade_count')}** |\n\n"
             f"{explanation_data['explanation']}\n\n"
             f"## 🎯 Recommendation & Next Steps\n"
-            f"{'• **PROMOTION RECOMMENDED:** Treatment arm demonstrates statistically verified excess alpha (+ ' + f'{delta:.2f}%) with lower drawdown. Candidate for promotion to active primary model.' if results_data['stat_sig_achieved'] else '• **CONTINUE EXPERIMENT:** Treatment is showing positive alpha, but experiment has not yet reached planned sample size. Continue monitoring.'}\n"
+            + (
+                "• **PROMOTION RECOMMENDED:** the treatment arm's excess return was reported statistically "
+                f"significant (+{delta:.2f}%). Candidate for promotion to primary model.\n"
+                if stat_sig is True and delta is not None
+                else (
+                    "• **CONTINUE EXPERIMENT:** the experiment has not reported reaching statistical "
+                    "significance. Continue monitoring.\n"
+                    if stat_sig is False
+                    else "• **NO RECOMMENDATION POSSIBLE:** no p-value was reported, so this report cannot judge "
+                    "whether the treatment arm is promotable.\n"
+                )
+            )
         )
 
         return {

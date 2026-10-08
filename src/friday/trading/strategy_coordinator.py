@@ -4,6 +4,7 @@ Manages multi-strategy capital allocation, dynamic strategy rotation based on
 market regimes, and directional conflict resolution between competing strategies.
 """
 
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -19,7 +20,7 @@ class StrategyAllocation:
     """Target capital allocation for an active strategy."""
     strategy_name: str
     target_weight_pct: float
-    current_weight_pct: float
+    current_weight_pct: float | None
     status: str  # ACTIVE, REDUCED, PAUSED
     reason: str
 
@@ -50,13 +51,31 @@ class MultiStrategyCoordinator:
         current_regime: MarketState | None = None,
         strategy_metrics: dict[str, dict[str, Any]] | None = None,
     ) -> list[StrategyAllocation]:
-        """Calculates optimal strategy weights based on current market regime and performance."""
-        regime = current_regime or self.regime_detector.detect_regime().primary_regime
-        metrics = strategy_metrics or {
-            "BTC_Trend_Supertrend": {"sharpe": 2.10, "win_rate": 68.0, "current_weight": 0.35},
-            "ETH_Mean_Reversion": {"sharpe": 1.45, "win_rate": 56.0, "current_weight": 0.35},
-            "Volatility_Breakout": {"sharpe": 1.85, "win_rate": 62.0, "current_weight": 0.30},
-        }
+        """Return rule-based targets only when the regime is measured or supplied."""
+        if current_regime is None:
+            reading = self.regime_detector.detect_regime()
+            if not reading.available:
+                return []
+            regime = reading.primary_regime
+        else:
+            regime = current_regime
+
+        if regime is MarketState.UNKNOWN:
+            return []
+
+        metrics = strategy_metrics or {}
+
+        def current_weight_pct(strategy_name: str) -> float | None:
+            strategy_data = metrics.get(strategy_name)
+            if not isinstance(strategy_data, dict):
+                return None
+            try:
+                weight = float(strategy_data["current_weight"])
+            except (KeyError, TypeError, ValueError):
+                return None
+            if not math.isfinite(weight) or not 0.0 <= weight <= 1.0:
+                return None
+            return weight * 100.0
 
         allocations: list[StrategyAllocation] = []
 
@@ -66,7 +85,7 @@ class MultiStrategyCoordinator:
                 StrategyAllocation(
                     strategy_name="BTC_Trend_Supertrend",
                     target_weight_pct=50.0,
-                    current_weight_pct=metrics["BTC_Trend_Supertrend"]["current_weight"] * 100.0,
+                    current_weight_pct=current_weight_pct("BTC_Trend_Supertrend"),
                     status="ACTIVE",
                     reason="Optimal regime for trend continuation with strong momentum.",
                 )
@@ -75,7 +94,7 @@ class MultiStrategyCoordinator:
                 StrategyAllocation(
                     strategy_name="Volatility_Breakout",
                     target_weight_pct=35.0,
-                    current_weight_pct=metrics["Volatility_Breakout"]["current_weight"] * 100.0,
+                    current_weight_pct=current_weight_pct("Volatility_Breakout"),
                     status="ACTIVE",
                     reason="Favorable breakout conditions during trend expansion.",
                 )
@@ -84,7 +103,7 @@ class MultiStrategyCoordinator:
                 StrategyAllocation(
                     strategy_name="ETH_Mean_Reversion",
                     target_weight_pct=15.0,
-                    current_weight_pct=metrics["ETH_Mean_Reversion"]["current_weight"] * 100.0,
+                    current_weight_pct=current_weight_pct("ETH_Mean_Reversion"),
                     status="REDUCED",
                     reason="Mean-reversion underperforms during strong directional trends.",
                 )
@@ -95,7 +114,7 @@ class MultiStrategyCoordinator:
                 StrategyAllocation(
                     strategy_name="ETH_Mean_Reversion",
                     target_weight_pct=55.0,
-                    current_weight_pct=metrics["ETH_Mean_Reversion"]["current_weight"] * 100.0,
+                    current_weight_pct=current_weight_pct("ETH_Mean_Reversion"),
                     status="ACTIVE",
                     reason="Optimal quiet ranging regime for mean-reversion and scalping.",
                 )
@@ -104,7 +123,7 @@ class MultiStrategyCoordinator:
                 StrategyAllocation(
                     strategy_name="BTC_Trend_Supertrend",
                     target_weight_pct=25.0,
-                    current_weight_pct=metrics["BTC_Trend_Supertrend"]["current_weight"] * 100.0,
+                    current_weight_pct=current_weight_pct("BTC_Trend_Supertrend"),
                     status="REDUCED",
                     reason="Low trend strength in quiet market.",
                 )
@@ -113,7 +132,7 @@ class MultiStrategyCoordinator:
                 StrategyAllocation(
                     strategy_name="Volatility_Breakout",
                     target_weight_pct=20.0,
-                    current_weight_pct=metrics["Volatility_Breakout"]["current_weight"] * 100.0,
+                    current_weight_pct=current_weight_pct("Volatility_Breakout"),
                     status="REDUCED",
                     reason="Low breakout frequency.",
                 )
@@ -124,7 +143,7 @@ class MultiStrategyCoordinator:
                 StrategyAllocation(
                     strategy_name="BTC_Trend_Supertrend",
                     target_weight_pct=40.0,
-                    current_weight_pct=metrics["BTC_Trend_Supertrend"]["current_weight"] * 100.0,
+                    current_weight_pct=current_weight_pct("BTC_Trend_Supertrend"),
                     status="ACTIVE",
                     reason="Balanced allocation across diversified strategy mix.",
                 )
@@ -133,7 +152,7 @@ class MultiStrategyCoordinator:
                 StrategyAllocation(
                     strategy_name="ETH_Mean_Reversion",
                     target_weight_pct=35.0,
-                    current_weight_pct=metrics["ETH_Mean_Reversion"]["current_weight"] * 100.0,
+                    current_weight_pct=current_weight_pct("ETH_Mean_Reversion"),
                     status="ACTIVE",
                     reason="Balanced allocation.",
                 )
@@ -142,7 +161,7 @@ class MultiStrategyCoordinator:
                 StrategyAllocation(
                     strategy_name="Volatility_Breakout",
                     target_weight_pct=25.0,
-                    current_weight_pct=metrics["Volatility_Breakout"]["current_weight"] * 100.0,
+                    current_weight_pct=current_weight_pct("Volatility_Breakout"),
                     status="ACTIVE",
                     reason="Balanced allocation.",
                 )
@@ -180,7 +199,10 @@ class MultiStrategyCoordinator:
             else:
                 resolved = "LONG" if long_count >= short_count else "SHORT"
                 conf = 0.65
-                rationale = "Majority vote resolution under neutral regime."
+                if regime is MarketState.UNKNOWN:
+                    rationale = "No supported market regime is available; conflict was resolved by majority vote."
+                else:
+                    rationale = f"Majority vote resolution under {regime.value} regime."
         elif long_count > 0:
             resolved = "LONG"
             conf = 0.90

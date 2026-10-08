@@ -112,11 +112,18 @@ class VoiceTradingSkill(BaseSkill):
             # 1. Market Regime Detection
             if any(k in clean_req for k in ["market regime", "detect regime"]):
                 regime = self.regime_detector.detect_regime()
-                output = (
-                    f"Current Market Regime is **{regime.primary_regime.value}** ({regime.timeframe_consensus}). "
-                    f"Overall risk level is **{regime.risk_level}** with a recommended position sizing multiplier of **{regime.position_sizing_multiplier}x**. "
-                    f"Optimal strategies for this regime: {', '.join(f'`{s}`' for s in regime.suitable_strategies)}."
-                )
+                if not regime.available:
+                    output = (
+                        "**No market regime could be classified.** No ADX, Bollinger-band width or "
+                        "ATR reading has been supplied, and this detector will not invent one: the "
+                        "regime it reports decides position sizing by up to 2.5x."
+                    )
+                else:
+                    output = (
+                        f"Current Market Regime is **{regime.primary_regime.value}** ({regime.timeframe_consensus}). "
+                        f"Overall risk level is **{regime.risk_level}** with a recommended position sizing multiplier of **{regime.position_sizing_multiplier}x**. "
+                        f"Optimal strategies for this regime: {', '.join(f'`{s}`' for s in regime.suitable_strategies)}."
+                    )
                 step_results.append({"action": "detect_regime", "regime": regime.primary_regime.value})
                 return SkillExecutionResult(
                     skill_name=self.name,
@@ -130,7 +137,13 @@ class VoiceTradingSkill(BaseSkill):
             if any(k in clean_req for k in ["risk exposure", "risk dashboard", "var report", "what's my current risk"]):
                 risk_profile = self.risk_dashboard.evaluate_risk()
                 md_out = self.risk_dashboard.render_markdown_dashboard(risk_profile)
-                step_results.append({"action": "evaluate_risk", "var_95": risk_profile.var_95_usdt})
+                step_results.append(
+                    {
+                        "action": "evaluate_risk",
+                        "var_95": risk_profile.var_95_usdt,
+                        "available": risk_profile.available,
+                    }
+                )
                 return SkillExecutionResult(
                     skill_name=self.name,
                     success=True,
@@ -139,7 +152,40 @@ class VoiceTradingSkill(BaseSkill):
                     metadata=risk_profile.to_dict(),
                 )
 
-            # 3. Strategy Performance Prediction
+            # 3. Overall portfolio performance. This has to be checked before the
+            #    strategy-forecast branch below: "how is my portfolio performing"
+            #    contains "perform", so it used to be answered with a forecast for
+            #    the default strategy instead of the portfolio it asked about.
+            if "portfolio" in clean_req and any(k in clean_req for k in ["perform", "doing", "how is"]):
+                metrics = self.portfolio_engine.calculate_metrics()
+                from friday.core.readings import format_money, format_number
+
+                if not metrics.available:
+                    output = (
+                        "No trading account has been registered with the analytics engine, so I have "
+                        "no equity, leverage, Sharpe, Sortino or drawdown to report. I am not going to "
+                        "quote figures that nothing produced."
+                    )
+                else:
+                    output = (
+                        f"Reported portfolio equity is **{format_money(metrics.total_equity)} USDT** "
+                        f"with an effective leverage of **{format_number(metrics.leverage, 2, 'x')}**. "
+                        f"Risk-adjusted metrics: Sharpe **{format_number(metrics.sharpe_ratio, 2)}**, "
+                        f"Sortino **{format_number(metrics.sortino_ratio, 2)}**, maximum drawdown "
+                        f"**{format_number(metrics.max_drawdown_pct, 2, '%')}**."
+                    )
+                step_results.append(
+                    {"action": "portfolio_performance", "available": metrics.available}
+                )
+                return SkillExecutionResult(
+                    skill_name=self.name,
+                    success=True,
+                    output=output,
+                    step_results=step_results,
+                    metadata=metrics.to_dict(),
+                )
+
+            # 4. Strategy Performance Prediction
             if any(k in clean_req for k in ["expect", "perform", "forecast", "prediction"]):
                 # Extract strategy name if specified
                 match_strat = re.search(r"\b(?:the\s+)?([a-zA-Z0-9_\-]+)\s+(?:strategy\s+)?to\s+perform\b", clean_req)
@@ -171,12 +217,28 @@ class VoiceTradingSkill(BaseSkill):
             # 4. Rebalancing Recommendations
             if any(k in clean_req for k in ["rebalance", "rebalancing"]):
                 allocations = self.coordinator.optimize_allocations()
-                lines = ["Here are the optimal portfolio rebalancing recommendations based on the current market regime:"]
-                for a in allocations:
-                    lines.append(
-                        f"• **{a.strategy_name}**: Target Weight **{a.target_weight_pct:.0f}%** (Current: {a.current_weight_pct:.0f}%) — Status: `{a.status}` ({a.reason})"
+                if not allocations:
+                    output = (
+                        "I can't recommend rebalancing: no supported market regime has been measured, "
+                        "so there is no evidence for target weights. No current weights or orders were changed."
                     )
-                output = "\n".join(lines)
+                else:
+                    lines = [
+                        "Rule-based target weights for the supplied market regime "
+                        "(these are recommendations, not executed orders):"
+                    ]
+                    for allocation in allocations:
+                        current = (
+                            f"{allocation.current_weight_pct:.0f}%"
+                            if allocation.current_weight_pct is not None
+                            else "not reported"
+                        )
+                        lines.append(
+                            f"• **{allocation.strategy_name}**: Target Weight "
+                            f"**{allocation.target_weight_pct:.0f}%** (Current: {current}) — "
+                            f"Status: `{allocation.status}` ({allocation.reason})"
+                        )
+                    output = "\n".join(lines)
                 step_results.append({"action": "rebalance_recommendations", "allocation_count": len(allocations)})
                 return SkillExecutionResult(
                     skill_name=self.name,
@@ -193,15 +255,26 @@ class VoiceTradingSkill(BaseSkill):
                 matching = [s for s in metrics.strategy_attributions if target_strat.lower() in s.strategy_name.lower()]
                 if matching:
                     s = matching[0]
+                    from friday.core.readings import format_money, format_number
+
                     output = (
-                        f"Performance for **{s.strategy_name}**:\n"
-                        f"• Total Return: **{s.total_return_pct:+.2f}%**\n"
-                        f"• Sharpe Ratio: **{s.sharpe_ratio:.2f}**\n"
-                        f"• Portfolio Weight: **{s.weight * 100:.0f}%** (Equity: ${s.equity:,.2f} USDT)\n"
-                        f"• Max Drawdown: **{s.max_drawdown_pct:.2f}%**"
+                        f"Performance for **{s.strategy_name}** (from its recorded return stream):\n"
+                        f"• Total Return: **{format_number(s.total_return_pct, 2, '%')}**\n"
+                        f"• Sharpe Ratio: **{format_number(s.sharpe_ratio, 2)}**\n"
+                        f"• Portfolio Weight: **{s.weight * 100:.0f}%** "
+                        f"(Equity: {format_money(s.equity)} USDT)\n"
+                        f"• Max Drawdown: **{format_number(s.max_drawdown_pct, 2, '%')}**"
+                    )
+                elif not metrics.available:
+                    output = (
+                        f"I have no performance record for **{target_strat}**: no account and no "
+                        f"return stream have been registered, so I cannot say how it is doing."
                     )
                 else:
-                    output = f"Strategy **{target_strat}** is active with positive risk-adjusted returns."
+                    output = (
+                        f"No strategy matching **{target_strat}** appears in the recorded performance "
+                        f"attribution. I will not describe a strategy I have no record of."
+                    )
 
                 step_results.append({"action": "strategy_performance", "strategy": target_strat})
                 return SkillExecutionResult(
@@ -211,14 +284,26 @@ class VoiceTradingSkill(BaseSkill):
                     step_results=step_results,
                 )
 
-            # 6. Default: Overall Portfolio Performance
+            # 6. Default: Overall Portfolio Performance. "performing solidly across
+            # Binance Futures Testnet and Paper accounts" was asserted with no
+            # account of any kind registered, followed by four formatted numbers.
             metrics = self.portfolio_engine.calculate_metrics()
-            output = (
-                f"Your trading portfolio is performing solidly across Binance Futures Testnet and Paper accounts. "
-                f"Total portfolio equity is **${metrics.total_equity:,.2f} USDT** with an effective leverage of **{metrics.leverage:.2f}x**. "
-                f"Risk-adjusted metrics show an annualized **Sharpe Ratio of {metrics.sharpe_ratio:.2f}**, **Sortino Ratio of {metrics.sortino_ratio:.2f}**, "
-                f"and a maximum drawdown of **{metrics.max_drawdown_pct:.2f}%**."
-            )
+            from friday.core.readings import format_money, format_number
+
+            if not metrics.available:
+                output = (
+                    "I have no portfolio analytics to report: no trading account has been registered "
+                    "with the analytics engine, so there is no equity, leverage, Sharpe or drawdown "
+                    "figure. I will not describe a portfolio I cannot see."
+                )
+            else:
+                output = (
+                    f"Reported portfolio equity is **{format_money(metrics.total_equity)} USDT** with an "
+                    f"effective leverage of **{format_number(metrics.leverage, 2, 'x')}**. "
+                    f"Risk-adjusted metrics: **Sharpe {format_number(metrics.sharpe_ratio, 2)}**, "
+                    f"**Sortino {format_number(metrics.sortino_ratio, 2)}**, maximum drawdown "
+                    f"**{format_number(metrics.max_drawdown_pct, 2, '%')}**."
+                )
             step_results.append({"action": "portfolio_performance", "equity": metrics.total_equity})
             return SkillExecutionResult(
                 skill_name=self.name,

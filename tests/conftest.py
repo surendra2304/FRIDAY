@@ -118,3 +118,43 @@ def isolate_cognition_stores(tmp_path_factory, monkeypatch):
     monkeypatch.setattr(memory_bridge, "_SHARED", None)
     monkeypatch.setattr(mind_module, "_REGISTRY", None)
     yield
+
+
+@pytest.fixture()
+def approve_directives(monkeypatch):
+    """Let a test exercise desktop-directive mechanics without an agent.
+
+    ``WindowsFridayController.handle_directive`` now requires an authorizer for
+    anything with real-world effect (composing mail, sending a WhatsApp
+    message). Production callers - the agent fast path, the HTTP API, the CLI
+    and the voice session - all pass their agent's authorizer, and a caller that
+    passes none is refused.
+
+    Directive tests are about parsing, receipts and message wording, not about
+    who is allowed to act, so they opt in here and receive an authorizer that
+    approves. The refusal path is pinned separately in
+    ``test_workspace_policy_and_directive_authorization.py``; this fixture
+    deliberately does not touch a call that supplies its own authorizer, so a
+    test can still assert a denial.
+    """
+    from friday.core.types import (
+        AuthorizationDecision,
+        AuthorizationResponse,
+    )
+    from friday.devices import windows_friday as wf
+
+    class _Approving:
+        def authorize(self, request):
+            return AuthorizationResponse(
+                decision=AuthorizationDecision.APPROVED,
+                reason="test fixture: approved",
+            )
+
+    original = wf.WindowsFridayController.handle_directive
+    approver = _Approving()
+
+    def patched(self, command, authorizer=None):
+        return original(self, command, authorizer=authorizer or approver)
+
+    monkeypatch.setattr(wf.WindowsFridayController, "handle_directive", patched)
+    yield approver

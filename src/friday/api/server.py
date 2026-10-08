@@ -41,7 +41,7 @@ from friday.memory.event_consumer import MemoraEventConsumer
 from friday.memory.memora_client import memora_client
 from friday.autonomous import autonomous_controller
 from friday.autonomous.repair_loop import repair_loop
-from friday.cognition.reflex import IncidentKind, get_reflex_brain
+from friday.cognition.reflex import get_reflex_brain, parse_incident_scope
 from friday.cognition.mesh import get_mesh
 from friday.cognition.mind import get_mind_registry
 from friday.autonomous.self_repair import (
@@ -197,6 +197,10 @@ async def lifespan(_: FastAPI):
                 await task
             except asyncio.CancelledError:
                 pass
+        try:
+            await fleet_client.aclose()
+        except Exception:
+            logger.exception("Failed to close the shared fleet HTTP client during shutdown")
 
 app = FastAPI(
     title="FRIDAY Holographic Core & FastMCP Server",
@@ -568,9 +572,16 @@ async def get_autonomous_status() -> dict[str, Any]:
 
 @app.post("/api/autonomous/toggle")
 async def toggle_autonomous_mode(_: None = Depends(_require_control_access)) -> dict[str, Any]:
-    """Toggle Autonomous Mode on or off."""
+    """Toggle runtime-only Autonomous Mode and expose the active authorization settings."""
     new_state = autonomous_controller.toggle()
-    return {"status": "ok", "autonomous_mode": new_state}
+    current = autonomous_controller.get_status()
+    return {
+        "status": "ok",
+        "autonomous_mode": new_state,
+        "full_access_mode": current["full_access_mode"],
+        "sensitive_actions_auto_approved": current["sensitive_actions_auto_approved"],
+        "autonomous_mode_persistence": "runtime_only",
+    }
 
 
 @app.post("/api/autonomous/repair")
@@ -749,20 +760,10 @@ async def reflex_run_now(
     Nothing about this endpoint grants authority: a repair that needs a standing
     mandate and does not have one comes back as ``AWAITING_MANDATE``.
     """
-    include: set[IncidentKind] | None = None
-    if req.scope.strip():
-        mapping = {
-            "imports": IncidentKind.IMPORT_FAILURE,
-            "tests": IncidentKind.TEST_FAILURE,
-            "fleet": IncidentKind.PEER_UNREACHABLE,
-            "resources": IncidentKind.RESOURCE_PRESSURE,
-            "logs": IncidentKind.LOG_ERROR,
-        }
-        include = {
-            mapping[name.strip().lower()]
-            for name in req.scope.split(",")
-            if name.strip().lower() in mapping
-        } or None
+    try:
+        include = parse_incident_scope(req.scope)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return await get_reflex_brain().run_once(include=include)
 
 
@@ -779,12 +780,15 @@ async def minds_status() -> dict[str, Any]:
 
 
 @app.post("/api/android")
-async def handle_android_action(req: AndroidActionRequest, _: None = Depends(_require_control_access)) -> dict[str, Any]:
+async def handle_android_action(
+    req: AndroidActionRequest, _: None = Depends(_require_control_access)
+) -> Any:
     """Execute Android ADB action or get device connection status."""
     try:
         if req.action == "info":
             connected = android.is_connected()
-            devices = [android.device_id] if connected and android.device_id else []
+            devices = [android.adb_device_id] if connected and android.adb_device_id else []
+            # A successful status query may truthfully report no attached device.
             return {
                 "success": connected,
                 "connected": connected,
@@ -793,16 +797,16 @@ async def handle_android_action(req: AndroidActionRequest, _: None = Depends(_re
         elif req.action == "app":
             app_name = req.params.get("app", "youtube")
             ok = android.open_app(app_name)
-            return {"success": ok, "action": "app", "app": app_name}
+            payload = {"success": ok, "action": "app", "app": app_name}
         elif req.action == "key":
             key_name = req.params.get("key", "home")
             ok = android.press_key(key_name)
-            return {"success": ok, "action": "key", "key": key_name}
+            payload = {"success": ok, "action": "key", "key": key_name}
         elif req.action == "tap":
             x = req.params.get("x", 0)
             y = req.params.get("y", 0)
             ok = android.click(x, y)
-            return {"success": ok, "action": "tap", "x": x, "y": y}
+            payload = {"success": ok, "action": "tap", "x": x, "y": y}
         elif req.action == "swipe":
             ok = android.swipe(
                 req.params.get("x1", 0),
@@ -811,17 +815,168 @@ async def handle_android_action(req: AndroidActionRequest, _: None = Depends(_re
                 req.params.get("y2", 0),
                 req.params.get("duration", 300),
             )
-            return {"success": ok, "action": "swipe"}
-        return {"success": False, "error": f"Unknown action '{req.action}'"}
+            payload = {"success": ok, "action": "swipe"}
+        else:
+            return JSONResponse(
+                status_code=422,
+                content={"success": False, "error": f"Unknown action '{req.action}'"},
+            )
+        return payload if ok else JSONResponse(status_code=502, content=payload)
     except Exception as e:
         logger.warning(f"Android endpoint error: {e}")
-        return {"success": False, "devices": [], "error": str(e)}
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "devices": [], "error": str(e)},
+        )
+
+
+#: Verbs that ask for something to be removed, overwritten or destroyed. They
+#: are handled before any launcher ladder, because a ladder that matches on
+#: substrings will happily read "delete all my files" as "open Files".
+_DESTRUCTIVE_VERBS = (
+    "delete",
+    "erase",
+    "wipe",
+    "format",
+    "destroy",
+    "remove all",
+    "uninstall",
+    "kill all",
+    "shut down the computer",
+    "shutdown the computer",
+    "reboot the computer",
+    "restart the computer",
+    "factory reset",
+    "rm -rf",
+    "drop table",
+)
+
+#: Verbs that mean "start a program" - the only intents allowed to reach the
+#: application ladder below.
+_LAUNCH_PREFIXES = ("open ", "launch ", "start ", "run ", "show ", "switch to ", "go to ", "bring up ")
+
+
+def _refusal(payload: dict[str, Any], status_code: int = 403) -> JSONResponse:
+    """A refusal a client can act on without parsing prose.
+
+    Failure responses used to be HTTP 200 with ``success: false`` buried in the
+    body, so a caller - including the mobile client and the MCP bridge - could
+    not tell "the laptop locked itself" from "FRIDAY said no" without reading
+    English. The status code now carries the distinction and the body keeps the
+    shape it had.
+    """
+    return JSONResponse(status_code=status_code, content=payload)
+
+
+def _is_destructive(cmd: str) -> bool:
+    return any(verb in cmd for verb in _DESTRUCTIVE_VERBS)
+
+
+def _looks_like_launch(cmd: str) -> bool:
+    """Whether this is a request to *start* something, rather than mere chat
+    that happens to contain a word an application also uses."""
+    stripped = cmd.strip()
+    if not stripped:
+        return False
+    if stripped in {"chrome", "notepad", "calculator", "explorer", "paint", "terminal"}:
+        return True
+    return any(stripped.startswith(prefix) for prefix in _LAUNCH_PREFIXES)
+
+
+def _launch_target_verified(target: str) -> tuple[bool, str]:
+    """Start a program and say what actually happened.
+
+    The old path ran ``subprocess.Popen(f'start "" "{target}"', shell=True)`` and
+    returned ``Launched '{target}'.`` unconditionally. On a POSIX host ``start``
+    is not a command at all, so "open MyCoolProject" answered
+    ``Launched 'MyCoolProject'.`` for a name that does not exist anywhere - the
+    same false-success pattern the tool layer was fixed for.
+    """
+    if not target:
+        return False, "No application or file was named."
+    candidate = os.path.expanduser(target)
+    if os.path.exists(candidate):
+        try:
+            os.startfile(candidate)  # type: ignore[attr-defined]  # Windows only
+            return True, f"Opened '{candidate}'."
+        except AttributeError:
+            from friday.core.effects import launch_process_verified
+
+            outcome = launch_process_verified(f'xdg-open "{candidate}"') if _which("xdg-open") else None
+            if outcome and outcome.ok:
+                return True, f"Opened '{candidate}'."
+            return False, (
+                f"'{candidate}' exists but this machine has no way to open it from FRIDAY "
+                "(no file handler available)."
+            )
+        except Exception as exc:
+            return False, f"'{candidate}' could not be opened: {exc}"
+
+    from friday.core.effects import launch_process_verified
+
+    resolved = _which(candidate)
+    if resolved:
+        outcome = launch_process_verified(f'"{resolved}"')
+        if outcome.ok:
+            return True, f"Launched '{target}'."
+        return False, f"'{target}' did not start: {outcome.detail}"
+
+    return False, f"There is no application or file called '{target}' on this machine, so nothing was launched."
+
+
+def _which(name: str) -> str | None:
+    import shutil
+
+    return shutil.which(name)
 
 
 @app.post("/api/command")
-async def execute_command(req: CommandRequest, _: None = Depends(_require_control_access)) -> dict[str, Any]:
+async def execute_command(req: CommandRequest, _: None = Depends(_require_control_access)) -> Any:
     """Execute a text command with PC, Android, and live 8-Agent execution."""
-    raw_cmd = req.command.strip()
+    result = await _dispatch_command(req.command)
+    meta = result.get("metadata") or {}
+    authorization = str(meta.get("authorization", "")).upper()
+    authorization_denied = authorization in {"DENIED", "EXPIRED", "CANCELLED"}
+    if (
+        meta.get("security_blocked")
+        or meta.get("refused")
+        or meta.get("destructive_refused")
+        or meta.get("authorization_denied")
+        or authorization_denied
+    ):
+        return _refusal(result, 403)
+    if meta.get("execution_failed"):
+        return JSONResponse(status_code=500, content=result)
+    receipt = meta.get("receipt")
+    if (
+        meta.get("direct_action") == "send_whatsapp"
+        and isinstance(receipt, dict)
+        and receipt.get("status") == "DISPATCH_UNCONFIRMED"
+    ):
+        # The compose page opened, but the async UI worker has no result channel.
+        # 202 means the attempt is pending/unconfirmed, not that the message sent.
+        return JSONResponse(status_code=202, content=result)
+    if str(meta.get("task_state", "")).upper() == "PENDING":
+        # The peer accepted a typed task, but no completion receipt exists yet.
+        # Preserve it as asynchronous work instead of mapping success=False to 502.
+        return JSONResponse(status_code=202, content=result)
+    if meta.get("direct_action") and meta.get("success") is False:
+        # An approved request that the underlying mail/browser bridge could not
+        # dispatch is an upstream failure, not a successful HTTP chat turn. A
+        # missing recipient/message is a client-side validation failure.
+        status_code = 502 if meta.get("receipt") else 422
+        return JSONResponse(status_code=status_code, content=result)
+    if meta.get("error") or meta.get("success") is False:
+        # Fast paths and peer adapters may report an explicit failure without a
+        # refusal flag. Preserve the reply/body while giving HTTP clients a
+        # failure status rather than a false success.
+        return JSONResponse(status_code=502, content=result)
+    return result
+
+
+async def _dispatch_command(command: str) -> dict[str, Any]:
+    """The command router itself; :func:`execute_command` maps its result to HTTP."""
+    raw_cmd = (command or "").strip()
     cmd = raw_cmd.lower()
 
     # Reject direct prompt-injection attempts before any fast path or agent
@@ -835,6 +990,26 @@ async def execute_command(req: CommandRequest, _: None = Depends(_require_contro
             "metadata": {"fast_path": True, "security_blocked": True, "reason": "prompt_injection"},
         }
 
+    # Destructive intent is answered before any launcher ladder runs. "delete all
+    # my files" used to reach the ladder below, match the substring "files" and
+    # reply "Could not start File Explorer." - a sentence about the wrong action
+    # entirely, which reads as if the deletion had been understood.
+    if _is_destructive(cmd):
+        return {
+            "reply": (
+                "I will not delete, overwrite or uninstall anything on that instruction. "
+                "Destructive changes are refused by FRIDAY's file and system tools, and nothing "
+                "was touched. If you meant a specific file, name it exactly and I will show you "
+                "what would be affected before doing anything."
+            ),
+            "metadata": {
+                "refused": True,
+                "destructive_refused": True,
+                "reason": "destructive_request",
+                "command": raw_cmd,
+            },
+        }
+
     # =========================================================================
     # A. Autonomous Mode Toggles & Directives
     # =========================================================================
@@ -843,9 +1018,21 @@ async def execute_command(req: CommandRequest, _: None = Depends(_require_contro
         "autonomous mode on", "autonomous on", "start autonomous mode", "run autonomously"
     ]):
         autonomous_controller.toggle(True)
+        mode_status = autonomous_controller.get_status()
         return {
-            "reply": "⚡ Autonomous Mode is now ACTIVE. FRIDAY will autonomously resolve runtime errors, apply self-healing diagnostics, and control all 8 specialist agents on your command.",
-            "metadata": {"fast_path": True, "autonomous": True, "autonomous_mode": True},
+            "reply": (
+                "Autonomous Mode is ACTIVE for this running process only; the toggle is not saved and resets "
+                "to the configured setting after restart. Safety policy remains in force, and DANGEROUS actions "
+                "still require explicit confirmation."
+            ),
+            "metadata": {
+                "fast_path": True,
+                "autonomous": True,
+                "autonomous_mode": True,
+                "full_access_mode": mode_status["full_access_mode"],
+                "sensitive_actions_auto_approved": mode_status["sensitive_actions_auto_approved"],
+                "autonomous_mode_persistence": "runtime_only",
+            },
         }
 
     if any(k in cmd for k in [
@@ -853,9 +1040,23 @@ async def execute_command(req: CommandRequest, _: None = Depends(_require_contro
         "autonomous mode off", "autonomous off", "stop autonomous mode", "manual mode"
     ]):
         autonomous_controller.toggle(False)
+        mode_status = autonomous_controller.get_status()
+        reply = "Autonomous Mode is OFF for this running process only; the configured setting applies after restart."
+        if mode_status["full_access_mode"]:
+            reply += " Full-access compatibility mode remains ON, so SENSITIVE actions may still be auto-approved."
+        else:
+            reply += " Standing by for manual approval of SENSITIVE actions."
+        reply += " DANGEROUS actions still require explicit confirmation."
         return {
-            "reply": "Autonomous Mode DEACTIVATED. Standing by for manual directives.",
-            "metadata": {"fast_path": True, "autonomous": False, "autonomous_mode": False},
+            "reply": reply,
+            "metadata": {
+                "fast_path": True,
+                "autonomous": False,
+                "autonomous_mode": False,
+                "full_access_mode": mode_status["full_access_mode"],
+                "sensitive_actions_auto_approved": mode_status["sensitive_actions_auto_approved"],
+                "autonomous_mode_persistence": "runtime_only",
+            },
         }
 
     # =========================================================================
@@ -876,7 +1077,17 @@ async def execute_command(req: CommandRequest, _: None = Depends(_require_contro
 
     # 0. Conversational & Voice Interaction Fast-paths
     if any(cmd.startswith(g) or cmd == g for g in ["hello", "hi", "hey", "hello friday", "hello friends", "good morning", "good afternoon", "good evening"]):
-        return {"reply": "Hello Surendra! All core systems, telemetry feeds, and 8 specialist agents are online and ready for your command.", "metadata": {"fast_path": True, "conversational": True}}
+        # This greeting used to assert "8 specialist agents are online and ready"
+        # without asking any of them - while /api/agents reported every one of
+        # them UNREACHABLE on the same machine, at the same moment. A greeting
+        # may say that FRIDAY is listening; it may not certify a fleet.
+        return {
+            "reply": (
+                "Hello Surendra. FRIDAY is listening. Say 'status of all agents' for a live check of "
+                "the specialist peers - I will not claim they are online without asking them."
+            ),
+            "metadata": {"fast_path": True, "conversational": True, "peer_health_checked": False},
+        }
 
     if any(k in cmd for k in ["not tracking", "hands are not tracking", "these two hands", "two hands", "tracking", "gesture", "calibrate hands", "test hands"]):
         return {"reply": "Dual-hand optical sensors are active and calibrated. Hold both hands facing the camera with open palms for reticle lock.", "metadata": {"fast_path": True, "conversational": True}}
@@ -889,7 +1100,7 @@ async def execute_command(req: CommandRequest, _: None = Depends(_require_contro
 
     if any(k in cmd for k in ["what can you do", "help", "features", "commands", "what are your capabilities", "capabilities", "what do you do"]):
         return {
-            "reply": "I can launch Windows applications, open and search websites, control the Windows media session, capture screenshots, monitor system telemetry, and orchestrate the connected specialist agents. Website playback and account actions require a working service integration.",
+            "reply": "I can launch Windows applications, open and search websites, control the Windows media session, capture screenshots, monitor system telemetry, and orchestrate the specialist agents when they answer. Website playback and account actions require a working service integration.",
             "metadata": {"fast_path": True, "conversational": True},
         }
 
@@ -943,28 +1154,55 @@ async def execute_command(req: CommandRequest, _: None = Depends(_require_contro
             if not android.is_connected():
                 return {
                     "reply": "No Android device connected via ADB. Connect your phone via USB with USB Debugging enabled.",
-                    "metadata": {"fast_path": True, "device": "android", "adb_connected": False},
+                    "metadata": {
+                        "fast_path": True,
+                        "device": "android",
+                        "adb_connected": False,
+                        "success": False,
+                    },
                 }
 
             # Android App Launch fast-path
             for app_name in ["youtube", "chrome", "maps", "camera", "settings", "whatsapp", "spotify", "instagram", "calculator"]:
                 if app_name in cmd:
                     success = android.open_app(app_name)
-                    msg = f"Opened {app_name.capitalize()} on Android device." if success else f"Failed to launch {app_name} on Android."
-                    return {"reply": msg, "metadata": {"fast_path": True, "device": "android"}}
+                    msg = (
+                        f"Opened {app_name.capitalize()} on Android device."
+                        if success
+                        else f"Failed to launch {app_name} on Android."
+                    )
+                    return {
+                        "reply": msg,
+                        "metadata": {
+                            "fast_path": True,
+                            "device": "android",
+                            "action": "open_app",
+                            "success": success,
+                        },
+                    }
             if "home" in cmd:
-                android.press_key("home")
-                return {"reply": "Pressed Home on Android device.", "metadata": {"fast_path": True, "device": "android"}}
+                success = android.press_key("home")
+                msg = "Pressed Home on Android device." if success else "Failed to press Home on Android."
+                return {
+                    "reply": msg,
+                    "metadata": {"fast_path": True, "device": "android", "action": "home", "success": success},
+                }
             if "back" in cmd:
-                android.press_key("back")
-                return {"reply": "Pressed Back on Android device.", "metadata": {"fast_path": True, "device": "android"}}
+                success = android.press_key("back")
+                msg = "Pressed Back on Android device." if success else "Failed to press Back on Android."
+                return {
+                    "reply": msg,
+                    "metadata": {"fast_path": True, "device": "android", "action": "back", "success": success},
+                }
     except Exception as ae:
         logger.warning(f"Android fast-path error: {ae}")
 
     # 3. Windows FRIDAY Master Laptop Directives (YouTube, websites, media, volume, apps, folders, system)
     try:
         from friday.devices.windows_friday import windows_friday
-        handled, friday_reply, friday_meta = windows_friday.handle_directive(raw_cmd)
+        handled, friday_reply, friday_meta = windows_friday.handle_directive(
+            raw_cmd, authorizer=getattr(agent, "authorizer", None)
+        )
         if handled:
             friday_meta["fast_path"] = True
             friday_meta["device"] = "windows"
@@ -992,7 +1230,10 @@ async def execute_command(req: CommandRequest, _: None = Depends(_require_contro
                 active_summary = "Running in cloud headless environment on Render."
                 device_type = "cloud"
 
-            reply = f"I am perceiving your environment. {active_summary} Dual-Hand Holographic Cockpit telemetry active and 8 specialist agents ready."
+            reply = (
+                f"I am perceiving your environment. {active_summary} Screen and window telemetry is "
+                "active; specialist-agent status is a separate check."
+            )
             return {"reply": reply, "metadata": {"fast_path": True, "device": device_type, "action": "screen_perception", "active_window": title}}
 
         # Universal Application & File Launcher Fast-path
@@ -1042,37 +1283,39 @@ async def execute_command(req: CommandRequest, _: None = Depends(_require_contro
                     os.startfile(cand)
                     return {"reply": f"Opened '{cand}'.", "metadata": {"fast_path": True, "path": cand}}
 
-            try:
-                subprocess.Popen(f'start "" "{target_str}"', shell=True)
-                return {"reply": f"Launched '{target_str}'.", "metadata": {"fast_path": True, "target": target_str}}
-            except Exception:
-                pass
+            ok, msg = _launch_target_verified(target_str)
+            if ok:
+                return {"reply": msg, "metadata": {"fast_path": True, "target": target_str, "success": True}}
+            return {
+                "reply": msg,
+                "metadata": {"fast_path": True, "target": target_str, "success": False, "refused": True},
+            }
 
-        if any(k in cmd for k in ["chrome", "google chrome", "swipe right"]):
+        if _looks_like_launch(cmd) and any(k in cmd for k in ["chrome", "google chrome", "swipe right"]):
             ok, msg = launch_desktop_app("chrome")
             return {"reply": msg, "metadata": {"fast_path": True, "device": "windows", "app": "chrome", "success": ok}}
-        elif any(k in cmd for k in ["notepad", "text editor", "swipe left"]):
+        elif _looks_like_launch(cmd) and any(k in cmd for k in ["notepad", "text editor", "swipe left"]):
             ok, msg = launch_desktop_app("notepad")
             return {"reply": msg, "metadata": {"fast_path": True, "device": "windows", "app": "notepad", "success": ok}}
-        elif any(k in cmd for k in ["calc", "calculator"]):
+        elif _looks_like_launch(cmd) and any(k in cmd for k in ["calc", "calculator"]):
             ok, msg = launch_desktop_app("calculator")
             return {"reply": msg, "metadata": {"fast_path": True, "device": "windows", "app": "calculator", "success": ok}}
-        elif any(k in cmd for k in ["code", "vscode", "vs code"]):
+        elif _looks_like_launch(cmd) and any(k in cmd for k in ["code", "vscode", "vs code"]):
             ok, msg = launch_desktop_app("vscode")
             return {"reply": msg, "metadata": {"fast_path": True, "device": "windows", "app": "code", "success": ok}}
-        elif any(k in cmd for k in ["edge", "microsoft edge"]):
+        elif _looks_like_launch(cmd) and any(k in cmd for k in ["edge", "microsoft edge"]):
             ok, msg = launch_desktop_app("edge")
             return {"reply": msg, "metadata": {"fast_path": True, "device": "windows", "app": "edge", "success": ok}}
-        elif any(k in cmd for k in ["explorer", "file explorer", "files"]):
+        elif _looks_like_launch(cmd) and any(k in cmd for k in ["explorer", "file explorer", "files"]):
             ok, msg = launch_desktop_app("explorer")
             return {"reply": msg, "metadata": {"fast_path": True, "device": "windows", "app": "explorer", "success": ok}}
-        elif any(k in cmd for k in ["paint", "mspaint"]):
+        elif _looks_like_launch(cmd) and any(k in cmd for k in ["paint", "mspaint"]):
             ok, msg = launch_desktop_app("paint")
             return {"reply": msg, "metadata": {"fast_path": True, "device": "windows", "app": "paint", "success": ok}}
-        elif any(k in cmd for k in ["terminal", "cmd", "powershell"]):
+        elif _looks_like_launch(cmd) and any(k in cmd for k in ["terminal", "cmd", "powershell"]):
             ok, msg = launch_desktop_app("terminal")
             return {"reply": msg, "metadata": {"fast_path": True, "device": "windows", "app": "terminal", "success": ok}}
-        elif any(k in cmd for k in ["screenshot", "capture screen", "snapshot"]):
+        elif _looks_like_launch(cmd) and any(k in cmd for k in ["screenshot", "capture screen", "snapshot"]):
             res = agent.tools.execute(name="get_screen_snapshot", arguments={})
             snap_tool = agent.tools.get("get_screen_snapshot")
             b64_img = ""
@@ -1110,7 +1353,7 @@ async def execute_command(req: CommandRequest, _: None = Depends(_require_contro
     # 3. Central Agent Cognitive & Tool Execution Loop
     try:
         loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None, agent.process_message, req.command)
+        response = await loop.run_in_executor(None, agent.process_message, raw_cmd)
         content = getattr(response, "content", "") or str(response)
         if any(w in content.lower() for w in ["ambiguous", "jumbled", "cut off", "incomplete", "please clarify"]):
             content = "I am standing by, Surendra. What would you like me to do?"
@@ -1121,85 +1364,38 @@ async def execute_command(req: CommandRequest, _: None = Depends(_require_contro
         if autonomous_controller.is_autonomous():
             repair_report = await autonomous_controller.execute_self_repair(context=str(exc))
             return {
-                "reply": f"⚠️ An execution anomaly occurred ('{exc}').\n\n{repair_report['reply']}",
-                "metadata": {"autonomous": True, "self_repair_attempted": False, "error": type(exc).__name__},
+                "reply": f"⚠️ FRIDAY could not complete the request ({type(exc).__name__}).\n\n{repair_report['reply']}",
+                "metadata": {
+                    "autonomous": True,
+                    "self_repair_attempted": False,
+                    "execution_failed": True,
+                    "success": False,
+                    "error": type(exc).__name__,
+                },
             }
-        return {"reply": f"Understood, Surendra. Awaiting your directive: '{req.command}'.", "metadata": {"fallback": True}}
-
-
-@app.post("/api/android")
-async def execute_android(req: AndroidActionRequest, _: None = Depends(_require_control_access)) -> dict[str, Any]:
-    """Direct Android execution endpoint for mobile automation."""
-    act = req.action.lower()
-    p = req.params
-    try:
-        if act == "tap":
-            ok = android.click(int(p.get("x", 0)), int(p.get("y", 0)))
-            return {"success": ok, "action": act}
-        elif act == "swipe":
-            ok = android.swipe(int(p.get("x1", 0)), int(p.get("y1", 0)), int(p.get("x2", 0)), int(p.get("y2", 0)), int(p.get("duration_ms", 300)))
-            return {"success": ok, "action": act}
-        elif act == "type":
-            ok = android.type_text(str(p.get("text", "")))
-            return {"success": ok, "action": act}
-        elif act == "key":
-            ok = android.press_key(str(p.get("key", "home")))
-            return {"success": ok, "action": act}
-        elif act == "app":
-            ok = android.open_app(str(p.get("name", "youtube")))
-            return {"success": ok, "action": act}
-        elif act == "info":
-            devices = android.list_devices()
-            return {"success": bool(devices), "devices": devices}
-        else:
-            return {"success": False, "error": f"Unknown Android action '{act}'"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-@app.get("/api/system_telemetry")
-async def system_telemetry_endpoint() -> dict[str, Any]:
-    """Return real-time hardware telemetry (CPU, RAM, Cores, Platform) for the holographic HUD."""
-    try:
-        import psutil
-        vm = psutil.virtual_memory()
         return {
-            "status": "ok",
-            "cpu_percent": psutil.cpu_percent(interval=None),
-            "cpu_cores": psutil.cpu_count(logical=True),
-            "ram_percent": vm.percent,
-            "ram_total_gb": round(vm.total / (1024**3), 2),
-            "ram_used_gb": round(vm.used / (1024**3), 2),
-            "ram_avail_gb": round(vm.available / (1024**3), 2),
-            "os": "Windows 11 x64",
-            "operator": "Surendra",
+            "reply": (
+                f"FRIDAY could not process this request ({type(exc).__name__}). "
+                "No action is being reported as completed. Please retry or provide more detail."
+            ),
+            "metadata": {
+                "fallback": True,
+                "execution_failed": True,
+                "success": False,
+                "error": type(exc).__name__,
+            },
         }
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
 
+
+# Historical note: duplicate `/api/android`, `/api/system_telemetry`, and
+# `/api/telemetry` handlers once lived here. FastAPI resolves routes in
+# registration order, leaving later copies unreachable; one of those copies
+# hardcoded Windows telemetry. Keep the canonical, measured handlers above and
+# guard route uniqueness in `test_the_telemetry_routes_are_not_shadowed`.
 
 class ChatRequest(BaseModel):
     message: str = ""
 
-
-@app.get("/api/telemetry")
-async def telemetry_alias() -> dict[str, Any]:
-    """Compatibility endpoint for dashboard telemetry."""
-    try:
-        import psutil
-        vm = psutil.virtual_memory()
-        import os
-        drive = os.path.splitdrive(os.getcwd())[0] or "C:"
-        disk = psutil.disk_usage(drive + "\\")
-        return {
-            "status": "ok",
-            "cpu_usage": round(psutil.cpu_percent(interval=None)),
-            "ram_usage": round(vm.percent),
-            "storage_usage": round(disk.percent),
-            "network_usage": 120,
-        }
-    except Exception as exc:
-        return {"status": "unavailable", "error": type(exc).__name__}
 
 
 @app.post("/api/chat")

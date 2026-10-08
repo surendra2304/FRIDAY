@@ -396,6 +396,15 @@ class CognitiveMixin:
             self.memory.add_message(final_msg)
 
             duration = time.perf_counter() - start_time
+            authorization_denied = any(
+                str((result.metadata or {}).get("authorization", "")).upper()
+                in {"DENIED", "EXPIRED", "CANCELLED"}
+                for result in (exec_res.tool_results or [])
+            )
+            task_succeeded = (
+                self.state_machine.current_state == TaskState.COMPLETED
+                and not authorization_denied
+            )
             logger.info(f"Turn processed successfully in {duration:.2f}s [Final State: {self.state_machine.current_state.value}]")
 
             return AgentResponse(
@@ -407,7 +416,8 @@ class CognitiveMixin:
                     "iterations": exec_res.metadata.get("iterations", exec_res.metadata.get("total_tasks", 1) or 1),
                     "request_count": exec_res.metadata.get("iterations", exec_res.metadata.get("total_tasks", 1) or 1),
                     "duration_seconds": duration,
-                    "success": (self.state_machine.current_state == TaskState.COMPLETED),
+                    "success": task_succeeded,
+                    "authorization_denied": authorization_denied,
                     "provider": self.llm.provider_name,
                     "model": self.llm.model,
                     "cost_mode": getattr(self.settings, "cost_mode", "free_first"),

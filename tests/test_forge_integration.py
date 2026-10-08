@@ -14,17 +14,39 @@ from friday.skills.forge_manager import ForgeManagerSkill
 from friday.skills.registry import SkillRegistry
 from friday.skills.voice_ecosystem import VoiceEcosystemSkill
 from friday.trading.intelligence_engine import IntelligenceEngine
+from tests.mock_forge_api import MockForgeServer
 
 
 @pytest.fixture
-def forge_ecosystem_setup():
+def forge_api_server():
+    """A real HTTP FORGE endpoint, so health and dispatch are proven, not assumed."""
+    server = MockForgeServer(port=8982)
+    server.start()
+    yield server
+    server.stop()
+
+
+@pytest.fixture
+def forge_ecosystem_setup(forge_api_server):
     memory = InMemoryConversationMemory()
     alert_mgr = ProductionAlertManager(memory=memory)
     sec_mgr = ProductionSecurityManager()
-    auth_client = ForgeAuthClient(rate_limit_per_min=10)
+    auth_client = ForgeAuthClient(api_url=forge_api_server.base_url, rate_limit_per_min=600)
 
-    forge_manager = ForgeManagerSkill(auth_client=auth_client, memory=memory)
+    # Sample tasks exist for exactly this kind of test; since the seed is no
+    # longer unconditional, the fixture opts in by name - which is also the
+    # record that these tasks are not real deliveries.
+    forge_manager = ForgeManagerSkill(auth_client=auth_client, memory=memory, demo_data=True)
     command_center = EcosystemCommandCenter(security_manager=sec_mgr)
+    # Report a reading for each system the way a live bridge would; "all systems
+    # healthy" can then be asserted as a real statement rather than a default.
+    command_center.record_system_status(
+        "trading_bot",
+        {"status": "HEALTHY", "connected_venues": ["Binance", "Bybit", "OKX"],
+         "active_capital_usdt": 25000.0, "active_positions_count": 3, "daily_pnl_usdt": 420.50},
+    )
+    command_center.record_system_status("ai_universe", {"status": "HEALTHY"})
+    command_center.record_system_status("friday_os", {"status": "HEALTHY"})
     intel_engine = IntelligenceEngine()
 
     orchestrator = EcosystemOrchestrator(
@@ -73,11 +95,14 @@ def test_forge_auth_client_signing_and_rate_limit(forge_ecosystem_setup):
     assert auth_client.validate_build_response({"task_id": "t1", "status": "QUEUED"}) is True
     assert auth_client.validate_build_response({"invalid": "payload"}) is False
 
-    # Rate limiting: consume tokens
+    # Rate limiting: the fixture's client is deliberately roomy (the skill itself
+    # now makes a real HTTP call per request), so this exercises the limiter on a
+    # client configured for it.
+    limited = ForgeAuthClient(api_url=auth_client.api_url, rate_limit_per_min=10)
     for _ in range(10):
-        assert auth_client.acquire_rate_limit() is True
+        assert limited.acquire_rate_limit() is True
     # 11th token should be rejected
-    assert auth_client.acquire_rate_limit() is False
+    assert limited.acquire_rate_limit() is False
 
 
 # =========================================================================
@@ -129,8 +154,11 @@ def test_ecosystem_orchestrator_routing(forge_ecosystem_setup):
     assert workflow_res["status"] == "DISPATCHED"
 
     health = orchestrator.check_system_health()
-    assert health["all_systems_healthy"] is True
+    # Every subsystem either reported a reading (trading/ai/friday_os) or was
+    # probed over HTTP (forge), so "all healthy" is a statement about replies.
+    assert health["unverified_subsystems"] == []
     assert health["subsystems"]["forge"] == "HEALTHY"
+    assert health["all_systems_healthy"] is True
 
 
 # =========================================================================
@@ -149,8 +177,14 @@ def test_forge_monitor_operator_and_master_dashboard(forge_ecosystem_setup):
     # Master Dashboard
     md = dashboard.render_dashboard()
     assert "# 🌐 FRIDAY Unified Ecosystem Master Dashboard" in md
-    assert "FORGE Autonomous Software Engineering Engine" in md
-    assert "Chronological Cross-System Activity Feed" in md
+    assert "FORGE Software Engineering Engine" in md
+    assert "SAMPLE DATA" in md, "seeded tasks must be labelled as sample data"
+    # One feed, not the same list printed twice: the render used to repeat the
+    # whole activity feed under a second "Chronological" heading.
+    assert md.count("Cross-System Activity Feed") == 1
+    assert "no reading" in md.lower() or "unknown" in md.lower(), (
+        "unreported systems must be visible as unknown, not omitted"
+    )
 
 
 # =========================================================================
@@ -164,7 +198,7 @@ def test_voice_ecosystem_skill_commands(forge_ecosystem_setup):
     # Trading voice
     res_trade = voice_skill.execute("Trading status")
     assert res_trade.success is True
-    assert "Trading Bot is HEALTHY" in res_trade.output
+    assert "Trading Bot reports HEALTHY" in res_trade.output
 
     # FORGE voice
     res_forge = voice_skill.execute("FORGE status")
@@ -174,13 +208,16 @@ def test_voice_ecosystem_skill_commands(forge_ecosystem_setup):
     # AI-Universe voice
     res_ai = voice_skill.execute("AI Universe status")
     assert res_ai.success is True
-    assert "AI-Universe Core is HEALTHY" in res_ai.output
+    assert "AI-Universe Core reports HEALTHY" in res_ai.output
 
     # Ecosystem voice
     res_eco = voice_skill.execute("What's happening?")
     assert res_eco.success is True
-    assert "🔵 [TRADING]" in res_eco.output
-    assert "🟠 [FORGE]" in res_eco.output
+    # The summary lists what the ecosystem layer was actually told. The fixture
+    # reported trading/ai/friday_os above, so each must now appear by name; the
+    # old assertion expected emoji-labelled invented sentences.
+    for label in ("Trading", "AI-Universe", "FRIDAY"):
+        assert f"{label}: " in res_eco.output
 
 
 def test_forge_and_voice_ecosystem_registered_in_registry():

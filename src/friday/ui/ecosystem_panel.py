@@ -37,60 +37,118 @@ class EcosystemDashboardPanel:
         ai = subs.get("ai_universe", {}).get("data", {})
         nexus = subs.get("nexus", {}).get("data", {})
 
+        from friday.core.readings import UNKNOWN_LABEL, read_number, read_text
+
+        # Every number below was a literal with a "reasonable" default: an
+        # equity of $10,450, a +$420.50 day, 3 positions, 2 delivered builds at
+        # 96.0% coverage, 7 providers, 128 consultations, 84% confidence, a
+        # Nexus site health of 98.4/100 and 4,280 visitors - none of which any
+        # subsystem had reported. A card that shows a confident number when the
+        # subsystem is silent is worse than a card that shows nothing.
+        def _metric(reading, template: str) -> str:
+            if not reading.known:
+                return UNKNOWN_LABEL
+            return template.format(value=reading.value)
+
+        equity = read_number(bot, "equity_usdt", source="trading bot")
+        daily_pnl = read_number(bot, "daily_pnl_usdt", source="trading bot")
+        positions = read_number(bot, "active_positions_count", source="trading bot")
+        coverage = read_number(forge, "mean_test_coverage_pct", source="forge")
+        builds = read_number(forge, "total_completed", source="forge")
+        providers = read_number(ai, "configured_providers_count", source="ai universe")
+        consultations = read_number(ai, "consultations_today", source="ai universe")
+        confidence = read_number(ai, "model_confidence_pct", source="ai universe")
+        site_health = read_number(nexus, "health_score", source="nexus")
+        visitors = read_number(nexus, "visitors_today", source="nexus")
+
+        def _count(reading, suffix: str) -> str:
+            return UNKNOWN_LABEL if not reading.known else f"{reading.value:,.0f} {suffix}"
+
         return {
             "title": "FRIDAY Unified Ecosystem Command Panel",
-            "overall_health": health.get("overall_health", "HEALTHY"),
+            "overall_health": read_text(health, "overall_health"),
             "cards": {
                 "trading_bot": {
                     "title": "Trading Bot",
                     "icon": "📈",
-                    "status": bot.get("status", "RUNNING"),
-                    "key_metric": f"${bot.get('equity_usdt', 10450.0):,.2f} USDT",
-                    "pnl": f"+${bot.get('daily_pnl_usdt', 420.50):,.2f} USDT",
-                    "positions_count": bot.get("active_positions_count", 3),
+                    "status": read_text(bot, "status"),
+                    "key_metric": f"{_metric(equity, '${value:,.2f}')} USDT",
+                    "pnl": f"{_metric(daily_pnl, '${value:,.2f}')} USDT",
+                    "positions_count": int(positions.value) if positions.known else UNKNOWN_LABEL,
                     "quick_actions": ["Emergency stop trading", "View open positions"],
                 },
                 "forge": {
                     "title": "FORGE SWE Engine",
                     "icon": "🛠️",
-                    "status": forge.get("status", "IDLE"),
-                    "key_metric": f"{forge.get('total_completed', 2)} Delivered Builds",
-                    "mean_coverage": f"{forge.get('mean_test_coverage_pct', 96.0):.1f}%",
-                    "active_tasks": forge.get("active_tasks_count", 0),
+                    "status": read_text(forge, "status"),
+                    "key_metric": f"{_count(builds, 'Delivered Builds')}",
+                    "mean_coverage": f"{_metric(coverage, '{value:.1f}%')}",
+                    "active_tasks": int(read_number(forge, "active_tasks_count").or_else(0))
+                    if read_number(forge, "active_tasks_count").known else UNKNOWN_LABEL,
                     "quick_actions": ["Build something new", "Show FORGE artifacts"],
                 },
                 "ai_universe": {
                     "title": "AI-Universe Core",
                     "icon": "🧠",
-                    "status": ai.get("status", "HEALTHY"),
-                    "key_metric": f"{ai.get('configured_providers_count', 7)} Providers Online",
-                    "consultations": f"{ai.get('consultations_today', 128)} consultations",
-                    "confidence": f"{ai.get('model_confidence_pct', 84.0):.0f}%",
+                    "status": read_text(ai, "status"),
+                    "key_metric": f"{_count(providers, 'Providers Online')}",
+                    "consultations": f"{_count(consultations, 'consultations')}",
+                    "confidence": f"{_metric(confidence, '{value:.0f}%')}",
                     "quick_actions": ["Request market briefing", "Explain predictions"],
                 },
                 "nexus": {
                     "title": "Nexus Website & Growth",
                     "icon": "🌐",
-                    "status": nexus.get("status", "HEALTHY"),
-                    "site_health": f"{nexus.get('health_score', 98.4):.1f}/100",
-                    "visitors_today": f"{nexus.get('visitors_today', 4280):,} visitors",
-                    "lead_count": nexus.get("leads_detected_today", 14),
-                    "active_incidents": nexus.get("active_incidents_count", 0),
-                    "pending_approvals": nexus.get("pending_approvals_count", 1),
+                    "status": read_text(nexus, "status"),
+                    "site_health": f"{_metric(site_health, '{value:.1f}/100')}",
+                    "visitors_today": f"{_count(visitors, 'visitors')}",
+                    "lead_count": int(read_number(nexus, "leads_detected_today").value)
+                    if read_number(nexus, "leads_detected_today").known else UNKNOWN_LABEL,
+                    "active_incidents": int(read_number(nexus, "active_incidents_count").value)
+                    if read_number(nexus, "active_incidents_count").known else UNKNOWN_LABEL,
+                    "pending_approvals": int(read_number(nexus, "pending_approvals_count").value)
+                    if read_number(nexus, "pending_approvals_count").known else UNKNOWN_LABEL,
                     "quick_actions": ["View high-intent leads", "Diagnose conversion drop", "Pause experiment"],
                 },
             },
-            "alerts_feed": [
-                {"timestamp": datetime.now(timezone.utc).isoformat(), "subsystem": "trading_bot", "message": "Position BTCUSDT trailing stop updated to $64,200", "severity": "INFO"},
-                {"timestamp": datetime.now(timezone.utc).isoformat(), "subsystem": "forge", "message": "Task forge_task_01 verified with 96.0% test coverage", "severity": "INFO"},
-                {"timestamp": datetime.now(timezone.utc).isoformat(), "subsystem": "nexus", "message": "High-intent lead detected from acme-corp.com (Score: 94/100)", "severity": "INFO"},
-            ],
+            # The feed used to carry three literals - a trailing-stop update at
+            # $64,200, a task "verified with 96.0% test coverage", and a lead
+            # from acme-corp.com - each stamped with the current time so they
+            # read as events that had just happened. They are now whatever the
+            # ecosystem layer has actually recorded, and an empty feed stays
+            # empty rather than being filled in.
+            "alerts_feed": self._recorded_alerts(),
             "one_click_actions": [
                 {"label": "Build something new", "action": "forge_build_dialog"},
                 {"label": "Emergency stop trading", "action": "panic_kill_switch"},
                 {"label": "Review Nexus leads", "action": "nexus_lead_review"},
             ],
         }
+
+    def _recorded_alerts(self) -> list[dict[str, Any]]:
+        """One feed entry per subsystem, from the subsystem's own report.
+
+        A dashboard that invents its activity feed cannot be used to notice that
+        something stopped happening: the feed looks the same either way. This
+        reads the same registry the cards above it read, so the feed and the
+        cards can never disagree - including the "UNVERIFIED" state, which is a
+        real report and is labelled as one.
+        """
+        alerts: list[dict[str, Any]] = []
+        for name, entry in (self.registry.get_ecosystem_status().get("subsystems") or {}).items():
+            data = entry.get("data") or {}
+            status = str(entry.get("status", "UNKNOWN")).upper()
+            evidence = data.get("evidence") or ""
+            severity = "WARNING" if status in {"UNVERIFIED", "UNKNOWN", "DEGRADED"} else "INFO"
+            alerts.append(
+                {
+                    "timestamp": data.get("checked_at") or datetime.now(timezone.utc).isoformat(),
+                    "subsystem": name,
+                    "message": f"{entry.get('display_name', name)}: {status}" + (f" - {evidence}" if evidence else ""),
+                    "severity": severity,
+                }
+            )
+        return alerts
 
     def render_markdown(self) -> str:
         """Renders comprehensive Markdown presentation of the panel."""

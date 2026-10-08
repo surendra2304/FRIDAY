@@ -60,9 +60,15 @@ class MasterVoiceInterface:
         """Determines whether to speak in CALM or CRISIS tone."""
         status = self.command_center.get_ecosystem_status()
         state = status.get("ecosystem_state", "SUPERVISED_AUTONOMY")
-        loss_prox = status.get("risk_posture", {}).get("daily_loss_limit_proximity_pct", 0.0)
+        # The default here used to be 0.0, which reads "no reported risk" and
+        # "risk is zero" identically - so the calm tone was chosen on the
+        # strength of a number nobody had measured. The reading is taken as it
+        # is and .at_least() answers False for anything unknown.
+        from friday.core.readings import read_number
 
-        if state in (EcosystemState.EMERGENCY_HALT.value, EcosystemState.DEGRADED.value) or loss_prox >= 70.0:
+        loss_prox = read_number(status.get("risk_posture"), "daily_loss_limit_proximity_pct")
+
+        if state in (EcosystemState.EMERGENCY_HALT.value, EcosystemState.DEGRADED.value) or loss_prox.at_least(70.0):
             return VoiceToneContext.CRISIS
         return VoiceToneContext.CALM
 
@@ -73,21 +79,37 @@ class MasterVoiceInterface:
         state = status.get("ecosystem_state")
         systems = status.get("systems", {})
         bot = systems.get("trading_bot", {})
-        pnl = bot.get("daily_pnl_usdt", 0.0)
-        sign = "+" if pnl >= 0 else ""
+        # Every clause that follows used to be a claim this method could not
+        # support: "All three systems are in HEALTHY status", "3 active
+        # positions", "up $X today", "on-chain whale accumulation remain strongly
+        # favorable". The numbers came from defaults; the health adjectives came
+        # from nowhere at all. Each part is now printed from the reported
+        # reading, or named as unreported.
+        from friday.core.readings import read_number
+
+        pnl = read_number(bot, "daily_pnl_usdt", source="trading bot")
+        positions = read_number(bot, "active_positions_count", source="trading bot")
+        unreported = [name for name, reading in systems.items() if not reading.get("available")]
 
         if tone == VoiceToneContext.CRISIS:
             return (
                 f"Attention Operator: Ecosystem state is currently {state}. "
-                f"Trading bot P&L is {sign}${pnl:,.2f} USDT with elevated risk proximity. "
-                f"Guardian Angel is actively monitoring all safety gates. Say 'Ecosystem status' for emergency breakdown."
+                f"Trading bot P&L is {pnl.currency()} USDT with elevated risk proximity. "
+                f"Guardian Angel is monitoring the safety gates it can read. Say 'Ecosystem status' for a breakdown."
+            )
+
+        if unreported:
+            names = ", ".join(unreported)
+            return (
+                f"I will not claim everything is running smoothly, Operator: I have no reading for {names}, "
+                f"so I cannot speak for them. Ecosystem state is {state}. "
+                f"Trading P&L is {pnl.currency()} USDT across {positions.number(0)} positions."
             )
 
         return (
-            f"Everything is running smoothly, Operator. All three systems—the Algorithmic Trading Bot, "
-            f"AI-Universe, and FRIDAY OS—are in HEALTHY status under {state}. "
-            f"Our multi-exchange portfolio across Binance, Bybit, and OKX is up {sign}${pnl:,.2f} USDT today across 3 active positions. "
-            f"Model predictions and on-chain whale accumulation remain strongly favorable."
+            f"Ecosystem state is {state}, with every system having reported. "
+            f"Trading P&L is {pnl.currency()} USDT today across {positions.number(0)} positions. "
+            f"Ask me for the risk posture if you want the limits and leverage."
         )
 
     def answer_anything_to_know(self) -> str:
@@ -101,27 +123,48 @@ class MasterVoiceInterface:
                 f"Yes, Operator: There are {len(alerts)} items to note. "
                 f"Most notably: {top_alert.message} "
                 f"Additionally, the system executed {len(decisions)} autonomous parameter actions today. "
-                f"All core safety thresholds remain well within normal operating tolerances."
+                f"That is a count of actions, not an assessment of your safety thresholds."
             )
 
+        # "All risk limits, venue latencies, and candidate validations are
+        # operating normally with zero active emergency alerts" asserted three
+        # things this class never checks. An empty alert list means no alert was
+        # raised; it does not mean the limits were measured.
         return (
-            "Nothing urgent to report, Operator. All risk limits, venue latencies, and candidate validations "
-            "are operating normally with zero active emergency alerts."
+            "Nothing is in the alert queue, Operator - which means no alert was raised, not that "
+            "everything was checked. Ask me for the risk posture if you want the numbers."
         )
 
     def answer_should_i_be_worried(self) -> str:
         """Answers: 'Should I be worried about anything?'"""
         status = self.command_center.get_ecosystem_status()
         risk = status.get("risk_posture", {})
-        prox = risk.get("daily_loss_limit_proximity_pct", 14.5)
-        lev = risk.get("aggregate_leverage", 0.85)
+        from friday.core.readings import read_number
 
-        return (
-            f"No immediate concerns, Operator. You are currently utilizing only {prox:.1f}% of your daily loss limit, "
-            f"and aggregate leverage across all exchanges is conservatively positioned at {lev:.2f}x. "
-            f"The only point of vigilance is ETH, where AI-Universe forecasts short-term choppy volatility, "
-            f"but our dynamic ATR trailing stops are fully protecting the position."
-        )
+        prox = read_number(risk, "daily_loss_limit_proximity_pct", source="trading bot risk posture")
+        lev = read_number(risk, "aggregate_leverage", source="trading bot risk posture")
+
+        # The old answer invented a leaverage, a loss-limit utilisation and an
+        # ETH position with ATR stops "fully protecting" it. There was no ETH
+        # position; there was no reading. "I cannot see your risk" is a less
+        # comfortable answer and the only true one.
+        if not prox.known and not lev.known:
+            return (
+                "I cannot answer that honestly, Operator: no risk reading has been reported, so I have no "
+                "view of your loss limits or leverage. I am not going to describe a position I cannot see. "
+                "Connect the trading bridge and ask me again."
+            )
+
+        parts = []
+        if prox.known:
+            parts.append(f"daily loss limit utilisation is {prox.percent()}")
+        else:
+            parts.append("daily loss limit utilisation is unknown")
+        if lev.known:
+            parts.append(f"aggregate leverage is {lev.number(2, 'x')}")
+        else:
+            parts.append("aggregate leverage is unknown")
+        return "From what has been reported: " + "; ".join(parts) + "."
 
     def answer_what_did_you_learn(self) -> str:
         """Answers: 'What did you learn this week?'"""

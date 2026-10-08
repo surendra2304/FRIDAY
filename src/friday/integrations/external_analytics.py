@@ -35,10 +35,28 @@ class ExternalAnalyticsProvider:
         symbol: str = "BTCUSDT",
         timeframe: str = "1h",
         indicators: list[str] | None = None,
+        market_data: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Generates TradingView Lightweight Charts compatible configuration payload."""
+        """Generates TradingView Lightweight Charts compatible configuration payload.
+
+        ``regime.timeframes["1h"]`` raised ``KeyError: '1h'`` for any caller once
+        the detector stopped synthesising six timeframes from three constants.
+        The overlay now carries the regime only when one could be classified.
+        """
         indicators = indicators or ["EMA_20", "EMA_50", "Supertrend", "ATR_Bands"]
-        regime = self.regime_detector.detect_regime(symbol=symbol)
+        regime = self.regime_detector.detect_regime(
+            symbol=symbol,
+            market_data=market_data,
+            timeframe=timeframe,
+        )
+
+        overlay: dict[str, Any] = {
+            "state": regime.primary_regime.value,
+            "consensus": regime.timeframe_consensus,
+            "available": regime.available,
+        }
+        if regime.available and "1h" in regime.timeframes:
+            overlay["adx_1h"] = regime.timeframes["1h"].adx_value
 
         return {
             "symbol": symbol,
@@ -46,11 +64,7 @@ class ExternalAnalyticsProvider:
             "timeframe": timeframe,
             "theme": "dark",
             "active_indicators": indicators,
-            "regime_overlay": {
-                "state": regime.primary_regime.value,
-                "consensus": regime.timeframe_consensus,
-                "adx_1h": regime.timeframes["1h"].adx_value,
-            },
+            "regime_overlay": overlay,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
@@ -61,6 +75,8 @@ class ExternalAnalyticsProvider:
 
         return {
             "chart_type": "PORTFOLIO_ANALYTICS_OVERVIEW",
+            "metrics_available": metrics.available,
+            "risk_available": risk.available,
             "total_equity": metrics.total_equity,
             "total_exposure": metrics.total_exposure,
             "sharpe_ratio": metrics.sharpe_ratio,
@@ -83,18 +99,45 @@ class ExternalAnalyticsProvider:
         regime = self.regime_detector.detect_regime()
         risk = self.risk_dashboard.evaluate_risk()
 
+        from friday.core.readings import format_money, format_number
+
+        # Every figure below used to be formatted unconditionally from a metric
+        # object that carried a fabricated portfolio when no account was
+        # registered ($10,540.25 equity, $4,500 "baseline exposure", a 3.25%
+        # drawdown floor). They are now either reported or explicitly unknown.
+        regime_block = (
+            f"- **Primary Regime:** `{regime.primary_regime.value}` ({regime.timeframe_consensus})\n"
+            f"- **Position Sizing Multiplier:** `{format_number(regime.position_sizing_multiplier, 2, 'x')}`\n"
+            f"- **Suitable Strategies:** {', '.join(f'`{s}`' for s in regime.suitable_strategies)}\n"
+            if regime.available
+            else "- **Primary Regime:** unknown (no market data was supplied; the detector does not guess)\n"
+        )
+        if not metrics.available:
+            return (
+                f"# 📊 Institutional Portfolio Analytics & Quantitative Risk Report\n\n"
+                f"**Report Generated:** `{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}` | "
+                f"**Base Currency:** `USDT`\n\n"
+                f"**No account has been registered with the analytics engine**, so there is no equity, "
+                f"exposure, Sharpe, Sortino, Calmar or Value-at-Risk to report. Register an account "
+                f"(`register_account`) or supply a position list; this report does not invent a "
+                f"portfolio to fill its tables.\n\n"
+                f"## 🌐 Market Regime Assessment\n{regime_block}"
+            )
+
         report = (
             f"# 📊 Institutional Portfolio Analytics & Quantitative Risk Report\n\n"
             f"**Report Generated:** `{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}` | **Base Currency:** `USDT`\n\n"
             f"## 🏛️ Executive Summary\n"
-            f"- **Total Portfolio Equity:** **${metrics.total_equity:,.2f} USDT** (Cash: `${metrics.total_cash:,.2f}`)\n"
-            f"- **Total Exposure:** **${metrics.total_exposure:,.2f} USDT** ({metrics.leverage:.2f}x Leverage)\n"
-            f"- **Sharpe Ratio:** **{metrics.sharpe_ratio:.2f}** | **Sortino:** **{metrics.sortino_ratio:.2f}** | **Calmar:** **{metrics.calmar_ratio:.2f}**\n"
-            f"- **Value at Risk (1-day 95%):** **${metrics.var_95_daily:,.2f} USDT** | **CVaR (Expected Shortfall):** **${metrics.cvar_95_daily:,.2f} USDT**\n\n"
-            f"## 🌐 Market Regime Assessment\n"
-            f"- **Primary Regime:** `{regime.primary_regime.value}` ({regime.timeframe_consensus})\n"
-            f"- **Position Sizing Multiplier:** `{regime.position_sizing_multiplier}x`\n"
-            f"- **Suitable Strategies:** {', '.join(f'`{s}`' for s in regime.suitable_strategies)}\n\n"
+            f"- **Total Portfolio Equity:** **{format_money(metrics.total_equity)} USDT** "
+            f"(Cash: `{format_money(metrics.total_cash)}`)\n"
+            f"- **Total Exposure:** **{format_money(metrics.total_exposure)} USDT** "
+            f"({format_number(metrics.leverage, 2, 'x')} Leverage)\n"
+            f"- **Sharpe Ratio:** **{format_number(metrics.sharpe_ratio, 2)}** | "
+            f"**Sortino:** **{format_number(metrics.sortino_ratio, 2)}** | "
+            f"**Calmar:** **{format_number(metrics.calmar_ratio, 2)}**\n"
+            f"- **Value at Risk (1-day 95%):** **{format_money(metrics.var_95_daily)} USDT** | "
+            f"**CVaR (Expected Shortfall):** **{format_money(metrics.cvar_95_daily)} USDT**\n\n"
+            f"## 🌐 Market Regime Assessment\n{regime_block}\n"
             f"## 🗺️ Strategy Attribution & Correlation\n"
             f"| Strategy | Weight | Sharpe | Total Return | Max DD |\n"
             f"| :--- | :---: | :---: | :---: | :---: |\n"

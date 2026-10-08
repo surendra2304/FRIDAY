@@ -502,6 +502,26 @@ class TestReflexHonesty:
         outcome = _run(brain.handle(incident))
         assert outcome.status is OutcomeStatus.AWAITING_MANDATE
 
+    def test_an_explicit_empty_scope_does_not_widen_to_all_scanners(
+        self, broken_repo: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        detector = IncidentDetector(broken_repo)
+        calls: list[str] = []
+        monkeypatch.setattr(detector, "scan_imports", lambda: calls.append("imports") or [])
+        monkeypatch.setattr(detector, "scan_tests", lambda: calls.append("tests") or [])
+        monkeypatch.setattr(detector, "scan_resources", lambda: calls.append("resources") or [])
+        monkeypatch.setattr(detector, "scan_log_tail", lambda: calls.append("logs") or [])
+
+        async def scan_fleet() -> list[Incident]:
+            calls.append("fleet")
+            return []
+
+        monkeypatch.setattr(detector, "scan_fleet", scan_fleet)
+        incidents = _run(detector.scan(include=set()))
+
+        assert incidents == []
+        assert calls == [], "an explicit empty include set must not mean every incident type"
+
     def test_the_scan_survives_one_scanner_failing(self, broken_repo: Path, tmp_path: Path) -> None:
         """One broken scanner must not blind the brain to everything else."""
         detector = IncidentDetector(broken_repo, python_executable="/nonexistent/python")

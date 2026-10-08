@@ -33,6 +33,7 @@ from typing import Any, NamedTuple, Tuple
 
 import psutil
 from friday.core.logging import get_logger
+from friday.core.types import SafetyLevel
 from friday.devices.app_launcher import launch_desktop_app
 
 logger = get_logger("devices.windows_friday")
@@ -164,25 +165,38 @@ class WindowsFridayController:
     # 1. Web, YouTube & Search Control
     # -------------------------------------------------------------------------
     def open_url(self, url: str) -> bool:
-        """Open an arbitrary web URL in Google Chrome (preferred) or default browser."""
+        """Open a web URL through a browser and report whether dispatch succeeded.
+
+        Earlier versions treated an unchecked ``Popen`` or a failed
+        ``webbrowser.open`` as success, which let the WhatsApp directive claim
+        that an unverified send had been delivered. The current path uses the
+        verified effect helpers and leaves delivery itself unconfirmed.
+        """
         if not url.startswith("http://") and not url.startswith("https://"):
             url = "https://" + url
-        try:
-            chrome = get_chrome_path()
-            if chrome:
-                subprocess.Popen([chrome, url])
+
+        from friday.core.effects import browser_available, launch_process_verified, open_url_verified
+
+        chrome = get_chrome_path()
+        if chrome and not sys.platform.startswith("linux"):
+            # Windows resolves Chrome through the registry/App Paths, so the
+            # resolved path is used directly and its start is verified.
+            outcome = launch_process_verified(f'"{chrome}" "{url}"', settle_seconds=0.6)
+            if outcome.ok:
                 logger.info(f"Opened URL in Chrome: {url}")
                 return True
-            webbrowser.open(url)
+            logger.warning(f"Chrome did not start for {url}: {outcome.detail}")
+
+        if not browser_available():
+            logger.warning(f"Cannot open {url}: no browser is available on this machine.")
+            return False
+
+        outcome = open_url_verified(url)
+        if outcome.ok:
             logger.info(f"Opened URL: {url}")
             return True
-        except Exception as e:
-            logger.error(f"Failed to open URL {url}: {e}")
-            try:
-                webbrowser.open(url)
-                return True
-            except Exception:
-                return False
+        logger.warning(f"Could not open {url}: {outcome.detail}")
+        return False
 
     def open_website(self, site_name: str) -> Tuple[bool, str]:
         """Open a named website (YouTube, Google, GitHub, etc.) or web address."""
@@ -521,6 +535,24 @@ class WindowsFridayController:
         """Backward-compatible search wrapper."""
         return self._dispatch_whatsapp_message(hwnd, recipient=name, message="", allow_blind_fallback=True)
 
+    @staticmethod
+    def _gmail_compose_url(to: str = "", subject: str = "", body: str = "") -> str:
+        params = {"view": "cm", "fs": "1"}
+        if to.strip():
+            params["to"] = to.strip()
+        if subject.strip():
+            params["su"] = subject.strip()
+        if body.strip():
+            params["body"] = body.strip()
+        return f"https://mail.google.com/mail/?{urllib.parse.urlencode(params)}"
+
+    def open_gmail_compose(self, to: str = "", subject: str = "", body: str = "") -> Tuple[bool, str]:
+        """Open a prefilled Gmail draft without attempting an SMTP or keyboard send."""
+        target = f" to {to.strip()}" if to.strip() else ""
+        if not self.open_url(self._gmail_compose_url(to, subject, body)):
+            return False, f"Could not open Gmail compose page{target}. The draft was not sent."
+        return True, f"Opened a Gmail compose page{target}. The draft was not sent."
+
     def open_gmail(self, to: str = "", subject: str = "", body: str = "") -> GmailSend:
         """Send email via SMTP if configured, otherwise open Gmail compose and try to auto-send.
 
@@ -560,20 +592,13 @@ class WindowsFridayController:
             except Exception as e:
                 logger.debug(f"SMTP check failed: {e}")
 
-        # 2. Web fallback: open Gmail compose window in browser
-        params = {"view": "cm", "fs": "1"}
-        if to_clean:
-            params["to"] = to_clean
-        if subj_clean:
-            params["su"] = subj_clean
-        if body_clean:
-            params["body"] = body_clean
-        query_str = urllib.parse.urlencode(params)
-        url = f"https://mail.google.com/mail/?{query_str}"
-        ok = self.open_url(url)
+        # 2. Web fallback: open Gmail compose window in browser.
+        ok = self.open_url(self._gmail_compose_url(to_clean, subj_clean, body_clean))
 
-        # If recipient and content are provided, auto-send via Ctrl+Enter after compose loads
-        if to_clean and (body_clean or subj_clean):
+        # If recipient and content are provided, auto-send via Ctrl+Enter after
+        # the requested compose URL actually opened. Never press Send in a stale
+        # Gmail window after a failed browser launch.
+        if ok and to_clean and (body_clean or subj_clean):
             press: dict[str, object] = {"key_sent": False, "error": ""}
             done = threading.Event()
 
@@ -857,8 +882,10 @@ class WindowsFridayController:
 
         ok = self.open_url(url)
 
-        # Background automation to bring window into foreground and send the message
-        if message or phone_param or recipient:
+        # Background automation only makes sense after the compose URL opened.
+        # Its result cannot currently be joined back to this synchronous call, so
+        # callers must treat an opened page as unconfirmed rather than a send.
+        if ok and (message or phone_param or recipient):
             def _auto_dispatch():
                 try:
                     import time
@@ -939,15 +966,27 @@ class WindowsFridayController:
             import threading
             threading.Thread(target=_auto_dispatch, daemon=True).start()
 
-        if phone_param:
-            target_str = f" to {recipient} ({display_phone})" if recipient and recipient != clean_phone else f" to {display_phone}"
-            msg_str = f" with message '{message}'" if message else ""
-            return ok, f"Sending message{msg_str}{target_str} on WhatsApp."
-        else:
-            target_str = f" for '{recipient}'" if recipient else ""
-            msg_str = f" with message '{message}'" if message else ""
-            hint = f" (Tip: Say 'save contact {recipient} <number>' to message them directly next time!)" if recipient else ""
-            return ok, f"Opened WhatsApp Web{target_str}{msg_str} and dispatched.{hint}"
+        target_str = (
+            f" to {recipient} ({display_phone})"
+            if phone_param and recipient and recipient != clean_phone
+            else f" to {display_phone}"
+            if phone_param
+            else f" for '{recipient}'"
+            if recipient
+            else ""
+        )
+        msg_str = f" with message '{message}'" if message else ""
+        if ok and (phone_param or recipient or message):
+            return True, (
+                f"Opened WhatsApp Web{target_str}{msg_str}. "
+                "FRIDAY cannot confirm whether the message was dispatched or delivered."
+            )
+        if ok:
+            return True, "Opened WhatsApp Web in the default browser."
+        return False, (
+            f"Could not open WhatsApp Web{target_str}{msg_str}; "
+            "the browser did not confirm the request."
+        )
 
     # -------------------------------------------------------------------------
     # 2. Audio, Volume & Media Playback Control
@@ -1096,43 +1135,62 @@ class WindowsFridayController:
             b64_str = f"data:image/jpeg;base64,{base64.b64encode(buf.getvalue()).decode('utf-8')}"
             return True, f"Screenshot captured and saved to {path}.", b64_str
         except Exception as e:
-            subprocess.Popen("start ms-screenclip:", shell=True)
-            return True, "Snipping Tool activated.", None
+            from friday.core.effects import launch_process_verified
+
+            outcome = launch_process_verified("start ms-screenclip:", settle_seconds=0.6)
+            if outcome.ok:
+                return False, (
+                    f"Screenshot capture failed ({e}); Snipping Tool was opened as a fallback, "
+                    "but no screenshot was captured."
+                ), None
+            return False, (
+                f"Screenshot capture failed ({e}); could not open Snipping Tool: {outcome.detail}. "
+                "No screenshot was captured."
+            ), None
 
     # -------------------------------------------------------------------------
     # 4. Applications & Process Control
     # -------------------------------------------------------------------------
+    @staticmethod
+    def _launch_shell_app(app_name: str, command: str) -> Tuple[bool, str]:
+        """Run a fixed Windows launcher command and surface its observed result."""
+        from friday.core.effects import launch_process_verified
+
+        outcome = launch_process_verified(command, settle_seconds=0.6)
+        if outcome.ok:
+            return True, f"Opened {app_name}."
+        return False, f"Could not open {app_name}: {outcome.detail}"
+
     def launch_app(self, app_name: str) -> Tuple[bool, str]:
         """Launch or bring to front any Windows application."""
         clean = app_name.lower().strip()
         if any(k in clean for k in ["chrome", "google chrome"]):
             chrome = get_chrome_path()
             if chrome:
-                subprocess.Popen([chrome])
-                return True, "Opened Google Chrome."
+                from friday.core.effects import launch_argv_verified
+
+                outcome = launch_argv_verified([chrome], settle_seconds=0.6)
+                return (
+                    (True, "Opened Google Chrome.")
+                    if outcome.ok
+                    else (False, f"Could not open Google Chrome: {outcome.detail}")
+                )
         if any(k in clean for k in ["youtube", "yt"]):
             return self.open_website("youtube")
         if any(k in clean for k in ["camera"]):
-            subprocess.Popen("start microsoft.windows.camera:", shell=True)
-            return True, "Opened Camera."
+            return self._launch_shell_app("Camera", "start microsoft.windows.camera:")
         if any(k in clean for k in ["snipping tool", "snip", "screenshot tool"]):
-            subprocess.Popen("start ms-screenclip:", shell=True)
-            return True, "Opened Snipping Tool."
+            return self._launch_shell_app("Snipping Tool", "start ms-screenclip:")
         if any(k in clean for k in ["control panel"]):
-            subprocess.Popen("control", shell=True)
-            return True, "Opened Control Panel."
+            return self._launch_shell_app("Control Panel", "control")
         if any(k in clean for k in ["task manager", "taskmgr"]):
-            subprocess.Popen("taskmgr", shell=True)
-            return True, "Opened Task Manager."
+            return self._launch_shell_app("Task Manager", "taskmgr")
         if any(k in clean for k in ["terminal", "wt"]):
-            subprocess.Popen("wt", shell=True)
-            return True, "Opened Windows Terminal."
+            return self._launch_shell_app("Windows Terminal", "wt")
         if any(k in clean for k in ["cmd", "command prompt"]):
-            subprocess.Popen("start cmd.exe", shell=True)
-            return True, "Opened Command Prompt."
+            return self._launch_shell_app("Command Prompt", "start cmd.exe")
         if any(k in clean for k in ["powershell"]):
-            subprocess.Popen("start powershell.exe", shell=True)
-            return True, "Opened PowerShell."
+            return self._launch_shell_app("PowerShell", "start powershell.exe")
 
         return launch_desktop_app(app_name)
 
@@ -1298,13 +1356,17 @@ class WindowsFridayController:
         except Exception as e:
             return f"Network query error: {e}"
 
-    def sleep_laptop(self) -> str:
-        """Put the Windows laptop to sleep."""
-        try:
-            subprocess.Popen("rundll32.exe powrprof.dll,SetSuspendState 0,1,0", shell=True)
-            return "Putting laptop to sleep."
-        except Exception as e:
-            return f"Failed to put laptop to sleep: {e}"
+    def sleep_laptop(self) -> Tuple[bool, str]:
+        """Request sleep through the shell and report its actual launch result."""
+        from friday.core.effects import launch_process_verified
+
+        outcome = launch_process_verified(
+            "rundll32.exe powrprof.dll,SetSuspendState 0,1,0",
+            settle_seconds=0.6,
+        )
+        if outcome.ok:
+            return True, "Putting laptop to sleep."
+        return False, f"Could not put laptop to sleep: {outcome.detail}"
 
     def open_folder(self, folder_name: str) -> Tuple[bool, str]:
         """Open standard user folders or direct directory paths."""
@@ -1380,11 +1442,12 @@ class WindowsFridayController:
         cmd = clean.lower().rstrip(".!? ")
         if cmd in [
             "open gmail", "launch gmail", "start gmail", "gmail",
-            "compose email", "compose gmail", "new email", "write email",
+            "compose email", "compose gmail", "draft email", "draft gmail",
+            "new email", "new gmail", "write email", "write an email",
             "send gmail", "send email"
         ]:
             return True
-        if re.search(r"^(?:open|compose|write|send)\s+(?:an?\s+)?(?:gmail|email)\b", cmd):
+        if re.search(r"^(?:please\s+)?(?:open|compose|draft|write|new|send)\s+(?:an?\s+)?(?:gmail|email)\b", cmd):
             return True
         if re.search(r"^(?:email|mail)\s+[a-zA-Z0-9_.+-]+", cmd):
             return True
@@ -1589,32 +1652,43 @@ class WindowsFridayController:
         fullscreen: bool = False,
         window_size: tuple[int, int] | None = None,
     ) -> tuple[bool, str]:
-        """Open URL in Chrome (or default browser) positioned on a specific monitor."""
+        """Open URL in Chrome (or default browser) and report launch failures."""
         u = url.strip()
         if not u:
             return False, "Empty URL"
+
+        from friday.core.effects import launch_argv_verified, open_url_verified
+
         chrome_exe = get_chrome_path()
         if not chrome_exe:
-            webbrowser.open(u)
-            return True, f"Opened {u} in default browser."
-
-        ml, mt, mr, mb = self.get_monitor_bounds(monitor_index)
-        w, h = window_size or ((mr - ml, mb - mt) if fullscreen else (1400, 900))
-
-        args = [
-            chrome_exe,
-            "--new-window",
-            f"--window-position={ml},{mt}",
-            f"--window-size={w},{h}",
-        ]
-        if fullscreen:
-            args.append("--start-fullscreen")
-        args.append(u)
+            outcome = open_url_verified(u)
+            return outcome.ok, outcome.detail
 
         try:
+            ml, mt, mr, mb = self.get_monitor_bounds(monitor_index)
+            w, h = window_size or ((mr - ml, mb - mt) if fullscreen else (1400, 900))
+            args = [
+                chrome_exe,
+                "--new-window",
+                f"--window-position={ml},{mt}",
+                f"--window-size={w},{h}",
+            ]
+            if fullscreen:
+                args.append("--start-fullscreen")
+            args.append(u)
+
             before_hwnds = self._get_chrome_hwnds()
             creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-            subprocess.Popen(args, creationflags=creationflags)
+            outcome = launch_argv_verified(
+                args,
+                creationflags=creationflags,
+                settle_seconds=0.6,
+            )
+            if not outcome.ok:
+                fallback = open_url_verified(u)
+                if fallback.ok:
+                    return True, f"Chrome launch failed ({outcome.detail}); {fallback.detail}"
+                return False, f"Could not open {u}: {outcome.detail}; {fallback.detail}"
 
             if fullscreen and sys.platform == "win32":
                 deadline = time.monotonic() + 4.0
@@ -1624,13 +1698,25 @@ class WindowsFridayController:
                     diff = now_hwnds - before_hwnds
                     if diff:
                         new_hwnd = list(diff)[0]
-                        self.snap_window_to_monitor(new_hwnd, monitor_index=monitor_index, fullscreen=True)
+                        positioned = self.snap_window_to_monitor(
+                            new_hwnd,
+                            monitor_index=monitor_index,
+                            fullscreen=True,
+                        )
+                        if positioned:
+                            return True, f"Launched {u} in Chrome on monitor {monitor_index}."
                         break
+                return True, (
+                    f"Launched Chrome with {u}, but could not verify a new window positioned "
+                    f"on monitor {monitor_index}."
+                )
 
-            return True, f"Launched {u} on monitor {monitor_index}."
-        except Exception as e:
-            webbrowser.open(u)
-            return True, f"Opened {u} with browser fallback ({e})."
+            return True, f"Launched {u} in Chrome on monitor {monitor_index}."
+        except Exception as exc:
+            fallback = open_url_verified(u)
+            if fallback.ok:
+                return True, f"Chrome launch failed ({exc}); {fallback.detail}"
+            return False, f"Could not open {u}: Chrome launch failed ({exc}); {fallback.detail}"
 
     def _get_chrome_hwnds(self) -> set[int]:
         """Enumerate top-level Chrome browser window HWNDs."""
@@ -1793,10 +1879,80 @@ class WindowsFridayController:
     # -------------------------------------------------------------------------
     # 8. Natural Language FRIDAY Directive Dispatcher
     # -------------------------------------------------------------------------
-    def handle_directive(self, command: str) -> Tuple[bool, str, dict[str, Any]]:
-        """Evaluate natural language command and execute appropriate Windows action."""
+    def _authorize_directive(
+        self,
+        authorizer: Any,
+        tool_name: str,
+        safety_level: Any,
+        arguments: dict[str, Any],
+        purpose: str,
+    ) -> Tuple[bool, str]:
+        """Ask the caller's authorizer before a SENSITIVE direct action.
+
+        Direct desktop directives used to reach the same effects as the
+        registered ``send_email`` / ``send_gmail`` / ``send_whatsapp_message``
+        tools while bypassing the registry, the capability check and the
+        audit trail - and the reply still said "Scoped approval confirmed".
+        Gating here keeps the directive path under the same authority as the
+        tool path.
+
+        Fail-closed: no authorizer means no approval. Refusing is the honest
+        outcome; inheriting an unreviewed default is how the bypass started.
+        """
+        if authorizer is None:
+            return False, (
+                "no authorizer was supplied for this direct action, so it was refused "
+                "rather than executed with an approval that never happened"
+            )
+        try:
+            from friday.core.types import AuthorizationDecision, AuthorizationRequest
+
+            request = AuthorizationRequest(
+                tool_name=tool_name,
+                safety_level=safety_level,
+                arguments=arguments,
+                tool_call_id=None,
+                purpose=purpose,
+                affected_resource=arguments.get("to_address") or arguments.get("recipient"),
+            )
+            response = authorizer.authorize(request)
+            approved = getattr(response, "decision", None) == AuthorizationDecision.APPROVED
+            reason = getattr(response, "reason", None) or getattr(
+                getattr(response, "decision", None), "value", "no decision"
+            )
+            return bool(approved), str(reason)
+        except Exception as exc:  # pragma: no cover - defensive
+            return False, f"the authorization check itself failed ({type(exc).__name__}: {exc})"
+
+    def handle_directive(
+        self,
+        command: str,
+        authorizer: Any = None,
+    ) -> Tuple[bool, str, dict[str, Any]]:
+        """Evaluate natural language command and execute appropriate Windows action.
+
+        ``authorizer`` is the decision authority for anything with real-world
+        effect (sending mail, sending a WhatsApp message). Callers that hold an
+        agent authorizer must pass it; ``None`` causes those actions to be
+        refused rather than executed unapproved.
+        """
         raw = command.strip()
         raw = re.sub(r"^(?:hey\s+)?friday[,\s:]*\s*", "", raw, flags=re.IGNORECASE).strip()
+
+        # A phrase matched inside a longer request is not the whole request.
+        # "read missing_file.txt and also tell me the current date" used to be
+        # answered with the date alone, silently dropping the file read. Decline
+        # compound input here so the caller's cognitive loop can plan both parts.
+        from friday.core.language import is_compound_request, second_clause
+
+        if is_compound_request(raw):
+            logger.info(
+                "Declining a compound directive in the device layer (second clause: %r); "
+                "the agent loop will plan it.",
+                second_clause(raw),
+            )
+            return False, "", {}
+
         cmd = raw.lower()
 
         # Clean trailing punctuation
@@ -1863,26 +2019,67 @@ class WindowsFridayController:
             ok, reply = self.search_google(raw)
             return True, reply, {"action": "search_google", "success": ok}
 
+        # Opening the inbox is an ordinary browser action, not an email send.
+        # Keep these exact launch intents out of the send parser; otherwise
+        # "open gmail" was refused for having no recipient and never opened the
+        # requested page.
+        if cmd_clean in {
+            "open gmail",
+            "launch gmail",
+            "start gmail",
+            "gmail",
+            "open google mail",
+            "launch google mail",
+            "go to gmail",
+            "go to google mail",
+        }:
+            ok = self.open_url("https://mail.google.com/")
+            reply = (
+                "Opened Gmail in the default browser."
+                if ok
+                else "Could not open Gmail; the browser did not confirm the request."
+            )
+            return True, reply, {"action": "open_gmail", "success": ok}
+
         # E.1 Gmail / Email Compose & Send
         if self.is_gmail_directive(raw):
             to_addr = ""
             subject = ""
             body = ""
             recipient_name = ""
+            compose_only = bool(
+                re.match(
+                    r"^(?:please\s+)?(?:compose|draft|write|new)\s+(?:an?\s+)?(?:email|gmail)\b",
+                    raw,
+                    re.IGNORECASE,
+                )
+            )
 
             m_to = re.search(r"\b([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)", raw)
             if m_to:
                 to_addr = m_to.group(1)
             else:
-                m_named = re.search(r"\b(?:email|send\s+(?:an?\s+)?(?:email|gmail)\s+to|mail)\s+([a-zA-Z]+)\b", raw, re.IGNORECASE)
+                if compose_only:
+                    m_named = re.search(
+                        r"\b(?:compose|draft|write|new)\s+(?:an?\s+)?(?:email|gmail)\s+to\s+(?P<name>[a-zA-Z]+)\b",
+                        raw,
+                        re.IGNORECASE,
+                    )
+                else:
+                    m_named = re.search(
+                        r"\b(?:(?:send\s+(?:an?\s+)?(?:email|gmail)|email|mail)\s+to\s+|(?:email|mail)\s+)"
+                        r"(?P<name>[a-zA-Z]+)\b",
+                        raw,
+                        re.IGNORECASE,
+                    )
                 if m_named:
-                    recipient_name = m_named.group(1).strip()
+                    recipient_name = m_named.group("name").strip()
                     to_addr = self._lookup_contact_email(recipient_name) or ""
 
             # A name with no known address is not an address. Declining is the
             # honest outcome; guessing a domain produces a receipt for a message
             # addressed to nobody the user has ever met.
-            if not to_addr:
+            if not to_addr and not compose_only:
                 who = recipient_name or "that recipient"
                 return True, (
                     f"I do not have an email address for {who}. "
@@ -1892,6 +2089,20 @@ class WindowsFridayController:
                     "direct_action": "send_email",
                     "recipient_name": recipient_name,
                     "success": False,
+                }
+
+            if compose_only and recipient_name and not to_addr:
+                return True, (
+                    f"I do not have an email address for {recipient_name}, so I did not open the draft. "
+                    f"Give me the address or save {recipient_name} to your contacts first."
+                ), {
+                    "action": "compose_email",
+                    "direct_action": "compose_email",
+                    "recipient_name": recipient_name,
+                    "to": None,
+                    "success": False,
+                    "draft_opened": False,
+                    "sent": False,
                 }
 
             m_subj = re.search(r"\b(?:about|with\s+subject|subject)\s+['\"]?([^'\"\n]+?)['\"]?(?:\s+(?:and\s+)?(?:with\s+body|saying|body|message)\b|$)", raw, re.IGNORECASE)
@@ -1910,6 +2121,65 @@ class WindowsFridayController:
                     cand = m_send.group("msg").strip()
                     if not any(k in cand.lower() for k in ["email", "gmail"]):
                         body = cand
+
+            if compose_only:
+                approved, approval_reason = self._authorize_directive(
+                    authorizer,
+                    "compose_email",
+                    SafetyLevel.SENSITIVE,
+                    {"to_address": to_addr, "subject": subject, "body": body},
+                    "Open a prefilled Gmail draft without sending it",
+                )
+                if not approved:
+                    return True, (
+                        f"I did not open the email draft. The request was refused: {approval_reason}."
+                    ), {
+                        "action": "compose_email",
+                        "to": to_addr or None,
+                        "authorization": "DENIED",
+                        "authorization_reason": approval_reason,
+                        "success": False,
+                        "sent": False,
+                    }
+
+                opened, draft_reply = self.open_gmail_compose(
+                    to=to_addr,
+                    subject=subject,
+                    body=body,
+                )
+                return True, (
+                    f"Authorization: APPROVED ({approval_reason}). {draft_reply}"
+                ), {
+                    "action": "compose_email",
+                    "to": to_addr or None,
+                    "recipient_name": recipient_name or None,
+                    "subject": subject,
+                    "body": body,
+                    "authorization": "APPROVED",
+                    "draft_opened": opened,
+                    "sent": False,
+                    "success": opened,
+                }
+
+            approved, approval_reason = self._authorize_directive(
+                authorizer,
+                "send_email",
+                SafetyLevel.SENSITIVE,
+                {"to_address": to_addr, "subject": subject, "body": body},
+                "Compose and send an email from a direct desktop directive",
+            )
+            if not approved:
+                return True, (
+                    f"I did not send that email. The send was refused: {approval_reason}."
+                ), {
+                    "action": "open_gmail",
+                    "direct_action": "send_email",
+                    "to": to_addr,
+                    "subject": subject,
+                    "authorization": "DENIED",
+                    "authorization_reason": approval_reason,
+                    "success": False,
+                }
 
             outcome = self.open_gmail(to=to_addr, subject=subject, body=body)
             ok, send_reply = outcome.sent, outcome.detail
@@ -1940,11 +2210,14 @@ class WindowsFridayController:
                 # words. Prefixing a verdict to it only taught the reader to
                 # skip the first one, so the receipt is stated instead.
                 outcome_line = f"{send_reply} No send was confirmed; receipt {receipt_id} records it as {receipt['status']}."
+            # The approval line states what the authorizer actually returned.
+            # It used to read "Scoped approval confirmed." unconditionally, which
+            # claimed a decision that this code never asked for.
             reply = (
                 f"Resolved recipient {recipient_name or to_addr} <{to_addr}>.\n"
                 f"Subject: '{subject}'\n"
                 f"Body: '{body}'\n"
-                f"Scoped approval confirmed. {outcome_line}"
+                f"Authorization: APPROVED ({approval_reason}). {outcome_line}"
             )
             return True, reply, {
                 "action": "open_gmail",
@@ -2057,16 +2330,55 @@ class WindowsFridayController:
                 "phone": phone,
                 "message": msg,
                 "provider": "whatsapp_web_bridge",
-                "status": "SENT",
+                "status": "NOT_DISPATCHED",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
-            ok, send_reply = self.open_whatsapp(phone=phone, message=msg, recipient=recipient)
+            approved, approval_reason = self._authorize_directive(
+                authorizer,
+                "send_whatsapp_message",
+                SafetyLevel.SENSITIVE,
+                {"recipient": recipient, "message": msg},
+                "Send a WhatsApp message from a direct desktop directive",
+            )
+            if not approved:
+                return True, (
+                    f"I did not send that WhatsApp message. The send was refused: {approval_reason}."
+                ), {
+                    "action": "open_whatsapp",
+                    "direct_action": "send_whatsapp",
+                    "recipient": recipient,
+                    "message": msg,
+                    "authorization": "DENIED",
+                    "authorization_reason": approval_reason,
+                    "success": False,
+                }
+
+            compose_opened, bridge_reply = self.open_whatsapp(
+                phone=phone,
+                message=msg,
+                recipient=recipient,
+            )
+            # The browser open and the asynchronous UI worker are separate
+            # events. This call cannot observe the worker's eventual result, so
+            # opening the compose URL is never promoted to a dispatch receipt.
+            receipt["status"] = "DISPATCH_UNCONFIRMED" if compose_opened else "NOT_DISPATCHED"
             target_display = f"{recipient} ({phone})" if phone else f"'{recipient}'"
+            if compose_opened:
+                outcome_line = (
+                    "The authorized WhatsApp bridge opened the compose page, but FRIDAY cannot confirm "
+                    "whether the message was dispatched. Delivery is NOT confirmed; check WhatsApp before retrying."
+                )
+            else:
+                outcome_line = (
+                    f"The authorized WhatsApp bridge could not open the compose page: {bridge_reply} "
+                    "No message dispatch was confirmed."
+                )
             reply = (
                 f"Resolved contact {target_display}.\n"
                 f"Exact message: \"{msg}\"\n"
-                f"Dispatched through authorized WhatsApp bridge. Delivery verified (Receipt: {receipt_id})."
+                f"Authorization: APPROVED ({approval_reason}). "
+                f"{outcome_line} (Receipt: {receipt_id}; status: {receipt['status']})."
             )
             return True, reply, {
                 "action": "open_whatsapp",
@@ -2076,7 +2388,13 @@ class WindowsFridayController:
                 "message": msg,
                 "receipt": receipt,
                 "receipt_id": receipt_id,
-                "success": ok,
+                # `success` is false until the requested send is confirmed; the
+                # compose page opening is tracked separately.
+                "success": False,
+                "compose_page_opened": compose_opened,
+                "dispatch_performed": None if compose_opened else False,
+                "dispatch_confirmed": False,
+                "delivery_confirmed": False,
             }
 
         # E.3 Open Known Websites
@@ -2161,8 +2479,8 @@ class WindowsFridayController:
             reply = self.lock_workstation()
             return True, reply, {"action": "lock_workstation"}
         if any(k in cmd for k in ["sleep laptop", "put laptop to sleep", "sleep pc"]):
-            reply = self.sleep_laptop()
-            return True, reply, {"action": "sleep_laptop"}
+            success, reply = self.sleep_laptop()
+            return True, reply, {"action": "sleep_laptop", "success": success}
 
         # J. Close Specific Applications
         if cmd.startswith("close ") or cmd.startswith("kill ") or cmd.startswith("exit ") or cmd.startswith("terminate "):
@@ -2219,8 +2537,8 @@ class WindowsFridayController:
 
         # O. Settings & System Tools
         if any(k in cmd for k in ["open settings", "windows settings", "system settings"]):
-            subprocess.Popen("start ms-settings:", shell=True)
-            return True, "Opened Windows Settings.", {"action": "open_settings"}
+            success, reply = self._launch_shell_app("Windows Settings", "start ms-settings:")
+            return True, reply, {"action": "open_settings", "success": success}
 
         # P. Battery & Hardware Telemetry
         if (
@@ -2259,9 +2577,21 @@ class WindowsFridayController:
         # T. Launch Applications (Fallback)
         if cmd.startswith("open ") or cmd.startswith("launch ") or cmd.startswith("start "):
             app_candidate = re.sub(r"^(?:open|launch|start)\s+(?:the\s+)?(?:app|application|program)?\s*", "", raw, flags=re.IGNORECASE).strip()
+            target = app_candidate.lower()
+            known_targets = (
+                "chrome", "google chrome", "browser", "youtube", "camera", "snipping", "snip",
+                "control panel", "task manager", "taskmgr", "terminal", "windows terminal", "wt",
+                "command prompt", "cmd", "powershell", "notepad", "text editor", "calculator", "calc",
+                "vscode", "vs code", "visual studio code", "explorer", "file explorer", "paint",
+                "edge", "settings", "whatsapp",
+            )
+            if not any(name in target for name in known_targets):
+                # The API has a deterministic generic path for an arbitrary app
+                # or file name. Leave it to that path instead of claiming a
+                # Windows-specific handler owns an unsupported target.
+                return False, "", {}
             ok, reply = self.launch_app(app_candidate)
-            if ok:
-                return True, reply, {"action": "launch_app", "app": app_candidate, "success": ok}
+            return True, reply, {"action": "launch_app", "app": app_candidate, "success": ok}
 
         return False, "", {}
 

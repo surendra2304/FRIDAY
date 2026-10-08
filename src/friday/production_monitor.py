@@ -66,14 +66,17 @@ class ProductionMonitor:
         cascading_failures: list[str] = []
         predictive_warnings: list[str] = []
 
-        # 1. Inspect Trading Bot Tier
+        # 1. Inspect Trading Bot Tier. `bot_data.get("status", "ACTIVE")` meant an
+        # operator that reported no status was displayed as an active one, and
+        # `float(bot_data.get("win_rate_pct", 60.0))` below fabricated a win rate
+        # for the same reason. An unreported value stays unreported.
         t0 = time.perf_counter()
         bot_status = "UNKNOWN"
         bot_data: dict[str, Any] = {}
         try:
             bot_data = self.bot_operator.get_status()
             bot_latency_ms = (time.perf_counter() - t0) * 1000.0
-            bot_status = bot_data.get("status", "ACTIVE")
+            bot_status = str(bot_data.get("status") or "UNREPORTED").upper()
             bot_data["latency_ms"] = round(bot_latency_ms, 1)
         except Exception as e:
             bot_status = "DOWN"
@@ -85,7 +88,9 @@ class ProductionMonitor:
         try:
             adv_state = self.bot_operator.get_advisory_state()
             ai_latency_ms = (time.perf_counter() - t1) * 1000.0
-            ai_health = str(adv_state.get("ai_universe_health", "HEALTHY")).upper()
+            # The default was "HEALTHY": an advisory tier that said nothing was
+            # rendered as a healthy one on a health dashboard.
+            ai_health = str(adv_state.get("ai_universe_health") or "UNREPORTED").upper()
             ai_data = {
                 "health": ai_health,
                 "latency_ms": round(ai_latency_ms, 1),
@@ -96,12 +101,16 @@ class ProductionMonitor:
         except Exception as e:
             ai_data = {"health": "DOWN", "error": str(e), "latency_ms": 0.0}
 
-        # 3. Inspect FRIDAY OS Tier
+        # 3. Inspect FRIDAY OS Tier. The process can attest to facts about itself -
+        # its thread count, its pid, and which memory object it holds - and nothing
+        # more. "HEALTHY" and "SQLite (friday.db)" were assertions about the
+        # deployment, not measurements.
+        memory_backend = type(self.memory).__name__ if self.memory is not None else "none configured"
         friday_data = {
-            "status": "HEALTHY",
+            "status": "RUNNING (this process); no health probe has been run",
             "active_threads": threading.active_count(),
             "pid": os.getpid(),
-            "memory_backend": "SQLite (friday.db)" if self.memory else "In-Memory",
+            "memory_backend": memory_backend,
             "timestamp": now_iso,
         }
 
@@ -113,21 +122,33 @@ class ProductionMonitor:
             cascading_failures.append("Severe network latency degradation (>2000ms) across multiple REST endpoints.")
 
         # 5. Predictive Risk Forecasting
-        drawdown = float(bot_data.get("drawdown_pct", 0.0))
-        if drawdown >= 4.0:
+        raw_drawdown = bot_data.get("drawdown_pct")
+        drawdown = float(raw_drawdown) if isinstance(raw_drawdown, (int, float)) else 0.0
+        if isinstance(raw_drawdown, (int, float)) and drawdown >= 4.0:
             predictive_warnings.append(f"Drawdown ({drawdown:.2f}%) approaching maximum 5.0% testnet threshold.")
 
-        win_rate = float(bot_data.get("win_rate_pct", 60.0))
-        if win_rate < 40.0:
-            predictive_warnings.append(f"Win rate degraded to {win_rate:.1f}% over recent trade sample.")
+        win_rate = bot_data.get("win_rate_pct")
+        if isinstance(win_rate, (int, float)) and win_rate < 40.0:
+            predictive_warnings.append(
+                f"Win rate degraded to {float(win_rate):.1f}% over recent trade sample."
+            )
 
         # Determine Overall Status
         active_alerts_count = len(self.alert_manager.get_active_alerts()) if self.alert_manager else 0
 
+        # The else-branch used to be HEALTHY, which is what an operator with no
+        # readings produced: silence reported as the best case.
+        unreported = [
+            name
+            for name, reading in (("trading_bot", bot_status), ("ai_universe", ai_data.get("health")))
+            if reading in (None, "", "UNREPORTED", "UNKNOWN")
+        ]
         if bot_status == "DOWN" or len(cascading_failures) > 0:
             overall_status = "CRITICAL"
         elif ai_data.get("health") in ("DOWN", "DEGRADED") or len(predictive_warnings) > 0:
             overall_status = "DEGRADED"
+        elif unreported:
+            overall_status = "UNVERIFIED"
         else:
             overall_status = "HEALTHY"
 

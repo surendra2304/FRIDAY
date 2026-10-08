@@ -11,9 +11,9 @@ import os
 import re
 import time
 import urllib.parse
-import webbrowser
 from typing import Any
 
+from friday.core.effects import open_url_verified
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel, ToolResult
 from friday.devices.android_controller import AndroidDeviceController
@@ -107,15 +107,29 @@ class SendWhatsAppMessageTool(BaseTool):
                     ])
 
                     if rc == 0:
-                        # Wait briefly for WhatsApp chat window to render, then press Enter / Send
+                        # ``am start`` returning 0 means Android accepted the
+                        # intent and opened WhatsApp. It does not mean the
+                        # message left the device: the composer is what opens,
+                        # and the send key is pressed into whatever has focus.
+                        # The reply used to say "Successfully sent ...", which is
+                        # the one claim this bridge cannot support.
                         time.sleep(2.0)
                         android.press_key("enter")
                         return ToolResult(
                             name=self.name,
-                            content=f"Successfully sent WhatsApp message to {recip} via connected Android device.",
+                            content=(
+                                f"Opened WhatsApp on the connected Android device with the message to "
+                                f"{recip} in the composer and pressed send. This is a dispatch, not a "
+                                "delivery receipt: FRIDAY cannot read WhatsApp's message status."
+                            ),
                             is_error=False,
                             safety_level=self.safety_level,
-                            metadata={"channel": "android", "recipient": recip},
+                            metadata={
+                                "channel": "android",
+                                "recipient": recip,
+                                "delivery_confirmed": False,
+                                "dispatch": "intent_accepted",
+                            },
                         )
                 except Exception as ex:
                     logger.warning(f"Android WhatsApp dispatch failed: {ex}")
@@ -129,23 +143,39 @@ class SendWhatsAppMessageTool(BaseTool):
 
         # 2. Fallback or explicit Web / Desktop
         logger.info(f"Opening WhatsApp Web / Desktop for recipient '{recip}'")
-        try:
-            target_url = f"https://web.whatsapp.com/send?phone={clean_phone}&text={encoded_msg}" if clean_phone else "https://web.whatsapp.com"
-            webbrowser.open(target_url)
+        target_url = f"https://web.whatsapp.com/send?phone={clean_phone}&text={encoded_msg}" if clean_phone else "https://web.whatsapp.com"
+        # webbrowser.open returns False when no browser accepted the URL; the
+        # return value used to be discarded, so a machine with no browser was
+        # told the message was "pre-filled" in a window that never appeared.
+        outcome = open_url_verified(target_url)
+        if not outcome.ok:
             return ToolResult(
                 name=self.name,
-                content=f"Opened WhatsApp Web for recipient {recip} with pre-filled message.",
-                is_error=False,
-                safety_level=self.safety_level,
-                metadata={"channel": "web", "recipient": recip, "url": target_url},
-            )
-        except Exception as e:
-            return ToolResult(
-                name=self.name,
-                content=f"Failed to open WhatsApp Web: {e}",
+                content=(
+                    f"The message to {recip} was NOT sent and NOT pre-filled: {outcome.detail} "
+                    "Open WhatsApp yourself, or connect an Android device over ADB so FRIDAY can dispatch it."
+                ),
                 is_error=True,
+                refused=True,
                 safety_level=self.safety_level,
+                metadata={"channel": "web", "recipient": recip, "url": target_url, **outcome.evidence},
             )
+        return ToolResult(
+            name=self.name,
+            content=(
+                f"Opened WhatsApp Web for recipient {recip} with the message pre-filled. "
+                "This is not a delivery confirmation: the send button has to be pressed in the browser."
+            ),
+            is_error=False,
+            safety_level=self.safety_level,
+            metadata={
+                "channel": "web",
+                "recipient": recip,
+                "url": target_url,
+                "delivery_confirmed": False,
+                **outcome.evidence,
+            },
+        )
 
 
 class OpenWhatsAppTool(BaseTool):
@@ -179,18 +209,20 @@ class OpenWhatsAppTool(BaseTool):
                     )
 
         # Fallback or explicit windows
-        try:
-            webbrowser.open("https://web.whatsapp.com")
+        outcome = open_url_verified("https://web.whatsapp.com")
+        if not outcome.ok:
             return ToolResult(
                 name=self.name,
-                content="Opened WhatsApp Web in the default browser.",
-                is_error=False,
-                safety_level=self.safety_level,
-            )
-        except Exception as e:
-            return ToolResult(
-                name=self.name,
-                content=f"Error launching WhatsApp: {e}",
+                content=f"Could not open WhatsApp: {outcome.detail}",
                 is_error=True,
+                refused=True,
                 safety_level=self.safety_level,
+                metadata=outcome.evidence,
             )
+        return ToolResult(
+            name=self.name,
+            content="Opened WhatsApp Web in the default browser.",
+            is_error=False,
+            safety_level=self.safety_level,
+            metadata=outcome.evidence,
+        )

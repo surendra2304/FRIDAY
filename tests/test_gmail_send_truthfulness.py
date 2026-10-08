@@ -27,6 +27,11 @@ ALICE = "FRIDAY, email Alice that the meeting moved to 3 PM."
 ALICE_ADDRESSED = "FRIDAY, email alice@realwork.com that the meeting moved to 3 PM"
 
 
+# Desktop directives require an authorizer now; these tests cover the
+# directive mechanics, so they opt in to an approving one.
+pytestmark = pytest.mark.usefixtures("approve_directives")
+
+
 class _Driver:
     """Stand-in for the Win32 driver. Records the keystroke it was told to send."""
 
@@ -180,6 +185,18 @@ def test_a_window_that_appears_late_is_still_caught(monkeypatch):
     assert ok is False
 
 
+def test_failed_compose_open_never_starts_the_auto_send_worker(monkeypatch):
+    """A failed browser launch must not Ctrl+Enter in a stale Gmail window."""
+    log: list = []
+    _install(monkeypatch, driver=_Driver(log=log), opens=False)
+
+    outcome = windows_friday.open_gmail(to="a@b.com", subject="S", body="b")
+
+    assert outcome.sent is False
+    assert "Could not open Gmail compose window" in outcome.detail
+    assert not log, "the send hotkey ran even though the requested compose URL failed to open"
+
+
 @pytest.mark.parametrize("condition", ["no_window", "driver_refuses", "driver_blocked", "no_browser"])
 def test_no_failure_condition_is_reported_as_a_send(monkeypatch, condition):
     """Each way the send can fail yields a refusal to claim, never a success."""
@@ -195,7 +212,7 @@ def test_no_failure_condition_is_reported_as_a_send(monkeypatch, condition):
     ok, msg = outcome.sent, outcome.detail
 
     assert ok is False
-    assert "NOT sent" in msg or "NOT SENT" in msg
+    assert "not sent" in msg.lower() or "nothing was sent" in msg.lower()
 
 
 def test_a_failure_reason_reaches_the_user_rather_than_only_the_log(monkeypatch):

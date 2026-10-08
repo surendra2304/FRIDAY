@@ -470,7 +470,10 @@ Modes:
             from friday.desktop.app import run_desktop_app
             return run_desktop_app()
         except ImportError as e:
-            print(f"Desktop UI dependencies not met: {e}. Run 'pip install PyQt6 keyboard'")
+            print(
+                f"Desktop UI could not load: {e}. Install the optional desktop extra if PyQt6 is "
+                "missing; Linux may also require host Qt/OpenGL libraries such as libGL.so.1."
+            )
             return 1
     if args.generate_autonomy_key:
         from friday.cognition.mandate import MandateAuthority
@@ -568,20 +571,13 @@ Modes:
         import asyncio as _asyncio
         import json as _json
 
-        from friday.cognition.reflex import IncidentKind, get_reflex_brain
+        from friday.cognition.reflex import get_reflex_brain, parse_incident_scope
 
-        mapping = {
-            "imports": IncidentKind.IMPORT_FAILURE,
-            "tests": IncidentKind.TEST_FAILURE,
-            "fleet": IncidentKind.PEER_UNREACHABLE,
-            "resources": IncidentKind.RESOURCE_PRESSURE,
-            "logs": IncidentKind.LOG_ERROR,
-        }
-        include = {
-            mapping[item.strip().lower()]
-            for item in args.reflex_run.split(",")
-            if item.strip().lower() in mapping
-        } or None
+        try:
+            include = parse_incident_scope(args.reflex_run)
+        except ValueError as exc:
+            print(f"\nInvalid reflex scope: {exc}\n")
+            sys.exit(2)
         result = _asyncio.run(get_reflex_brain().run_once(include=include))
         print(_json.dumps(result, indent=2, default=str))
         return
@@ -1083,7 +1079,9 @@ Modes:
             start_t = datetime.now()
 
             # 1. Fast-Path: Master Windows FRIDAY Laptop Directive (local OS execution)
-            handled, friday_reply, friday_meta = windows_friday.handle_directive(user_input)
+            handled, friday_reply, friday_meta = windows_friday.handle_directive(
+                user_input, authorizer=getattr(agent, "authorizer", None)
+            )
             if handled:
                 elapsed_ms = (datetime.now() - start_t).total_seconds() * 1000.0
                 action_name = friday_meta.get("action", "os_directive")

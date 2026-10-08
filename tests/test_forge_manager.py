@@ -11,15 +11,30 @@ from friday.operators.forge_supervisor_operator import ForgeSupervisorOperator
 from friday.skills.forge_manager import ForgeManagerSkill
 from friday.skills.forge_templates import ForgeTemplateLibrary, TaskTemplateType
 from friday.workflows.forge_review_workflow import ForgeReviewWorkflow
+from tests.mock_forge_api import MockForgeServer
 
 
 @pytest.fixture
-def forge_manager_setup():
+def forge_server():
+    """A real HTTP FORGE endpoint, so health and dispatch are proven, not assumed."""
+    server = MockForgeServer(port=8981)
+    base_url = server.start()
+    yield server, base_url
+    server.stop()
+
+
+@pytest.fixture
+def forge_manager_setup(forge_server):
+    server, base_url = forge_server
     memory = InMemoryConversationMemory()
     alert_mgr = ProductionAlertManager(memory=memory)
-    auth_client = ForgeAuthClient(rate_limit_per_min=10)
+    auth_client = ForgeAuthClient(api_url=base_url, rate_limit_per_min=600)
 
-    forge_manager = ForgeManagerSkill(auth_client=auth_client, memory=memory)
+    # The sample task `forge_task_01` (COMPLETED, 96.0% coverage, 4 files) is
+    # demo data: the skill only serves it when asked for it by name. This suite
+    # asserts on that sample, so it asks. Relying on FRIDAY_ENV=testing leaking
+    # out of another module made these tests pass or fail with collection order.
+    forge_manager = ForgeManagerSkill(auth_client=auth_client, memory=memory, demo_data=True)
     supervisor = ForgeSupervisorOperator(forge_manager=forge_manager, alert_manager=alert_mgr, memory=memory)
     health_op = ForgeHealthOperator(forge_manager=forge_manager, alert_manager=alert_mgr, memory=memory)
     review_wf = ForgeReviewWorkflow(forge_manager=forge_manager)

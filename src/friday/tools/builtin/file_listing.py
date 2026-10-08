@@ -26,37 +26,29 @@ class FileListingTool(BaseTool):
     }
 
     def execute(self, path: str = ".", **kwargs: Any) -> ToolResult:
-        workspace_root = Path.cwd().resolve()
+        # The same policy the read and write tools use, so "list what you just
+        # wrote" cannot fail merely because the two tools disagreed about
+        # whether an absolute path was allowed.
+        from friday.security.workspace_policy import PathPolicyError, shared_policy
 
-        # Defensively reject absolute paths or drive letters directly
-        path_obj = Path(path)
-        windows_path = PureWindowsPath(path)
-        if path_obj.is_absolute() or path_obj.anchor or windows_path.drive or windows_path.root:
+        try:
+            target_path = shared_policy().resolve_for_read(path or ".", must_exist=False, label="directory path")
+        except PathPolicyError as exc:
             return ToolResult(
                 name=self.name,
-                content="Security Error: Directory path is outside the allowed workspace sandbox.",
+                content=f"Security Error: {exc}",
                 is_error=True,
+                refused=True,
                 safety_level=self.safety_level,
             )
 
         try:
-            # Combine paths and resolve
-            target_path = (workspace_root / path).resolve()
-
-            # Traversal check
-            if not target_path.is_relative_to(workspace_root):
-                return ToolResult(
-                    name=self.name,
-                    content="Security Error: Directory path is outside the allowed workspace sandbox.",
-                    is_error=True,
-                    safety_level=self.safety_level,
-                )
-
             if not target_path.exists():
                 return ToolResult(
                     name=self.name,
                     content=f"Error: Path '{path}' does not exist.",
                     is_error=True,
+                    refused=True,
                     safety_level=self.safety_level,
                 )
 

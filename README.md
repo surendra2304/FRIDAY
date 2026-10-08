@@ -37,7 +37,7 @@ FRIDAY is a modular, extensible, **Autonomous Multi-Agent AI Operating System** 
 - **Active Device Resolution**: Dynamic factory `get_device_controller()` driven by `FRIDAY_ACTIVE_DEVICE` configuration.
 
 ### 🔄 5. Autonomous Workflows
-- **Recursive Self-Improvement (`SelfImprovementWorkflow`)**: Scans codebase AST ➔ synthesizes new tools ➔ writes code ➔ runs unit tests ➔ commits and pushes to GitHub with explicit terminal authorization.
+- **Self-development (`self_develop`)**: The registered tool plans a missing capability, synthesizes and smoke-tests a candidate, then reports whether it reached review/owner authority; it does not claim installation before the gate completes. The legacy `SelfImprovementWorkflow` is not wired into the live tool path and is not a supported production workflow.
 - **Autonomous Dev Workflow (`AutonomousDevWorkflow`)**: Pulls remote GitHub issues, implements code solutions via `DeveloperAgent`, verifies with pytest, and creates pull requests.
 - **Morning Briefing Workflow (`MorningBriefingWorkflow`)**: Synthesizes `.ics` calendar schedules and live weather into spoken morning briefings.
 - **Voice Email Workflow (`EmailDraftingWorkflow`)**: Composes professional emails from voice commands and securely delivers via SMTP with STARTTLS.
@@ -155,8 +155,15 @@ The cloud FRIDAY API starts a background peer reachability poll while its proces
 git clone https://github.com/surendra2304/FRIDAY.git
 cd FRIDAY
 
-# Install dependencies
+# Install the core assistant (voice biometrics and Qt desktop UI stay optional)
 pip install -e .
+
+# Optional PyQt6 desktop companion and global hotkey
+pip install -e ".[desktop]"
+# Linux desktop sessions may also need the host libGL.so.1 / Qt runtime
+
+# Optional neural voice-biometric profiles (Linux may need Python headers for webrtcvad)
+pip install -e ".[voice-bio]"
 
 # Configure environment
 copy .env.example .env
@@ -175,6 +182,11 @@ friday --doctor
 
 # Run multi-provider performance benchmark laboratory
 friday --run-lab
+
+# Optional PyQt6 desktop companion (install the desktop extra first)
+friday --desktop
+# or
+friday-desktop
 ```
 
 `--voice` and `--local-voice` start FRIDAY's microphone and speaker pipeline with Gemini Live for speech recognition and conversation; audio is sent to the configured Gemini provider and provider quota/terms apply. Laptop tools execute on the local machine through FRIDAY's authorization path. Use `Ctrl+C` to stop voice mode.

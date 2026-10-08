@@ -2,7 +2,9 @@ import logging
 import os
 import random
 import re
+import shutil
 import subprocess
+import sys
 import time
 import warnings
 from collections.abc import Callable
@@ -22,6 +24,7 @@ from friday.agents.registry import AgentRegistry
 
 from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer
 from friday.core.config import Settings, get_settings
+from friday.core.effects import launch_process_verified
 from friday.core.logging import get_logger
 from friday.core.types import (
     AgentResponse,
@@ -272,19 +275,76 @@ class FastPathMixin:
                 },
             )
 
-    def _launch_process(self, executable: str, *args: str) -> None:
-            """Launch a desktop process reliably on Windows without blocking the agent turn."""
+    def _launch_process(self, executable: str, *args: str) -> bool:
+            """Launch a desktop process and say whether it really started.
+
+            This used to return ``None`` and swallow every failure, which made it
+            unusable as evidence - and the Chrome fast path below turned that
+            into ``ok = True`` unconditionally, because a call that never raises
+            makes its ``except`` branch dead code. On a machine with no Chrome,
+            "search google for asyncio in chrome" answered "Done." every time.
+
+            The program is resolved before it is spawned, so "chrome.exe is not
+            installed" is a refusal instead of a launch. On Windows an unresolved
+            name still goes through ``start`` / ``os.startfile`` so the registry's
+            App Paths resolution keeps working.
+            """
+            resolved = shutil.which(executable)
+            if resolved:
+                parts = [f'"{resolved}"', *(f'"{a}"' for a in args)]
+                outcome = launch_process_verified(" ".join(parts), settle_seconds=0.35)
+                if not outcome.ok:
+                    logger.warning(f"Desktop launch of {executable} did not start: {outcome.detail}")
+                return outcome.ok
+
+            if sys.platform.startswith("win"):
+                try:
+                    if args:
+                        cmd = f'start "" "{executable}" ' + " ".join(f'"{a}"' for a in args)
+                        subprocess.Popen(cmd, shell=True)
+                    else:
+                        try:
+                            os.startfile(executable)
+                        except Exception:
+                            subprocess.Popen(f'start "" "{executable}"', shell=True)
+                    return True
+                except Exception as e:
+                    logger.warning(f"Desktop launch error for {executable}: {e}")
+                    return False
+
+            logger.warning(f"Cannot launch {executable}: it is not installed on this machine.")
+            return False
+
+    def _authorize_desktop_input(self, payload: str, window_title: str, purpose: str) -> tuple[bool, str]:
+            """Ask the authorizer before synthesizing input into a window.
+
+            Typing into a window is classified SENSITIVE in the tool registry
+            (``type_text``), and the tool path therefore asks for a capability
+            every time. This fast path typed with no authorization at all, so the
+            same user intent was checked or unchecked depending only on whether
+            its phrasing happened to match a shortcut. The request below is the
+            same shape the tool path builds, so a deny-list, a mandate check or a
+            logged decision applies to both.
+            """
+            authorizer = getattr(self, "authorizer", None)
+            if authorizer is None:
+                return False, "no authorizer is configured for this session"
+            request = AuthorizationRequest(
+                tool_name="type_text",
+                safety_level=SafetyLevel.SENSITIVE,
+                arguments={"text": payload, "window_title": window_title},
+                tool_call_id=f"fast-path-{uuid.uuid4()}",
+                purpose=purpose,
+                affected_resource=window_title,
+            )
             try:
-                if args:
-                    cmd = f'start "" "{executable}" ' + " ".join(f'"{a}"' for a in args)
-                    subprocess.Popen(cmd, shell=True)
-                else:
-                    try:
-                        os.startfile(executable)
-                    except Exception:
-                        subprocess.Popen(f'start "" "{executable}"', shell=True)
-            except Exception as e:
-                logger.warning(f"Desktop launch error for {executable}: {e}")
+                response = authorizer.authorize(request)
+            except Exception as exc:  # a broken authorizer must not mean "approved"
+                logger.warning(f"Desktop input authorization failed: {exc}")
+                return False, f"the authorization check itself failed ({exc})"
+            if response.decision != AuthorizationDecision.APPROVED:
+                return False, response.reason or f"decision was {response.decision.value}"
+            return True, "approved"
 
     def _focus_window_for_direct_action(self, title_substring: str, timeout: float = 3.0) -> bool:
             """Best-effort focus for a newly opened desktop window with Win32 foreground activation."""
@@ -313,6 +373,25 @@ class FastPathMixin:
                     logger.debug(f"Direct action focus attempt failed for '{title_substring}': {e}")
                 time.sleep(0.15)
             return False
+
+    #: Words a user says to *name* the search engine rather than to search for.
+    #: "search google for python asyncio in chrome" produced the query
+    #: "google for python asyncio", so the engine was asked to look for the words
+    #: "google for" as well as the topic.
+    _SEARCH_ENGINE_PREFIX = re.compile(
+        r"^\s*(?:(?:on\s+)?(?:google|bing|duckduckgo|yahoo|search)\b[\s:,]*(?:for\s+)?|for\s+)",
+        re.IGNORECASE,
+    )
+
+    def _normalize_search_query(self, query: str) -> str:
+            """Drop engine-naming words from the front of a search query."""
+            stripped = (query or "").strip()
+            for _ in range(3):
+                candidate = self._SEARCH_ENGINE_PREFIX.sub("", stripped).strip()
+                if not candidate or candidate == stripped:
+                    break
+                stripped = candidate
+            return stripped or (query or "").strip()
 
     def _dedupe_repeated_query_tail(self, query: str) -> str:
             """Trim accidental duplicated voice fragments from a search query."""
@@ -484,15 +563,35 @@ class FastPathMixin:
                 self.memory.add_message(Message(role=Role.USER, content=clean_input))
                 self.state_machine.transition_to(TaskState.PLANNING, reason="Direct Notepad typing command")
                 self.state_machine.transition_to(TaskState.EXECUTING, reason="Opening Notepad and typing text")
+                launched = False
+                typed = False
+                refusal = ""
                 try:
-                    self._launch_process("notepad.exe")
-                    self._focus_window_for_direct_action("Notepad")
-                    typed = WindowsNativeInputDriver().type_text(payload)
+                    launched = self._launch_process("notepad.exe")
+                    if launched:
+                        self._focus_window_for_direct_action("Notepad")
+                        allowed, reason = self._authorize_desktop_input(
+                            payload, "Notepad", "type text into Notepad from a direct command"
+                        )
+                        if allowed:
+                            typed = WindowsNativeInputDriver().type_text(payload)
+                        else:
+                            refusal = reason
                 except Exception as e:
-                    typed = False
                     logger.warning(f"Direct Notepad typing failed: {e}")
+                    refusal = str(e)
                 self.state_machine.transition_to(TaskState.VERIFYING, reason="Checking direct Notepad action result")
-                content = "Done." if typed else "I opened Notepad, but I could not reliably type into it."
+                if typed:
+                    content = "Done."
+                elif not launched:
+                    # Saying "I opened Notepad" here was a claim about a process
+                    # that was never started; the unauthorised and the
+                    # typing-refused cases are separate sentences too.
+                    content = "I could not start Notepad, so nothing was typed."
+                elif refusal:
+                    content = f"I opened Notepad, but did not type the text: {refusal}."
+                else:
+                    content = "I opened Notepad, but I could not reliably type into it."
                 self.state_machine.transition_to(TaskState.COMPLETED if typed else TaskState.FAILED, reason=content)
                 self.memory.add_message(Message(role=Role.ASSISTANT, content=content))
                 return AgentResponse(
@@ -509,34 +608,66 @@ class FastPathMixin:
 
             chrome_match = self._CHROME_SEARCH_PATTERN.match(clean_input)
             if chrome_match:
-                query = self._dedupe_repeated_query_tail(
-                    chrome_match.group("query") or chrome_match.group("query2") or ""
+                query = self._normalize_search_query(
+                    self._dedupe_repeated_query_tail(
+                        chrome_match.group("query")
+                        or chrome_match.group("query2")
+                        or chrome_match.group("query3")
+                        or ""
+                    )
                 )
                 if not query:
                     return None
                 self.memory.add_message(Message(role=Role.USER, content=clean_input))
                 self.state_machine.transition_to(TaskState.PLANNING, reason="Direct Chrome search command")
                 self.state_machine.transition_to(TaskState.EXECUTING, reason="Opening Chrome search URL")
-                ok = False
-                try:
-                    self._launch_process("chrome.exe", f"https://www.google.com/search?q={quote_plus(query)}")
-                    ok = True
-                except Exception as e:
-                    logger.warning(f"Chrome direct URL launch failed; trying focus/type fallback: {e}")
-                    try:
-                        self._launch_process("chrome.exe")
-                        self._focus_window_for_direct_action("Chrome")
-                        driver = WindowsNativeInputDriver()
-                        ok = (
-                            driver.hotkey(["ctrl", "l"])
-                            and driver.type_text(query)
-                            and driver.press_key("enter")
+                # ``ok = True`` used to be assigned unconditionally: _launch_process
+                # never raised, so the fallback below was unreachable and this
+                # branch answered "Done." on machines with no Chrome at all.
+                ok = self._launch_process(
+                    "chrome.exe", f"https://www.google.com/search?q={quote_plus(query)}"
+                )
+                if not ok:
+                    logger.info("Chrome direct URL launch unavailable; trying focus/type fallback")
+                    allowed, reason = self._authorize_desktop_input(
+                        query, "Chrome", "type a search query into Chrome from a direct command"
+                    )
+                    if not allowed:
+                        self.state_machine.transition_to(
+                            TaskState.FAILED, reason=f"Chrome fallback not authorized: {reason}"
                         )
+                        return AgentResponse(
+                            content=f"I did not open Chrome or search for '{query}': {reason}",
+                            is_done=True,
+                            metadata={
+                                "fast_path": True,
+                                "direct_desktop_action": "chrome_search",
+                                "query": query,
+                                "success": False,
+                                "refused": True,
+                                "reason": reason,
+                            },
+                        )
+                    try:
+                        if self._launch_process("chrome.exe"):
+                            self._focus_window_for_direct_action("Chrome")
+                            driver = WindowsNativeInputDriver()
+                            ok = (
+                                driver.hotkey(["ctrl", "l"])
+                                and driver.type_text(query)
+                                and driver.press_key("enter")
+                            )
                     except Exception as fallback_error:
                         logger.warning(f"Chrome search fallback failed: {fallback_error}")
                         ok = False
                 self.state_machine.transition_to(TaskState.VERIFYING, reason="Checking direct Chrome search result")
-                content = "Done." if ok else "I could not reliably complete the Chrome search."
+                if ok:
+                    content = "Done."
+                else:
+                    content = (
+                        "I could not run the Chrome search: Chrome is not installed or could not be "
+                        "started on this machine. Nothing was searched."
+                    )
                 self.state_machine.transition_to(TaskState.COMPLETED if ok else TaskState.FAILED, reason=content)
                 self.memory.add_message(Message(role=Role.ASSISTANT, content=content))
                 return AgentResponse(
@@ -558,7 +689,29 @@ class FastPathMixin:
                 or windows_friday.is_contact_directive(clean_input)
                 or windows_friday.is_gmail_directive(clean_input)
             ):
-                handled, reply, meta = windows_friday.handle_directive(clean_input)
+                # The device layer performs real actions (composing mail, sending
+                # a WhatsApp message). Hand it the same authority the tool path
+                # uses so a directive cannot reach an effect the tool would have
+                # had to ask permission for.
+                #
+                # The device layer matches phrases, not requests, so a directive
+                # found inside a longer instruction would have been answered as
+                # though the rest did not exist. Compound input goes to the
+                # cognitive loop instead, which can plan every clause. The
+                # notepad and Chrome patterns above are exempt because each
+                # owns its whole phrasing ("open notepad and type ...").
+                from friday.core.language import is_compound_request
+                from friday.core.language import second_clause as _second_clause
+
+                if is_compound_request(clean_input):
+                    logger.info(
+                        "Direct-desktop fast path declined a compound request (second clause: %r)",
+                        _second_clause(clean_input),
+                    )
+                    return None
+                handled, reply, meta = windows_friday.handle_directive(
+                    clean_input, authorizer=getattr(self, "authorizer", None)
+                )
                 if handled:
                     self.memory.add_message(Message(role=Role.USER, content=clean_input))
                     self.memory.add_message(Message(role=Role.ASSISTANT, content=reply))
@@ -1120,8 +1273,17 @@ class FastPathMixin:
                 )
 
             # Master Windows FRIDAY Controller (handles all additional laptop directives)
+            from friday.core.language import is_compound_request
+
+            if is_compound_request(clean_input):
+                # A recognised phrase inside a longer request is not the request.
+                # Decline so the cognitive loop can handle every clause; the
+                # device layer applies the same rule for its other callers.
+                return None
             from friday.devices.windows_friday import windows_friday
-            handled, reply, meta = windows_friday.handle_directive(clean_input)
+            handled, reply, meta = windows_friday.handle_directive(
+                clean_input, authorizer=getattr(self, "authorizer", None)
+            )
             if handled:
                 self.memory.add_message(Message(role=Role.USER, content=clean_input))
                 action_name = meta.get("action", "os_directive")

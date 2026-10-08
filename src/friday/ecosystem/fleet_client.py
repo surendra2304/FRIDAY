@@ -27,7 +27,7 @@ from typing import Any
 
 import httpx
 
-from friday.core.task_envelope import TaskEnvelope, TaskResult, TaskStatus
+from friday.core.task_envelope import ActionReceipt, TaskEnvelope, TaskResult, TaskStatus
 
 
 def _classify_health_response(response: httpx.Response) -> str:
@@ -116,6 +116,16 @@ class FleetClient:
         if self._shared_client is None or self._shared_client.is_closed:
             self._shared_client = httpx.AsyncClient(timeout=30.0)
         return self._shared_client
+
+    async def aclose(self) -> None:
+        """Close and release the shared HTTP pool during owner shutdown.
+
+        Callers must stop request/background tasks before shutdown so a late
+        request cannot create a replacement pool while this one is closing.
+        """
+        client, self._shared_client = self._shared_client, None
+        if client is not None and not client.is_closed:
+            await client.aclose()
 
     # =========================================================================
     # 1. LIVE HEALTH & TELEMETRY PROBES
@@ -541,7 +551,12 @@ class FleetClient:
                 f"Binance Connected: {'YES' if binance_conn is True else ('NO' if binance_conn is False else 'not reported')}\n\n"
                 f"Market Execution Telemetry:\n"
                 f"• Active Trading Pairs: {symbol_count} symbols monitored ({timeframes})\n"
-                f"• Engine Worker: {'HEALTHY' if h_data.get('healthy') else 'STANDBY'} | Supervisor: {h_data.get('paper_runner_status', 'ONLINE')}\n"
+                # `{'HEALTHY' if h_data.get('healthy') else 'STANDBY'}` turned an
+                # absent field into STANDBY (a claim about the worker) and
+                # defaulted the supervisor to ONLINE. Both now say what was sent.
+                f"• Engine Worker: "
+                f"{'HEALTHY' if h_data.get('healthy') is True else ('STANDBY' if h_data.get('healthy') is False else 'not reported')}"
+                f" | Supervisor: {h_data.get('paper_runner_status') or 'not reported'}\n"
                 f"• Risk and strategy details are shown only when returned by the endpoint. No trade was requested or verified."
             )
             return {
@@ -790,7 +805,23 @@ class FleetClient:
             lines.append(f"{s.icon} {s.name:<9} | {s.status:<8} | {s.latency_ms}ms{'':<3} | {s.role:<24}")
 
         lines.append("-" * 60)
-        lines.append("All microservices connected and synchronized with FRIDAY Central Core.")
+        # This line used to be unconditional. The matrix above it said
+        # "0/8 AGENTS ACTIVE" and the sentence underneath still claimed
+        # "All microservices connected and synchronized with FRIDAY Central
+        # Core." A status report whose summary contradicts its own table is
+        # worse than no summary: the reader trusts the sentence.
+        if online_count == total_count and total_count:
+            lines.append("All microservices connected and synchronized with FRIDAY Central Core.")
+        elif online_count == 0:
+            lines.append(
+                "No peer microservice answered from this machine. Nothing above was reached; the "
+                "statuses are connection attempts, not confirmations."
+            )
+        else:
+            lines.append(
+                f"{online_count} of {total_count} microservices answered. Treat the UNREACHABLE rows "
+                "as unverified, not as healthy."
+            )
 
         return {
             "reply": "\n".join(lines),
@@ -935,8 +966,13 @@ class FleetClient:
             if resp.status_code in (200, 201, 202):
                 res_data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {"text": resp.text}
                 if resp.status_code == 202:
+                    pending_task_id = (
+                        str(res_data.get("task_id") or envelope.task_id)
+                        if isinstance(res_data, dict)
+                        else envelope.task_id
+                    )
                     return TaskResult(
-                        task_id=envelope.task_id,
+                        task_id=pending_task_id,
                         target_agent=envelope.target_agent,
                         status=TaskStatus.PENDING,
                         result=res_data if isinstance(res_data, dict) else {"data": res_data},
@@ -954,26 +990,66 @@ class FleetClient:
                         execution_time_ms=lat,
                     )
                 state = str(res_data.get("state", res_data.get("status", ""))).strip().lower() if isinstance(res_data, dict) else ""
-                if state in {"pending", "queued", "running", "waiting_approval", "awaiting_approval"}:
-                    result_status = TaskStatus.PENDING
-                elif state in {"success", "succeeded", "complete", "completed", "done"} or (isinstance(res_data, dict) and res_data.get("completed") is True):
+                result_data = res_data if isinstance(res_data, dict) else {"data": res_data}
+                returned_task_id = str(result_data.get("task_id") or envelope.task_id)
+                if state in {"pending", "queued", "running", "waiting_approval", "awaiting_approval", "accepted"}:
+                    return TaskResult(
+                        task_id=returned_task_id,
+                        target_agent=envelope.target_agent,
+                        status=TaskStatus.PENDING,
+                        result=result_data,
+                        summary=f"{target} accepted the request; completion is pending verification.",
+                        execution_time_ms=lat,
+                    )
+
+                raw_receipt = result_data.get("receipt")
+                receipt: ActionReceipt | None = None
+                if isinstance(raw_receipt, dict):
+                    try:
+                        receipt = ActionReceipt(**raw_receipt)
+                    except Exception:
+                        receipt = None
+
+                # A status string or model answer is not a completion receipt.
+                # Use the same strict verifier as the receipt-aware peer mesh.
+                from friday.cognition.mesh import verify_receipt
+
+                candidate_status = {
+                    "error": TaskStatus.ERROR,
+                    "failed": TaskStatus.ERROR,
+                    "failure": TaskStatus.ERROR,
+                    "blocked": TaskStatus.BLOCKED,
+                    "cancelled": TaskStatus.CANCELLED,
+                    "degraded": TaskStatus.DEGRADED,
+                }.get(state, TaskStatus.SUCCESS)
+                candidate = TaskResult(
+                    task_id=returned_task_id,
+                    target_agent=envelope.target_agent,
+                    status=candidate_status,
+                    result=result_data.get("result", {}) if isinstance(result_data.get("result"), dict) else {},
+                    summary=str(result_data.get("summary") or result_data.get("message") or ""),
+                    receipt=receipt,
+                    execution_time_ms=lat,
+                )
+                verdict = verify_receipt(envelope, candidate)
+                if verdict.ok:
                     result_status = TaskStatus.SUCCESS
-                elif target == "inference" and isinstance(res_data, dict) and (res_data.get("response") or res_data.get("reply")):
-                    result_status = TaskStatus.SUCCESS
+                    summary = candidate.summary or f"Task '{envelope.action}' completed by {target} in {lat}ms."
+                    error = None
                 else:
                     result_status = TaskStatus.DEGRADED
+                    summary = f"{target} responded, but task completion is unverified: {verdict.reason}."
+                    error = "task_completion_unverified"
+
                 return TaskResult(
-                    task_id=envelope.task_id,
+                    task_id=returned_task_id,
                     target_agent=envelope.target_agent,
                     status=result_status,
-                    result=res_data if isinstance(res_data, dict) else {"data": res_data},
-                    summary=(
-                        f"Task '{envelope.action}' completed by {target} in {lat}ms"
-                        if result_status == TaskStatus.SUCCESS
-                        else f"{target} accepted the request, but did not provide evidence of task completion."
-                    ),
-                    error=None if result_status in {TaskStatus.SUCCESS, TaskStatus.PENDING} else "task_completion_unverified",
+                    result=result_data,
+                    summary=summary,
+                    error=error,
                     execution_time_ms=lat,
+                    receipt=receipt,
                 )
             else:
                 return TaskResult(

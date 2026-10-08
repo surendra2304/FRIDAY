@@ -74,6 +74,7 @@ from friday.tools.builtin import (
     HealthCheckTool,
     KillProcessTool,
     LaunchApplicationTool,
+    ListSkillsTool,
     ListGitHubIssuesTool,
     LocationMapsTool,
     ManageTasksTool,
@@ -92,6 +93,7 @@ from friday.tools.builtin import (
     ReadScreenTextTool,
     RememberFactTool,
     ReplaceFileContentTool,
+    RunSkillTool,
     RunTestsTool,
     ScreenPredictionTool,
     ScreenSnapshotTool,
@@ -218,6 +220,20 @@ class ToolExecutionMixin:
                 registry.register(AndroidDeviceInfoTool())
             except ImportError:
                 pass
+            # The skill layer (24 registered skills) had no caller in the running
+            # agent: `FridayAgent.skill_registry` was a lazy property nothing read,
+            # so every skill was unreachable in production while its unit tests
+            # passed by calling `execute` directly. These two tools are the bridge.
+            _skill_registry = getattr(self, "skill_registry", None)
+            registry.register(ListSkillsTool(skill_registry=_skill_registry))
+            registry.register(
+                RunSkillTool(
+                    skill_registry=_skill_registry,
+                    authorizer=getattr(self, "authorizer", None),
+                    tool_registry=registry,
+                    llm_provider=getattr(self, "llm_provider", None) or getattr(self, "provider", None),
+                )
+            )
             registry.register(GetAIUniverseStatusTool())
             registry.register(ScreenPredictionTool())
             # BUG-003: the system prompt tells the model to use these two by name.
@@ -419,6 +435,8 @@ class ToolExecutionMixin:
                 content=err_msg,
                 is_error=True,
                 safety_level=tool.safety_level,
+                metadata={"authorization": auth_resp.decision.value},
+                refused=True,
             )
 
     def _execute_single_tool_call(self, tc: ToolCall, timeout: float | None = None) -> ToolResult:

@@ -151,7 +151,14 @@ class TraceAnalyzer:
             return None
 
         # Sort by overlap DESC, latency ASC
-        matching_traces.sort(key=lambda item: (-item[0], item[1].get("latency_ms", 99999.0)))
+        # Traces that never reported a latency sort last; the magic 99999.0 is
+        # replaced by an explicit infinity so "unknown" is not a number.
+        matching_traces.sort(
+            key=lambda item: (
+                -item[0],
+                item[1].get("latency_ms") if isinstance(item[1].get("latency_ms"), (int, float)) else float("inf"),
+            )
+        )
         best_overlap, best_tr = matching_traces[0]
 
         tools = best_tr.get("tools_used", [])
@@ -185,9 +192,14 @@ class TraceAnalyzer:
                 return (2, fail_rate, 9999.0)
             elif s and s.get("total", 0) > 0:
                 # Proven working provider: prioritized by success rate DESC (-success_rate), then latency ASC
-                return (0, -s.get("success_rate", 1.0), s.get("avg_latency_ms", 1000.0))
+                latency = s.get("avg_latency_ms")
+                return (
+                    0,
+                    -s.get("success_rate", 1.0),
+                    latency if isinstance(latency, (int, float)) else float("inf"),
+                )
             else:
-                # Untried provider
-                return (1, 0.0, 1000.0)
+                # Untried provider: ranked after proven ones, with no invented latency.
+                return (1, 0.0, float("inf"))
 
         return sorted(candidate_providers, key=provider_sort_key)

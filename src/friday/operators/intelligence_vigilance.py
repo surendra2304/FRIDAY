@@ -36,6 +36,7 @@ class IntelligenceVigilanceOperator(BaseOperator):
         poll_interval_sec: float = 900.0,  # 15 minutes default
         memory: Any | None = None,
         authorizer: Any | None = None,
+        held_positions: dict[str, Any] | None = None,
     ) -> None:
         trigger = IntervalTrigger(interval_seconds=poll_interval_sec, name="intelligence_vigilance_poll_interval")
         super().__init__(
@@ -51,6 +52,13 @@ class IntelligenceVigilanceOperator(BaseOperator):
         self.poll_interval_sec = poll_interval_sec
         self.memory = memory
         self._alerted_whales: set[str] = set()
+        #: Positions actually held, reported by the trading bridge as
+        #: ``{"ETHUSDT": {"side": "LONG", "size": 1.5}}``. The adverse-prediction
+        #: check used to assume a long ETH position unconditionally - "Simulated
+        #: active long position on ETH" - and warned the operator about risk in a
+        #: position nobody had said they held. With nothing reported, there is no
+        #: position to warn about.
+        self.held_positions: dict[str, Any] = dict(held_positions or {})
 
     @property
     def intel_engine(self) -> IntelligenceEngine:
@@ -74,52 +82,82 @@ class IntelligenceVigilanceOperator(BaseOperator):
         on_chain = report.get("on_chain", {})
         accuracy = report.get("accuracy", {})
 
-        # 1. High-Confidence Adverse Prediction for Held Assets
-        # Simulated active long position on ETH with 58% bearish prediction
-        eth_pred = predictions.get("ETHUSDT")
-        if eth_pred and eth_pred.get("direction") == "BEARISH" and eth_pred.get("direction_probability_pct", 0.0) >= 55.0:
-            ev = {
-                "type": "ADVERSE_PREDICTION_ALERT",
-                "symbol": "ETHUSDT",
-                "direction": "BEARISH",
-                "probability_pct": eth_pred.get("direction_probability_pct"),
-                "message": f"Adverse prediction on ETHUSDT: Model indicates {eth_pred.get('direction_probability_pct'):.0f}% probability of downward move while holding long position.",
-                "severity": "WARNING",
-            }
-            events.append(ev)
-            self._emit_alert("ADVERSE PREDICTION: ETHUSDT", ev["message"], AlertSeverity.WARNING)
+        from friday.core.readings import read_number
 
-        # 2. Sentiment Spike Alert
-        if sentiment.get("fear_and_greed_index", 50) >= 65 or sentiment.get("social_volume_spike", False):
+        # 1. High-Confidence Adverse Prediction for Held Assets.
+        # Only positions that were actually reported are checked. Each threshold
+        # below is compared against a *reading*; a missing probability used to be
+        # treated as 0.0 (silently no alert) and then formatted with :.0f, which
+        # would have raised if the value had been None rather than absent.
+        for symbol, position in sorted(self.held_positions.items()):
+            entry = predictions.get(symbol) or {}
+            probability = read_number(entry, "direction_probability_pct", source=f"{symbol} prediction")
+            direction = str(entry.get("direction") or "").upper()
+            side = str((position or {}).get("side", "")).upper() if isinstance(position, dict) else ""
+            adverse = (direction == "BEARISH" and side == "LONG") or (direction == "BULLISH" and side == "SHORT")
+            if adverse and probability.at_least(55.0):
+                ev = {
+                    "type": "ADVERSE_PREDICTION_ALERT",
+                    "symbol": symbol,
+                    "direction": direction,
+                    "probability_pct": probability.value,
+                    "message": (
+                        f"Adverse prediction on {symbol}: model indicates "
+                        f"{probability.number(0, '%')} probability of a move against your "
+                        f"{side} position."
+                    ),
+                    "severity": "WARNING",
+                }
+                events.append(ev)
+                self._emit_alert(f"ADVERSE PREDICTION: {symbol}", ev["message"], AlertSeverity.WARNING)
+
+        # 2. Sentiment Spike Alert. The 50 default meant "no reading" was compared
+        # as if it were a neutral measurement; a genuinely unknown index now
+        # produces no alert, and no claim.
+        greed = read_number(sentiment, "fear_and_greed_index", source="sentiment telemetry")
+        if greed.at_least(65.0) or sentiment.get("social_volume_spike", False):
             ev = {
                 "type": "SENTIMENT_ELEVATION_ALERT",
-                "greed_index": sentiment.get("fear_and_greed_index"),
-                "message": f"Market sentiment elevated: Fear & Greed index at {sentiment.get('fear_and_greed_index')}/100 (Greed regime).",
+                "greed_index": greed.value,
+                "message": (
+                    f"Market sentiment elevated: Fear & Greed index at {greed.number(0)}/100 (Greed regime)."
+                    if greed.known
+                    else "Social volume spike reported; no Fear & Greed index is available."
+                ),
                 "severity": "INFO",
             }
             events.append(ev)
             self._emit_alert("SENTIMENT REGIME: GREED", ev["message"], AlertSeverity.INFO)
 
         # 3. Whale Movement Alert
-        if on_chain.get("net_exchange_flow_btc", 0) <= -5000.0 and "WHALE_ACCUMULATION" not in self._alerted_whales:
+        net_flow = read_number(on_chain, "net_exchange_flow_btc", source="on-chain telemetry")
+        if net_flow.known and net_flow.value <= -5000.0 and "WHALE_ACCUMULATION" not in self._alerted_whales:
             self._alerted_whales.add("WHALE_ACCUMULATION")
             ev = {
                 "type": "WHALE_FLOW_ALERT",
-                "net_flow_btc": on_chain.get("net_exchange_flow_btc"),
+                "net_flow_btc": net_flow.value,
                 "summary": on_chain.get("largest_whale_transfer_summary"),
-                "message": f"Significant on-chain whale accumulation: {abs(on_chain.get('net_exchange_flow_btc', 0)):,.0f} BTC net exchange outflow in 24h.",
+                "message": (
+                    f"Significant on-chain whale accumulation: {abs(net_flow.value):,.0f} BTC net "
+                    f"exchange outflow in 24h."
+                ),
                 "severity": "INFO",
             }
             events.append(ev)
             self._emit_alert("WHALE ACCUMULATION DETECTED", ev["message"], AlertSeverity.INFO)
 
-        # 4. Prediction Accuracy Decay Alert
-        rolling_acc = accuracy.get("rolling_30d_directional_accuracy_pct", 78.5)
-        if rolling_acc < 60.0:
+        # 4. Prediction Accuracy Decay Alert. The 78.5 default was higher than the
+        # 60.0 threshold, so an unmeasured accuracy could never trigger decay - but
+        # the value was also reported to the caller as though measured.
+        rolling_acc = read_number(accuracy, "rolling_30d_directional_accuracy_pct", source="accuracy report")
+        if rolling_acc.known and rolling_acc.value < 60.0:
             ev = {
                 "type": "MODEL_ACCURACY_DECAY",
-                "accuracy_pct": rolling_acc,
-                "message": f"Model prediction accuracy decay: Rolling 30d directional accuracy dropped to {rolling_acc:.1f}% (<60% threshold).",
+                "accuracy_pct": rolling_acc.value,
+                "message": (
+                    f"Model prediction accuracy decay: rolling 30d directional accuracy is "
+                    f"{rolling_acc.number(1, '%')} (<60% threshold)."
+                ),
                 "severity": "WARNING",
             }
             events.append(ev)

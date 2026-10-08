@@ -111,6 +111,70 @@ def _fully_approved(
     gate.record_owner_decision(patch_id, approver=approver, approve=True)
 
 
+@pytest.mark.parametrize(
+    "target_file",
+    [
+        "../outside.py",
+        "nested/../../outside.py",
+        "/tmp/outside.py",
+        r"C:\\temp\\outside.py",
+        ".git/config",
+    ],
+)
+def test_proposal_refuses_paths_outside_or_inside_git_metadata(
+    repo: Path, target_file: str
+) -> None:
+    gate = SelfRepairGate(GitRepairApplier(str(repo)), review_verification_key=REVIEW_KEY)
+    base = _git(repo, "rev-parse", "HEAD")
+
+    record, receipt = gate.propose(_proposal(repo, base, target_file=target_file))
+
+    assert receipt.outcome == "REFUSED"
+    assert GateRefusal.INVALID_TARGET_PATH.value in receipt.detail
+    assert record.state is RepairState.BLOCKED
+    assert not (repo.parent / "outside.py").exists()
+
+
+def test_repair_applier_rechecks_traversal_before_writing(repo: Path) -> None:
+    outside = repo.parent / "escaped.py"
+    applier = GitRepairApplier(str(repo))
+
+    with pytest.raises(ValueError, match="parent-directory traversal"):
+        applier.apply_snippet("../escaped.py", "", "outside the repository")
+
+    assert not outside.exists()
+
+
+def test_apply_rechecks_a_path_that_becomes_a_symlink_after_review(repo: Path) -> None:
+    outside = repo.parent / "outside"
+    outside.mkdir()
+    gate = SelfRepairGate(GitRepairApplier(str(repo)), review_verification_key=REVIEW_KEY)
+    base = _git(repo, "rev-parse", "HEAD")
+    record, receipt = gate.propose(
+        _proposal(
+            repo,
+            base,
+            target_file="later/escaped.py",
+            original_snippet="",
+            replacement_snippet="not written outside the repository\\n",
+        )
+    )
+    assert receipt.outcome == "ACCEPTED"
+    _fully_approved(gate, record.patch_id)
+
+    try:
+        (repo / "later").symlink_to(outside, target_is_directory=True)
+    except OSError as exc:  # pragma: no cover - Windows without symlink privilege
+        pytest.skip(f"symlinks are unavailable: {exc}")
+
+    applied = gate.apply(record.patch_id)
+
+    assert applied.outcome == "REFUSED"
+    assert GateRefusal.INVALID_TARGET_PATH.value in applied.detail
+    assert not (outside / "escaped.py").exists()
+    assert _git(repo, "rev-parse", "--abbrev-ref", "HEAD") == "main"
+
+
 # ── the happy path, on a real repository ──────────────────────────────────
 
 

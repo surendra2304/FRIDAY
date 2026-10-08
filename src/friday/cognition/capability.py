@@ -47,6 +47,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from friday.core.logging import get_logger
+from friday.cognition.tool_paths import ToolPathError, resolve_tool_module_path
 
 logger = get_logger("cognition.capability")
 
@@ -622,6 +623,16 @@ class CapabilityResolver:
                 detail="The request was empty, so there was nothing to plan.",
             )
 
+        if target_path:
+            try:
+                resolve_tool_module_path(self.repo_root, target_path)
+            except ToolPathError as exc:
+                return Resolution(
+                    request=request,
+                    plan_feasible=False,
+                    detail=f"Rejected target_path: {exc}",
+                )
+
         steps, source = self.plan(request)
         gaps = self.gaps_for(request, steps)
 
@@ -911,13 +922,30 @@ class ToolSynthesiser:
                 ),
             }
 
-        tool_name = self.tool_name_for(target_path or gap.capability)
         if target_path:
-            relative = target_path.lstrip("./")
+            try:
+                relative, destination = resolve_tool_module_path(
+                    self.repo_root, target_path
+                )
+            except ToolPathError as exc:
+                return {
+                    "tool": None,
+                    "capability": gap.capability,
+                    "path": str(target_path),
+                    "verified": False,
+                    "verification": "target_path",
+                    "blocked_by": "unsafe_target_path",
+                    "gate_step": f"Not written: {exc}",
+                    "detail": f"Rejected target_path: {exc}",
+                }
+            # The selected module filename, not its parent directories, defines
+            # its importable tool name.
+            tool_name = Path(relative).stem
         else:
-            relative = f"{TOOLS_DIRECTORY}/{tool_name}.py"
-
-        destination = self.repo_root / relative
+            tool_name = self.tool_name_for(gap.capability)
+            relative, destination = resolve_tool_module_path(
+                self.repo_root, tool_name=tool_name
+            )
         if destination.exists():
             return {
                 "tool": tool_name,

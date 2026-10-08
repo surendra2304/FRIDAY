@@ -101,6 +101,13 @@ FRIDAY_EMAIL_SMTP_PORT=587
 
 ## 4. Usage Instructions
 
+The core install does not pull voice-biometrics or Qt desktop UI dependencies.
+From the checkout, install the desktop UI with `pip install -e ".[desktop]"`
+(or install the wheel extra as `pip install "friday-agent[desktop]"`). Linux desktop
+sessions may also need host Qt/OpenGL runtime libraries such as `libGL.so.1`.
+Voice biometrics are separately opt-in with `pip install -e ".[voice-bio]"`; on
+Linux, `webrtcvad` may require Python development headers and a compiler.
+
 ### CLI Commands
 
 ```powershell

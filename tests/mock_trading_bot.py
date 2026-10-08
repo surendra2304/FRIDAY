@@ -19,6 +19,11 @@ class MockTradingBotState:
         self.scenario = scenario
         self.panic_activated = False
         self.panic_history: list[dict[str, Any]] = []
+        #: When set, /api/ab/status serves this payload verbatim. Used by tests
+        #: that need a deliberately incomplete experiment payload.
+        self.ab_override: dict[str, Any] | None = None
+        #: Same, for /api/testnet/advisory/status.
+        self.testnet_override: dict[str, Any] | None = None
 
     def get_status_payload(self) -> dict[str, Any]:
         return {
@@ -31,6 +36,10 @@ class MockTradingBotState:
             "today_pnl": 540.25,
             "profit_factor": 1.85,
             "win_rate_pct": 68.5,
+            # Reported drawdown. It used to be absent, and the live-operations
+            # centre invented 1.45% from a default - which is how a test could
+            # "force a breach" by changing the *limit* rather than the reading.
+            "drawdown_pct": getattr(self, "drawdown_pct", 1.45),
             "positions": [
                 {"symbol": "BTCUSDT", "side": "LONG", "size": 0.05, "unrealized_pnl": 95.50},
                 {"symbol": "ETHUSDT", "side": "SHORT", "size": 0.50, "unrealized_pnl": 44.75},
@@ -166,6 +175,10 @@ class MockTradingBotState:
         }
 
     def get_ab_status_payload(self) -> dict[str, Any]:
+        # Tests can drive an exact payload (including a deliberately incomplete
+        # one) without adding a named scenario for every honesty case.
+        if self.ab_override is not None:
+            return self.ab_override
         if self.scenario == "ab_no_test":
             return {"status": "NO_ACTIVE_TEST", "message": "No active A/B experiment running"}
 
@@ -302,6 +315,8 @@ class MockTradingBotState:
         }
 
     def get_testnet_advisory_status_payload(self) -> dict[str, Any]:
+        if self.testnet_override is not None:
+            return self.testnet_override
         if self.scenario == "testnet_ai_down":
             return {
                 "enabled": True,

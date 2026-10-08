@@ -96,7 +96,10 @@ def test_proactive_suggestion_engine_triggers(voice_setup):
         }
     }
     sug_trade = suggestions.generate_suggestions(trading_data=trade_data)
-    assert any("Supertrend underperforming" in s.prompt for s in sug_trade)
+    # Wording now names the strategy and quotes the reported figures rather than
+    # a canned sentence; assert both, so the suggestion is traceable to its input.
+    assert any("Supertrend" in s.prompt and "underperforming" in s.prompt for s in sug_trade)
+    assert any("0.72" in s.rationale for s in sug_trade), "rationale must quote the reported profit factor"
 
     # 2. Nexus High-Intent Lead
     nexus_data = {

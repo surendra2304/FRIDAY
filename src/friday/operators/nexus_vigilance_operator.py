@@ -32,7 +32,9 @@ class NexusVigilanceState:
     known_incident_ids: list[str] = field(default_factory=list)
     known_lead_ids: list[str] = field(default_factory=list)
     pending_approvals_since: datetime | None = None
-    uptime_ratio_pct: float = 100.0
+    #: None until at least one poll has been recorded; 100.0 here used to
+    #: mean "no data" and "perfect uptime" at the same time.
+    uptime_ratio_pct: float | None = None
 
 
 class NexusVigilanceOperator(BaseOperator):
@@ -65,15 +67,23 @@ class NexusVigilanceOperator(BaseOperator):
             events: list[dict[str, Any]] = []
 
             try:
-                # 1. Poll site status & health
+                # 1. Poll site status & health. A skill that reports
+                # available=False did not answer: recording that as a
+                # "successful poll" (which this line used to do unconditionally)
+                # silenced exactly the outage the operator exists to notice.
                 status_data = self.skill.get_site_status()
+                if status_data.get("available") is False:
+                    events.extend(self._record_unreachable(now, status_data.get("error") or "no response"))
+                    self._alert_events.extend(events)
+                    return events
+
                 self.vigilance_state.last_successful_poll = now
                 self.vigilance_state.unreachable_since = None
 
                 # 2. Check for New Incidents
                 incidents = self.skill.get_pending_incidents()
                 for inc in incidents:
-                    inc_id = inc.get("id", inc.get("title"))
+                    inc_id = inc.get("id") or inc.get("title")
                     if inc_id and inc_id not in self.vigilance_state.known_incident_ids:
                         self.vigilance_state.known_incident_ids.append(inc_id)
                         evt = {
@@ -90,23 +100,35 @@ class NexusVigilanceOperator(BaseOperator):
                 # 3. Check for High-Intent Leads
                 leads = self.skill.get_high_intent_leads()
                 for lead in leads:
-                    lid = lead["lead_id"]
-                    if lid not in self.vigilance_state.known_lead_ids:
-                        self.vigilance_state.known_lead_ids.append(lid)
-                        evt = {
-                            "type": "HIGH_INTENT_LEAD_DETECTED",
-                            "lead_id": lid,
-                            "domain": lead["company_domain"],
-                            "score": lead["score"],
-                            "message": f"⭐ [NEXUS LEAD] High-intent visitor detected from {lead['company_domain']} (Score: {lead['score']}/100)",
-                            "timestamp": now.isoformat(),
-                            "trust_level": "UNTRUSTED_EXTERNAL",
-                        }
-                        events.append(evt)
-                        logger.info(f"[NEXUS_VIGILANCE] {evt['message']}")
+                    # A lead payload that omits an id, domain or score used to
+                    # raise KeyError here, which the outer handler reported as
+                    # "SERVICE_UNREACHABLE_CRITICAL" - an outage invented from a
+                    # malformed record.
+                    lid = lead.get("lead_id")
+                    if not lid or lid in self.vigilance_state.known_lead_ids:
+                        continue
+                    domain = lead.get("company_domain", "an unspecified domain")
+                    score = lead.get("score")
+                    self.vigilance_state.known_lead_ids.append(lid)
+                    evt = {
+                        "type": "HIGH_INTENT_LEAD_DETECTED",
+                        "lead_id": lid,
+                        "domain": domain,
+                        "score": score,
+                        "message": (
+                            f"⭐ [NEXUS LEAD] High-intent visitor detected from {domain}"
+                            + (f" (Score: {score}/100)" if isinstance(score, (int, float)) else " (score not reported)")
+                        ),
+                        "timestamp": now.isoformat(),
+                        "trust_level": "UNTRUSTED_EXTERNAL",
+                    }
+                    events.append(evt)
+                    logger.info(f"[NEXUS_VIGILANCE] {evt['message']}")
 
                 # 4. Check Pending Approvals Duration (>30 minutes)
-                pending_count = status_data.get("pending_approvals_count", 0)
+                pending_count = status_data.get("pending_approvals_count")
+                if not isinstance(pending_count, (int, float)):
+                    pending_count = 0  # nothing was reported, so nothing is stale
                 if pending_count > 0:
                     if self.vigilance_state.pending_approvals_since is None:
                         self.vigilance_state.pending_approvals_since = now
@@ -125,21 +147,34 @@ class NexusVigilanceOperator(BaseOperator):
 
             except Exception as e:
                 logger.error(f"[NEXUS_VIGILANCE] Polling error: {e}")
-                if self.vigilance_state.unreachable_since is None:
-                    self.vigilance_state.unreachable_since = now
-                elif now - self.vigilance_state.unreachable_since > timedelta(minutes=2):
-                    evt = {
-                        "type": "SERVICE_UNREACHABLE_CRITICAL",
-                        "error": str(e),
-                        "message": f"🚨 [NEXUS CRITICAL] Nexus website service has been UNREACHABLE for > 2 minutes: {e}",
-                        "timestamp": now.isoformat(),
-                        "trust_level": "UNTRUSTED_EXTERNAL",
-                    }
-                    events.append(evt)
-                    logger.critical(f"[NEXUS_VIGILANCE] {evt['message']}")
+                events.extend(self._record_unreachable(now, str(e)))
 
             self._alert_events.extend(events)
             return events
+
+    def _record_unreachable(self, now: datetime, reason: str) -> list[dict[str, Any]]:
+        """Records a failed poll and escalates once the outage is long enough.
+
+        Called both when Nexus refuses/answers with an error and when a poll
+        raises, so a "no answer" from the skill cannot be mistaken for a
+        successful but quiet website.
+        """
+        with self._lock:
+            if self.vigilance_state.unreachable_since is None:
+                self.vigilance_state.unreachable_since = now
+                logger.warning(f"[NEXUS_VIGILANCE] Nexus did not answer: {reason}")
+                return []
+            if now - self.vigilance_state.unreachable_since <= timedelta(minutes=2):
+                return []
+            evt = {
+                "type": "SERVICE_UNREACHABLE_CRITICAL",
+                "error": reason,
+                "message": f"🚨 [NEXUS CRITICAL] Nexus website service has been UNREACHABLE for > 2 minutes: {reason}",
+                "timestamp": now.isoformat(),
+                "trust_level": "UNTRUSTED_EXTERNAL",
+            }
+            logger.critical(f"[NEXUS_VIGILANCE] {evt['message']}")
+            return [evt]
 
     def inject_simulated_incident(self, incident: dict[str, Any]) -> None:
         """Helper for testing incident detection."""

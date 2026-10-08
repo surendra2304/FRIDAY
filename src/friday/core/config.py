@@ -358,6 +358,28 @@ class Settings(BaseSettings):
         description="Also demand the control API key for state-changing requests from this machine",
     )
 
+    # Filesystem workspace policy. Every file tool - read_file, list_dir,
+    # file_operations, write_code_file, replace_file_content - resolves paths
+    # through the same policy, so the answer to "may I touch this?" cannot
+    # depend on which tool the model happened to pick. The process working
+    # directory is always allowed; anything else the owner wants reachable
+    # goes here. Before these fields existed, reads were jailed to the working
+    # directory while writes were not jailed at all.
+    workspace_roots: str = Field(
+        default="",
+        description=(
+            "Comma-separated extra directories FRIDAY's file tools may read and write. "
+            "The process working directory is always allowed. Empty means only that directory."
+        ),
+    )
+    allow_self_modification: bool = Field(
+        default=False,
+        description=(
+            "Permit the file tools to overwrite FRIDAY's own source tree (src/friday, src/friday_deep). "
+            "Refused by default; the signed self-repair mandate is the supported route."
+        ),
+    )
+
     # Face Biometrics Authentication Settings
     face_auth_enabled: bool = Field(
         default=False,

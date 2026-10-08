@@ -36,7 +36,7 @@ import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, Literal
 
 from friday.core.logging import get_logger
@@ -107,6 +107,41 @@ STATE_ENV = "FRIDAY_SELF_REPAIR_STATE"
 STATE_VERSION = 1
 
 
+def _normalise_repo_relative_path(target_file: str, repo_path: str | Path | None = None) -> str:
+    """Validate a repair target as one unambiguous path inside its repository."""
+    raw = str(target_file or "").strip()
+    if not raw or "\x00" in raw:
+        raise ValueError("target_file must be a non-empty repository-relative path")
+
+    relative = Path(raw)
+    windows = PureWindowsPath(raw)
+    if relative.is_absolute() or windows.drive or "\\" in raw:
+        raise ValueError("target_file must be repository-relative and use '/' separators")
+    if ".." in relative.parts:
+        raise ValueError("parent-directory traversal is not allowed in target_file")
+    parts = relative.parts
+    if not parts or any(part.lower() == ".git" for part in parts):
+        raise ValueError("target_file cannot name the repository root or its .git directory")
+
+    normalized = "/".join(parts)
+    if repo_path is None:
+        return normalized
+
+    root = Path(repo_path).resolve()
+    cursor = root
+    for part in parts:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            raise ValueError("symlinks are not allowed in repair target paths")
+    try:
+        destination = (root / relative).resolve()
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ValueError(f"target_file could not be resolved: {exc}") from exc
+    if destination == root or root not in destination.parents:
+        raise ValueError("target_file resolves outside the repair repository")
+    return destination.relative_to(root).as_posix()
+
+
 def canonical_json(payload: dict[str, Any]) -> str:
     return json.dumps(payload, sort_keys=True, separators=(",", ":"))
 
@@ -155,6 +190,7 @@ class GateRefusal(str, Enum):
     """Why a step was refused. Callers switch on these, so they are stable."""
 
     NO_TEST_EVIDENCE = "NO_TEST_EVIDENCE"
+    INVALID_TARGET_PATH = "INVALID_TARGET_PATH"
     EMPTY_PATCH = "EMPTY_PATCH"
     NOT_PROPOSED = "NOT_PROPOSED"
     NOT_REVIEWED = "NOT_REVIEWED"
@@ -190,6 +226,7 @@ class GateRefusal(str, Enum):
 TERMINAL_REFUSALS = frozenset(
     {
         GateRefusal.NO_TEST_EVIDENCE,
+        GateRefusal.INVALID_TARGET_PATH,
         GateRefusal.EMPTY_PATCH,
         GateRefusal.REVIEW_REJECTED,
     }
@@ -678,6 +715,7 @@ class GitRepairApplier:
         This is the drift guard: a patch reviewed against one revision of a file
         must not silently land on a different revision.
         """
+        relative_path = _normalise_repo_relative_path(relative_path, self.repo_path)
         path = Path(self.repo_path) / relative_path
         if not path.is_file():
             # Creating a file is the one case where "the reviewed content is no
@@ -986,6 +1024,16 @@ class SelfRepairGate:
 
         record = RepairRecord(proposal=proposal)
         self._records[proposal.proposal_id] = record
+
+        try:
+            proposal.target_file = _normalise_repo_relative_path(
+                proposal.target_file,
+                self._applier.repo_path if self._applier is not None else None,
+            )
+        except ValueError as exc:
+            return record, self._refuse(
+                record, "propose", GateRefusal.INVALID_TARGET_PATH, str(exc)
+            )
 
         if proposal.original_snippet == proposal.replacement_snippet:
             return record, self._refuse(
@@ -1411,6 +1459,14 @@ class SelfRepairGate:
 
         proposal = record.proposal
         try:
+            proposal.target_file = _normalise_repo_relative_path(
+                proposal.target_file, self._applier.repo_path
+            )
+        except ValueError as exc:
+            return self._refuse(
+                record, "apply", GateRefusal.INVALID_TARGET_PATH, str(exc)
+            )
+        try:
             checkpoint = self._applier.current_commit()
             if checkpoint is None:
                 return self._refuse(
@@ -1463,7 +1519,7 @@ class SelfRepairGate:
                         f"commit was left on {record.branch_created} and "
                         f"{record.branch_before} was not moved: {merge_error}",
                     )
-        except (RuntimeError, FileNotFoundError, LookupError, subprocess.SubprocessError) as exc:
+        except (RuntimeError, FileNotFoundError, LookupError, ValueError, subprocess.SubprocessError) as exc:
             self._restore_after_failed_apply(record)
             return self._refuse(record, "apply", GateRefusal.GIT_FAILED, str(exc))
 

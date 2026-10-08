@@ -1,4 +1,4 @@
-﻿"""Unit tests for multi-turn confirmation context, Memora recording, and extended laptop directives."""
+"""Unit tests for multi-turn confirmation context, Memora recording, and extended laptop directives."""
 
 import pytest
 from unittest import mock
@@ -6,9 +6,14 @@ from unittest import mock
 from friday.agent.agent import FridayAgent
 from friday.core.config import Settings
 from friday.core.types import Message, Role, AgentResponse
-from friday.devices.windows_friday import GmailSend, windows_friday
+from friday.devices.windows_friday import windows_friday
 from friday.agent.goal import GoalUnderstandingEngine, GoalRequestType
 from friday.agent.cognitive import CognitiveIntelligenceEngine, CognitivePhase
+
+
+# Desktop directives require an authorizer now; these tests cover the
+# directive mechanics, so they opt in to an approving one.
+pytestmark = pytest.mark.usefixtures("approve_directives")
 
 
 def test_goal_understanding_affirmations():
@@ -136,18 +141,33 @@ def test_windows_friday_extended_volume_directives():
         assert meta["action"] == "volume_up"
 
 
-def test_windows_friday_gmail_and_whatsapp_directives():
+def test_windows_friday_gmail_and_whatsapp_directives(approve_directives):
     """Verify WindowsFridayController handles Gmail and WhatsApp directives."""
-    with mock.patch.object(windows_friday, "open_gmail", return_value=GmailSend(True, "Email sent successfully to alice@realwork.com.", "smtp.gmail.com")) as mock_gmail:
+    with mock.patch.object(windows_friday, "open_url", return_value=True) as mock_open_url:
         handled, reply, meta = windows_friday.handle_directive("open gmail")
         assert handled
         assert meta["action"] == "open_gmail"
+        mock_open_url.assert_called_once_with("https://mail.google.com/")
 
-    with mock.patch.object(windows_friday, "open_gmail", return_value=GmailSend(True, "Email sent successfully to alice@realwork.com.", "smtp.gmail.com")) as mock_gmail:
-        handled, reply, meta = windows_friday.handle_directive("compose email to test@example.com about Meeting")
+    with mock.patch.object(
+        windows_friday,
+        "open_gmail_compose",
+        return_value=(True, "Opened the Gmail draft window. The draft was not sent."),
+    ) as mock_compose:
+        handled, reply, meta = windows_friday.handle_directive(
+            "compose email to test@example.com about Meeting",
+            authorizer=approve_directives,
+        )
         assert handled
-        assert meta["action"] == "open_gmail"
+        assert meta["action"] == "compose_email"
         assert meta["to"] == "test@example.com"
+        assert meta["draft_opened"] is True
+        assert meta["sent"] is False
+        mock_compose.assert_called_once_with(
+            to="test@example.com",
+            subject="Meeting",
+            body="",
+        )
 
     with mock.patch.object(windows_friday, "open_whatsapp", return_value=(True, "Opened WhatsApp Web.")) as mock_wa:
         handled, reply, meta = windows_friday.handle_directive("open whatsapp")
@@ -155,7 +175,10 @@ def test_windows_friday_gmail_and_whatsapp_directives():
         assert meta["action"] == "open_whatsapp"
 
     with mock.patch.object(windows_friday, "open_whatsapp", return_value=(True, "Opened WhatsApp Web.")) as mock_wa:
-        handled, reply, meta = windows_friday.handle_directive("send whatsapp to 1234567890 saying hello there")
+        handled, reply, meta = windows_friday.handle_directive(
+            "send whatsapp to 1234567890 saying hello there",
+            authorizer=approve_directives,
+        )
         assert handled
         assert meta["action"] == "open_whatsapp"
         assert meta["phone"] == "1234567890"

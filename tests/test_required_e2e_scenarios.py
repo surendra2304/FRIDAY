@@ -32,16 +32,39 @@ from friday.ecosystem.e2e_workflow_coordinator import (
 )
 
 
+# Desktop directives require an authorizer now; these tests cover the
+# directive mechanics, so they opt in to an approving one.
+pytestmark = pytest.mark.usefixtures("approve_directives")
+
+
 @pytest.fixture
 def agent():
-    """Construct a testing FridayAgent."""
+    """Construct a testing FridayAgent that is allowed to act.
+
+    These scenarios trace workflows - not who may approve what - so the agent
+    is given an authorizer that approves. The default secure authorizer
+    correctly refuses SENSITIVE actions with no interactive operator, which is
+    pinned in test_workspace_policy_and_directive_authorization.py.
+    """
+    from friday.core.types import (
+        AuthorizationDecision,
+        AuthorizationResponse,
+    )
+
+    class _Approving:
+        def authorize(self, request):
+            return AuthorizationResponse(
+                decision=AuthorizationDecision.APPROVED,
+                reason="test fixture: approved",
+            )
+
     settings = Settings(
         env="testing",
         llm_provider="mock",
         agent_name="FRIDAY",
         voice_tts_enabled=False,
     )
-    return FridayAgent(settings=settings)
+    return FridayAgent(settings=settings, authorizer=_Approving())
 
 
 # ==============================================================================
@@ -131,7 +154,7 @@ def test_03_gmail_email_alice_flow(agent):
     assert resp.metadata.get("success") is False
 
 
-def test_03b_gmail_action_receipt_structure():
+def test_03b_gmail_action_receipt_structure(approve_directives):
     """Verify Gmail produces valid ActionReceipt with audit trail.
 
     The receipt records what actually happened, and names a recipient that was
@@ -142,7 +165,10 @@ def test_03b_gmail_action_receipt_structure():
     directive = "send an email to alice@realwork.com that the meeting moved to 3 PM"
 
     with patch.object(windows_friday, "open_gmail", return_value=GmailSend(False, "Opened a Gmail draft.", "gmail_web")):
-        handled, reply, meta = windows_friday.handle_directive(directive)
+        handled, reply, meta = windows_friday.handle_directive(
+            directive,
+            authorizer=approve_directives,
+        )
 
     assert handled is True
     receipt = meta["receipt"]

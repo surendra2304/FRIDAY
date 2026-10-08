@@ -52,6 +52,10 @@ class GuardianAngelOperator(BaseOperator):
         self.memory = memory
         self._unacknowledged_critical_ticks: int = 0
         self._alerted_states: set[str] = set()
+        #: Set when the last tick could not run a check for lack of a reading.
+        #: Explicitly its own state: "not assessed" is neither healthy nor
+        #: degraded, and folding it into either one would be a lie.
+        self.last_unassessable: str = ""
 
     @property
     def command_center(self) -> EcosystemCommandCenter:
@@ -65,6 +69,11 @@ class GuardianAngelOperator(BaseOperator):
             self._alert_manager = ProductionAlertManager()
         return self._alert_manager
 
+    def _record_unassessable(self, reason: str) -> None:
+        """Note that a check could not run, without inventing a passing result."""
+        self.last_unassessable = reason
+        logger.warning("Guardian Angel could not assess risk posture: %s", reason)
+
     def tick(self) -> list[dict[str, Any]]:
         """Executes a 10-second continuous ecosystem supervisory cycle."""
         events: list[dict[str, Any]] = []
@@ -72,7 +81,19 @@ class GuardianAngelOperator(BaseOperator):
         status = self.command_center.get_ecosystem_status()
         state = status.get("ecosystem_state", "SUPERVISED_AUTONOMY")
         risk = status.get("risk_posture", {})
-        loss_prox = risk.get("daily_loss_limit_proximity_pct", 0.0)
+        # ``risk.get("daily_loss_limit_proximity_pct", 0.0)`` read as "no data"
+        # and as "stress is zero" with the same expression - and when the
+        # ecosystem schema began reporting unknown channels as None, the .get
+        # default did not fire and the comparison below raised TypeError. A
+        # vigilance loop that cannot tell "nothing is wrong" from "nobody told
+        # me" is not a safety system, so the two states are separated here.
+        from friday.core.readings import read_number
+
+        loss_prox_reading = read_number(risk, "daily_loss_limit_proximity_pct", source="ecosystem risk posture")
+        if not loss_prox_reading.known:
+            self._record_unassessable("daily loss limit proximity was not reported")
+            return []
+        loss_prox = loss_prox_reading.value
 
         # 1. State Transition Check
         if state in (EcosystemState.EMERGENCY_HALT.value, EcosystemState.DEGRADED.value):

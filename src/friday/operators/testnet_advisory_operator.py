@@ -86,12 +86,25 @@ class TestnetAdvisoryOperator(BaseOperator):
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
-        enabled = bool(raw.get("enabled", True))
-        mode = str(raw.get("mode", "SHADOW")).upper()
-        health = str(raw.get("ai_universe_health", "HEALTHY")).upper()
-        drawdown_pct = float(raw.get("drawdown_pct", 0.0))
-        max_drawdown_limit = float(raw.get("max_drawdown_limit", 5.0))
-        equity = float(raw.get("equity", 10000.0))
+        # Every field here used to be derived from a default: advisory "enabled"
+        # unless told otherwise, mode SHADOW, a 0.0% drawdown against a 5.0%
+        # threshold and a $10,000 equity. A bridge that reported nothing was
+        # therefore observed as a funded, enabled testnet in SHADOW mode.
+        enabled_raw = raw.get("enabled")
+        enabled = enabled_raw if isinstance(enabled_raw, bool) else None
+        mode = str(raw.get("mode") or "UNREPORTED").upper()
+        health = str(raw.get("ai_universe_health") or "UNREPORTED").upper()
+
+        def _num(key: str, *fallbacks: str) -> float | None:
+            for candidate in (key, *fallbacks):
+                value = raw.get(candidate)
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    return float(value)
+            return None
+
+        drawdown_pct = _num("drawdown_pct")
+        max_drawdown_limit = _num("max_drawdown_limit", "max_drawdown_limit_pct")
+        equity = _num("equity", "current_equity")
 
         # 1. Condition: Mode transition to APPLY
         if mode == "APPLY" and self.last_mode is not None and self.last_mode != "APPLY":
@@ -110,8 +123,14 @@ class TestnetAdvisoryOperator(BaseOperator):
 
         self.last_mode = mode
 
-        # 2. Condition: Testnet Drawdown Threshold Exceeded
-        if drawdown_pct >= max_drawdown_limit and enabled:
+        # 2. Condition: Testnet Drawdown Threshold Exceeded. Both the reading and
+        # the threshold must have been reported before a breach is claimed.
+        if (
+            drawdown_pct is not None
+            and max_drawdown_limit is not None
+            and drawdown_pct >= max_drawdown_limit
+            and enabled is not False
+        ):
             event_key = f"DRAWDOWN_CRITICAL:{drawdown_pct:.1f}"
             if event_key not in self.alerted_events:
                 self.alerted_events.add(event_key)
@@ -127,7 +146,7 @@ class TestnetAdvisoryOperator(BaseOperator):
                 self._record_alert(alert)
 
         # 3. Condition: AI-Universe Health Issue
-        if health in ("DOWN", "UNREACHABLE", "DEGRADED") and enabled:
+        if health in ("DOWN", "UNREACHABLE", "DEGRADED") and enabled is not False:
             event_key = f"AI_HEALTH:{health}"
             if event_key not in self.alerted_events:
                 self.alerted_events.add(event_key)
@@ -142,7 +161,13 @@ class TestnetAdvisoryOperator(BaseOperator):
                 self._record_alert(alert)
 
         return {
-            "status": "ALERT" if alerts else "HEALTHY",
+            # No alert is not the same as a healthy reading: with no threshold
+            # reading there is nothing to be healthy *about*.
+            "status": (
+                "ALERT"
+                if alerts
+                else ("HEALTHY" if drawdown_pct is not None else "UNVERIFIED")
+            ),
             "enabled": enabled,
             "mode": mode,
             "health": health,
