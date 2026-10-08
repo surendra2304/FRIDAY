@@ -53,5 +53,5 @@
 ## State at checkpoint
 
 - [FACT] The evidence-bounded final analysis is saved at `/home/user/REPO_ANALYSIS.md` and mirrored at `notes/REPO_ANALYSIS.md`; the report explicitly retains open/unknown items and read-depth limits.
-- [FACT] The later user instruction authorizes committing completed checklist work and pushing only this branch if a remote is configured; the earlier worklog line saying no commit/push was authorized is superseded. Final diff/status/remote check is still required before commit/push.
+- [FACT] The user authorized committing completed checklist work and pushing only this fixed branch; the earlier no-commit/push direction is superseded. Final staged-diff review passed, the audit was committed as `5ec11a8` and pushed to `origin/arena/f8c95cce-friday`; a follow-up documentation checkpoint and clean-status verification are in progress.
 - [FACT] Active-work duration is unmeasured; no hours claim is made.

@@ -1,6 +1,6 @@
 # FRIDAY Audit Progress
 
-**Current step:** 7 — complete phase evidence and repository analysis, verify final diff/status/remote, then commit and push only the fixed Arena branch if a remote is configured.
+**Current step:** 7 — current phase evidence and evidence-bounded repository analysis are delivered. Audit commit `5ec11a8` is pushed to the fixed branch; complete the small final documentation update on that same branch, verify the final clean status, and leave broader audit scope explicitly open.
 
 **Recovery baseline (2026-10-08):** `AGENT_PROGRESS.md` was absent. Rebuilt this checklist from the active task, session checkpoint, worktree, and test-run records. Branch: `arena/f8c95cce-friday`; base commit: `f2d427c`. The worktree already contained a broad audit patchset before this continuation; do not reset, revert, or discard it. Initial recovery status showed 111 changed/untracked paths and 7,319 insertions / 1,887 deletions. Latest full portable run from this continuation: **2,372 passed, 6 skipped, 23 deselected in 307.67s** (`notes/full_test_run_2026-10-09_v4.log`, ignored runtime log; summary is preserved in the phase note/worklog). Full-tree Ruff passed, Mypy reported no issues in 427 source files, and `git diff --check HEAD` passed after the latest source/test changes.
 
@@ -42,8 +42,8 @@
 - [x] Full-tree Ruff, full-source Mypy (427 source files), and `git diff --check HEAD` pass after the latest source/test changes.
 - [x] Continue the execution-first audit through additional user-facing paths in this continuation: scripted `FridayAgent` self-repair dry-run, a local gated malicious-proposal HTTP request, and reflex API/CLI scope requests. The wider repository is not claimed fully audited; preserve the explicit skipped/sample boundaries.
 - [x] Preserve per-phase `[FACT]` / `[INFERENCE]` / `[HYPOTHESIS]`, `path:line`, and read-depth evidence in `notes/FRIDAY_PHASE6_2026-10-09.md` and `notes/FRIDAY_ACTIVE_WORKLOG.md`; create `/home/user/REPO_ANALYSIS.md` and mirror it at `notes/REPO_ANALYSIS.md`. Large `windows_friday.py`, `api/server.py`, `cli/main.py`, and `reflex.py` remain sampled, not fully read.
-- [ ] Check final `git status`, branch, and remote; commit completed checklist work on `arena/f8c95cce-friday`, push only that branch if a remote is configured, and report if no remote/auth issue blocks it.
-- [ ] Active-work duration is unmeasured; do not invent a duration. Before ending, preserve a precise next-action checkpoint and disclose touched/created artifacts.
+- [x] Verified the fixed branch and configured `origin`; committed the audit patch as `5ec11a8` and pushed only `arena/f8c95cce-friday`. This final progress/worklog status is being committed and pushed as a small follow-up on the same branch; verify clean status after that push.
+- [x] Preserve the open audit boundary and precise next-action checkpoint; active-work duration remains unmeasured (not invented), and touched/created artifacts are listed in the final response.
 
 ## Operating Constraints
 
