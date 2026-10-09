@@ -27,6 +27,30 @@ def ecosystem_setup():
     alert_mgr = ProductionAlertManager(memory=memory)
     sec_mgr = ProductionSecurityManager()
     command_center = EcosystemCommandCenter(security_manager=sec_mgr)
+    # The centre reports only what an integration has told it, so the fixture
+    # supplies a reading the way a real trading bridge would. Tests that want
+    # the *unreported* behaviour assert on it explicitly (see
+    # test_unreported_systems_are_reported_as_unknown below).
+    command_center.record_system_status(
+        "trading_bot",
+        {
+            "status": "HEALTHY",
+            "connected_venues": ["Binance", "Bybit", "OKX"],
+            "active_positions_count": 3,
+            "daily_pnl_usdt": 420.50,
+            "aggregate_leverage": 0.85,
+            "daily_loss_limit_proximity_pct": 14.5,
+            "single_asset_max_exposure_pct": 54.0,
+        },
+    )
+    command_center.record_system_status(
+        "ai_universe",
+        {"status": "HEALTHY", "model_confidence": 0.84, "active_predictions_count": 3, "latency_ms": 118.0},
+    )
+    command_center.record_system_status(
+        "friday_os",
+        {"status": "HEALTHY", "guardian_vigilance": "10S_CONTINUOUS"},
+    )
     policy_interface = HumanPolicyInterface()
     intel_engine = IntelligenceEngine()
     history_tracker = EvolutionHistoryTracker()
@@ -125,6 +149,12 @@ def test_ecosystem_command_center_and_autonomy_gating(ecosystem_setup):
 # =========================================================================
 
 def test_guardian_angel_operator_vigilance(ecosystem_setup):
+    """A vigilance loop can only flag what it can read.
+
+    The fixture reports a risk posture, so the loop has something to assess;
+    when nothing is reported the loop must say it could not assess rather than
+    pass the tick (see the companion test).
+    """
     """Verify Guardian Angel continuous 10s monitoring, escalation, and responsiveness checks."""
     skill, command_center, policy_iface, operator, briefing_wf, sec_mgr, alert_mgr = ecosystem_setup
 
@@ -149,7 +179,9 @@ def test_master_voice_commands(ecosystem_setup):
     # 1. "How is everything doing?"
     res1 = skill.execute("How is everything doing?")
     assert res1.success is True
-    assert "Everything is running smoothly" in res1.output
+    # The reply no longer promises that everything is smooth; with a reported
+    # reading it states the reading, and without one it says it cannot.
+    assert "Ecosystem state is" in res1.output
 
     # 2. "Anything I should know about?"
     res2 = skill.execute("Anything I should know about?")
@@ -158,7 +190,10 @@ def test_master_voice_commands(ecosystem_setup):
     # 3. "Should I be worried about anything?"
     res3 = skill.execute("Should I be worried about anything?")
     assert res3.success is True
-    assert "No immediate concerns" in res3.output
+    # The answer states the readings it has; it no longer promises that the
+    # owner has "no immediate concerns" or describes a position nobody has.
+    assert "14.5" in res3.output and "0.85" in res3.output
+    assert "From what has been reported" in res3.output
 
     # 4. "What did you learn this week?"
     res4 = skill.execute("What did you learn this week?")
@@ -168,12 +203,29 @@ def test_master_voice_commands(ecosystem_setup):
     # 5. "Full ecosystem report"
     res5 = skill.execute("Full ecosystem report")
     assert res5.success is True
-    assert "# 🌐 FRIDAY Autonomous Trading Ecosystem — Executive Command" in res5.output
+    assert "FRIDAY Trading Ecosystem — Executive Command" in res5.output
 
     # 6. "What decisions did the system make today?"
     res6 = skill.execute("What decisions did the system make today?")
     assert res6.success is True
-    assert "autonomous decisions today:" in res6.output
+    # Sample decisions are no longer seeded, so a fresh centre honestly has
+    # none. Recording one must make it appear in the log.
+    assert "Zero autonomous decisions" in res6.output
+    from friday.ecosystem.command_center import EcosystemDecision
+
+    centre = skill.master_voice.command_center
+    centre.record_decision(
+        EcosystemDecision(
+            decision_id="dec_test",
+            action_type="PARAMETER_OVERLAY",
+            details={"strategy": "test", "atr_multiplier": 2.0},
+            operator_id="OPERATOR_SURENDRA",
+            signature="test-signature",
+        )
+    )
+    res6b = skill.execute("What decisions did the system make today?")
+    assert "autonomous decisions today:" in res6b.output
+    assert "PARAMETER_OVERLAY" in res6b.output
 
     # 7. "What are my current policies?"
     res7 = skill.execute("What are my current policies?")
@@ -208,3 +260,36 @@ def test_master_voice_registered_in_registry():
     skill = reg.get("master_voice")
     assert skill is not None
     assert "trading_bot_control" in skill.required_capabilities
+
+
+def test_unreported_systems_are_reported_as_unknown():
+    """A fresh centre in production must not report health it never measured."""
+    centre = EcosystemCommandCenter()
+    status = centre.get_ecosystem_status()
+
+    for name in ("trading_bot", "ai_universe", "friday_os"):
+        reading = status["systems"][name]
+        assert reading["available"] is False
+        assert reading["status"] == "UNKNOWN"
+    assert status["risk_posture"]["aggregate_leverage"] is None
+    assert status["demo_data"] is False
+    assert "UNKNOWN" in status["data_provenance"] or "reported" in status["data_provenance"]
+
+
+def test_a_reported_reading_is_echoed_verbatim():
+    centre = EcosystemCommandCenter()
+    centre.record_system_status("trading_bot", {"status": "DEGRADED", "daily_pnl_usdt": -12.25})
+
+    reading = centre.get_ecosystem_status()["systems"]["trading_bot"]
+    assert reading["available"] is True
+    assert reading["status"] == "DEGRADED"
+    assert reading["daily_pnl_usdt"] == -12.25
+    assert reading["reported_at"]
+
+
+def test_an_unassessable_tick_says_so_instead_of_passing():
+    """The vigilance loop used to crash here; it must report, not guess."""
+    operator = GuardianAngelOperator(command_center=EcosystemCommandCenter())
+    events = operator.tick()
+    assert events == []
+    assert operator.last_unassessable, "the loop must record that it could not assess"

@@ -84,51 +84,111 @@ class LiveMorningBriefingWorkflow:
         regime = self.regime_detector.detect_regime()
         active_incs = self.incident_manager.get_active_incidents()
 
-        pnl_sign = "+" if state.total_pnl_today >= 0 else "-"
+        from friday.core.readings import format_money, format_number
 
-        # 1. Spoken Audio Briefing Text
-        spoken = (
-            f"Good morning Operator Surendra. Here is your live trading morning briefing for {datetime.now(timezone.utc).strftime('%A, %B %d')}. "
-            f"Live operations are {state.trading_mode} on Capital Level {state.capital_level}. "
-            f"Total account equity is ${state.total_equity:,.2f} USDT with today's P&L at {pnl_sign}${abs(state.total_pnl_today):,.2f} USDT across {len(state.positions)} open positions. "
-            f"You have ${state.risk_proximity.daily_loss_headroom_usdt:,.2f} USDT in remaining daily risk budget with a drawdown of {state.risk_proximity.current_drawdown_pct:.2f}%. "
-            f"Market regime analysis indicates {regime.primary_regime.value} with a recommended position sizing multiplier of {regime.position_sizing_multiplier}x. "
-            f"Overnight AI-Universe activity recorded {state.advisory_applied_count} applied recommendations and {state.advisory_rejected_count} rejected by safety gates. "
-            f"{'There are ' + str(len(active_incs)) + ' active incidents requiring review.' if active_incs else 'All safety gates and execution systems are fully normal.'}"
-        )
+        # Every clause below used to read a default out of the polled state as
+        # though it were telemetry: "Live operations are LIVE", "$10,540.25 equity
+        # with today's P&L at +$450.75 across 1 open positions", "$500.00 in
+        # remaining daily risk budget", a drawdown of 1.45%, "4 applied
+        # recommendations and 1 rejected", and a market regime from three invented
+        # indicators. The numbers are now what the bridge reported, or named as
+        # unreported.
+        def _money(value) -> str:
+            return format_money(value)
 
-        # 2. Markdown Visual Report
-        pos_rows = []
-        for p in state.positions:
-            sign = "+" if p.unrealized_pnl >= 0 else "-"
-            pos_rows.append(
-                f"| **{p.symbol}** | `{p.side}` | `{p.size}` | `${p.entry_price:,.2f}` | `${p.mark_price:,.2f}` | **{sign}${abs(p.unrealized_pnl):,.2f} USDT** ({p.unrealized_pnl_pct:+.2f}%) |"
+        def _count(value) -> str:
+            return str(value) if isinstance(value, int) else "an unreported number of"
+
+        if not state.available:
+            spoken = (
+                f"Good morning Operator Surendra. This is your live trading briefing for "
+                f"{datetime.now(timezone.utc).strftime('%A, %B %d')}. The trading bridge has not "
+                f"reported, so I have no equity, no P&L, no positions and no risk proximity to give "
+                f"you. I am not going to read you figures that nothing produced."
+            )
+            md = (
+                f"# 🌅 FRIDAY Live Trading Morning Briefing\n\n"
+                f"**Generated:** `{now_iso[:19]} UTC`\n\n"
+                f"**The trading bridge has reported nothing.** Equity, P&L, positions, risk proximity "
+                f"and advisory activity are all unknown; this briefing does not fill them in.\n"
+            )
+        else:
+            spoken = (
+                f"Good morning Operator Surendra. Here is your live trading morning briefing for {datetime.now(timezone.utc).strftime('%A, %B %d')}. "
+                f"Reported trading mode is {state.trading_mode}. "
+                f"Reported equity is {_money(state.total_equity)} USDT with today's P&L at {_money(state.total_pnl_today)} USDT "
+                f"across {len(state.positions)} reported position(s). "
+                f"Remaining daily risk budget is {_money(state.risk_proximity.daily_loss_headroom_usdt)} USDT with a "
+                f"drawdown of {format_number(state.risk_proximity.current_drawdown_pct, 2, '%')}. "
+                f"Reported AI-Universe activity: {_count(state.advisory_applied_count)} applied recommendations and "
+                f"{_count(state.advisory_rejected_count)} rejected by safety gates. "
+                f"Risk proximity rating is {state.risk_proximity.proximity_warning_level}."
             )
 
-        pos_table = (
-            "| Symbol | Side | Size | Entry Price | Mark Price | Unrealized P&L |\n"
-            "| :--- | :---: | :---: | :---: | :---: | :---: |\n" + "\n".join(pos_rows)
-            if pos_rows else "*No open positions.*"
-        )
+        if state.available:
+            # 2. Markdown Visual Report
+            md = (
+                f"# 🌅 FRIDAY Live Trading Morning Briefing\n\n"
+                f"**Generated:** `{now_iso[:19]} UTC` | **Trading Mode:** `{state.trading_mode}` | "
+                f"**Data provenance:** reported by the trading bridge; unreported values are named.\n\n"
+                f"## 📈 Account\n"
+                f"- **Equity:** `{_money(state.total_equity)} USDT` (Cash: `{_money(state.cash_balance)}`)\n"
+                f"- **Today's P&L:** `{_money(state.total_pnl_today)} USDT` "
+                f"(Realized `{_money(state.realized_pnl_today)}` / Unrealized `{_money(state.unrealized_pnl)}`)\n"
+                f"- **Reported Positions:** `{len(state.positions)}`\n\n"
+                f"## ⚠️ Risk Proximity (`{state.risk_proximity.proximity_warning_level}`)\n"
+                f"- **Daily Loss Used:** `{format_number(state.risk_proximity.daily_loss_pct_used, 1, '%')}` of "
+                f"`{_money(state.risk_proximity.daily_loss_limit_usdt)} USDT`\n"
+                f"- **Headroom:** `{_money(state.risk_proximity.daily_loss_headroom_usdt)} USDT`\n"
+                f"- **Drawdown:** `{format_number(state.risk_proximity.current_drawdown_pct, 2, '%')}`\n"
+            )
 
-        md = (
-            f"# 🌅 FRIDAY Live Trading Morning Briefing\n\n"
-            f"**Execution Mode:** `LIVE_BINANCE_FUTURES` | **Capital Tier:** `Level {state.capital_level}` | **Date:** `{now_iso[:10]}`\n\n"
-            f"## 💰 Capital & Risk Telemetry\n"
-            f"- **Account Equity:** **${state.total_equity:,.2f} USDT** (Cash: `${state.cash_balance:,.2f}`)\n"
-            f"- **Today's Total P&L:** **{pnl_sign}${abs(state.total_pnl_today):,.2f} USDT** (Realized: `${state.realized_pnl_today:,.2f}`)\n"
-            f"- **Remaining Daily Risk Budget:** **${state.risk_proximity.daily_loss_headroom_usdt:,.2f} USDT** ({state.risk_proximity.daily_loss_pct_used:.0f}% of limit used)\n"
-            f"- **Current Drawdown:** **{state.risk_proximity.current_drawdown_pct:.2f}%** (Threshold: `{state.risk_proximity.max_drawdown_limit_pct:.1f}%`)\n\n"
-            f"## 🌐 Market Regime Assessment\n"
-            f"- **Primary Regime:** `{regime.primary_regime.value}` ({regime.timeframe_consensus})\n"
-            f"- **Sizing Multiplier:** `{regime.position_sizing_multiplier}x` | **Risk Level:** `{regime.risk_level}`\n"
-            f"- **Suitable Strategies:** {', '.join(f'`{s}`' for s in regime.suitable_strategies)}\n\n"
-            f"## 📊 Active Live Positions\n{pos_table}\n\n"
-            f"## 🤖 Overnight AI-Universe Telemetry\n"
-            f"- **Applied Recommendations:** `{state.advisory_applied_count}`\n"
-            f"- **Rejected by Safety Gates:** `{state.advisory_rejected_count}`\n"
-            f"- **Active Incidents:** `{len(active_incs)}`\n"
-        )
+        # 2. Markdown Visual Report (only when the bridge reported something).
+        if state.available:
+            pos_rows = []
+            for p in state.positions:
+                pos_rows.append(
+                    f"| **{p.symbol}** | `{p.side}` | `{p.size}` | `${p.entry_price:,.2f}` | "
+                    f"`${p.mark_price:,.2f}` | ${p.unrealized_pnl:,.2f} USDT ({p.unrealized_pnl_pct:+.2f}%) |"
+                )
+
+            pos_table = (
+                "| Symbol | Side | Size | Entry Price | Mark Price | Unrealized P&L |\n"
+                "| :--- | :---: | :---: | :---: | :---: | :---: |\n" + "\n".join(pos_rows)
+                if pos_rows else "*No position was reported open.*"
+            )
+
+            regime_block = (
+                f"- **Primary Regime:** `{regime.primary_regime.value}` ({regime.timeframe_consensus})\n"
+                f"- **Sizing Multiplier:** `{format_number(regime.position_sizing_multiplier, 2, 'x')}` | "
+                f"**Risk Level:** `{regime.risk_level}`\n"
+                f"- **Suitable Strategies:** {', '.join(f'`{s}`' for s in regime.suitable_strategies)}\n"
+                if regime.available
+                else "- **Primary Regime:** unknown (no ADX/BBW/ATR reading was supplied; the detector "
+                "does not infer them)\n"
+            )
+
+            md += (
+                f"**Execution Mode:** `{state.trading_mode}` | "
+                f"**Capital Tier:** `{'Level ' + str(state.capital_level) if state.capital_level is not None else 'not reported'}` | "
+                f"**Date:** `{now_iso[:10]}`\n\n"
+                f"## 💰 Capital & Risk Telemetry\n"
+                f"- **Account Equity:** **{_money(state.total_equity)} USDT** (Cash: `{_money(state.cash_balance)}`)\n"
+                f"- **Today's Total P&L:** **{_money(state.total_pnl_today)} USDT** "
+                f"(Realized: `{_money(state.realized_pnl_today)}`, Unrealized: `{_money(state.unrealized_pnl)}`)\n"
+                f"- **Remaining Daily Risk Budget:** "
+                f"**{_money(state.risk_proximity.daily_loss_headroom_usdt)} USDT** "
+                f"(`{format_number(state.risk_proximity.daily_loss_pct_used, 0, '%')}` of limit used)\n"
+                f"- **Current Drawdown:** **{format_number(state.risk_proximity.current_drawdown_pct, 2, '%')}** "
+                f"(Threshold: `{format_number(state.risk_proximity.max_drawdown_limit_pct, 1, '%')}`)\n\n"
+                f"## 🌐 Market Regime Assessment\n"
+                f"{regime_block}\n"
+                f"## 📊 Reported Live Positions\n{pos_table}\n\n"
+                f"## 🤖 Overnight AI-Universe Telemetry\n"
+                f"- **Applied Recommendations:** `{_count(state.advisory_applied_count)}`\n"
+                f"- **Rejected by Safety Gates:** `{_count(state.advisory_rejected_count)}`\n"
+                f"- **Active Incidents:** `{len(active_incs)}`\n"
+            )
 
         return LiveBriefingSnapshot(
             timestamp=now_iso,

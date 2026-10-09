@@ -55,7 +55,10 @@ def test_ab_skill_get_status(ab_setup):
     assert status["progress_pct"] == pytest.approx(42.9, 0.1)
     assert status["control_trades"] == 38
     assert status["treatment_trades"] == 40
-    assert "A/B Experiment 'AI_Universe_Volatility_Overlay' is currently running" in status["spoken_summary"]
+    # Honest wording: "reported as running" describes where the status came from.
+    assert "A/B experiment 'AI_Universe_Volatility_Overlay' is reported as running" in status["spoken_summary"]
+    assert "42.9% complete (72.0h of 168.0h planned)" in status["spoken_summary"]
+    assert "38 Control trades vs 40 Treatment trades" in status["spoken_summary"]
 
 
 def test_ab_skill_get_results(ab_setup):
@@ -67,11 +70,13 @@ def test_ab_skill_get_results(ab_setup):
     assert results["active"] is True
     assert results["stat_sig_achieved"] is True
     assert results["p_value"] == 0.015
-    assert results["confidence_pct"] == 98
+    # 98.5 as reported by the payload, not the old int()-truncated 98.
+    assert results["confidence_pct"] == pytest.approx(98.5, 0.01)
+    assert results["confidence_derived"] is False
     assert results["delta_return_pct"] == pytest.approx(6.30, 0.01)
     assert results["lead_arm"] == "Treatment"
     assert "Treatment arm is leading by 6.30% excess return" in results["spoken_summary"]
-    assert "ACHIEVED (p=0.015)" in results["spoken_summary"]
+    assert "reported as achieved (p=0.015, 98.5% confidence reported)" in results["spoken_summary"]
 
 
 def test_ab_skill_explain_ab_difference(ab_setup):
@@ -83,8 +88,14 @@ def test_ab_skill_explain_ab_difference(ab_setup):
     assert exp["active"] is True
     assert "A/B Performance Divergence Analysis" in exp["explanation"]
     assert "Treatment Arm" in exp["explanation"]
-    assert "Adaptive Risk Parameters" in exp["explanation"]
-    assert "Drawdown Protection" in exp["explanation"]
+    # The old narrative named catalysts ("Adaptive Risk Parameters", "Drawdown
+    # Protection", a hardcoded 2-blocked/5-applied rejection count) that no
+    # endpoint sent. The analysis now shows the reported readings and the
+    # reported overlay, and says what was not reported.
+    assert "**Reported Treatment Overlays:**" in exp["explanation"]
+    assert "`btc_sl_pct`: 0.4" in exp["explanation"]
+    assert "No safety-gate rejection statistics were reported for this experiment." in exp["explanation"]
+    assert "p-value = `0.082`" in exp["explanation"]
 
 
 def test_ab_skill_generate_ab_report(ab_setup):
@@ -203,3 +214,62 @@ def test_ab_skill_registered_in_registry():
     assert skill is not None
     assert "network_access" in skill.required_capabilities
     assert "trading_bot_control" in skill.required_capabilities
+
+
+# =========================================================================
+# Honesty pins: nothing is invented when the experiment reports nothing
+# =========================================================================
+
+def test_ab_skill_reports_no_metrics_when_the_arms_report_none(ab_setup):
+    """An experiment running with empty arm payloads reports unknown, not $10,000 arms."""
+    skill, watchdog, operator, memory, mock_notif, server = ab_setup
+    server.state.ab_override = {
+        "test_name": "Overlay_Evaluation",
+        "status": "RUNNING",
+        "control_arm": {},
+        "treatment_arm": {},
+    }
+    try:
+        results = skill.get_ab_results()
+        assert results["active"] is True
+        assert results["control"]["equity"] is None
+        assert results["treatment"]["sharpe_ratio"] is None
+        assert results["delta_return_pct"] is None
+        assert results["control"]["trade_count"] is None
+        assert results["lead_arm"] is None
+        assert results["stat_sig_achieved"] is None
+        assert results["p_value"] is None
+        assert results["confidence_pct"] is None
+        assert "Neither arm can be called ahead" in results["spoken_summary"]
+        assert "No p-value was reported" in results["spoken_summary"]
+
+        report = skill.generate_ab_report()["report_markdown"]
+        assert report.count("unknown (no reading)") >= 6
+        assert "❔ UNKNOWN (no p-value reported)" in report
+        assert "NO RECOMMENDATION POSSIBLE" in report
+
+        explanation = skill.explain_ab_difference()["explanation"]
+        assert "Neither arm's total return was reported in full" in explanation
+        assert "No parameter overlay was reported for the treatment arm." in explanation
+    finally:
+        server.state.ab_override = None
+
+
+def test_ab_confidence_is_labelled_when_it_is_derived_from_the_p_value(ab_setup):
+    """A confidence figure the experiment never sent is marked as derived."""
+    skill, watchdog, operator, memory, mock_notif, server = ab_setup
+    server.state.ab_override = {
+        "test_name": "Overlay_Evaluation",
+        "status": "RUNNING",
+        "control_arm": {"total_return_pct": 1.0},
+        "treatment_arm": {"total_return_pct": 2.25},
+        "statistics": {"p_value": 0.02, "stat_sig_achieved": True},
+    }
+    try:
+        results = skill.get_ab_results()
+        assert results["confidence_pct"] == pytest.approx(98.0, 0.01)
+        assert results["confidence_derived"] is True
+        assert "98.0% confidence, derived from that p-value" in results["spoken_summary"]
+        assert "derived from the p-value" in skill.generate_ab_report()["report_markdown"]
+    finally:
+        server.state.ab_override = None

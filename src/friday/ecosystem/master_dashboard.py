@@ -9,10 +9,19 @@ Provides a unified single-pane-of-glass dashboard for all three managed systems:
 """
 
 from datetime import datetime, timezone
+from typing import Any
 
 from friday.ecosystem.command_center import EcosystemCommandCenter
 from friday.skills.forge_manager import ForgeManagerSkill
 from friday.trading.intelligence_engine import IntelligenceEngine
+
+
+#: Traffic lights for the dashboard. Module constants rather than escapes inside
+#: an f-string expression: a backslash in that position is a SyntaxError before
+#: Python 3.12.
+_GREEN = "\U0001f7e2"
+_RED = "\U0001f534"
+_GREY = "\u26aa"
 
 
 class EcosystemMasterDashboard:
@@ -65,36 +74,142 @@ class EcosystemMasterDashboard:
             if forge_tasks else 0.0
         )
 
-        # Cross-system activity feed
-        feed_items = [
-            f"• 🔵 **[TRADING]** Multi-exchange portfolio active across Binance, Bybit, and OKX (P&L: `+${bot.get('daily_pnl_usdt', 0):,.2f}`).",
-            "• 🟠 **[FORGE]** Task `forge_task_01` verified and delivered (`dist/forge_build_cross_exchange_router_v1.0.zip`).",
-            "• 🟢 **[AI-UNIVERSE]** Directional prediction model updated: 76% Bullish on BTCUSDT (Confidence: 84%).",
-            "• 🟠 **[FORGE]** Task `forge_task_02` build progress at 65.0% (L2 Order Book Aggregator).",
-            "• 🟣 **[FRIDAY]** Guardian Angel 24/7 continuous 10s monitoring active with zero safety breaches.",
-        ]
+        # Cross-system activity feed.
+        #
+        # These five lines used to be literals. Every number in them - the P&L,
+        # `forge_task_01` and its artifact path, the "76% Bullish on BTCUSDT"
+        # prediction, the 65.0% build and the "zero safety breaches" - was
+        # invented text rendered into an executive dashboard under a live
+        # timestamp, next to real values read from the command centre. A reader
+        # has no way to tell which half was measured. Each line is now derived
+        # from state that exists, and a line with nothing behind it says so.
+        from friday.core.readings import UNKNOWN_LABEL, read_number, read_text
 
-        return (
-            f"# 🌐 FRIDAY Unified Ecosystem Master Dashboard\n\n"
-            f"**Timestamp:** `{now_iso[:19]} UTC` | **Ecosystem State:** **🟢 {state}**\n\n"
-            f"## 🏛️ Tri-System Operational Panels\n\n"
-            f"### 🔵 1. Algorithmic Trading Bot (`Binance Futures / Bybit / OKX`)\n"
-            f"- **Status:** **🟢 {bot.get('status')}** (API Latency: `{bot.get('api_latency_ms')} ms`)\n"
-            f"- **Capital Deployed:** `${bot.get('active_capital_usdt'):,.2f} USDT` across `{bot.get('active_positions_count')}` positions\n"
-            f"- **Daily Realized P&L:** `+${bot.get('daily_pnl_usdt'):,.2f} USDT`\n"
-            f"- **Leverage / Loss Headroom:** `{risk.get('aggregate_leverage'):.2f}x` | `{100.0 - risk.get('daily_loss_limit_proximity_pct', 14.5):.1f}% loss headroom remaining`\n\n"
-            f"### 🟠 2. FORGE Autonomous Software Engineering Engine\n"
-            f"- **Status:** **🟢 HEALTHY** (API: `https://forge-e9kl.onrender.com` | HMAC-SHA256 Signed)\n"
-            f"- **Active Builds:** `{forge_active}` in progress | `{forge_completed}` completed\n"
-            f"- **Mean Test Coverage:** **`{avg_coverage:.1f}%`** across all delivered artifacts\n"
-            f"- **Latest Delivery:** `{list(forge_tasks.values())[0].delivery_package_path if forge_tasks else 'N/A'}`\n\n"
-            f"### 🟢 3. AI-Universe Trading Consultant & Analytics Core\n"
-            f"- **Status:** **🟢 {ai.get('status')}** (Model Confidence: `{ai.get('model_confidence')*100:.0f}%`)\n"
-            f"- **Multi-Agent Debate:** `{ai.get('debate_engine_status')}` (Bull / Bear / Risk Officer)\n"
-            f"- **Active Directional Forecasts:** `{ai.get('active_predictions_count')}` assets tracked (BTC, ETH, SOL)\n\n"
-            f"## 📜 Chronological Cross-System Activity Feed\n" + "\n".join(feed_items) + "\n\n"
-            "## 🚨 Emergency Master Controls\n"
-            "- `\"Emergency stop trading\"` → Triggers instant kill-switch across all connected exchange venues\n"
-            "- `\"Cancel FORGE task [id]\"` → Halts running autonomous build pipeline\n"
-            "- `\"Set autonomy to level 1\"` → Switches ecosystem into non-executing SHADOW_MODE\n"
+        feed_pnl = read_number(bot, "daily_pnl_usdt", source="trading bot")
+        feed_positions = read_number(bot, "active_positions_count", source="trading bot")
+        if bot.get("available"):
+            trading_line = (
+                f"• 🔵 **[TRADING]** Reported daily P&L {feed_pnl.currency()} USDT "
+                f"across {feed_positions.number(0)} positions (source: command centre)."
+            )
+        else:
+            trading_line = (
+                "• 🔵 **[TRADING]** No reading from the trading bot: "
+                "P&L, position count and venue list are all unknown (source: command centre)."
+            )
+
+        if forge_tasks:
+            forge_line = (
+                f"• 🟠 **[FORGE]** `{forge_completed}` task(s) completed, `{forge_active}` in progress, "
+                f"average test coverage `{avg_coverage:.1f}%` (source: forge manager)."
+            )
+        else:
+            # `0` completed / `0.0%` coverage reads as a measurement of an idle
+            # fleet. Nothing has been measured at all.
+            forge_line = (
+                "• 🟠 **[FORGE]** No tasks recorded, so there is no build count and no "
+                "coverage figure to report (source: forge manager)."
+            )
+
+        feed_items = [trading_line, forge_line]
+        if ai.get("available"):
+            feed_items.append(
+                f"• 🟢 **[AI-UNIVERSE]** Advisory systems reported {read_text(ai, 'status')} "
+                "(source: command centre)."
+            )
+        else:
+            feed_items.append(
+                "• 🟢 **[AI-UNIVERSE]** No advisory status was reported by the command centre "
+                "(source: command centre)."
+            )
+        feed_items.append(
+            "• 🟣 **[FRIDAY]** Safety posture is derived from recorded incidents; a quiet feed here "
+            "means no incident was recorded, not that none occurred."
         )
+
+        bot_latency = read_number(bot, "api_latency_ms", source="trading bot")
+        capital = read_number(bot, "active_capital_usdt", source="trading bot")
+        positions = read_number(bot, "active_positions_count", source="trading bot")
+        pnl = read_number(bot, "daily_pnl_usdt", source="trading bot")
+        leverage = read_number(risk, "aggregate_leverage", source="risk posture")
+        proximity = read_number(risk, "daily_loss_limit_proximity_pct", source="risk posture")
+        confidence = read_number(ai, "model_confidence", source="ai universe")
+        venues = bot.get("connected_venues")
+        venue_text = " / ".join(venues) if isinstance(venues, (list, tuple)) and venues else UNKNOWN_LABEL
+        latest_delivery = (
+            getattr(list(forge_tasks.values())[0], "delivery_package_path", None) if forge_tasks else None
+        ) or "no delivery recorded"
+
+        # FORGE is a local task manager here, not a probed service. The old
+        # dashboard printed "**🟢 HEALTHY** (API: https://forge-e9kl.onrender.com
+        # | HMAC-SHA256 Signed)" for it unconditionally - a green light, a URL
+        # and a signing claim, none of which anything had checked.
+        forge_status: dict[str, Any] = {
+            "available": bool(forge_tasks),
+            "status": "TASKS RECORDED" if forge_tasks else "NO TASKS RECORDED",
+        }
+        if self.forge_manager.demo_data:
+            forge_status["status"] += " (SAMPLE DATA)"
+            forge_status["note"] = "Sample tasks, not a live build. Remote FORGE service was not probed."
+
+        headroom_text = (
+            f"{100.0 - proximity.value:.1f}% remaining" if proximity.known else UNKNOWN_LABEL
+        )
+
+        def badge(reading: dict[str, Any]) -> str:
+            if not reading.get("available"):
+                return f"{_GREY} {UNKNOWN_LABEL}"
+            text = str(reading.get("status", "UNKNOWN")).upper()
+            light = _GREEN if text in {"HEALTHY", "OK", "ONLINE"} else _RED
+            return f"{light} {text}"
+
+        # ``risk.get('aggregate_leverage'):.2f`` raised "TypeError: unsupported
+        # format string passed to NoneType.__format__" as soon as a value was
+        # genuinely unknown, and everything else here was either a hardcoded
+        # green light or a literal: the venue list was always "Binance Futures /
+        # Bybit / OKX", P&L always carried a "+", and FORGE was announced
+        # HEALTHY with no probe behind it at all.
+        header = (
+            f"# \U0001f310 FRIDAY Unified Ecosystem Master Dashboard\n\n"
+            f"**Timestamp:** `{now_iso[:19]} UTC` | **Ecosystem State:** `{state}`\n"
+            f"**Data provenance:** {status.get('data_provenance', 'unknown')}\n\n"
+        )
+
+        feed_section = "## \U0001f4e1 Cross-System Activity Feed\n" + "\n".join(feed_items) + "\n\n"
+
+        builds_line = (
+            f"`{forge_active}` in progress | `{forge_completed}` completed\n"
+            if forge_tasks
+            else "none recorded\n"
+        )
+        coverage_line = (
+            f"`{avg_coverage:.1f}%` across {len(forge_tasks)} task(s)\n"
+            if forge_tasks
+            else "not measured - no task has been recorded, so there is no coverage number\n"
+        )
+        panels = (
+            f"## \U0001f3db\ufe0f Tri-System Operational Panels\n\n"
+            f"### \U0001f535 1. Algorithmic Trading Bot (`{venue_text}`)\n"
+            f"- **Status:** {badge(bot)} (API Latency: `{bot_latency.number(1, ' ms')}`)\n"
+            f"- **Capital Deployed:** `{capital.currency()} USDT` across `{positions.number(0)}` positions\n"
+            f"- **Daily Realized P&L:** `{pnl.currency()} USDT`\n"
+            f"- **Leverage:** `{leverage.number(2, 'x')}` | **Loss Headroom:** `{headroom_text}`\n\n"
+            f"### \U0001f7e0 2. FORGE Software Engineering Engine\n"
+            f"- **Status:** {badge(forge_status)}"
+            f"{(' - ' + forge_status['note']) if forge_status.get('note') else ''}\n"
+            f"- **Active Builds:** {builds_line}"
+            f"- **Mean Test Coverage:** {coverage_line}"
+            f"- **Latest Delivery:** `{latest_delivery}`\n\n"
+            f"### \U0001f7e2 3. AI-Universe Trading Consultant & Analytics Core\n"
+            f"- **Status:** {badge(ai)} (Model Confidence: `{confidence.percent(0)}`)\n"
+            f"- **Multi-Agent Debate:** `{ai.get('debate_engine_status') or UNKNOWN_LABEL}`\n"
+            f"- **Active Directional Forecasts:** `{read_number(ai, 'active_predictions_count').number(0)}` assets tracked\n\n"
+        )
+
+        controls = (
+            "## \U0001f6a8 Emergency Master Controls\n"
+            "- `\"Emergency stop trading\"` \u2192 Triggers instant kill-switch across all connected exchange venues\n"
+            "- `\"Cancel FORGE task [id]\"` \u2192 Halts running autonomous build pipeline\n"
+            "- `\"Set autonomy to level 1\"` \u2192 Switches ecosystem into non-executing SHADOW_MODE\n"
+        )
+        return header + feed_section + panels + controls

@@ -7,6 +7,13 @@ from friday.autonomous import controller as controller_module
 
 @pytest.mark.asyncio
 async def test_self_diagnostic_never_claims_repairs_without_performing_them(monkeypatch):
+    monkeypatch.setattr(controller_module.psutil, "process_iter", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        controller_module.psutil,
+        "virtual_memory",
+        lambda: SimpleNamespace(percent=50.0, available=2 * 1024**3),
+    )
+
     async def statuses(force_refresh=False):
         assert force_refresh is True
         return [SimpleNamespace(status="ONLINE"), SimpleNamespace(status="DEGRADED")]
@@ -37,13 +44,20 @@ async def test_inference_fallback_is_advisory_and_not_a_scheduled_retry(monkeypa
 
 
 @pytest.mark.asyncio
-async def test_agent_status_response_is_not_reported_as_task_completion(monkeypatch):
-    async def status_response(_directive):
-        return {"reply": "Health endpoint returned HTTP 200", "metadata": {"agent_id": "intelx"}}
+async def test_peer_task_without_receipt_is_not_reported_as_task_completion(monkeypatch):
+    from friday.cognition.mesh import HarnessBehaviour, Mesh, build_contracts
 
-    monkeypatch.setattr(controller_module.fleet_client, "ask_intelx", status_response)
-    result = await controller_module.AutonomousController().execute_agent_control("intelx", "research today's news")
+    contracts = build_contracts(controller_module.fleet_client)
+    mesh, transport = Mesh.in_process(contracts, attempts=1, backoff_seconds=0.0)
+    transport.behave("intelx", HarnessBehaviour(receipt=False))
+    controller = controller_module.AutonomousController()
+    monkeypatch.setattr(controller, "_peer_mesh", mesh, raising=False)
+
+    result = await controller.execute_agent_control("intelx", "research today's news")
 
     assert result["metadata"]["success"] is False
     assert result["metadata"]["task_completion_verified"] is False
-    assert "Requested task completion is not verified" in result["reply"]
+    assert result["metadata"]["task_state"] == "UNVERIFIED"
+    assert "no receipt" in result["reply"].lower()
+    assert len(transport.calls) == 1
+    assert transport.calls[0].json_body["objective"] == "research today's news"

@@ -1,10 +1,14 @@
 """Comprehensive Test Suite for FRIDAY Nexus Manager & Website Supervision."""
 
+import threading
+
 import pytest
 
+from friday.integrations.nexus_client import NexusCommandClient
 from friday.operators.nexus_supervisor import NexusSupervisorOperator
 from friday.skills.nexus_manager import NexusManagerSkill
 from friday.skills.registry import skill_registry
+from tests.mock_nexus_api import MockNexusServer
 
 
 @pytest.fixture
@@ -98,12 +102,13 @@ def test_nexus_manager_voice_commands(nexus_mgr_setup):
     # 1. "Website status"
     res1 = skill.execute("Website status")
     assert res1.success is True
-    assert "Website Health Overview: Status is HEALTHY" in res1.output
+    assert "Website Health Overview: status is HEALTHY" in res1.output
+    assert res1.output.endswith("(sample data)")
 
     # 2. "Who's on my website?"
     res2 = skill.execute("Who's on my website?")
     assert res2.success is True
-    assert "active visitors on your site" in res2.output
+    assert "Nexus reports 3 active visitors on the site" in res2.output
     assert "acme-corp.com" in res2.output
 
     # 3. "Any new leads?"
@@ -119,7 +124,8 @@ def test_nexus_manager_voice_commands(nexus_mgr_setup):
     # 5. "Any website problems?"
     res5 = skill.execute("Any website problems?")
     assert res5.success is True
-    assert "Nominal operations" in res5.output
+    assert "Nexus reports no active website incidents" in res5.output
+    assert res5.output.endswith("(sample data)")
 
     # 6. "Show the lead pipeline"
     res6 = skill.execute("Show the lead pipeline")
@@ -130,7 +136,9 @@ def test_nexus_manager_voice_commands(nexus_mgr_setup):
     # 7. "Approve that Nexus action"
     res7 = skill.execute("Approve that Nexus action")
     assert res7.success is True
-    assert "Action Approved" in res7.output or "No pending" in res7.output
+    assert "Sample action **APPROVED**" in res7.output or "No pending" in res7.output
+    assert res7.output.endswith("(sample data)")
+    assert "no live Nexus request or deployment was made" in res7.output
 
     # 8. "Why did Nexus recommend that?"
     res8 = skill.execute("Why did Nexus recommend that?")
@@ -183,3 +191,261 @@ def test_nexus_supervisor_operator_alerts(nexus_mgr_setup):
     # 3. Skill Registry loads NexusManagerSkill
     assert skill_registry.get("nexus_manager") is not None
     assert any(s.name == "nexus_manager" for s in skill_registry.list_skills())
+
+
+@pytest.fixture
+def live_nexus_manager_server():
+    server = MockNexusServer(port=8986)
+    server.start()
+    yield server
+    server.stop()
+
+
+def test_nexus_manager_executes_live_reads_and_actions_over_http(live_nexus_manager_server):
+    """Drive manager methods and spoken tasks through the HTTP client to a local service."""
+    skill = NexusManagerSkill(base_url=live_nexus_manager_server.base_url, timeout_sec=1.0)
+    assert skill.mock_mode is False
+
+    overview = skill.get_site_overview()
+    assert overview["status"] == "DEGRADED"
+    assert overview["health_score"] == 71.5
+    assert overview["visitors_today"] == 1533
+    assert overview["sample_data"] is False
+
+    visitors = skill.get_live_visitors()
+    assert visitors[0]["inferred_company"] == "live-prospect.example"
+    assert visitors[0]["sample_data"] is False
+
+    pipeline = skill.get_lead_pipeline()
+    assert pipeline["DECISION"][0]["lead_id"] == "pipeline_live_1"
+    assert pipeline["DECISION"][0]["sample_data"] is False
+
+    incidents = skill.get_incidents()
+    assert incidents[0]["id"] == "inc_live_1"
+    assert incidents[0]["sample_data"] is False
+    approvals = skill.get_pending_approvals()
+    assert approvals[0]["action_id"] == "action_live_1"
+    assert approvals[0]["sample_data"] is False
+
+    # Execute the user-facing skill entry point, not just internal methods.
+    status_voice = skill.execute("Website status")
+    assert status_voice.success is True
+    assert "71.5/100" in status_voice.output
+    assert "1533 visitors" in status_voice.output
+    assert "sample data" not in status_voice.output
+    visitor_voice = skill.execute("Who's on my website?")
+    assert "live-prospect.example" in visitor_voice.output
+    assert "sample data" not in visitor_voice.output
+    incident_voice = skill.execute("Any website problems?")
+    assert "Slow image CDN" in incident_voice.output
+    assert "sample data" not in incident_voice.output
+
+    approved = skill.approve_nexus_action("action_live_1")
+    assert approved["success"] is True
+    assert approved["status"] == "APPROVED"
+    assert approved["sample_data"] is False
+    assert live_nexus_manager_server.state.approved == ["action_live_1"]
+
+    rejected = skill.reject_nexus_action("action_live_2", "Not supported by evidence")
+    assert rejected["success"] is True
+    assert rejected["status"] == "REJECTED"
+    assert live_nexus_manager_server.state.rejected == [
+        {"action_id": "action_live_2", "reason": "Not supported by evidence"}
+    ]
+
+    workflow = skill.start_nexus_workflow("review_checkout", {"page": "/checkout"})
+    assert workflow["status"] == "QUEUED"
+    assert workflow["authorized_by_policy_engine"] is True
+    assert live_nexus_manager_server.state.workflows == [
+        {"workflow_name": "review_checkout", "params": {"page": "/checkout"}}
+    ]
+
+    consultation = skill.get_intelligence_log(limit=1)
+    assert consultation[0]["consultation_id"] == "consultation_live_1"
+    assert consultation[0]["sample_data"] is False
+    strategy = skill.get_strategy_performance()
+    assert strategy[0]["strategy_name"] == "Checkout copy test"
+    assert strategy[0]["measured_lift_pct"] is None
+    assert strategy[0]["sample_data"] is False
+    analytics = skill.query_nexus_analytics("What is reported?")
+    assert analytics["answer"].startswith("The scripted endpoint")
+    assert analytics["sample_data"] is False
+    health = skill.run_website_health_check()
+    assert health["overall_status"] == "healthy"
+    assert health["sample_data"] is False
+
+    commands = [entry["body"]["command"] for entry in live_nexus_manager_server.state.received]
+    assert {
+        "get_site_overview",
+        "get_live_visitors",
+        "get_lead_pipeline",
+        "get_incidents",
+        "get_pending_approvals",
+        "approve_action",
+        "reject_action",
+        "start_workflow",
+        "get_intelligence_log",
+        "get_strategy_performance",
+        "query_analytics",
+        "health_check",
+    }.issubset(commands)
+    assert all(entry["path"] == "/v1/friday/command" for entry in live_nexus_manager_server.state.received)
+
+
+def test_nexus_manager_distinguishes_empty_from_malformed_or_missing_lists(live_nexus_manager_server):
+    """A reported empty list differs from an absent, malformed, or non-JSON reply."""
+    server = live_nexus_manager_server
+    skill = NexusManagerSkill(base_url=server.base_url, timeout_sec=1.0)
+
+    server.state.response_overrides["get_incidents"] = {"body": {"incidents": []}}
+    empty = skill.execute("Any website problems?")
+    assert "Nexus reports no active website incidents" in empty.output
+    assert "did not answer" not in empty.output
+
+    server.state.response_overrides["get_incidents"] = {"body": {"message": "healthy"}}
+    missing = skill.execute("Any website problems?")
+    assert "did not answer" in missing.output
+    assert "no active website incidents" not in missing.output
+    assert "missing list field" in missing.output
+
+    server.state.response_overrides["get_live_visitors"] = {"body": "not-json"}
+    malformed = skill.execute("live visitors")
+    assert "did not answer" in malformed.output
+    assert "no active visitors" not in malformed.output
+    assert skill.last_result()["error"] == "Invalid JSON response"
+
+    server.state.response_overrides["get_live_visitors"] = {"body": {"visitors": [None]}}
+    wrong_entry_type = skill.execute("live visitors")
+    assert "did not answer" in wrong_entry_type.output
+    assert "no active visitors" not in wrong_entry_type.output
+
+    server.state.response_overrides.pop("get_live_visitors")
+    server.state.fail_with = 503
+    unavailable = skill.execute("live visitors")
+    assert "did not answer" in unavailable.output
+    assert "0 active visitors" not in unavailable.output
+    assert skill.last_result()["error"] == "HTTP 503"
+
+
+def test_nexus_manager_reports_timeout_without_claiming_an_empty_list(live_nexus_manager_server):
+    server = live_nexus_manager_server
+    server.state.delay_by_command["get_live_visitors"] = 0.15
+    skill = NexusManagerSkill(base_url=server.base_url, timeout_sec=0.02)
+
+    result = skill.execute("live visitors")
+    assert "did not answer" in result.output
+    assert "no active visitors" not in result.output
+    assert "timed out" in skill.last_result()["error"].lower()
+
+
+def test_nexus_manager_does_not_claim_approval_without_confirmation(live_nexus_manager_server):
+    server = live_nexus_manager_server
+    skill = NexusManagerSkill(base_url=server.base_url, timeout_sec=1.0)
+
+    server.state.response_overrides["approve_action"] = {"body": {}}
+    unconfirmed = skill.approve_nexus_action("action_live_1")
+    assert unconfirmed["success"] is False
+    assert unconfirmed["status"] == "UNCONFIRMED"
+    assert "did not confirm" in unconfirmed["message"]
+    assert server.state.approved == []
+
+    server.state.response_overrides["approve_action"] = {
+        "body": {"action_id": "some_other_action", "status": "APPROVED"}
+    }
+    wrong_action = skill.approve_nexus_action("action_live_1")
+    assert wrong_action["success"] is False
+    assert "different action" in wrong_action["message"]
+
+
+def test_nexus_manager_sample_empty_results_are_still_disclosed(nexus_mgr_setup):
+    skill, _ = nexus_mgr_setup
+    skill._live_visitors = []
+    skill._pipeline_leads = []
+    skill._active_incidents = []
+    skill._intelligence_log = []
+    skill._strategy_learnings = []
+    skill._pending_approvals = []
+
+    for request in (
+        "live visitors",
+        "Any new leads?",
+        "Any website problems?",
+        "Why did Nexus recommend that?",
+        "What has Nexus learned?",
+        "Approve that Nexus action",
+    ):
+        result = skill.execute(request)
+        assert result.success is True
+        assert result.output.endswith("(sample data)"), (request, result.output)
+
+
+def test_concurrent_nexus_calls_keep_their_own_results(live_nexus_manager_server):
+    """One caller's outage cannot corrupt another call's successfully empty response."""
+    server = live_nexus_manager_server
+    server.state.response_overrides["get_live_visitors"] = {"body": {"visitors": []}}
+    reached_after_read = threading.Event()
+    continue_execution = threading.Event()
+
+    class PausedManager(NexusManagerSkill):
+        def get_live_visitors(self):
+            visitors = super().get_live_visitors()
+            reached_after_read.set()
+            assert continue_execution.wait(timeout=2)
+            return visitors
+
+    skill = PausedManager(base_url=server.base_url, timeout_sec=1.0)
+    results = []
+    worker = threading.Thread(target=lambda: results.append(skill.execute("live visitors")))
+    worker.start()
+    assert reached_after_read.wait(timeout=2)
+
+    # Force a distinct failing request in the main thread between the empty
+    # response and the first caller's interpretation of that response.
+    failed = skill._live("unsupported_command")
+    assert failed["ok"] is False
+    continue_execution.set()
+    worker.join(timeout=2)
+
+    assert not worker.is_alive()
+    assert len(results) == 1
+    assert results[0].output == "Nexus reports no active visitors right now."
+
+
+def test_nexus_manager_without_a_service_has_no_site_reading():
+    skill = NexusManagerSkill(base_url="http://127.0.0.1:9", timeout_sec=0.05)
+    overview = skill.get_site_overview()
+    assert overview["available"] is False
+    assert overview["status"] == "UNREACHABLE"
+    assert "health_score" not in overview
+    assert "visitors_today" not in overview
+    spoken = skill.execute("Website status")
+    assert "Nexus did not answer" in spoken.output
+    assert "98.6" not in spoken.output and "5120" not in spoken.output
+
+
+def test_nexus_manager_approval_voice_does_not_claim_an_unconfirmed_effect(live_nexus_manager_server):
+    server = live_nexus_manager_server
+    server.state.response_overrides["approve_action"] = {
+        "body": {"success": True, "status": "REJECTED", "action_id": "action_live_1"}
+    }
+    skill = NexusManagerSkill(base_url=server.base_url, timeout_sec=1.0)
+
+    result = skill.execute("Approve that Nexus action")
+    assert result.success is False
+    assert "did not take effect" in result.output
+    assert "Action APPROVED" not in result.output
+    assert server.state.approved == []
+
+
+def test_nexus_transport_does_not_let_payload_replace_the_command(live_nexus_manager_server):
+    server = live_nexus_manager_server
+    client = NexusCommandClient(base_url=server.base_url, timeout_sec=1.0)
+
+    result = client.command(
+        "get_site_overview",
+        {"command": "approve_action", "action_id": "action_should_not_be_approved"},
+    )
+
+    assert result["ok"] is True
+    assert server.state.received[-1]["body"]["command"] == "get_site_overview"
+    assert server.state.approved == []

@@ -137,12 +137,27 @@ def test_voice_operations_command_execution():
     # 1. "Show my current portfolio risk"
     res1 = voice_ops.execute_voice_command("operator_surendra", "Show my current portfolio risk")
     assert res1["success"] is True
-    assert "Current portfolio risk" in res1["spoken_response"]
+    # No portfolio has been reported to the voice centre, so it must say so
+    # rather than recite the dashboard's old defaults.
+    assert "no portfolio to assess" in res1["spoken_response"]
+
+    # With a portfolio reported to the risk dashboard (as a trading bridge would),
+    # the real figures are spoken.
+    voice_ops.risk_dashboard.record_portfolio(
+        equity=25000.0,
+        positions=[{"symbol": "BTCUSDT", "side": "LONG", "size": 0.25, "mark_price": 64000.0}],
+        strategy_weights={"BTC_Trend_Supertrend": 1.0},
+    )
+    res1b = voice_ops.execute_voice_command("operator_surendra", "Show my current portfolio risk")
+    assert "Reported portfolio risk" in res1b["spoken_response"]
+    assert "16,000.00 USDT" in res1b["spoken_response"], "0.25 BTC at 64,000 is 16,000 USDT of exposure"
 
     # 2. "What's the market regime analysis?"
     res2 = voice_ops.execute_voice_command("operator_surendra", "What's the market regime analysis?")
     assert res2["success"] is True
-    assert "Market regime analysis" in res2["spoken_response"]
+    # With no ADX/BBW/ATR reading the regime cannot be classified; the reply
+    # must say that instead of announcing a trend regime it never measured.
+    assert "cannot classify the market regime" in res2["spoken_response"]
 
     # 3. "Execute buy order for 0.1 BTC on testnet" (with confirmation)
     res3 = voice_ops.execute_voice_command(
@@ -176,13 +191,24 @@ def test_scheduled_briefing_and_error_handling():
 # =========================================================================
 
 def test_comprehensive_production_monitor():
-    """Verify resource tracking, dependencies, and health snapshot capture."""
+    """Verify resource tracking, dependencies, and health snapshot capture.
+
+    The dependency column used to be three hardcoded "ONLINE" strings, so this
+    test passed whether or not anything was reachable. It now asserts the probe's
+    real outcome for this environment (nothing is listening on the bot port) and
+    that a never-probed dependency is not reported as online.
+    """
     monitor = ComprehensiveProductionMonitor()
     snap = monitor.capture_snapshot()
 
-    assert snap.system_status in ("HEALTHY", "DEGRADED", "CRITICAL")
+    assert snap.system_status in ("HEALTHY", "DEGRADED", "UNVERIFIED", "CRITICAL")
     assert snap.resources.active_threads > 0
-    assert snap.dependencies["TRADING_BOT_REST_API"] == "ONLINE"
+    assert snap.resources.memory_mb > 0
+    # The bot API is not running in this test environment, and the monitor says so.
+    assert snap.dependencies["TRADING_BOT_REST_API"] != "ONLINE"
+    assert "UNREACHABLE" in snap.dependencies["TRADING_BOT_REST_API"]
+    assert snap.dependencies["AI_UNIVERSE_ADVISORY"] == "NOT PROBED"
+    assert snap.system_status != "HEALTHY", "an unreachable dependency is not a healthy system"
 
     dash_md = monitor.render_health_dashboard()
     assert "# 🖥️ FRIDAY Comprehensive Production Monitoring Dashboard" in dash_md

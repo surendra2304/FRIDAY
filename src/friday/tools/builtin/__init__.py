@@ -69,6 +69,7 @@ from friday.tools.builtin.screen_ocr import (
     ReadScreenTextTool,
 )
 from friday.tools.builtin.screen_snapshot import ScreenSnapshotTool
+from friday.tools.builtin.skill_tools import ListSkillsTool, RunSkillTool
 from friday.tools.builtin.smart_home import ControlLightTool, ControlPlugTool
 from friday.tools.builtin.system_control import SystemControlTool
 from friday.tools.builtin.system_info import SystemInfoTool
@@ -88,6 +89,8 @@ from friday.tools.builtin.youtube import YouTubeTool
 from friday.vision.screen_prediction import ScreenPredictionTool
 
 __all__ = [
+    "ListSkillsTool",
+    "RunSkillTool",
     "AIUniverseTool",
     "AndroidDeviceInfoTool",
     "AndroidKeyEventTool",

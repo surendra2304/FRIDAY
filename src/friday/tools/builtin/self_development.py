@@ -52,6 +52,12 @@ class SelfDevelopTool(BaseTool):
     safety_level = SafetyLevel.SENSITIVE
     risk_level = "SENSITIVE"
     auth_requirement = "USER"
+    def __init__(self, resolver: Any | None = None) -> None:
+        # Injection keeps the real user-facing tool testable with an offline
+        # provider and a scratch repository; production still builds the normal
+        # resolver on first use.
+        self._resolver = resolver
+
     parameters: ClassVar[dict[str, Any]] = {
         "type": "object",
         "properties": {
@@ -79,10 +85,13 @@ class SelfDevelopTool(BaseTool):
                 safety_level=self.safety_level,
             )
 
-        from friday.cognition.capability import CapabilityResolver
-
         try:
-            resolution = CapabilityResolver().resolve(request, target_path=target_path)
+            resolver = self._resolver
+            if resolver is None:
+                from friday.cognition.capability import CapabilityResolver
+
+                resolver = CapabilityResolver()
+            resolution = resolver.resolve(request, target_path=target_path)
         except Exception as exc:  # a planner failure must not look like a refusal
             logger.exception("self_develop failed to plan")
             return ToolResult(
@@ -105,11 +114,11 @@ class SelfDevelopTool(BaseTool):
 
 
 class SelfRepairTool(BaseTool):
-    """Run a real reflex pass: detect faults on this machine and repair them.
+    """Detect faults and optionally let the reflex brain handle them.
 
     This is the tool form of whatever the owner actually means by "fix yourself".
-    It does not print a diagnostic and stop — it runs the reflex brain, which
-    either repairs something, or refuses with the named reason it could not.
+    Normal mode runs a real reflex pass and reports its outcomes. With ``dry_run``
+    enabled, it invokes only the detector and never enters the repair handlers.
     """
 
     name = "self_repair"
@@ -144,43 +153,75 @@ class SelfRepairTool(BaseTool):
 
     def execute(self, scope: str = "", dry_run: bool = False, **_: Any) -> ToolResult:
         try:
-            import asyncio
-
-            from friday.cognition.reflex import IncidentKind, get_reflex_brain
-
-            brain = get_reflex_brain()
-            selected: set[IncidentKind] | None = None
-            if scope.strip():
-                mapping = {
-                    "imports": IncidentKind.IMPORT_FAILURE,
-                    "tests": IncidentKind.TEST_FAILURE,
-                    "fleet": IncidentKind.PEER_UNREACHABLE,
-                    "resources": IncidentKind.RESOURCE_PRESSURE,
-                    "logs": IncidentKind.LOG_ERROR,
-                }
-                selected = {
-                    mapping[name.strip().lower()]
-                    for name in scope.split(",")
-                    if name.strip().lower() in mapping
-                } or None
-
-            result = _run_coroutine(brain.run_once(include=selected))
+            from friday.cognition.reflex import get_reflex_brain, parse_incident_scope
         except Exception as exc:
-            logger.exception("self_repair could not run")
+            logger.exception("self_repair dependencies could not load")
             return ToolResult(
                 name=self.name,
                 content=(
-                    f"The repair pass could not run: {type(exc).__name__}: {exc}. "
-                    "Nothing was examined, so nothing is claimed."
+                    f"The reflex system could not load: {type(exc).__name__}: {exc}. "
+                    "No repair outcome is claimed."
                 ),
                 is_error=True,
                 safety_level=self.safety_level,
             )
 
-        if dry_run:
-            for outcome in result.get("outcomes", []):
-                outcome["status"] = "DRY_RUN"
-            result["detail"] = "Dry run: detections only, nothing was applied."
+        scope = str(scope or "")
+        try:
+            selected = parse_incident_scope(scope)
+        except ValueError as exc:
+            return ToolResult(
+                name=self.name,
+                content=f"Invalid self-repair scope: {exc}. Nothing was scanned or changed.",
+                is_error=True,
+                refused=True,
+                safety_level=self.safety_level,
+                metadata={"scope": scope},
+            )
+
+        try:
+            brain = get_reflex_brain()
+            if dry_run:
+                detector = getattr(brain, "detector", None)
+                scan = getattr(detector, "scan", None)
+                if not callable(scan):
+                    raise RuntimeError("the reflex detector does not support a read-only scan")
+                incidents = _run_coroutine(scan(include=selected))
+                result = {
+                    "status": "COMPLETED",
+                    "incidents": len(incidents),
+                    "acted_on": 0,
+                    "skipped_recently_handled": 0,
+                    "counts": {"DRY_RUN": len(incidents)} if incidents else {},
+                    "outcomes": [
+                        {
+                            "incident": incident.as_dict(),
+                            "status": "DRY_RUN",
+                            "action": "none",
+                            "detail": "Detected only; no repair handler was invoked.",
+                            "evidence": incident.evidence,
+                            "evidence_class": "dry_run_detection",
+                        }
+                        for incident in incidents
+                    ],
+                    "dry_run": True,
+                    "detail": "Dry run: detection only; no repair handler was invoked.",
+                }
+            else:
+                result = _run_coroutine(brain.run_once(include=selected))
+        except Exception as exc:
+            logger.exception("self_repair could not run")
+            return ToolResult(
+                name=self.name,
+                content=(
+                    f"The repair pass failed before producing a complete report: "
+                    f"{type(exc).__name__}: {exc}. Checks or actions may have completed "
+                    "before the failure; inspect the system before retrying. No completed "
+                    "outcome is claimed."
+                ),
+                is_error=True,
+                safety_level=self.safety_level,
+            )
 
         return ToolResult(
             name=self.name,
@@ -213,13 +254,18 @@ def _render_pass(result: dict[str, Any]) -> str:
 
     incidents = result.get("incidents", 0)
     if not incidents:
+        if result.get("dry_run"):
+            return "Dry run complete: no incidents were found, and no repair handler was invoked."
         return (
             "Everything I checked is healthy: no failing tests, no unimportable modules, "
             "no host pressure."
         )
 
     counts: dict[str, int] = result.get("counts") or {}
-    lines = [f"I examined {incidents} fault(s) and acted on {result.get('acted_on', 0)}."]
+    if result.get("dry_run"):
+        lines = [f"Dry run detected {incidents} fault(s); no repair handler was invoked."]
+    else:
+        lines = [f"I examined {incidents} fault(s) and acted on {result.get('acted_on', 0)}."]
     for outcome in result.get("outcomes", []):
         incident = outcome.get("incident", {})
         lines.append(f"- [{outcome.get('status')}] {incident.get('summary', '')}")

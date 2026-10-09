@@ -56,14 +56,17 @@ class SystemControlTool(BaseTool):
             try:
                 cpu = psutil.cpu_percent(interval=0.1)
                 ram = psutil.virtual_memory()
-                disk = psutil.disk_usage("C:\\" if os.name == "nt" else "/")
+                from friday.tools.builtin.health_monitor import disk_mount_point
+
+                disk_mount = disk_mount_point()
+                disk = psutil.disk_usage(disk_mount)
                 battery = psutil.sensors_battery() if hasattr(psutil, "sensors_battery") else None
                 batt_str = f"{battery.percent:.0f}% ({'Plugged in' if battery.power_plugged else 'Battery'})" if battery else "N/A"
                 report = (
                     f"System Status:\n"
                     f"- CPU Usage: {cpu:.1f}%\n"
                     f"- RAM: {ram.percent:.1f}% used ({ram.used // (1024**2):,} MB / {ram.total // (1024**2):,} MB)\n"
-                    f"- Disk (C:): {disk.percent:.1f}% used ({disk.free // (1024**3):,} GB free)\n"
+                    f"- Disk ({disk_mount}): {disk.percent:.1f}% used ({disk.free // (1024**3):,} GB free)\n"
                     f"- Battery: {batt_str}"
                 )
                 return ToolResult(name=self.name, content=report, is_error=False, safety_level=self.safety_level)

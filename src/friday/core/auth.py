@@ -63,27 +63,40 @@ class BaseAuthorizer(ABC):
 
 
 class DefaultSecureAuthorizer(BaseAuthorizer):
-    """Default authorizer that automatically executes SAFE tools and auto-approves in autonomous mode."""
+    """Auto-approve SAFE work and configured SENSITIVE work, never DANGEROUS work."""
 
     def authorize(self, request: AuthorizationRequest) -> AuthorizationResponse:
         from friday.core.config import get_settings
+
         settings = get_settings()
         is_autonomous = getattr(settings, "autonomous_mode", False) or getattr(settings, "full_access_mode", False)
-
-        if request.safety_level == SafetyLevel.SAFE or is_autonomous:
+        may_auto_approve = request.safety_level == SafetyLevel.SAFE or (
+            request.safety_level == SafetyLevel.SENSITIVE and is_autonomous
+        )
+        if may_auto_approve:
             cap = self.issue_capability_for_request(request)
+            reason = (
+                "Automatic execution approved for SAFE tools."
+                if request.safety_level == SafetyLevel.SAFE
+                else "Autonomous laptop controller execution approved for this SENSITIVE action."
+            )
             return AuthorizationResponse(
                 decision=AuthorizationDecision.APPROVED,
-                reason="Automatic execution approved for SAFE tools." if request.safety_level == SafetyLevel.SAFE else "Autonomous laptop controller execution approved.",
+                reason=reason,
                 capability=cap,
             )
-        return AuthorizationResponse(
-            decision=AuthorizationDecision.DENIED,
-            reason=(
+
+        if request.safety_level == SafetyLevel.DANGEROUS:
+            reason = (
+                f"Safety Block: DANGEROUS tool '{request.tool_name}' requires explicit user confirmation; "
+                "the headless authorizer cannot provide it."
+            )
+        else:
+            reason = (
                 f"Safety Block: Tool '{request.tool_name}' requires explicit user confirmation. "
-                f"No interactive authorizer was configured."
-            ),
-        )
+                "No interactive authorizer was configured."
+            )
+        return AuthorizationResponse(decision=AuthorizationDecision.DENIED, reason=reason)
 
 
 class AutoApproveAuthorizer(BaseAuthorizer):

@@ -43,7 +43,9 @@ def ecosystem_fixture():
 
     registry = EcosystemRegistry()
     forge_mgr = ForgeManagerSkill()
-    nexus_mgr = NexusManagerSkill()
+    # The Nexus manager defaults to live mode; this suite answers from the sample
+    # website, so it asks for it by name (each response is tagged sample_data).
+    nexus_mgr = NexusManagerSkill(mock_mode=True)
     status_skill = EcosystemStatusSkill(registry=registry)
     briefing_wf = MasterDailyBriefingWorkflow(registry=registry)
     cross_orch = CrossSystemOrchestrator(forge_manager=forge_mgr)
@@ -82,7 +84,7 @@ def test_friday_nexus_integration(ecosystem_fixture):
     # Voice command: Who's on my website?
     res_visitors = nexus_mgr.execute("Who's on my website?")
     assert res_visitors.success is True
-    assert "active visitors on your site" in res_visitors.output
+    assert "active visitors on the site" in res_visitors.output
     assert "pricing" in res_visitors.output
 
     # Voice command: Any new leads?

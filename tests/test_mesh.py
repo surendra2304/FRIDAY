@@ -25,7 +25,7 @@ from friday.cognition.mesh import (
     build_contracts,
     verify_receipt,
 )
-from friday.core.task_envelope import ActionReceipt, TaskEnvelope, TaskResult
+from friday.core.task_envelope import ActionReceipt, TaskEnvelope, TaskResult, TaskStatus
 
 
 @pytest.fixture()
@@ -272,6 +272,29 @@ def test_no_receipt_at_all_is_unverified() -> None:
 
     assert verdict.ok is False
     assert verdict.state is OutcomeState.UNVERIFIED
+
+
+def test_receipt_does_not_override_an_error_task_state() -> None:
+    verdict = verify_receipt(
+        _envelope(),
+        TaskResult(task_id="t", target_agent="forge", status=TaskStatus.ERROR, receipt=ActionReceipt(
+            requested_action="refactor",
+            target="forge",
+            verification_evidence={"tests": "passed"},
+        )),
+    )
+
+    assert verdict.ok is False
+    assert verdict.state is OutcomeState.ERROR
+    assert "not completed" in verdict.reason
+
+
+def test_unknown_authorization_decision_does_not_verify_a_receipt() -> None:
+    verdict = verify_receipt(_envelope(), _result(authorization_decision="MAYBE"))
+
+    assert verdict.ok is False
+    assert verdict.state is OutcomeState.UNVERIFIED
+    assert "unrecognized authorization decision" in verdict.reason
 
 
 def test_a_fully_formed_receipt_completes() -> None:

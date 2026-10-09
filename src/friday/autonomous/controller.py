@@ -99,32 +99,50 @@ class AutonomousController:
         if getattr(self, "_initialized", False):
             return
 
-        self.enabled: bool = True  # Enabled by default per user directive
         self.action_history: list[AutonomousActionLog] = []
         self.active_directive: str | None = None
         self.active_agent: str | None = None
         self._max_history: int = 50
         self._repair_lock: asyncio.Lock = asyncio.Lock()
         self._initialized = True
-        logger.info("FRIDAY AutonomousController initialized in ACTIVE mode.")
+        logger.info("FRIDAY AutonomousController initialized.")
+
+    @property
+    def enabled(self) -> bool:
+        """Read the same runtime setting used by the authorization boundary."""
+        from friday.core.config import get_settings
+
+        return bool(get_settings().autonomous_mode)
+
+    @enabled.setter
+    def enabled(self, state: bool) -> None:
+        """Update the shared runtime setting used by status and authorization."""
+        from friday.core.config import get_settings
+
+        get_settings().autonomous_mode = bool(state)
 
     def is_autonomous(self) -> bool:
         """Check whether autonomous mode is active."""
         return self.enabled
 
     def toggle(self, state: bool | None = None) -> bool:
-        """Toggle autonomous mode on or off."""
-        if state is not None:
-            self.enabled = state
-        else:
-            self.enabled = not self.enabled
-        logger.info(f"Autonomous Mode changed to: {self.enabled}")
+        """Toggle the shared autonomous-mode setting on or off."""
+        self.enabled = not self.enabled if state is None else state
+        logger.info("Autonomous Mode changed to: %s", self.enabled)
         return self.enabled
 
     def get_status(self) -> dict[str, Any]:
-        """Return real-time state of the autonomous subsystem."""
+        """Return live execution modes, including what authorization still permits."""
+        from friday.core.config import get_settings
+
+        settings = get_settings()
+        autonomous_mode = bool(settings.autonomous_mode)
+        full_access_mode = bool(settings.full_access_mode)
         return {
-            "autonomous_mode": self.enabled,
+            "autonomous_mode": autonomous_mode,
+            "full_access_mode": full_access_mode,
+            "sensitive_actions_auto_approved": autonomous_mode or full_access_mode,
+            "autonomous_mode_persistence": "runtime_only",
             "active_agent": self.active_agent,
             "active_directive": self.active_directive,
             "history_count": len(self.action_history),
@@ -199,110 +217,133 @@ class AutonomousController:
 
         return None, None
 
+    def _get_peer_mesh(self) -> Any:
+        """Lazily build the verified task mesh from the live fleet configuration."""
+        mesh = getattr(self, "_peer_mesh", None)
+        if mesh is None:
+            from friday.cognition.mesh import Mesh, build_contracts
+
+            mesh = Mesh(contracts=build_contracts(fleet_client))
+            self._peer_mesh = mesh
+        return mesh
+
     async def execute_agent_control(self, agent_id: str, directive: str) -> dict[str, Any]:
-        """
-        Autonomously commands a specialist agent to perform the directive,
-        verifies the response, and falls back to self-repair if needed.
-        """
+        """Dispatch a typed peer task and report only receipt-verified completion."""
         self.active_agent = agent_id.upper()
         self.active_directive = directive
         start_time = time.time()
-
-        agent_meta = FLEET_AGENTS.get(agent_id.lower(), {"name": agent_id.upper(), "role": "Specialist Agent"})
+        agent_id = agent_id.lower().strip()
+        agent_meta = FLEET_AGENTS.get(agent_id, {"name": agent_id.upper(), "role": "Specialist Agent"})
         agent_name = agent_meta["name"]
 
-        logger.info(f"[AUTONOMOUS DISPATCH] Controlling {agent_name} with directive: '{directive}'")
+        logger.info("[AUTONOMOUS DISPATCH] Sending typed task to %s: %r", agent_name, directive)
 
         try:
-            # Dispatch to live fleet client
-            res: dict[str, Any] = {}
-            if agent_id == "inference":
-                res = await fleet_client.ask_inference(directive)
-            elif agent_id == "memora":
-                res = await fleet_client.ask_memora(directive)
-            elif agent_id == "stratex":
-                res = await fleet_client.ask_stratex(directive)
-            elif agent_id == "intelx":
-                res = await fleet_client.ask_intelx(directive)
-            elif agent_id == "futuris":
-                res = await fleet_client.ask_futuris(directive)
-            elif agent_id == "cortex":
-                res = await fleet_client.ask_cortex(directive)
-            elif agent_id == "forge":
-                res = await fleet_client.ask_forge(directive)
-            elif agent_id == "sentinel":
-                res = await fleet_client.ask_sentinel(directive)
-            else:
-                res = {"reply": f"Agent '{agent_id}' dispatched.", "metadata": {"autonomous": True}}
+            from friday.cognition.mesh import OutcomeState
 
-            reply_text = res.get("reply", "")
-            duration_ms = int((time.time() - start_time) * 1000)
-
-            # Check if agent encountered an error or unreachable endpoint
-            has_explicit_err = bool(res.get("metadata", {}).get("error"))
-            has_err_text = any(sig in reply_text.lower() for sig in ["direct connection error", "error connecting", "unreachable", "gateway error", "error http"])
-            is_error = has_explicit_err or has_err_text
-
-            if is_error and self.enabled:
-                # Trigger Autonomous Failover & Self-Repair
-                logger.warning(f"[AUTONOMOUS FAILOVER] {agent_name} degraded. Initiating autonomous failover...")
-                failover_result = await self.autonomous_failover(agent_id, directive)
-                self._log_action(
-                    action_type="FAILOVER",
-                    target=agent_name,
-                    directive=directive,
-                    result=failover_result["reply"],
-                    success=bool(failover_result.get("metadata", {}).get("success", False)),
-                    details={"failover": False, "advisory_only": True, "task_completion_verified": False, "original_error": reply_text},
-                )
-                self.active_agent = None
-                self.active_directive = None
-                return failover_result
-
-            # The current ask_* methods mostly query health/status endpoints;
-            # their HTTP response is not proof that the requested work ran.
-            formatted_reply = (
-                f"[AGENT RESPONSE: {agent_name}]\n{reply_text}\n\n"
-                f"The agent endpoint responded in {duration_ms} ms. Requested task completion is not verified."
+            mesh = self._get_peer_mesh()
+            envelope = mesh.build_envelope(
+                agent_id,
+                action="execute",
+                objective=directive,
+                inputs={"directive": directive},
+                capability=f"{agent_id}.execute",
+                actor="friday",
+                trust_level="operator_confirmed",
             )
+            outcome = await mesh.dispatch(
+                agent_id,
+                action="execute",
+                envelope=envelope,
+                attempts=1,
+            )
+            duration_ms = int((time.time() - start_time) * 1000)
+            peer_result = outcome.result if isinstance(outcome.result, dict) else {}
+            summary = str(peer_result.get("summary") or peer_result.get("message") or "").strip()
+            verified = outcome.state is OutcomeState.COMPLETED
+            task_state = outcome.state.value
+
+            if verified:
+                reply = f"[AGENT TASK VERIFIED: {agent_name}]\n{summary or outcome.detail}"
+            elif outcome.state is OutcomeState.PENDING:
+                reply = (
+                    f"[AGENT TASK PENDING: {agent_name}]\n{outcome.detail} "
+                    f"Task reference: {outcome.task_id}. Completion remains unverified."
+                )
+            else:
+                reply = f"[AGENT TASK NOT VERIFIED: {agent_name}]\n{outcome.detail}"
 
             self._log_action(
                 action_type="AGENT_CONTROL",
                 target=agent_name,
                 directive=directive,
-                result=reply_text,
-                success=False,
-                details={"latency_ms": duration_ms, "endpoint_response_received": True, "task_completion_verified": False},
+                result=reply,
+                success=verified,
+                details={
+                    "latency_ms": duration_ms,
+                    "task_state": task_state,
+                    "task_id": outcome.task_id,
+                    "http_status": outcome.http_status,
+                    "contract_used": outcome.contract_used,
+                    "task_completion_verified": verified,
+                },
             )
+
+            metadata: dict[str, Any] = {
+                "autonomous": True,
+                "agent": agent_id,
+                "agent_name": agent_name,
+                "latency_ms": duration_ms,
+                "success": verified,
+                "endpoint_response_received": outcome.http_status is not None,
+                "task_completion_verified": verified,
+                "task_state": task_state,
+                "task_id": outcome.task_id,
+                "http_status": outcome.http_status,
+                "contract_used": outcome.contract_used,
+            }
+            receipt = peer_result.get("receipt")
+            if receipt is not None:
+                metadata["receipt"] = receipt
+            task_result = peer_result.get("result")
+            if task_result is not None:
+                metadata["task_result"] = task_result
+            if summary:
+                metadata["task_summary"] = summary
+            if outcome.state is OutcomeState.REFUSED:
+                metadata["refused"] = True
+            elif outcome.state is not OutcomeState.COMPLETED and outcome.state is not OutcomeState.PENDING:
+                metadata["error"] = outcome.detail
 
             self.active_agent = None
             self.active_directive = None
+            return {"reply": reply, "metadata": metadata}
+
+        except Exception as exc:
+            duration_ms = int((time.time() - start_time) * 1000)
+            logger.error("[AUTONOMOUS CONTROL ERROR] Failed task dispatch to %s: %s", agent_name, exc)
+            self._log_action(
+                action_type="AGENT_CONTROL",
+                target=agent_name,
+                directive=directive,
+                result=str(exc),
+                success=False,
+                details={"latency_ms": duration_ms, "task_state": "ERROR", "task_completion_verified": False},
+            )
+            self.active_agent = None
+            self.active_directive = None
             return {
-                "reply": formatted_reply,
+                "reply": f"Autonomous task to {agent_name} could not be verified: {exc}",
                 "metadata": {
                     "autonomous": True,
                     "agent": agent_id,
                     "agent_name": agent_name,
                     "latency_ms": duration_ms,
                     "success": False,
-                    "endpoint_response_received": True,
                     "task_completion_verified": False,
+                    "task_state": "ERROR",
+                    "error": str(exc),
                 },
-            }
-
-        except Exception as exc:
-            logger.error(f"[AUTONOMOUS CONTROL ERROR] Failed dispatch to {agent_name}: {exc}")
-            if self.enabled:
-                failover_result = await self.autonomous_failover(agent_id, directive)
-                self.active_agent = None
-                self.active_directive = None
-                return failover_result
-
-            self.active_agent = None
-            self.active_directive = None
-            return {
-                "reply": f"Autonomous command to {agent_name} failed: {exc}",
-                "metadata": {"autonomous": True, "error": str(exc), "success": False},
             }
 
     async def autonomous_failover(self, failed_agent: str, directive: str) -> dict[str, Any]:

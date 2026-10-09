@@ -76,17 +76,35 @@ class IntelligenceAlert:
 class IntelligenceEngine:
     """Processes predictions, evaluates alternative data, and tracks forecast accuracy."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, demo_data: bool | None = None) -> None:
         self._predictions: dict[str, AssetPrediction] = {}
         self._sentiment: SentimentTelemetry | None = None
         self._on_chain: OnChainTelemetry | None = None
         self._accuracy: AccuracyReport | None = None
         self._alerts: list[IntelligenceAlert] = []
         self._lock = threading.RLock()
-        self._init_defaults()
+        # This engine used to seed a complete, detailed market view on
+        # construction: BTC 76% BULLISH with "institutional ETF net inflows
+        # (+$380M)" and a $63,200 support, ETH 58% BEARISH, SOL 65% BULLISH,
+        # sentiment 0.62, Fear & Greed 68, -6,500 BTC of exchange outflow, a
+        # 12,500 BTC whale transfer, a 78.5% 30-day accuracy over 120 evaluated
+        # predictions and two "alerts" about the whale move. Every one of those
+        # numbers was invented, formatted with one decimal place, and spoken in
+        # the morning briefing as though a feed had produced it. Sample data now
+        # has to be asked for by name.
+        from friday.ecosystem.command_center import demo_mode_enabled
 
-    def _init_defaults(self) -> None:
-        """Initializes default market intelligence state."""
+        self.demo_data = demo_mode_enabled() if demo_data is None else bool(demo_data)
+        if self.demo_data:
+            self._init_sample_data()
+
+    def _init_sample_data(self) -> None:
+        """Seeds a complete sample market for demos and tests.
+
+        Every number below is fabricated; it is labelled SAMPLE DATA wherever it
+        is rendered, and no probe or feed produced it.
+        """
+        self.sample_note = "SAMPLE DATA - invented for demos; no feed produced it"
         # 1. Predictions
         self._predictions["BTCUSDT"] = AssetPrediction(
             symbol="BTCUSDT",
@@ -171,15 +189,20 @@ class IntelligenceEngine:
         ]
 
     def get_prediction(self, symbol: str = "BTCUSDT") -> AssetPrediction | None:
-        """Retrieves prediction for a specific asset."""
+        """Retrieves the recorded prediction for a symbol, or None.
+
+        Asking about SOL used to answer with the BTC prediction: the final
+        ``get(sym, self._predictions.get("BTCUSDT"))`` meant any unrecognised
+        symbol silently returned another asset's forecast.
+        """
         with self._lock:
             sym = symbol.upper().replace("/", "")
-            if sym not in self._predictions:
-                # Try prefix match
-                for k, v in self._predictions.items():
-                    if sym in k:
-                        return v
-            return self._predictions.get(sym, self._predictions.get("BTCUSDT"))
+            if sym in self._predictions:
+                return self._predictions[sym]
+            for k, v in self._predictions.items():
+                if sym in k:
+                    return v
+            return None
 
     def get_market_intelligence_report(self) -> dict[str, Any]:
         """Generates unified market intelligence data packet."""
@@ -193,10 +216,16 @@ class IntelligenceEngine:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
-    def get_accuracy_report(self) -> AccuracyReport:
-        """Returns 30-day directional prediction calibration stats."""
+    def get_accuracy_report(self) -> AccuracyReport | None:
+        """Returns 30-day directional calibration stats, or None if never measured.
+
+        The fallback used to be ``AccuracyReport(78.5, 0.142, 120, {"BTCUSDT":
+        82.5}, "WELL_CALIBRATED")``: an engine that had evaluated nothing reported
+        a 78.5% accuracy from 120 evaluations as WELL_CALIBRATED. A caller cannot
+        tell that apart from a measurement, which is precisely the danger.
+        """
         with self._lock:
-            return self._accuracy or AccuracyReport(78.5, 0.142, 120, {"BTCUSDT": 82.5}, "WELL_CALIBRATED")
+            return self._accuracy
 
     def get_active_alerts(self) -> list[IntelligenceAlert]:
         """Returns active intelligence alerts."""

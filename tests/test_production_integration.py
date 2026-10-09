@@ -65,7 +65,10 @@ def test_production_monitor_polling_cycle(production_setup):
     assert report.trading_bot["status"] == "ACTIVE"
     assert report.trading_bot["equity"] == 10540.25
     assert report.ai_universe["health"] == "HEALTHY"
-    assert report.friday_os["status"] == "HEALTHY"
+    # FRIDAY OS reports what it can attest to about its own process; it used to
+    # claim "HEALTHY" without probing anything.
+    assert "RUNNING" in report.friday_os["status"]
+    assert "no health probe has been run" in report.friday_os["status"]
     assert len(report.cascading_failures) == 0
 
 
@@ -224,7 +227,10 @@ def test_production_supervisor_skill_commands(production_setup):
     # 2. "Trading performance"
     res2 = skill.execute("Trading performance")
     assert res2.success is True
-    assert "Trading performance is active on Binance Futures Testnet" in res2.output
+    # Honest wording: the mode is what the bridge reported, not an assertion
+    # that a live Binance testnet session is running.
+    assert "Reported trading mode is TESTNET" in res2.output
+    assert "Total equity is $10,540.25 USDT" in res2.output
 
     # 3. "AI advisory status"
     res3 = skill.execute("AI advisory status")

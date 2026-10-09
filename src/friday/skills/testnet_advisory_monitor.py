@@ -3,17 +3,58 @@
 Supervises live Binance Futures Testnet AI advisories, tracking SHADOW vs APPLY
 modes, comparing live testnet execution against paper trading baselines,
 explaining testnet advisory decisions, and executing safety controls (mode toggle, parameter rollback).
+
+Every number and every sentence about the market in this module is derived from
+the trading bridge's payload. It used to be derived from defaults instead: a
+$10,540.25 testnet equity, a 1.85% drawdown against a "safety threshold: 5.00%",
+"Recent" as the last consultation, a 4.20%/3.85% paper-vs-testnet return pair, a
+1.45/1.38 Sharpe pair, 100.0%/98.5% fill rates, and an execution diagnostic that
+named "exchange matching engine queue times" as the primary driver of a slippage
+gap nothing had measured. An absent reading is now ``None`` and the prose says so
+instead of supplying a successor.
 """
 
 import re
 from typing import Any
 
 from friday.core.logging import get_logger
+from friday.core.readings import UNKNOWN_LABEL, format_money, format_number
 from friday.core.types import AuthorizationDecision, SafetyLevel
 from friday.skills.base_skill import BaseSkill, SkillExecutionResult
 from friday.skills.trading_bot_operator import TradingBotOperator
 
 logger = get_logger("skills.testnet_advisory_monitor")
+
+
+def _num(mapping: Any, *keys: str) -> float | None:
+    """The first reported numeric value among ``keys``, else None."""
+    if not isinstance(mapping, dict):
+        return None
+    for key in keys:
+        value = mapping.get(key)
+        if value is None or isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            try:
+                return float(value.strip())
+            except ValueError:
+                continue
+    return None
+
+
+def _text(mapping: Any, *keys: str) -> str | None:
+    """The first reported, non-empty string among ``keys``, else None."""
+    if not isinstance(mapping, dict):
+        return None
+    for key in keys:
+        value = mapping.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return str(value)
+    return None
 
 
 class TestnetAdvisoryMonitorSkill(BaseSkill):
@@ -51,26 +92,38 @@ class TestnetAdvisoryMonitorSkill(BaseSkill):
         if not raw:
             return {"active": False, "status": "UNAVAILABLE", "message": "Testnet advisory status unavailable."}
 
-        enabled = bool(raw.get("enabled", True))
-        mode = str(raw.get("mode", "SHADOW")).upper()
-        health = str(raw.get("ai_universe_health", "HEALTHY")).upper()
-        equity = float(raw.get("equity", 10540.25))
-        drawdown_pct = float(raw.get("drawdown_pct", 1.85))
-        max_drawdown_limit = float(raw.get("max_drawdown_limit", 5.0))
-        last_consult = raw.get("last_consult_time", "Recent")
-        active_overlay = raw.get("active_overlay", {})
-        open_positions = raw.get("open_positions", [])
+        enabled_raw = raw.get("enabled")
+        enabled = enabled_raw if isinstance(enabled_raw, bool) else None
+        mode = str(raw.get("mode") or "UNREPORTED").upper()
+        health = str(raw.get("ai_universe_health") or raw.get("health") or "UNREPORTED").upper()
+        equity = _num(raw, "equity", "current_equity")
+        drawdown_pct = _num(raw, "drawdown_pct")
+        max_drawdown_limit = _num(raw, "max_drawdown_limit", "max_drawdown_limit_pct")
+        last_consult = _text(raw, "last_consult_time", "last_consult") or "not reported"
+        active_overlay = raw.get("active_overlay") or {}
+        open_positions = raw.get("open_positions") or []
 
         overlay_desc = (
             ", ".join(f"{k}={v}" for k, v in active_overlay.items())
             if active_overlay
-            else "No active parameter overrides"
+            else "No active parameter overrides reported"
+        )
+
+        enabled_clause = (
+            "ENABLED" if enabled is True else ("DISABLED" if enabled is False else "in an unreported enabled state")
+        )
+        threshold_clause = (
+            f"(reported safety threshold: {format_number(max_drawdown_limit, 2, '%')})"
+            if max_drawdown_limit is not None
+            else "(no safety threshold was reported)"
         )
 
         spoken_text = (
-            f"Testnet Advisory is currently {'ENABLED' if enabled else 'DISABLED'} in {mode} mode. "
-            f"AI-Universe health is {health}. Testnet equity is ${equity:,.2f} USDT with a drawdown of {drawdown_pct:.2f}% "
-            f"(safety threshold: {max_drawdown_limit:.2f}%). Active parameter overlay: {overlay_desc}."
+            f"Testnet Advisory is reported as {enabled_clause} in {mode} mode. "
+            f"AI-Universe health reads {health}. Testnet equity is {format_money(equity)} USDT with a drawdown of "
+            f"{format_number(drawdown_pct, 2, '%')} {threshold_clause}. "
+            f"Active parameter overlay: {overlay_desc}. "
+            f"Last consultation: {last_consult}. Open positions reported: {len(open_positions)}."
         )
 
         return {
@@ -91,7 +144,7 @@ class TestnetAdvisoryMonitorSkill(BaseSkill):
     def get_testnet_advisory_log(self, limit: int = 10) -> dict[str, Any]:
         """Fetch recent testnet advisory evaluations and execution verdicts."""
         raw = self.bot_operator.get_testnet_advisory_log(limit=limit)
-        advisories = raw.get("advisories", raw.get("log", []))
+        advisories = raw.get("advisories", raw.get("log", [])) if isinstance(raw, dict) else raw
         if isinstance(raw, list):
             advisories = raw
 
@@ -104,14 +157,15 @@ class TestnetAdvisoryMonitorSkill(BaseSkill):
 
         lines = ["**Recent Testnet AI-Universe Advisory Decisions:**"]
         for adv in advisories[:limit]:
-            dec_id = adv.get("decision_id", "unknown")
-            verdict = str(adv.get("verdict", "HOLD")).upper()
-            mode = str(adv.get("mode", "SHADOW")).upper()
-            conf = int(float(adv.get("confidence", 0.0)) * 100)
-            rec = adv.get("recommendation", "Maintain current testnet settings")
+            dec_id = adv.get("decision_id") or "unspecified decision"
+            verdict = str(adv.get("verdict") or "UNREPORTED").upper()
+            mode = str(adv.get("mode") or "UNREPORTED").upper()
+            conf_value = _num(adv, "confidence")
+            conf = f"{conf_value * 100:.0f}% Conf" if conf_value is not None else "confidence not reported"
+            rec = _text(adv, "recommendation") or "no recommendation text was sent"
             reason = adv.get("rejection_reason")
 
-            tag = f"[{mode} | {verdict} - {conf}% Conf]"
+            tag = f"[{mode} | {verdict} - {conf}]"
             line = f"• `{dec_id}` {tag}: {rec}"
             if reason and verdict == "REJECT":
                 line += f" *(Blocked by Safety Gate: {reason})*"
@@ -140,25 +194,37 @@ class TestnetAdvisoryMonitorSkill(BaseSkill):
                 "explanation": f"Testnet advisory decision `{decision_id}` was not found in recent logs.",
             }
 
-        verdict = str(target.get("verdict", "HOLD")).upper()
-        mode = str(target.get("mode", "SHADOW")).upper()
-        conf = int(float(target.get("confidence", 0.0)) * 100)
-        rec = target.get("recommendation", "No specific text")
+        verdict = str(target.get("verdict") or "UNREPORTED").upper()
+        mode = str(target.get("mode") or "UNREPORTED").upper()
+        conf_value = _num(target, "confidence")
+        conf_clause = f"{conf_value * 100:.0f}% Confidence" if conf_value is not None else "confidence not reported"
+        rec = _text(target, "recommendation") or "no recommendation text was sent with this decision"
         reason = target.get("rejection_reason")
-        params = target.get("parameter_adjustments", {})
-        evidence = target.get("key_evidence", [])
+        params = target.get("parameter_adjustments") or {}
+        evidence = target.get("key_evidence") or []
 
-        param_str = ", ".join(f"`{k}` -> `{v}`" for k, v in params.items()) if params else "None"
-        evidence_str = "\n".join(f"  - {e}" for e in evidence) if evidence else "  - Standard market conditions"
+        param_str = ", ".join(f"`{k}` -> `{v}`" for k, v in params.items()) if params else "none reported"
+        # "Standard market conditions" used to be printed here as the evidence
+        # for a decision that shipped no evidence.
+        evidence_str = "\n".join(f"  - {e}" for e in evidence) if evidence else "  - No market evidence was reported with this decision."
+
+        if verdict == "APPLY":
+            gate_line = (
+                "✅ **APPROVED:** the advisory was recorded as applied. The bridge did not report which safety "
+                "limits were checked, so this explanation does not assert that all of them were."
+            )
+        elif verdict == "REJECT":
+            gate_line = f"🛡️ **REJECTED by Safety Gate:** {reason or 'no rejection reason was reported.'}"
+        else:
+            gate_line = f"⏸️ **{verdict}:** no apply or reject verdict was reported for this decision."
 
         explanation = (
             f"### 📋 Testnet Advisory Explanation: `{decision_id}`\n\n"
-            f"**Execution Mode:** `{mode}` | **Verdict:** **{verdict}** ({conf}% Confidence)\n\n"
+            f"**Execution Mode:** `{mode}` | **Verdict:** **{verdict}** ({conf_clause})\n\n"
             f"**AI-Universe Recommendation:**\n> {rec}\n\n"
             f"**Proposed Parameters:** {param_str}\n\n"
             f"**Key Market Evidence:**\n{evidence_str}\n\n"
-            f"**Safety Gate Assessment:**\n"
-            f"{'✅ **APPROVED:** Parameters complied with all testnet safety limits.' if verdict == 'APPLY' else ('🛡️ **REJECTED by Safety Gate:** ' + str(reason) if reason else '⏸️ **HOLD:** Advisory held in observation.')}\n"
+            f"**Safety Gate Assessment:**\n{gate_line}\n"
         )
 
         return {
@@ -182,31 +248,52 @@ class TestnetAdvisoryMonitorSkill(BaseSkill):
         paper = raw.get("paper_trading", raw.get("paper", {}))
         testnet = raw.get("testnet_live", raw.get("testnet", {}))
 
-        p_ret = float(paper.get("total_return_pct", 4.20))
-        t_ret = float(testnet.get("total_return_pct", 3.85))
-        p_sharpe = float(paper.get("sharpe_ratio", 1.45))
-        t_sharpe = float(testnet.get("sharpe_ratio", 1.38))
-        p_slip = float(paper.get("avg_slippage_bps", 0.5))
-        t_slip = float(testnet.get("avg_slippage_bps", 2.8))
-        p_fill = float(paper.get("fill_rate_pct", 100.0))
-        t_fill = float(testnet.get("fill_rate_pct", 98.5))
-        p_dd = float(paper.get("max_drawdown_pct", 2.10))
-        t_dd = float(testnet.get("max_drawdown_pct", 2.45))
+        p_ret = _num(paper, "total_return_pct", "return_pct")
+        t_ret = _num(testnet, "total_return_pct", "return_pct")
+        p_sharpe = _num(paper, "sharpe_ratio", "sharpe")
+        t_sharpe = _num(testnet, "sharpe_ratio", "sharpe")
+        p_slip = _num(paper, "avg_slippage_bps", "slippage_bps")
+        t_slip = _num(testnet, "avg_slippage_bps", "slippage_bps")
+        p_fill = _num(paper, "fill_rate_pct", "fill_rate")
+        t_fill = _num(testnet, "fill_rate_pct", "fill_rate")
+        p_dd = _num(paper, "max_drawdown_pct", "drawdown_pct")
+        t_dd = _num(testnet, "max_drawdown_pct", "drawdown_pct")
 
-        delta_ret = t_ret - p_ret
-        slip_diff = t_slip - p_slip
+        delta_ret = (t_ret - p_ret) if (t_ret is not None and p_ret is not None) else None
+        slip_diff = (t_slip - p_slip) if (t_slip is not None and p_slip is not None) else None
+
+        def _delta(a: float | None, b: float | None, digits: int, suffix: str = "") -> str:
+            if a is None or b is None:
+                return UNKNOWN_LABEL
+            return format_number(a - b, digits, suffix)
 
         table_md = (
             f"### ⚖️ Testnet Live Execution vs. Paper Trading Comparison\n\n"
             f"| Metric | Paper Trading (Simulated) | Testnet Live (Binance Futures) | Delta / Variance |\n"
             f"| :--- | :---: | :---: | :---: |\n"
-            f"| **Total Return** | {p_ret:+.2f}% | {t_ret:+.2f}% | **{delta_ret:+.2f}%** |\n"
-            f"| **Sharpe Ratio** | {p_sharpe:.2f} | {t_sharpe:.2f} | **{t_sharpe - p_sharpe:+.2f}** |\n"
-            f"| **Avg Slippage** | {p_slip:.1f} bps | {t_slip:.1f} bps | **{slip_diff:+.1f} bps** (Live network latency) |\n"
-            f"| **Fill Rate** | {p_fill:.1f}% | {t_fill:.1f}% | **{t_fill - p_fill:+.1f}%** |\n"
-            f"| **Max Drawdown** | {p_dd:.2f}% | {t_dd:.2f}% | **{t_dd - p_dd:+.2f}%** |\n\n"
-            f"**Execution Diagnostic:** Live testnet return variance is `{delta_ret:+.2f}%` relative to paper. "
-            f"The primary driver is a `{slip_diff:.1f} bps` execution slippage gap due to exchange matching engine queue times."
+            f"| **Total Return** | {format_number(p_ret, 2, '%')} | {format_number(t_ret, 2, '%')} | "
+            f"**{_delta(t_ret, p_ret, 2, '%')}** |\n"
+            f"| **Sharpe Ratio** | {format_number(p_sharpe, 2)} | {format_number(t_sharpe, 2)} | "
+            f"**{_delta(t_sharpe, p_sharpe, 2)}** |\n"
+            f"| **Avg Slippage** | {format_number(p_slip, 1, ' bps')} | {format_number(t_slip, 1, ' bps')} | "
+            f"**{_delta(t_slip, p_slip, 1, ' bps')}** |\n"
+            f"| **Fill Rate** | {format_number(p_fill, 1, '%')} | {format_number(t_fill, 1, '%')} | "
+            f"**{_delta(t_fill, p_fill, 1, '%')}** |\n"
+            f"| **Max Drawdown** | {format_number(p_dd, 2, '%')} | {format_number(t_dd, 2, '%')} | "
+            f"**{_delta(t_dd, p_dd, 2, '%')}** |\n\n"
+            f"**Execution Diagnostic:** "
+            + (
+                f"Live testnet return variance is `{delta_ret:+.2f}%` relative to paper, and the reported slippage "
+                f"gap is `{slip_diff:+.1f} bps`. The endpoint reports the gap, not its cause; no cause is asserted "
+                f"here."
+                if delta_ret is not None and slip_diff is not None
+                else (
+                    f"Live testnet return variance is `{delta_ret:+.2f}%` relative to paper. "
+                    f"The slippage gap cannot be computed because at least one average slippage figure was not reported."
+                    if delta_ret is not None
+                    else "Neither a full return pair nor a full slippage pair was reported, so no diagnostic is offered."
+                )
+            )
         )
 
         return {
@@ -238,9 +325,30 @@ class TestnetAdvisoryMonitorSkill(BaseSkill):
                 }
 
         res = self.bot_operator.toggle_testnet_advisory(enabled=enabled, mode=mode)
+        # The response used to be discarded, so a bridge that answered
+        # {"status": "ERROR"} was still announced as "successfully updated".
+        reported_error = None
+        if isinstance(res, dict):
+            reported_error = res.get("error") or (
+                res.get("status") if str(res.get("status", "")).upper() in ("ERROR", "FAILED", "FAILURE") else None
+            )
+        if reported_error:
+            return {
+                "success": False,
+                "message": f"The trading bridge did not apply the mode change: {reported_error}",
+                "error": str(reported_error),
+                "result": res,
+            }
+
+        reported_mode = None
+        if isinstance(res, dict):
+            reported_mode = res.get("mode")
         return {
             "success": True,
-            "message": f"Testnet advisory mode successfully updated to {mode} (Enabled: {enabled}).",
+            "message": (
+                f"Testnet advisory mode toggle sent: {mode} (Enabled: {enabled})."
+                + (f" The bridge confirmed mode {reported_mode}." if reported_mode else " The bridge did not echo the resulting mode.")
+            ),
             "result": res,
         }
 
@@ -261,9 +369,25 @@ class TestnetAdvisoryMonitorSkill(BaseSkill):
                 }
 
         res = self.bot_operator.rollback_testnet_parameters()
+        reported_error = None
+        if isinstance(res, dict):
+            reported_error = res.get("error") or (
+                res.get("status") if str(res.get("status", "")).upper() in ("ERROR", "FAILED", "FAILURE") else None
+            )
+        if reported_error:
+            return {
+                "success": False,
+                "message": f"The trading bridge did not roll back the parameter overlays: {reported_error}",
+                "error": str(reported_error),
+                "result": res,
+            }
+
         return {
             "success": True,
-            "message": "Emergency rollback executed: all testnet parameter overlays reverted to default baseline.",
+            "message": (
+                "Rollback request sent: the bridge was asked to revert all testnet parameter overlays to the "
+                "baseline. Confirm the active overlay in a status query to see what it actually applied."
+            ),
             "result": res,
         }
 

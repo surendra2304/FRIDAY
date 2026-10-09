@@ -117,9 +117,12 @@ class UniverseOrchestrator:
                     task_type="universe_simulation",
                     provider_name="UniverseAPI",
                     model_name="SimAgentEngine",
-                    accuracy=exp_result.metrics.get("accuracy", 1.0),
+                    # A missing metric is stored as NULL and left out of the
+                    # averages; it used to be recorded as accuracy 1.0 (perfect)
+                    # and latency 50.0 ms (fast), flattering both.
+                    accuracy=exp_result.metrics.get("accuracy"),
                     success=exp_result.success,
-                    latency_ms=exp_result.metrics.get("avg_agent_latency_ms", 50.0),
+                    latency_ms=exp_result.metrics.get("avg_agent_latency_ms"),
                     token_usage=0,
                     response_content=exp_result.summary,
                     metadata={
@@ -140,11 +143,27 @@ class UniverseOrchestrator:
             f"- **Agents Deployed**: {len(created_agents)}\n"
             f"- **Simulation Steps**: {exp_result.total_steps}\n"
             f"- **Outcome Summary**: {exp_result.summary}\n\n"
-            f"**Key Metrics**:\n"
-            f"- Accuracy: {exp_result.metrics.get('accuracy', 0.0)*100:.1f}%\n"
-            f"- Cooperation Index: {exp_result.metrics.get('cooperation_index', 0.0):.2f}\n"
-            f"- Resource Efficiency: {exp_result.metrics.get('resource_efficiency', 0.0):.2f}\n"
-            f"- Average Agent Latency: {exp_result.metrics.get('avg_agent_latency_ms', 0.0):.1f}ms\n"
+            + (
+                "**Key Metrics**:\n"
+                + "".join(
+                    f"- {label}: {value}\n"
+                    for label, value in (
+                        ("Accuracy", f"{exp_result.metrics['accuracy'] * 100:.1f}%"
+                         if isinstance(exp_result.metrics.get("accuracy"), (int, float)) else None),
+                        ("Cooperation Index", f"{exp_result.metrics['cooperation_index']:.2f}"
+                         if isinstance(exp_result.metrics.get("cooperation_index"), (int, float)) else None),
+                        ("Resource Efficiency", f"{exp_result.metrics['resource_efficiency']:.2f}"
+                         if isinstance(exp_result.metrics.get("resource_efficiency"), (int, float)) else None),
+                        ("Average Agent Latency", f"{exp_result.metrics['avg_agent_latency_ms']:.1f}ms"
+                         if isinstance(exp_result.metrics.get("avg_agent_latency_ms"), (int, float)) else None),
+                    )
+                    if value is not None
+                )
+                if exp_result.metrics else
+                # Four metrics were printed with 0.0 defaults, so a simulation
+                # that measured nothing reported perfect-looking zeros.
+                "**Key Metrics**: none reported by the simulation.\n"
+            )
         )
 
         return {

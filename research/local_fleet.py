@@ -150,6 +150,7 @@ def main() -> int:
 
     print(f"booting {selected}")
     procs = {}
+    results: dict[str, tuple[bool, str]] = {}
     for agent in selected:
         try:
             proc = launch(agent, log_dir)
@@ -164,7 +165,6 @@ def main() -> int:
             procs[agent] = proc
         time.sleep(1.0)
 
-    results = {}
     for agent in selected:
         if agent not in procs:
             results.setdefault(agent, (False, "did not launch"))
@@ -184,6 +184,7 @@ def main() -> int:
     for proc in procs.values():
         proc.terminate()
     out = log_dir / "boot_report.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps({k: {"up": v[0], "detail": v[1]} for k, v in results.items()}, indent=2), encoding="utf-8")
     print(f"report: {out}")
     return 0 if all(v[0] for v in results.values()) else 1

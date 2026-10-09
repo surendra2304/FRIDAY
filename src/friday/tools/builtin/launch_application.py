@@ -9,6 +9,7 @@ import os
 import subprocess
 from typing import Any
 
+from friday.core.effects import launch_process_verified
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel, ToolResult
 from friday.tools.base import BaseTool
@@ -118,20 +119,28 @@ class LaunchApplicationTool(BaseTool):
             except Exception:
                 pass
 
-        # 3. Subprocess execution
-        try:
-            cmd = f'"{target}" {args_str}'.strip() if args_str else f'"{target}"'
-            subprocess.Popen(cmd, cwd=cwd, shell=True)
+        # 3. Subprocess execution.
+        #
+        # This used to be a bare Popen with the result discarded, so a command
+        # that never ran (the shell reporting "notepad.exe: not found") was still
+        # announced as "Launched 'notepad.exe'.". launch_process_verified watches
+        # the child for a moment and only calls a non-zero early exit a success
+        # when the shell exit code is 0.
+        cmd = f'"{target}" {args_str}'.strip() if args_str else f'"{target}"'
+        outcome = launch_process_verified(cmd, cwd=cwd)
+        if not outcome.ok:
             return ToolResult(
                 name=self.name,
-                content=f"Launched '{target}'.",
-                is_error=False,
-                safety_level=self.safety_level,
-            )
-        except Exception as e:
-            return ToolResult(
-                name=self.name,
-                content=f"Failed to launch '{target}': {e}",
+                content=f"Failed to launch '{target}': {outcome.detail}",
                 is_error=True,
+                refused=True,
                 safety_level=self.safety_level,
+                metadata=outcome.as_dict(),
             )
+        return ToolResult(
+            name=self.name,
+            content=f"Launched '{target}'.",
+            is_error=False,
+            safety_level=self.safety_level,
+            metadata=outcome.as_dict(),
+        )

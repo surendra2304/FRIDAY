@@ -55,12 +55,25 @@ class CLIAuthorizer(BaseAuthorizer):
     def __init__(self, authorizer: Any | None = None, auto_approve_all: bool | None = None) -> None:
         super().__init__(authorizer=authorizer)
         from friday.core.config import get_settings
+
         self.settings = get_settings()
-        if auto_approve_all is not None:
-            self.auto_approve_all = auto_approve_all
-        else:
-            self.auto_approve_all = getattr(self.settings, "autonomous_mode", False)
-        self.full_access = getattr(self.settings, "full_access_mode", False)
+        self._auto_approve_all_override = auto_approve_all
+
+    @property
+    def auto_approve_all(self) -> bool:
+        """Read the current shared mode unless this instance has an explicit override."""
+        if self._auto_approve_all_override is not None:
+            return self._auto_approve_all_override
+        from friday.core.config import get_settings
+
+        return bool(get_settings().autonomous_mode)
+
+    @property
+    def full_access(self) -> bool:
+        """Read the current full-access setting rather than a stale constructor snapshot."""
+        from friday.core.config import get_settings
+
+        return bool(get_settings().full_access_mode)
 
     @staticmethod
     def _has_a_terminal() -> bool:
@@ -71,8 +84,8 @@ class CLIAuthorizer(BaseAuthorizer):
             return False
 
     def authorize(self, request: AuthorizationRequest) -> AuthorizationResponse:
-        # Only safe tools auto-approve by default. Consequential actions require a
-        # prompt unless the owner explicitly opts into autonomous/full-access mode.
+        # SAFE work is automatic. Explicit runtime modes may auto-approve SENSITIVE
+        # actions, but DANGEROUS actions always reach the confirmation boundary.
         if request.safety_level == SafetyLevel.SAFE or (
             request.safety_level == SafetyLevel.SENSITIVE and (self.auto_approve_all or self.full_access)
         ):

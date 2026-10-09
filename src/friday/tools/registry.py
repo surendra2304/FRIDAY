@@ -130,6 +130,7 @@ class ToolRegistry:
                 name=name,
                 content=error_detail.message,
                 is_error=True,
+                refused=True,
                 safety_level=SafetyLevel.SAFE,
                 error_detail=error_detail,
             )
@@ -159,6 +160,7 @@ class ToolRegistry:
                 name=name,
                 content=error_detail.message,
                 is_error=True,
+                refused=True,
                 safety_level=tool.safety_level,
                 error_detail=error_detail,
             )
@@ -183,7 +185,14 @@ class ToolRegistry:
                     name=name,
                     content=f"Firewall Blocked: {fw_res.reason}",
                     is_error=True,
+                    refused=True,
                     safety_level=tool.safety_level,
+                    error_detail=ToolErrorDetail(
+                        code="FIREWALL_BLOCK",
+                        message=f"Firewall Blocked: {fw_res.reason}",
+                        tool_name=name,
+                        execution_id=exec_id,
+                    ),
                 )
 
         # Check safety permissions via cryptographic ToolAuthorizationCapability
@@ -214,6 +223,13 @@ class ToolRegistry:
                     name=name,
                     content=error_detail.message,
                     is_error=True,
+                    # A policy refusal is the system working as designed, not a
+                    # malfunction. Without this flag the circuit breaker counted
+                    # three refused calls as three failures and disabled the tool
+                    # for a minute, so a user who asked for something sensitive
+                    # three times lost access to it entirely - and anyone who
+                    # wanted a tool disabled could trip it on purpose.
+                    refused=True,
                     safety_level=tool.safety_level,
                     error_detail=error_detail,
                 )
@@ -230,6 +246,10 @@ class ToolRegistry:
                     name=name,
                     content=error_detail.message,
                     is_error=True,
+                    # The breaker refusing traffic is not the tool malfunctioning
+                    # again; counting it as another failure would keep the tool
+                    # disabled for as long as anyone kept calling it.
+                    refused=True,
                     safety_level=tool.safety_level,
                     error_detail=error_detail,
                 )
@@ -294,10 +314,14 @@ class ToolRegistry:
                     error_detail=error_detail,
                 )
 
-            # Record success for circuit breaker
-            if result.is_error:
+            # Record success for circuit breaker. A refusal is the tool working
+            # correctly - it declined for policy or reported a missing file -
+            # so it must not count towards opening the breaker. Counting them
+            # let three refused reads disable read_file for a minute, and let
+            # anyone who wanted a tool unavailable simply trip it on purpose.
+            if result.is_error and not result.refused:
                 cb.record_failure(name)
-            else:
+            elif not result.is_error:
                 cb.record_success(name)
 
             # Attach execution ID to result

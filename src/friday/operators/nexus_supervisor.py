@@ -34,7 +34,9 @@ class NexusSupervisorState:
     pending_approvals_since: datetime | None = None
     baseline_conversion_rate: float = 3.82
     anomaly_alerted: bool = False
-    uptime_ratio_pct: float = 100.0
+    #: None until at least one poll has been recorded; 100.0 here used to
+    #: mean "no data" and "perfect uptime" at the same time.
+    uptime_ratio_pct: float | None = None
 
 
 class NexusSupervisorOperator(BaseOperator):

@@ -92,11 +92,14 @@ class ForgeReviewWorkflow:
             f"**Status:** **{insp.get('state')}** | **Verification:** **{'🟢 ALL PASSED' if all_passed else '🔴 CHECKS FAILED'}** | **Coverage:** `{cov:.1f}%`\n\n"
             f"## 📁 Generated Files & Artifacts ({len(files_created)})\n" +
             file_rows + "\n\n"
-            f"## 🧪 Verification & Test Results\n"
-            f"- **Unit Tests Passed:** `{ver.get('unit_tests_passed', 14)}`\n"
-            f"- **Unit Tests Failed:** `{ver.get('unit_tests_failed', 0)}`\n"
-            f"- **Accessibility & Linting:** `{ver.get('aria_accessibility', 'PASSED')}`\n"
-            f"- **Delivery Package:** `{insp.get('delivery_package_path', 'dist/build.zip')}`\n"
+            f"## 🧪 Verification & Test Results (as recorded)\n"
+            f"- **Unit Tests Passed:** `{ver.get('unit_tests_passed', 'not recorded')}`\n"
+            f"- **Unit Tests Failed:** `{ver.get('unit_tests_failed', 'not recorded')}`\n"
+            f"- **Accessibility & Linting:** `{ver.get('aria_accessibility', 'not recorded')}`\n"
+            # 14 passed / 0 failed / "PASSED" / "dist/build.zip" were defaults here:
+            # a task with no verification block reviewed as fully verified with a
+            # delivery package it never produced.
+            f"- **Delivery Package:** `{insp.get('delivery_package_path') or 'none recorded'}`\n"
         )
 
         return ForgeDeliverableReviewSnapshot(

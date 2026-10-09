@@ -119,22 +119,53 @@ class EcosystemOrchestrator:
             }
 
     def check_system_health(self) -> dict[str, Any]:
-        """Polls health across all 3 systems and flags degraded subsystems."""
+        """Reports each subsystem's health **as reported**, or as unverified.
+
+        ``forge_healthy = True  # FORGE Auth & REST client online`` was a comment
+        doing the work of a health probe: the attribute was always True, so
+        ``all_systems_healthy`` could be True while FORGE was unreachable, and a
+        system that never reported was labelled DEGRADED (a judgement) rather than
+        UNVERIFIED (the fact).
+        """
         status = self.command_center.get_ecosystem_status()
         systems = status.get("systems", {})
 
-        bot_healthy = systems.get("trading_bot", {}).get("status") == "HEALTHY"
-        ai_healthy = systems.get("ai_universe", {}).get("status") == "HEALTHY"
-        forge_healthy = True  # FORGE Auth & REST client online
+        def verdict(name: str) -> str:
+            reading = systems.get(name) or {}
+            if not reading.get("available"):
+                return "UNVERIFIED"
+            return "HEALTHY" if str(reading.get("status", "")).upper() == "HEALTHY" else "DEGRADED"
 
-        all_healthy = bot_healthy and ai_healthy and forge_healthy
+        verdicts = {name: verdict(name) for name in ("trading_bot", "ai_universe", "friday_os")}
+        # FORGE is probed for real: get_forge_health() issues GET /api/health and
+        # reports what came back. (It previously returned a constant HEALTHY, and
+        # this method declined to use it at all, substituting a task count.)
+        forge_health: dict[str, Any] = {}
+        probe = getattr(self.forge_manager, "get_forge_health", None)
+        if callable(probe):
+            try:
+                forge_health = probe() or {}
+            except Exception as exc:  # pragma: no cover - defensive
+                forge_health = {"status": "PROBE FAILED", "error": str(exc), "reachable": False}
+        if forge_health.get("reachable") is True:
+            verdicts["forge"] = "HEALTHY" if str(forge_health.get("status", "")).upper() == "HEALTHY" else "DEGRADED"
+        else:
+            verdicts["forge"] = "UNVERIFIED"
+
+        unverified = sorted(name for name, v in verdicts.items() if v == "UNVERIFIED")
+        all_healthy = not unverified and all(v == "HEALTHY" for v in verdicts.values())
 
         return {
             "all_systems_healthy": all_healthy,
-            "subsystems": {
-                "trading_bot": "HEALTHY" if bot_healthy else "DEGRADED",
-                "ai_universe": "HEALTHY" if ai_healthy else "DEGRADED",
-                "forge": "HEALTHY" if forge_healthy else "DEGRADED",
-            },
+            "subsystems": verdicts,
+            "unverified_subsystems": unverified,
+            "forge_health": forge_health,
+            "evidence": (
+                "Every subsystem reported HEALTHY."
+                if all_healthy
+                else f"No health reading for: {', '.join(unverified)}."
+                if unverified
+                else "All subsystems reported, and at least one is not HEALTHY."
+            ),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }

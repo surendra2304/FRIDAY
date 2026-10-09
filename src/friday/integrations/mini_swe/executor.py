@@ -20,6 +20,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from friday.core.effects import pytest_command
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel
 from friday.integrations.mini_swe.safety import CodingWorkspaceGuard
@@ -140,7 +141,7 @@ class MiniSWEAgentExecutor(BaseExecutor):
             # A. Test execution
             if task_type in ("run_tests", "test"):
                 test_path = inputs.get("test_path") or inputs.get("test_target")
-                cmd = ["pytest"]
+                cmd = pytest_command()
                 if test_path:
                     cmd.append(str(test_path))
                 proc = subprocess.run(

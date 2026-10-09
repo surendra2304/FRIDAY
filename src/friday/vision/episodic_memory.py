@@ -102,7 +102,9 @@ class EpisodicEnvironmentalFact:
             fact_id=str(data.get("fact_id", "")),
             category=str(data.get("category", "ENVIRONMENTAL_FACT")),
             fact_summary=str(data.get("fact_summary", "")),
-            confidence=float(data.get("confidence", 1.0)),
+            # 1.0 used to stand in for "the extractor did not report one",
+            # which made a fact with no confidence as certain as a measured one.
+            confidence=float(data.get("confidence", 0.0)),
             importance=imp,
             source_application=data.get("source_application"),
             window_title=data.get("window_title"),

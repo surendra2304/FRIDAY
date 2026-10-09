@@ -35,7 +35,9 @@ class SentinelVigilanceState:
     pending_approvals_since: datetime | None = None
     last_known_critical_count: int = 0
     last_known_high_count: int = 0
-    uptime_ratio_pct: float = 100.0
+    #: None until at least one poll has been recorded; 100.0 here used to
+    #: mean "no data" and "perfect uptime" at the same time.
+    uptime_ratio_pct: float | None = None
 
 
 class SentinelVigilanceOperator(BaseOperator):

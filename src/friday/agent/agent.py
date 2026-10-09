@@ -179,10 +179,15 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
         self._ui_provider = None
         self.llm = llm_provider or create_llm_provider(self.settings)
         self.memory = memory if memory is not None else create_memory(self.settings, conversation_id=conversation_id)
+        # The default registry constructs RunSkillTool. Set both dependencies
+        # first so the bridge gets the caller's actual skill catalog and
+        # authorizer rather than silently capturing None/global defaults.
+        self.authorizer = authorizer or DefaultSecureAuthorizer()
+        self._skill_registry: Any | None = skill_registry
         self.tools = tool_registry or self._create_default_registry()
+        self._bind_skill_bridge_dependencies(skill_registry_was_injected=skill_registry is not None)
         self.max_tool_iterations = max(1, max_tool_iterations)
         self.tool_callback = tool_callback
-        self.authorizer = authorizer or DefaultSecureAuthorizer()
         self.tool_timeout = tool_timeout
         self.system_message = build_system_message(self.settings)
         self._processed_tool_ids: set = set()
@@ -203,7 +208,6 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
             notifications=self.notifications,
             user_name=self.settings.user_name,
         )
-        self._skill_registry: Any | None = skill_registry
 
         if self.settings.memory_retention_days:
             self.prune_memory(self.settings.memory_retention_days)
@@ -213,6 +217,22 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
             f"(model: '{self.llm.model}') and {len(self.tools.list_tools())} loaded tools. "
             f"Max tool iterations: {self.max_tool_iterations}."
         )
+
+    def _bind_skill_bridge_dependencies(self, skill_registry_was_injected: bool) -> None:
+        """Ensure a custom run_skill tool inherits the agent's security/context."""
+        from friday.tools.builtin.skill_tools import RunSkillTool
+
+        bridge = self.tools.get("run_skill")
+        if not isinstance(bridge, RunSkillTool):
+            return
+        if bridge._authorizer is None:
+            bridge._authorizer = self.authorizer
+        if skill_registry_was_injected:
+            bridge._skill_registry = self._skill_registry
+        if bridge._tool_registry is None:
+            bridge._tool_registry = self.tools
+        if bridge._llm_provider is None:
+            bridge._llm_provider = self.llm
 
     @property
     def ui_provider(self):
@@ -617,6 +637,7 @@ class FridayAgent(MemoryMixin, FastPathMixin, ToolExecutionMixin, CognitiveMixin
     )
     _CHROME_SEARCH_PATTERN = re.compile(
         r"^\s*(?:please\s+)?(?:(?:open|launch|start)\s+)?(?:chrome|google chrome)\s+and\s+search\s+(?P<query>.+?)\s*$|"
+        r"^\s*(?:please\s+)?search\s+in\s+(?:chrome|google chrome)\s+(?:for\s+)?(?P<query3>.+?)\s*$|"
         r"^\s*(?:please\s+)?search\s+(?P<query2>.+?)\s+in\s+(?:chrome|google chrome)\s*$",
         re.IGNORECASE,
     )

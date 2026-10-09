@@ -82,13 +82,35 @@ def test_live_operations_polling_and_pnl(live_ops_setup):
     assert state.risk_proximity.daily_loss_headroom_usdt > 0
     assert state.risk_proximity.proximity_warning_level in ("NORMAL", "ELEVATED", "CRITICAL")
 
-    # Spoken summaries
+    # Spoken summaries. The wording says "Reported" because these figures come
+    # from the mock bridge, not from a default inside the centre.
     pnl_spoken = live_ops.get_spoken_pnl_summary()
-    assert "Your live P&L today is" in pnl_spoken
+    assert "Reported live P&L today is" in pnl_spoken
     assert "Total live equity is" in pnl_spoken
 
     risk_spoken = live_ops.get_spoken_risk_proximity_summary()
     assert "Risk limit status:" in risk_spoken
+
+
+def test_live_operations_with_an_unreachable_bridge_reports_nothing(tmp_path):
+    """No bridge, no numbers: the centre must not fall back to a demo account."""
+    from friday.trading.live_operations import LiveOperationsCenter
+    from friday.skills.trading_bot_operator import TradingBotOperator
+
+    # Port 9 (discard) is closed here; the operator's HTTP call fails fast.
+    dead = TradingBotOperator(base_url="http://127.0.0.1:9")
+    centre = LiveOperationsCenter(bot_operator=dead, daily_loss_limit_usdt=500.0, max_drawdown_limit_pct=5.0)
+
+    state = centre.poll_live_state()
+
+    assert state.available is False
+    assert state.total_equity is None
+    assert state.total_pnl_today is None
+    assert state.positions == []
+    assert state.risk_proximity.proximity_warning_level == "UNKNOWN"
+
+    assert "has not reported" in centre.get_spoken_pnl_summary()
+    assert "UNKNOWN, not NORMAL" in centre.get_spoken_risk_proximity_summary()
 
 
 # =========================================================================
@@ -183,16 +205,21 @@ def test_live_vigilance_operator_alert_triggers(live_ops_setup):
     server.set_scenario("mixed")
 
     events = vigilance.tick()
-    # In mixed scenario with normal parameters, no critical alerts emitted
+    # In the mixed scenario the reported drawdown (1.45%) is well inside the 5%
+    # limit, so nothing critical is raised.
     assert isinstance(events, list)
+    assert not any(e["severity"] == "CRITICAL" for e in events)
 
-    # Force drawdown breach simulation
-    live_ops.max_drawdown_limit_pct = 1.0  # Force current 1.45% drawdown to exceed limit
+    # Drive a real breach: the *bridge* reports a 4.6% drawdown against a 5%
+    # limit (92% of the limit), which is what the operator is supposed to catch.
+    server.state.drawdown_pct = 4.6
     crit_events = vigilance.tick()
-    assert any(e["severity"] == "CRITICAL" for e in crit_events)
+    assert any(e["severity"] == "CRITICAL" for e in crit_events), (
+        "a reported drawdown at 92% of the limit must raise a critical alert"
+    )
 
     # Reset
-    live_ops.max_drawdown_limit_pct = 5.0
+    server.state.drawdown_pct = 1.45
 
 
 # =========================================================================
@@ -207,7 +234,7 @@ def test_voice_live_trading_safe_commands(live_ops_setup):
     # 1. "What's my live P&L?"
     res1 = skill.execute("What's my live P&L?")
     assert res1.success is True
-    assert "Your live P&L today is" in res1.output
+    assert "Reported live P&L today is" in res1.output
 
     # 2. "How far from my risk limits?"
     res2 = skill.execute("How far from my risk limits?")

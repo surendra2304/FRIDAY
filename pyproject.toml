@@ -30,10 +30,6 @@ dependencies = [
     "rich>=13.0.0",
     "pytesseract>=0.3.10",
     "pillow>=10.0.0",
-    "resemblyzer>=0.1.3",
-    # Windows: webrtcvad (resemblyzer dep) has no MSVC-free sdist build;
-    # webrtcvad-wheels provides the prebuilt drop-in.
-    "webrtcvad-wheels>=2.0.14rc1; sys_platform == 'win32'",
     "chromadb>=0.4.0",
     "PyGithub>=2.0.0",
     "psutil>=5.9.0",
@@ -42,6 +38,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# These integrations have platform-specific or heavyweight dependencies and stay opt-in.
+voice-bio = [
+    "resemblyzer>=0.1.3",
+    # Windows needs a prebuilt VAD wheel for resemblyzer's webrtcvad dependency.
+    "webrtcvad-wheels>=2.0.14rc1; sys_platform == 'win32'",
+]
+desktop = [
+    "PyQt6>=6.5.0",
+    "keyboard>=0.13.5",
+]
 dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",

@@ -137,7 +137,12 @@ def test_ecosystem_dashboard_panel_assembly(ecosystem_center_setup):
     assert "trading_bot" in data["cards"]
     assert "forge" in data["cards"]
     assert "ai_universe" in data["cards"]
+    # The feed is built from the subsystems' own reports rather than invented
+    # entries, so every registered subsystem appears with its real status -
+    # including "UNVERIFIED", which is itself a report worth showing.
     assert len(data["alerts_feed"]) >= 2
+    assert set(data["cards"]).issubset({entry["subsystem"] for entry in data["alerts_feed"]})
+    assert all("message" in entry for entry in data["alerts_feed"])
     assert len(data["one_click_actions"]) >= 2
 
     md = panel.render_markdown()

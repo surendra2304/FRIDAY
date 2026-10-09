@@ -647,7 +647,9 @@ class GeminiLiveVoiceSession:
         # currently classified as instant, but never let it preempt a verified
         # FridayAgent action (for example close Chrome or close the active tab).
         from friday.devices.windows_friday import windows_friday
-        handled, friday_reply, _friday_meta = windows_friday.handle_directive(text)
+        handled, friday_reply, _friday_meta = windows_friday.handle_directive(
+            text, authorizer=getattr(self.agent, "authorizer", None)
+        )
         if handled:
             try:
                 await self.send_text(f"FRIDAY, acknowledge briefly that you completed: {friday_reply}")

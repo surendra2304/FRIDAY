@@ -44,18 +44,41 @@ class ProductionDashboard:
         ai = report.ai_universe
         active_alerts = self.alert_manager.get_active_alerts()
 
-        # Status Badges
-        bot_badge = "🟢 ONLINE" if bot.get("status") in ("ACTIVE", "HEALTHY") else ("🔴 PANIC" if bot.get("status") == "PANIC" else "⚠️ DOWN")
-        ai_badge = "🟢 HEALTHY" if ai.get("health") == "HEALTHY" else "⚠️ DEGRADED"
-        sys_badge = "🟢 HEALTHY" if report.overall_status == "HEALTHY" else ("⚠️ DEGRADED" if report.overall_status == "DEGRADED" else "🚨 CRITICAL")
+        # Status Badges. Green is reserved for a reported healthy state; an
+        # unreported subsystem used to be badged "⚠️ DEGRADED" (a judgement) and
+        # the FRIDAY OS row below was hardcoded "🟢 HEALTHY".
+        def _badge(value: str | None) -> str:
+            text = str(value or "UNREPORTED").upper()
+            if text in ("ONLINE", "ACTIVE", "HEALTHY", "OK"):
+                return f"🟢 {text}"
+            if text in ("UNREPORTED", "UNKNOWN", ""):
+                return "⚪ UNREPORTED"
+            return f"🔴 {text}" if text in ("DOWN", "PANIC", "UNREACHABLE") else f"⚠️ {text}"
 
-        # Metric parsing
-        equity = float(bot.get("equity", 10000.0))
-        cash = float(bot.get("cash", 8000.0))
-        unrealized = float(bot.get("unrealized_pnl", 0.0))
-        today_pnl = float(bot.get("today_pnl", 0.0))
-        pf = float(bot.get("profit_factor", 1.5))
-        win_rate = float(bot.get("win_rate_pct", 55.0))
+        bot_badge = _badge(bot.get("status"))
+        ai_badge = _badge(ai.get("health"))
+        sys_badge = {
+            "HEALTHY": "🟢 HEALTHY",
+            "DEGRADED": "⚠️ DEGRADED",
+            "UNVERIFIED": "⚪ UNVERIFIED",
+            "CRITICAL": "🚨 CRITICAL",
+        }.get(report.overall_status, f"⚪ {report.overall_status}")
+
+        # Metric parsing. A missing figure is None and renders as unknown: the
+        # defaults here were $10,000 equity, $8,000 cash, a 1.5 profit factor and
+        # a 55% win rate, all printed as the operator's account.
+        from friday.core.readings import format_money, format_number
+
+        def _num(key: str):
+            value = bot.get(key)
+            return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+        equity = _num("equity")
+        cash = _num("cash")
+        unrealized = _num("unrealized_pnl")
+        today_pnl = _num("today_pnl")
+        pf = _num("profit_factor")
+        win_rate = _num("win_rate_pct")
         positions = bot.get("positions", [])
 
         # Active Parameter Overlays
@@ -72,15 +95,18 @@ class ProductionDashboard:
                 "| :--- | :---: | :--- | :--- | :--- |\n" + "\n".join(alert_rows)
             )
         else:
-            alert_table = "✅ *No active unacknowledged alerts. All systems running within normal parameters.*"
+            alert_table = (
+                "*No unacknowledged alert is on record. That is not evidence that every limit was "
+                "measured - only that nothing was raised.*"
+            )
 
         # Positions table
         pos_rows = []
         if positions:
             for p in positions:
-                sym = p.get("symbol", "UNKNOWN")
-                side = p.get("side", "LONG")
-                size = p.get("size", 0.0)
+                sym = p.get("symbol") or "unspecified"
+                side = p.get("side") or "unspecified"
+                size = p.get("size", "not reported")
                 pnl = p.get("unrealized_pnl", 0.0)
                 pos_rows.append(f"| **{sym}** | `{side}` | {size} | {pnl:+.2f} USDT |")
             pos_table = (
@@ -88,7 +114,7 @@ class ProductionDashboard:
                 "| :--- | :---: | :---: | :---: |\n" + "\n".join(pos_rows)
             )
         else:
-            pos_table = "*No active open positions.*"
+            pos_table = "*No position was reported by the trading bridge.*"
 
         # Cascading failure alert
         cascade_block = ""
@@ -97,18 +123,23 @@ class ProductionDashboard:
 
         dashboard_md = (
             f"# 🎛️ FRIDAY Production Supervision Dashboard\n\n"
-            f"**Overall Health:** **{sys_badge}** | **Environment:** `BINANCE_FUTURES_TESTNET` | **Updated:** `{report.timestamp[:19]} UTC`\n"
+            f"**Overall Health:** **{sys_badge}** | **Environment Reported:** "
+            f"`{bot.get('trading_mode') or 'not reported'}` | **Updated:** `{report.timestamp[:19]} UTC`\n"
             f"{cascade_block}\n"
             f"## 🏛️ System Tier Status Overview\n\n"
             f"| Tier Component | Status | Latency | Key Details |\n"
             f"| :--- | :---: | :---: | :--- |\n"
-            f"| **Trading Bot Engine** | **{bot_badge}** | `{bot.get('latency_ms', 0)}ms` | Mode: `{bot.get('trading_mode', 'TESTNET')}`, Status: `{bot.get('status', 'ACTIVE')}` |\n"
-            f"| **AI-Universe Intelligence** | **{ai_badge}** | `{ai.get('latency_ms', 0)}ms` | Enabled: `{ai.get('enabled', True)}`, Last Consult: `{ai.get('last_consult', 'Recent')}` |\n"
-            f"| **FRIDAY Operating System** | **🟢 HEALTHY** | `<1ms` | Threads: `{report.friday_os.get('active_threads')}`, PID: `{report.friday_os.get('pid')}` |\n\n"
+            f"| **Trading Bot Engine** | **{bot_badge}** | `{format_number(bot.get('latency_ms'), 0, ' ms')}` | "
+            f"Mode: `{bot.get('trading_mode') or 'not reported'}`, Reported: `{bot.get('error') or 'ok'}` |\n"
+            f"| **AI-Universe Intelligence** | **{ai_badge}** | `{format_number(ai.get('latency_ms'), 0, ' ms')}` | "
+            f"Enabled: `{ai.get('enabled', 'not reported')}`, Last Consult: `{ai.get('last_consult') or 'not reported'}` |\n"
+            f"| **FRIDAY Operating System** | **⚪ SELF-REPORT** | `n/a` | "
+            f"Threads: `{report.friday_os.get('active_threads')}`, PID: `{report.friday_os.get('pid')}` |\n\n"
             f"## 📈 Trading Performance Summary\n\n"
-            f"- **Account Equity:** **${equity:,.2f} USDT** (Cash: `${cash:,.2f}`)\n"
-            f"- **Today's Cumulative PnL:** **{today_pnl:+.2f} USDT** (Unrealized: `{unrealized:+.2f} USDT`)\n"
-            f"- **Profit Factor:** **{pf:.2f}** | **Win Rate:** **{win_rate:.1f}%**\n"
+            f"- **Account Equity:** **{format_money(equity)} USDT** (Cash: `{format_money(cash)}`)\n"
+            f"- **Today's Cumulative PnL:** **{format_money(today_pnl)} USDT** "
+            f"(Unrealized: `{format_money(unrealized)} USDT`)\n"
+            f"- **Profit Factor:** **{format_number(pf, 2)}** | **Win Rate:** **{format_number(win_rate, 1, '%')}**\n"
             f"- **AI Parameter Overlays:** {overlay_str}\n\n"
             f"### Active Positions\n{pos_table}\n\n"
             f"## 🚨 Active Alerts & Incidents\n{alert_table}\n\n"
@@ -122,18 +153,28 @@ class ProductionDashboard:
     def render_trading_performance_summary(self) -> str:
         """Returns a spoken and concise performance summary."""
         try:
-            bot = self.bot_operator.get_status()
-            equity = float(bot.get("equity", 10000.0))
-            unrealized = float(bot.get("unrealized_pnl", 0.0))
-            today_pnl = float(bot.get("today_pnl", 0.0))
-            pf = float(bot.get("profit_factor", 1.5))
-            win_rate = float(bot.get("win_rate_pct", 55.0))
-            pos_count = len(bot.get("positions", []))
+            from friday.core.readings import format_money, format_number
 
+            bot = self.bot_operator.get_status()
+
+            def _num(key: str):
+                value = bot.get(key)
+                return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+            if not bot:
+                return (
+                    "The trading bridge has not reported, so I have no equity, P&L, profit factor or "
+                    "win rate to summarise."
+                )
+
+            pos_count = len(bot.get("positions", []) or [])
             return (
-                f"Trading performance is active on Binance Futures Testnet. Total equity is ${equity:,.2f} USDT "
-                f"with an unrealized PnL of {unrealized:+.2f} USDT across {pos_count} open positions. "
-                f"Today's cumulative return is {today_pnl:+.2f} USDT with a profit factor of {pf:.2f} and a win rate of {win_rate:.1f}%."
+                f"Reported trading mode is {bot.get('trading_mode') or 'not reported'}. Total equity is "
+                f"{format_money(_num('equity'))} USDT with an unrealized PnL of "
+                f"{format_money(_num('unrealized_pnl'))} USDT across {pos_count} reported positions. "
+                f"Today's return is {format_money(_num('today_pnl'))} USDT with a profit factor of "
+                f"{format_number(_num('profit_factor'), 2)} and a win rate of "
+                f"{format_number(_num('win_rate_pct'), 1, '%')}."
             )
         except Exception as e:
             return f"Failed to retrieve trading performance: {e}"

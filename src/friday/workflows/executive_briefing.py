@@ -76,9 +76,10 @@ class DailyExecutiveBriefingWorkflow:
         now_iso = datetime.now(timezone.utc).isoformat()
         status = self.command_center.get_ecosystem_status()
         state = status.get("ecosystem_state", "SUPERVISED_AUTONOMY")
-        bot = status.get("systems", {}).get("trading_bot", {})
-        pnl = bot.get("daily_pnl_usdt", 0.0)
-        sign = "+" if pnl >= 0 else ""
+        systems = status.get("systems", {})
+        bot = systems.get("trading_bot", {})
+        ai = systems.get("ai_universe", {})
+        friday_os = systems.get("friday_os", {})
         risk = status.get("risk_posture", {})
 
         intel = self.intel_engine.get_market_intelligence_report()
@@ -86,27 +87,67 @@ class DailyExecutiveBriefingWorkflow:
         onchain = intel.get("on_chain", {})
         acc = intel.get("accuracy", {})
 
+        from friday.core.readings import UNKNOWN_LABEL, read_number, read_text
+
+        pnl = read_number(bot, "daily_pnl_usdt", source="trading bot")
+        positions = read_number(bot, "active_positions_count", source="trading bot")
+        venues = bot.get("connected_venues")
+        venue_text = ", ".join(venues) if isinstance(venues, (list, tuple)) and venues else UNKNOWN_LABEL
+        prox = read_number(risk, "daily_loss_limit_proximity_pct", source="risk posture")
+        lev = read_number(risk, "aggregate_leverage", source="risk posture")
+        flow = read_number(onchain, "net_exchange_flow_btc", source="on-chain intelligence")
+
+        # "with all three systems HEALTHY", "3 active positions", "84% confidence",
+        # "3 active predictions", "one candidate strategy passed all validation
+        # gates" - all of it was written into the string. A briefing is the one
+        # artefact the owner reads first and trusts most, so a fabricated line in
+        # it is the most expensive kind of wrong. Every clause is now a reading
+        # or an explicit unknown.
+        system_lines = []
+        for label, reading in (("Trading Bot", bot), ("AI-Universe Core", ai), ("FRIDAY OS", friday_os)):
+            if reading.get("available"):
+                system_lines.append(f"{label}: {reading.get('status', 'reported')}")
+            else:
+                system_lines.append(f"{label}: {UNKNOWN_LABEL}")
+
+        if pnl.known or positions.known:
+            trading_clause = (
+                f"Trading produced {pnl.currency()} USDT across {positions.number(0)} active positions "
+                f"over venues {venue_text}. "
+            )
+        else:
+            trading_clause = (
+                "No trading figures were reported, so this briefing contains no P&L and no position count. "
+            )
+
         spoken = (
             f"Good morning Operator Surendra. Here is your morning executive briefing for {datetime.now(timezone.utc).strftime('%A, %B %d')}. "
-            f"The ecosystem is operating in {state} with all three systems HEALTHY. "
-            f"Overnight trading across Binance, Bybit, and OKX produced {sign}${pnl:,.2f} USDT across 3 active positions. "
-            f"Risk limit utilization is low at {risk.get('daily_loss_limit_proximity_pct', 14.5):.1f}%, and aggregate leverage is {risk.get('aggregate_leverage', 0.85):.2f}x. "
-            f"On-chain signals show {abs(onchain.get('net_exchange_flow_btc', -6500)):,.0f} BTC in net exchange outflows, supporting our bullish BTC posture. "
-            f"One candidate strategy, Order_Flow_Imbalance, passed all validation gates and awaits your voice review."
+            f"Ecosystem state is {state}; system readings - {'; '.join(system_lines)}. "
+            f"{trading_clause}"
+            f"Risk limit utilisation is {prox.percent()} and aggregate leverage is {lev.number(2, 'x')}. "
+            f"On-chain net exchange flow is {flow.number(0, ' BTC')}. "
+            f"The candidate strategy list is reported below; nothing is awaiting review unless it is named there."
         )
 
         md = (
             f"# 🌅 FRIDAY Morning Executive Briefing\n\n"
-            f"**Date:** `{now_iso[:10]}` | **Ecosystem State:** **🟢 {state}** | **Daily P&L:** `{sign}${pnl:,.2f} USDT`\n\n"
+            f"**Date:** `{now_iso[:10]}` | **Ecosystem State:** `{state}` | **Daily P&L:** `{pnl.currency()} USDT`\n\n"
+            f"**Data provenance:** {status.get('data_provenance', 'unknown')}\n\n"
             f"## 🏛️ Executive Health Summary\n"
-            f"- **Trading Bot:** `HEALTHY` (3 Venues, {bot.get('active_positions_count')} positions)\n"
-            f"- **AI-Universe Core:** `HEALTHY` (Confidence: 84%, 3 Active Predictions)\n"
-            f"- **FRIDAY OS:** `HEALTHY` (24/7 Guardian Angel Active)\n\n"
+            f"- **Trading Bot:** `{bot.get('status', UNKNOWN_LABEL)}` "
+            f"(venues: {venue_text}; positions: {positions.number(0)})\n"
+            f"- **AI-Universe Core:** `{ai.get('status', UNKNOWN_LABEL)}` "
+            f"(confidence: {read_number(ai, 'model_confidence').number(2)}; "
+            f"active predictions: {read_number(ai, 'active_predictions_count').number(0)})\n"
+            f"- **FRIDAY OS:** `{friday_os.get('status', UNKNOWN_LABEL)}` "
+            f"(guardian vigilance: {read_text(friday_os, 'guardian_vigilance')})\n\n"
             f"## 🔮 Strategic Outlook & Risk Posture\n"
-            f"- **Market Sentiment:** `{sent.get('news_sentiment_label')}` (Fear & Greed: `{sent.get('fear_and_greed_index')}/100`)\n"
-            f"- **Whale Flow:** `{onchain.get('net_exchange_flow_btc'):+,.0f} BTC` ({onchain.get('exchange_reserve_trend')})\n"
-            f"- **Daily Loss Headroom:** `{100.0 - risk.get('daily_loss_limit_proximity_pct', 14.5):.1f}% remaining`\n"
-            f"- **Model Calibration:** **{acc.get('calibration_status')}** ({acc.get('rolling_30d_directional_accuracy_pct'):.1f}% 30d accuracy)\n"
+            f"- **Market Sentiment:** `{read_text(sent, 'news_sentiment_label')}` "
+            f"(Fear & Greed: `{read_number(sent, 'fear_and_greed_index').number(0)}/100`)\n"
+            f"- **Whale Flow:** `{flow.number(0, ' BTC')}` ({read_text(onchain, 'exchange_reserve_trend')})\n"
+            f"- **Daily Loss Headroom:** `{prox.known and f'{100.0 - prox.value:.1f}% remaining' or UNKNOWN_LABEL}`\n"
+            f"- **Model Calibration:** `{read_text(acc, 'calibration_status')}` "
+            f"({read_number(acc, 'rolling_30d_directional_accuracy_pct').percent()})\n"
         )
 
         return ExecutiveBriefingSnapshot(

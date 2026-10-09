@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 from friday.cognition.reviewer import MAX_REPLACEMENT_LINES, LocalReviewer
+from friday.cognition.tool_paths import ToolPathError, resolve_tool_module_path
 from friday.core.logging import get_logger
 
 logger = get_logger("cognition.installation")
@@ -166,11 +167,21 @@ class CapabilityInstaller:
         against the candidate before the gate sees it *and again on the applied tree*,
         where the file that will actually be imported is the one being tested.
         """
-        relative = relative_path or f"src/friday/tools/builtin/{tool_name}.py"
-        relative = relative.lstrip("./")
+        requested_path = relative_path or f"src/friday/tools/builtin/{tool_name}.py"
+        try:
+            relative, destination = resolve_tool_module_path(
+                self.repo_root, requested_path, tool_name=tool_name
+            )
+        except ToolPathError as exc:
+            return InstallOutcome(
+                tool=tool_name,
+                capability=capability,
+                path=requested_path,
+                gate_step="propose",
+                outcome="REFUSED",
+                detail=f"unsafe generated-tool path: {exc}",
+            )
         outcome = InstallOutcome(tool=tool_name, capability=capability, path=relative)
-
-        destination = self.repo_root / relative
         if destination.exists():
             outcome.gate_step = "propose"
             outcome.outcome = "REFUSED"

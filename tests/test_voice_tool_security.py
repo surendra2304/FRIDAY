@@ -181,8 +181,17 @@ async def test_D_sensitive_authorization_blocks_without_approval():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.anyio
-async def test_E_dangerous_tool_blocked():
+async def test_E_dangerous_tool_blocked(monkeypatch):
+    from types import SimpleNamespace
+
     from friday.core.auth import DefaultSecureAuthorizer
+
+    # The headless authorizer must not let either privileged mode bypass the
+    # documented explicit-confirmation boundary for dangerous operations.
+    monkeypatch.setattr(
+        "friday.core.config.get_settings",
+        lambda: SimpleNamespace(autonomous_mode=True, full_access_mode=True),
+    )
     registry = ToolRegistry()
     registry.register(DangerousTool())
     agent = _make_agent(registry, DefaultSecureAuthorizer())

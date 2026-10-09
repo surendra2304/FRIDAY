@@ -125,12 +125,37 @@ class AndroidKeyEventTool(BaseTool):
     }
 
     def execute(self, key: str, **kwargs: Any) -> ToolResult:
-        success = _controller.press_key(str(key))
-        if success:
+        wanted = str(key).strip().lower()
+        # Two different failures used to share one sentence. A key that is not in
+        # the map cannot work on any device, while a valid key fails when no
+        # device is attached - and the old message listed the supported keys in
+        # both cases, so a user with an unplugged phone was told to fix their
+        # spelling of 'home', which was already correct and already supported.
+        if wanted not in KEY_EVENT_MAP and not wanted.isdigit():
+            return ToolResult(
+                name=self.name,
+                content=(
+                    f"'{key}' is not a key FRIDAY can send. Supported: "
+                    f"{', '.join(sorted(KEY_EVENT_MAP.keys()))}."
+                ),
+                is_error=True,
+                refused=True,
+            )
+        if not _controller.is_connected():
+            return ToolResult(
+                name=self.name,
+                content=(
+                    f"Could not press '{key}': no Android device is connected over ADB. "
+                    "The key name is valid; connect the phone with USB debugging enabled and try again."
+                ),
+                is_error=True,
+                refused=True,
+            )
+        if _controller.press_key(wanted):
             return ToolResult(name=self.name, content=f"Pressed Android key '{key}'.")
         return ToolResult(
             name=self.name,
-            content=f"Failed to press Android key '{key}'. Supported: {', '.join(sorted(KEY_EVENT_MAP.keys()))}.",
+            content=f"ADB rejected the key event '{key}' on the connected device.",
             is_error=True,
         )
 

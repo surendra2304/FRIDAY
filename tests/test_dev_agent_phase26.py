@@ -47,17 +47,22 @@ def test_run_tests_tool_mocked():
         assert "5 passed" in res.content
 
 
-def test_create_git_branch_tool_is_sensitive():
+def test_create_git_branch_tool_is_sensitive(tmp_path):
     """CreateGitBranchTool is marked SENSITIVE and invokes git checkout -b."""
     tool = CreateGitBranchTool()
     assert tool.safety_level == SafetyLevel.SENSITIVE
 
+    # A repository has to be named: the tool refuses to move the HEAD of a
+    # checkout the caller did not point at, and refuses FRIDAY's own outright.
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+
     with mock.patch("friday.tools.builtin.git_tools._run_git_command") as mock_git:
         mock_git.return_value = (0, "Switched to a new branch 'fix/issue-4'", "")
-        res = tool.execute(branch_name="fix/issue-4")
-        assert not res.is_error
+        res = tool.execute(branch_name="fix/issue-4", cwd=str(repo))
+        assert not res.is_error, res.content
         assert "Created and checked out git branch 'fix/issue-4'" in res.content
-        mock_git.assert_called_once_with(["checkout", "-b", "fix/issue-4"], cwd=None)
+        mock_git.assert_called_once_with(["checkout", "-b", "fix/issue-4"], cwd=str(repo))
 
 
 def test_developer_agent_instantiation():

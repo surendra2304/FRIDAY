@@ -65,9 +65,32 @@ class MultiModalInterface:
 
     def render_mobile_dashboard_html(self, telemetry: dict[str, Any]) -> str:
         """Renders mobile-optimized, responsive HTML dashboard view."""
+        from friday.core.readings import UNKNOWN_LABEL, read_number, read_text
+
         bot = telemetry.get("trading_bot", {})
         forge = telemetry.get("forge", {})
         ai = telemetry.get("ai_universe", {})
+
+        # The mobile view carried a hardcoded "ONLINE" badge and invented
+        # telemetry: $10,450 equity, a +$420.50 day, 3 positions, 2 delivered
+        # builds at 96.0% coverage, 7 providers at 84% confidence with 128
+        # consultations. On a phone, nobody can check any of it.
+        equity = read_number(bot, "equity_usdt", source="trading bot")
+        pnl = read_number(bot, "daily_pnl_usdt", source="trading bot")
+        bot_positions = read_number(bot, "active_positions_count", source="trading bot")
+        builds = read_number(forge, "total_completed", source="forge")
+        coverage = read_number(forge, "mean_test_coverage_pct", source="forge")
+        providers = read_number(ai, "configured_providers_count", source="ai universe")
+        confidence = read_number(ai, "model_confidence_pct", source="ai universe")
+        consultations = read_number(ai, "consultations_today", source="ai universe")
+        any_reading = any(
+            r.known for r in (equity, pnl, bot_positions, builds, coverage, providers, confidence, consultations)
+        )
+        badge = "REPORTED" if any_reading else UNKNOWN_LABEL
+        badge_colour = "var(--green)" if any_reading else "#8b949e"
+
+        def money(reading) -> str:
+            return UNKNOWN_LABEL if not reading.known else f"${reading.value:,.2f}"
 
         return f"""<!DOCTYPE html>
 <html lang="en">
@@ -79,7 +102,7 @@ class MultiModalInterface:
     :root {{ --bg: #0d1117; --card-bg: #161b22; --accent: #58a6ff; --text: #c9d1d9; --green: #3fb950; --red: #f85149; }}
     body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 12px; }}
     .header {{ display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; border-bottom: 1px solid #30363d; }}
-    .badge {{ background: var(--green); color: #000; padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; }}
+    .badge {{ background: {badge_colour}; color: #000; padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; }}
     .card {{ background: var(--card-bg); border-radius: 8px; padding: 14px; margin-top: 12px; border: 1px solid #30363d; }}
     .card h3 {{ margin: 0 0 8px 0; font-size: 16px; display: flex; align-items: center; gap: 6px; }}
     .metric {{ font-size: 22px; font-weight: bold; color: #fff; margin: 4px 0; }}
@@ -92,24 +115,24 @@ class MultiModalInterface:
 <body>
   <div class="header">
     <h2>FRIDAY OS</h2>
-    <span class="badge">ONLINE</span>
+    <span class="badge">{badge}</span>
   </div>
   <div class="card">
     <h3>📈 Trading Bot</h3>
-    <div class="metric">${bot.get('equity_usdt', 10450.0):,.2f} USDT</div>
-    <div class="subtext">Daily P&L: +${bot.get('daily_pnl_usdt', 420.50):,.2f} | {bot.get('active_positions_count', 3)} Positions</div>
+    <div class="metric">{money(equity)} USDT</div>
+    <div class="subtext">Daily P&L: {money(pnl)} | {bot_positions.number(0)} Positions</div>
     <button class="action-btn btn-panic">Emergency Stop Trading</button>
   </div>
   <div class="card">
     <h3>🛠️ FORGE SWE Engine</h3>
-    <div class="metric">{forge.get('status', 'IDLE')}</div>
-    <div class="subtext">Delivered: {forge.get('total_completed', 2)} builds | Coverage: {forge.get('mean_test_coverage_pct', 96.0):.1f}%</div>
+    <div class="metric">{read_text(forge, 'status')}</div>
+    <div class="subtext">Delivered: {builds.number(0)} builds | Coverage: {coverage.percent()}</div>
     <button class="action-btn btn-build">Submit New Build</button>
   </div>
   <div class="card">
     <h3>🧠 AI-Universe</h3>
-    <div class="metric">{ai.get('configured_providers_count', 7)} Providers</div>
-    <div class="subtext">Confidence: {ai.get('model_confidence_pct', 84.0):.0f}% | {ai.get('consultations_today', 128)} consultations</div>
+    <div class="metric">{providers.number(0)} Providers</div>
+    <div class="subtext">Confidence: {confidence.percent(0)} | {consultations.number(0)} consultations</div>
   </div>
 </body>
 </html>"""

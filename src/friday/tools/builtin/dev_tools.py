@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from friday.core.logging import get_logger
+from friday.core.effects import missing_module_hint, pytest_command
 from friday.core.types import SafetyLevel, ToolResult
 from friday.tools.base import BaseTool
 
@@ -49,8 +50,14 @@ class WriteCodeFileTool(BaseTool):
                 safety_level=self.safety_level,
             )
 
+        from friday.security.workspace_policy import PathPolicyError, shared_policy
+
         try:
-            target = Path(clean_path).resolve()
+            # This tool previously wrote anywhere, including over FRIDAY's own
+            # package, with no mandate, capability or signature. The policy
+            # applies the same roots as read_file and refuses self-modification
+            # unless the operator has enabled it.
+            target = shared_policy().resolve_for_write(clean_path, label="filepath")
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(code, encoding="utf-8")
             logger.info(f"Successfully wrote code file '{target}' ({len(code)} chars)")
@@ -60,6 +67,14 @@ class WriteCodeFileTool(BaseTool):
                 is_error=False,
                 safety_level=self.safety_level,
                 metadata={"filepath": str(target), "bytes_written": len(code.encode('utf-8'))},
+            )
+        except PathPolicyError as e:
+            return ToolResult(
+                name=self.name,
+                content=f"Security Error: {e}",
+                is_error=True,
+                refused=True,
+                safety_level=self.safety_level,
             )
         except Exception as e:
             logger.error(f"Failed to write code file '{clean_path}': {e}")
@@ -106,8 +121,15 @@ class ReplaceFileContentTool(BaseTool):
         if not old_text:
             return ToolResult(name=self.name, content="Error: old_text cannot be empty.", is_error=True, safety_level=self.safety_level)
 
+        from friday.security.workspace_policy import PathPolicyError, shared_policy
+
         try:
-            target = Path(clean_path).resolve()
+            target = shared_policy().resolve_for_write(clean_path, label="filepath")
+        except PathPolicyError as e:
+            return ToolResult(name=self.name, content=f"Security Error: {e}", is_error=True,
+                              refused=True, safety_level=self.safety_level)
+
+        try:
             if not target.exists() or not target.is_file():
                 return ToolResult(name=self.name, content=f"Error: File '{clean_path}' does not exist.", is_error=True, safety_level=self.safety_level)
                 
@@ -161,7 +183,12 @@ class RunTestsTool(BaseTool):
     }
 
     def execute(self, test_path: str | None = None, extra_args: str | None = None, **kwargs: Any) -> ToolResult:
-        cmd = ["pytest"]
+        # ``python -m pytest``, not a bare ``pytest``: the console script is not
+        # on PATH in a venv that was not activated, and FRIDAY's own interpreter
+        # is the one the suite's dependencies are installed into. As written, a
+        # perfectly healthy install answered "run the tests" with
+        # ``[Errno 2] No such file or directory: 'pytest'``.
+        cmd = pytest_command()
         if test_path and test_path.strip():
             cmd.append(test_path.strip())
         else:
@@ -179,6 +206,9 @@ class RunTestsTool(BaseTool):
                 check=False,
             )
             output = proc.stdout.strip() or proc.stderr.strip()
+            if proc.returncode not in (0, 1) and "No module named" in (proc.stderr or ""):
+                hint = missing_module_hint("pytest")
+                output = f"{hint}\n\n{output}".strip()
             success = proc.returncode == 0
             status_str = "PASSED" if success else f"FAILED (exit code {proc.returncode})"
             logger.info(f"Pytest execution {status_str} for command: {' '.join(cmd)}")
@@ -245,9 +275,19 @@ class CreateGitBranchTool(BaseTool):
                 safety_level=self.safety_level,
             )
 
-        from friday.tools.builtin.git_tools import _run_git_command
+        from friday.tools.builtin.git_tools import GitRepoRefused, _resolve_git_dir, _run_git_command
 
-        code, out, err = _run_git_command(["checkout", "-b", clean_name], cwd=cwd)
+        try:
+            resolved = _resolve_git_dir(cwd, mutating=True)
+        except GitRepoRefused as exc:
+            return ToolResult(
+                name=self.name,
+                content=f"Failed to create git branch '{clean_name}': {exc}",
+                is_error=True,
+                safety_level=self.safety_level,
+            )
+
+        code, out, err = _run_git_command(["checkout", "-b", clean_name], cwd=str(resolved))
         if code != 0:
             return ToolResult(
                 name=self.name,

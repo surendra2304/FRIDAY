@@ -21,29 +21,37 @@ def test_git_status_tool():
         assert "On branch main" in result.content
 
 
-def test_git_commit_tool():
+def test_git_commit_tool(tmp_path):
     tool = GitCommitTool()
     assert tool.name == "git_commit"
     assert tool.safety_level == SafetyLevel.SENSITIVE
+
+    # The tool now refuses to change a repository the caller did not name, and
+    # refuses FRIDAY's own checkout outright, so the test has to name one.
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
 
     with patch("friday.tools.builtin.git_tools._run_git_command") as mock_run:
         mock_run.side_effect = [
             (0, "", ""),  # git add -A
             (0, "[main abc1234] feat: test commit", ""),  # git commit -m
         ]
-        result = tool.execute(message="feat: test commit")
-        assert not result.is_error
+        result = tool.execute(message="feat: test commit", cwd=str(repo))
+        assert not result.is_error, result.content
         assert "Committed successfully" in result.content
 
 
-def test_git_push_tool():
+def test_git_push_tool(tmp_path):
     tool = GitPushTool()
     assert tool.name == "git_push"
     assert tool.safety_level == SafetyLevel.SENSITIVE
 
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+
     with patch("friday.tools.builtin.git_tools._run_git_command", return_value=(0, "To origin/main", "")):
-        result = tool.execute(remote="origin", branch="main")
-        assert not result.is_error
+        result = tool.execute(remote="origin", branch="main", cwd=str(repo))
+        assert not result.is_error, result.content
         assert "Pushed successfully" in result.content
 
 

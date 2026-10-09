@@ -10,6 +10,23 @@ from friday.tools.base import BaseTool
 from friday.tools.registry import ToolRegistry
 
 
+from friday.core.types import AuthorizationDecision, AuthorizationResponse
+
+
+class _ApprovingAuthorizer:
+    """A local approver for tests that exercise a SENSITIVE fast-path action."""
+
+    def __init__(self) -> None:
+        self.requests: list[object] = []
+
+    def authorize(self, request: object) -> AuthorizationResponse:
+        self.requests.append(request)
+        return AuthorizationResponse(
+            decision=AuthorizationDecision.APPROVED,
+            reason="test fixture: approved",
+        )
+
+
 class StepOneTool(BaseTool):
     name = "step_one_tool"
     description = "First step tool"
@@ -95,8 +112,14 @@ def test_agent_direct_notepad_type_fast_path(monkeypatch):
             actions.append(("type_text", text))
             return True
 
-    agent = FridayAgent(settings=Settings(env="testing", llm_provider="mock", embedding_provider="none"))
-    monkeypatch.setattr(agent, "_launch_process", lambda *args: actions.append(("launch", args)))
+    approver = _ApprovingAuthorizer()
+    agent = FridayAgent(
+        settings=Settings(env="testing", llm_provider="mock", embedding_provider="none"),
+        authorizer=approver,
+    )
+    # _launch_process reports whether the program really started, so the stub
+    # returns True: typing is only attempted after a confirmed launch.
+    monkeypatch.setattr(agent, "_launch_process", lambda *args: actions.append(("launch", args)) or True)
     monkeypatch.setattr(agent, "_focus_window_for_direct_action", lambda title: actions.append(("focus", title)) or True)
     monkeypatch.setattr("friday.agent.mixins.fast_paths.WindowsNativeInputDriver", Driver)
 
@@ -112,8 +135,11 @@ def test_agent_direct_notepad_type_fast_path(monkeypatch):
 def test_agent_direct_chrome_search_fast_path(monkeypatch):
     """Chrome search opens a Google search URL directly instead of web-searching in the agent."""
     actions = []
-    agent = FridayAgent(settings=Settings(env="testing", llm_provider="mock", embedding_provider="none"))
-    monkeypatch.setattr(agent, "_launch_process", lambda *args: actions.append(args))
+    agent = FridayAgent(
+        settings=Settings(env="testing", llm_provider="mock", embedding_provider="none"),
+        authorizer=_ApprovingAuthorizer(),
+    )
+    monkeypatch.setattr(agent, "_launch_process", lambda *args: actions.append(args) or True)
 
     response = agent.process_message("search Telugu latest movies in Chrome")
 

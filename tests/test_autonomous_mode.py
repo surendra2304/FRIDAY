@@ -18,6 +18,11 @@ from friday.vision.actions import ActionType
 from friday.core.config import Settings
 
 
+# Desktop directives require an authorizer now; these tests cover the
+# directive mechanics, so they opt in to an approving one.
+pytestmark = pytest.mark.usefixtures("approve_directives")
+
+
 def test_cli_authorizer_autonomous_still_requires_dangerous_confirmation(monkeypatch):
     """Autonomous mode may skip routine prompts, but never the dangerous-action prompt."""
     auth = CLIAuthorizer(auto_approve_all=True)
@@ -51,18 +56,18 @@ def test_cli_authorizer_defaults_to_confirmation_for_sensitive_actions():
 
 
 def test_default_secure_authorizer_autonomous_mode():
-    """DefaultSecureAuthorizer auto-approves all requests when autonomous_mode=True."""
+    """Autonomous mode auto-approves SENSITIVE work but not dangerous work."""
     with patch("friday.core.config.get_settings") as mock_settings:
         settings = MagicMock()
         settings.autonomous_mode = True
-        settings.full_access_mode = True
+        settings.full_access_mode = False
         mock_settings.return_value = settings
 
         auth = DefaultSecureAuthorizer()
         req = AuthorizationRequest(
-            tool_name="run_command",
-            safety_level=SafetyLevel.DANGEROUS,
-            arguments={"cmd": "format"},
+            tool_name="send_email",
+            safety_level=SafetyLevel.SENSITIVE,
+            arguments={"to": "user@example.invalid"},
         )
         resp = auth.authorize(req)
         assert resp.decision == AuthorizationDecision.APPROVED

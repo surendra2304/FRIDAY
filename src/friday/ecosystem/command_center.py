@@ -17,6 +17,28 @@ from friday.security.production_security import ProductionSecurityManager
 logger = get_logger("ecosystem.command_center")
 
 
+def demo_mode_enabled() -> bool:
+    """Whether sample ecosystem data may be used.
+
+    The command centre used to fill its "real-time telemetry" with literals -
+    $25,000 deployed, +$420.50 daily P&L, three open positions, 0.84 model
+    confidence, "AES-256_BIOMETRIC_ENFORCED" - and a freshly constructed centre
+    in a production environment reported all of it as current. Nothing measured
+    any of it. Sample data is legitimate for a demo or a test; it is a lie when
+    it is indistinguishable from a reading, so it now requires being asked for
+    by name (``FRIDAY_DEMO_DATA=true``) or running under ``FRIDAY_ENV=testing``.
+    """
+    import os
+
+    env = (os.getenv("FRIDAY_ENV") or "").strip().lower()
+    flag = (os.getenv("FRIDAY_DEMO_DATA") or "").strip().lower()
+    if flag in {"1", "true", "yes", "on"}:
+        return True
+    if flag in {"0", "false", "no", "off"}:
+        return False
+    return env == "testing"
+
+
 class EcosystemState(str, Enum):
     """Operational states of the overall trading ecosystem."""
     FULL_AUTONOMY = "FULL_AUTONOMY"
@@ -50,13 +72,42 @@ class EcosystemCommandCenter:
     def __init__(
         self,
         security_manager: ProductionSecurityManager | None = None,
+        *,
+        demo_data: bool | None = None,
     ) -> None:
         self._security_manager = security_manager
         self._ecosystem_state = EcosystemState.SUPERVISED_AUTONOMY
         self._autonomy_level = AutonomyLevel.LEVEL_2_SUPERVISED
         self._decisions: list[EcosystemDecision] = []
         self._lock = threading.RLock()
-        self._init_defaults()
+        #: Live readings reported by an integration, keyed by system name. Until
+        #: something calls :meth:`record_system_status` the centre knows nothing,
+        #: and :meth:`get_ecosystem_status` says so instead of returning numbers.
+        self._reported: dict[str, dict[str, Any]] = {}
+        self._demo_data = demo_mode_enabled() if demo_data is None else bool(demo_data)
+        if self._demo_data:
+            self._init_defaults()
+
+    def record_system_status(self, system: str, payload: dict[str, Any]) -> None:
+        """Record a reading reported by a real integration.
+
+        This is the only way a number reaches :meth:`get_ecosystem_status`. A
+        trading bridge, an advisory client or a health probe calls it; nothing in
+        this module invents a value. ``payload`` should carry whatever the system
+        can actually attest to (status, counts, latency) and is merged over the
+        previous reading for that system.
+        """
+        with self._lock:
+            current = dict(self._reported.get(system, {}))
+            current.update(payload or {})
+            current["reported_at"] = datetime.now(timezone.utc).isoformat()
+            self._reported[system] = current
+            logger.info("Ecosystem reading recorded for '%s': %s", system, sorted(current))
+
+    def record_decision(self, decision: EcosystemDecision) -> None:
+        """Append a decision that was really taken, to the audit log."""
+        with self._lock:
+            self._decisions.append(decision)
 
     @property
     def security_manager(self) -> ProductionSecurityManager:
@@ -65,7 +116,31 @@ class EcosystemCommandCenter:
         return self._security_manager
 
     def _init_defaults(self) -> None:
-        """Initializes default decision log."""
+        """Sample decisions, only ever used when demo mode was asked for."""
+        self._reported = {
+            "trading_bot": {
+                "status": "HEALTHY",
+                "note": "SAMPLE DATA - not a live reading",
+                "connected_venues": ["Binance", "Bybit", "OKX"],
+                "active_capital_usdt": 25000.0,
+                "daily_pnl_usdt": 420.50,
+                "active_positions_count": 3,
+                "api_latency_ms": 32.4,
+            },
+            "ai_universe": {
+                "status": "HEALTHY",
+                "note": "SAMPLE DATA - not a live reading",
+                "model_confidence": 0.84,
+                "active_predictions_count": 3,
+                "debate_engine_status": "ONLINE",
+                "latency_ms": 118.0,
+            },
+            "friday_os": {
+                "status": "HEALTHY",
+                "note": "SAMPLE DATA - not a live reading",
+                "active_operators_count": 8,
+            },
+        }
         self._decisions = [
             EcosystemDecision(
                 decision_id="dec_01",
@@ -83,43 +158,56 @@ class EcosystemCommandCenter:
             ),
         ]
 
+    #: The systems this centre is responsible for reporting on.
+    SYSTEMS: tuple[str, ...] = ("trading_bot", "ai_universe", "friday_os")
+
     def get_ecosystem_status(self) -> dict[str, Any]:
-        """Aggregates real-time telemetry across all 3 systems."""
+        """Report each system's status **as last reported**, or as unknown.
+
+        Every value here used to be a literal. A caller - the master dashboard,
+        the voice skill, the executive dashboard - then rendered those literals
+        under a live timestamp, so the reader saw "real-time telemetry" that had
+        never been measured. A status field whose default is "HEALTHY" is the
+        single most dangerous kind of placeholder, because the failure mode of
+        the thing it describes (no data) is reported as the best case.
+
+        Now: a system appears as ``"UNKNOWN"`` with ``"available": False`` until
+        an integration calls :meth:`record_system_status`.
+        """
         with self._lock:
+            systems: dict[str, Any] = {}
+            for name in self.SYSTEMS:
+                reading = self._reported.get(name)
+                if reading:
+                    systems[name] = {"available": True, **reading}
+                else:
+                    systems[name] = {
+                        "available": False,
+                        "status": "UNKNOWN",
+                        "note": "No integration has reported a reading for this system.",
+                    }
             return {
                 "ecosystem_state": self._ecosystem_state.value,
                 "autonomy_level": self._autonomy_level.value,
                 "autonomy_name": self._autonomy_level.name,
-                "systems": {
-                    "trading_bot": {
-                        "status": "HEALTHY",
-                        "connected_venues": ["Binance", "Bybit", "OKX"],
-                        "active_capital_usdt": 25000.0,
-                        "daily_pnl_usdt": 420.50,
-                        "active_positions_count": 3,
-                        "api_latency_ms": 32.4,
-                    },
-                    "ai_universe": {
-                        "status": "HEALTHY",
-                        "model_confidence": 0.84,
-                        "active_predictions_count": 3,
-                        "debate_engine_status": "ONLINE",
-                        "latency_ms": 118.0,
-                    },
-                    "friday_os": {
-                        "status": "HEALTHY",
-                        "cognitive_engine": "10-PHASE_ACTIVE",
-                        "guardian_vigilance": "10S_CONTINUOUS",
-                        "security_tier": "AES-256_BIOMETRIC_ENFORCED",
-                        "active_operators_count": 8,
-                    },
-                },
+                "systems": systems,
                 "risk_posture": {
-                    "aggregate_leverage": 0.85,
-                    "daily_loss_limit_proximity_pct": 14.5,
-                    "single_asset_max_exposure_pct": 54.0,
+                    "available": "trading_bot" in self._reported,
+                    "aggregate_leverage": self._reported.get("trading_bot", {}).get("aggregate_leverage"),
+                    "daily_loss_limit_proximity_pct": self._reported.get("trading_bot", {}).get(
+                        "daily_loss_limit_proximity_pct"
+                    ),
+                    "single_asset_max_exposure_pct": self._reported.get("trading_bot", {}).get(
+                        "single_asset_max_exposure_pct"
+                    ),
                 },
                 "recent_decisions_count": len(self._decisions),
+                "demo_data": self._demo_data,
+                "data_provenance": (
+                    "sample data (FRIDAY_DEMO_DATA or testing environment)"
+                    if self._demo_data
+                    else "reported by integrations; systems without a reading are UNKNOWN"
+                ),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
