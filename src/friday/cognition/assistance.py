@@ -132,14 +132,27 @@ def _memories_from(
 class AssistanceBroker:
     """One agent asking another, locally or across the mesh."""
 
-    def __init__(self, registry: Any | None = None, mesh: Any | None = None) -> None:
-        self._registry = registry
-        self._mesh = mesh
+    #: Sentinel for the constructor default: "nothing was passed, so the lazy
+    #: singleton fallback may resolve one". It is the same labour the no-arg
+    #: constructor has always done; only the meaning of an explicit None changes.
+    _UNSPECIFIED = object()
+
+    def __init__(self, registry: Any | None = _UNSPECIFIED, mesh: Any | None = _UNSPECIFIED) -> None:
+        # An explicitly passed None is a promise the broker must keep: a caller that
+        # says "no mesh, no registry" is constructing a broker that cannot invent
+        # collaborators away from home. Tests rely on that promise - "no registry and
+        # no mesh: the broker says so instead of inventing help" - and production code
+        # never passes None, so an explicitly-absent collaborator actually means the
+        # broker is anchored (reflex.py) rather than unconfigured.
+        self._registry_specified = registry is not self._UNSPECIFIED
+        self._mesh_specified = mesh is not self._UNSPECIFIED
+        self._registry = registry if self._registry_specified else None
+        self._mesh = mesh if self._mesh_specified else None
 
     # -- collaborators -----------------------------------------------------
 
     def registry(self) -> Any | None:
-        if self._registry is not None:
+        if self._registry is not None or self._registry_specified:
             return self._registry
         try:
             from friday.cognition.mind import get_mind_registry
@@ -151,7 +164,7 @@ class AssistanceBroker:
         return self._registry
 
     def mesh(self) -> Any | None:
-        if self._mesh is not None:
+        if self._mesh is not None or self._mesh_specified:
             return self._mesh
         try:
             from friday.cognition.mesh import get_mesh

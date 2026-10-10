@@ -9,6 +9,7 @@ from pydantic import Field, model_validator
 from pydantic_settings import (
     BaseSettings,
     EnvSettingsSource,
+    DotEnvSettingsSource,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
 )
@@ -161,10 +162,27 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
+        # The .env path is resolved here, at instantiation time, rather than
+        # baked into `model_config` at class-definition time. Tests patch
+        # `resolve_env_file` to isolate the suite from the developer's real
+        # .env; a class-time value made that patch a no-op, so `FRIDAY_API_KEY`
+        # from the real file reached the auth middleware and defeated test
+        # overrides set per-test. Resolving late restores the contract "env var
+        # beats file, and the file is whatever resolve_env_file() says now".
+        try:
+            dotenv_now = DotEnvSettingsSource(
+                settings_cls,
+                env_file=str(resolve_env_file()),
+                env_file_encoding="utf-8",
+                case_sensitive=False,
+                env_prefix="FRIDAY_",
+            )
+        except Exception:
+            dotenv_now = dotenv_settings
         return (
             init_settings,
             NonEmptyEnvSettingsSource(settings_cls),
-            dotenv_settings,
+            dotenv_now,
             file_secret_settings,
         )
 

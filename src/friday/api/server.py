@@ -309,7 +309,18 @@ async def _require_control_access(request: Request) -> None:
     if not remotely_exposed and not loopback_hardening:
         return
 
-    expected = (getattr(live, "api_key", None) or os.getenv("FRIDAY_API_KEY") or os.getenv("FRIDAY_UNIVERSE_API_KEY") or "").strip()
+    # The live environment variable is consulted before the cached Settings
+    # object on purpose: this gate documents that authorisation reflects the
+    # configuration "in force now", and pydantic captures a Settings snapshot
+    # at construction time. An operator (or a test) that (re)sets the variable
+    # after the process built its Settings must be honoured, and on Render the
+    # two agree anyway, so this order changes nothing in production.
+    expected = (
+        os.getenv("FRIDAY_API_KEY")
+        or getattr(live, "api_key", None)
+        or os.getenv("FRIDAY_UNIVERSE_API_KEY")
+        or ""
+    ).strip()
     if not expected or expected.lower() in {"friday_universe_api", "changeme", "change-me", "your_api_key"}:
         raise HTTPException(status_code=503, detail="Remote control is disabled until a non-example FRIDAY_API_KEY is configured.")
 
