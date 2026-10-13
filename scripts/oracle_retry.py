@@ -107,7 +107,11 @@ def main():
             print("="*60)
             return 0
         except oci.exceptions.ServiceError as e:
-            if "Out of host capacity" in str(e.message) or e.status in [500, 429]:
+            if e.status == 429:
+                print(f"[Attempt #{attempt} | {elapsed_min}m elapsed] Rate limit warning (429). Backing off 20s...")
+                time.sleep(20)
+                continue
+            elif "Out of host capacity" in str(e.message) or e.status in [500]:
                 print(f"[Attempt #{attempt} | {elapsed_min}m elapsed] Capacity full in Hyderabad. Retrying in {cycle_delay}s...")
             else:
                 print(f"[Attempt #{attempt} | {elapsed_min}m elapsed] OCI Service Error ({e.status}): {e.message}")
