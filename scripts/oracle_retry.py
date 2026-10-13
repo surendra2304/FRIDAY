@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import subprocess
 import oci
 
 def main():
@@ -38,6 +39,7 @@ def main():
 
     compute_client = oci.core.ComputeClient(config)
 
+    # 1. Quick initial check
     print("🔍 Checking if 'FRIDAY Universe' instance is already active...")
     try:
         instances = compute_client.list_instances(compartment_id=compartment_ocid).data
@@ -50,7 +52,7 @@ def main():
     except Exception as e:
         print(f"⚠️ Warning checking instances: {e}")
 
-    # Launch configuration extracted from stack
+    # Launch configuration
     subnet_id = "ocid1.subnet.oc1.ap-hyderabad-1.aaaaaaaa2rox2pqtptjmmm6p6ddritbf6uxxa7zpeiicxwx6kbsydcfudibq"
     image_id = "ocid1.image.oc1.ap-hyderabad-1.aaaaaaaacx5cw6qxwnemznb2wojrfdbkuepvgwzlwzqa2snxqslops3nmlua"
     ssh_key = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDsKkIMQ/GEBLSdYRPkvO6k1f8PJF/Xeva6qbEz2aUmE9DzWAg473x+tyH3iwSxYsg6j/jw/KZvnj8cqlSWYPq+93H88gyi5+etoXmL3Ej4bpQalSboL91HOqiVgeXtzx4XKtuizmY+w6osOlJJQiW0nFiHyeKzDFWfE02P4ljvIku7Fe3O2tu531qzzLBjzDWHWS9LRb5TvQ9f3rHZSnCXs4RiAXSj1fEyjjMOFcIzyfyqeORMM/3816Vv4eQ6/6hrx7V127s8f+14JKQJfykQryDdcOvKjLons+wm61/yMKbQgFASIHHTIPVE3ZRedkEQP1Q80BWh15wm9USmMkgP ssh-key-2026-10-13"
@@ -80,13 +82,20 @@ def main():
         is_pv_encryption_in_transit_enabled=True
     )
 
-    max_cycles = int(os.environ.get("MAX_CYCLES", "10"))
+    # Infinite Relay Configuration:
+    # Run for up to 320 minutes (5.3 hours), then trigger next relay job to keep running 24/7 forever
+    run_duration_seconds = int(os.environ.get("RUN_DURATION_MINUTES", "320")) * 60
     cycle_delay = int(os.environ.get("CYCLE_DELAY", "30"))
 
-    print(f"\n🚀 Starting Direct Capacity Sniper ({max_cycles} attempts, {cycle_delay}s delay)...")
+    start_time = time.time()
+    attempt = 0
 
-    for cycle in range(1, max_cycles + 1):
-        print(f"\n--- [Attempt {cycle}/{max_cycles}] Requesting Ampere A1 instance ---")
+    print(f"🚀 Infinite 24/7 Sniper Active. Retrying every {cycle_delay}s until instance is provisioned...")
+
+    while True:
+        attempt += 1
+        elapsed_min = round((time.time() - start_time) / 60, 1)
+
         try:
             inst = compute_client.launch_instance(launch_details).data
             print("\n" + "="*60)
@@ -94,22 +103,28 @@ def main():
             print(f"Instance ID: {inst.id}")
             print(f"State: {inst.lifecycle_state}")
             print(f"Shape: {inst.shape}")
+            print(f"Captured on attempt #{attempt} after {elapsed_min} minutes!")
             print("="*60)
             return 0
         except oci.exceptions.ServiceError as e:
             if "Out of host capacity" in str(e.message) or e.status in [500, 429]:
-                print(f"Status {e.status}: Capacity still full in Hyderabad AD-1.")
+                print(f"[Attempt #{attempt} | {elapsed_min}m elapsed] Capacity full in Hyderabad. Retrying in {cycle_delay}s...")
             else:
-                print(f"OCI Service Error ({e.status}): {e.message}")
+                print(f"[Attempt #{attempt} | {elapsed_min}m elapsed] OCI Service Error ({e.status}): {e.message}")
         except Exception as e:
-            print(f"Unexpected error: {e}")
+            print(f"[Attempt #{attempt}] Unexpected error: {e}")
 
-        if cycle < max_cycles:
-            print(f"Waiting {cycle_delay}s before next attempt...")
-            time.sleep(cycle_delay)
+        # Check if we should pass the baton to the next continuous runner before GitHub 6h timeout
+        if time.time() - start_time >= run_duration_seconds:
+            print(f"\n⏰ Reached {elapsed_min}m threshold. Passing baton to next 24/7 runner...")
+            try:
+                subprocess.run(["gh", "workflow", "run", "oracle-capacity-sniper.yml"], check=False)
+                print("✅ Next 24/7 sniper relay triggered successfully!")
+            except Exception as ex:
+                print(f"⚠️ Could not trigger relay via gh CLI: {ex}")
+            return 0
 
-    print("\nCapacity still unavailable in this run. Next scheduled GitHub Action will retry automatically.")
-    return 1
+        time.sleep(cycle_delay)
 
 if __name__ == "__main__":
     sys.exit(main())
