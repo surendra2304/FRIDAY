@@ -53,7 +53,7 @@ def main():
     except Exception as e:
         print(f"⚠️ Warning checking instances: {e}")
 
-    # Retry loop within the workflow run (up to 8 attempts, ~5 minutes total per GitHub Action run)
+    # Retry loop within the workflow run (up to 6 cycles, ~5 minutes per GitHub Action execution)
     max_cycles = int(os.environ.get("MAX_CYCLES", "6"))
     cycle_delay = int(os.environ.get("CYCLE_DELAY", "20"))
 
@@ -74,13 +74,14 @@ def main():
                 print(f"Existing job already in flight: {active_job.id} ({active_job.lifecycle_state})")
             else:
                 print(f"Submitting new APPLY job to stack: {stack_ocid}")
+                op_details = oci.resource_manager.models.CreateApplyJobOperationDetails(
+                    operation="APPLY",
+                    execution_plan_strategy="AUTO_APPROVED"
+                )
                 create_details = oci.resource_manager.models.CreateJobDetails(
                     stack_id=stack_ocid,
-                    operation="APPLY",
                     display_name=f"Sniper-Apply-{int(time.time())}",
-                    apply_job_plan_resolution=oci.resource_manager.models.ApplyJobPlanResolutionDetails(
-                        is_auto_approved=True
-                    )
+                    job_operation_details=op_details
                 )
                 active_job = rm_client.create_job(create_details).data
                 print(f"Created job: {active_job.id} (State: {active_job.lifecycle_state})")
@@ -90,7 +91,7 @@ def main():
             poll_start = time.time()
             job_done = False
 
-            while time.time() - poll_start < 120:  # Poll up to 2 mins
+            while time.time() - poll_start < 150:  # Poll up to 2.5 mins
                 time.sleep(10)
                 status = rm_client.get_job(job_id).data
                 print(f"Job status: {status.lifecycle_state}")
@@ -107,7 +108,7 @@ def main():
                     break
 
             if not job_done:
-                print("Job is still running. Will check on next cycle.")
+                print("Job still in progress. Checking next cycle.")
 
         except Exception as e:
             print(f"Error during cycle {cycle}: {e}")
