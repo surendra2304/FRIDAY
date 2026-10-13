@@ -1,0 +1,43 @@
+name: Oracle Ampere Capacity Sniper
+
+on:
+  schedule:
+    # Runs every 15 minutes 24/7 in GitHub cloud
+    - cron: '*/15 * * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub UI anytime
+
+concurrency:
+  group: oracle-sniper
+  cancel-in-progress: false
+
+jobs:
+  snipe-capacity:
+    name: Claim Oracle Ampere A1 Instance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install OCI SDK
+        run: |
+          python -m pip install --upgrade pip
+          pip install oci
+
+      - name: Run Sniper Loop
+        env:
+          OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
+          OCI_KEY_CONTENT: ${{ secrets.OCI_KEY_CONTENT }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+          OCI_REGION: ${{ secrets.OCI_REGION || 'ap-hyderabad-1' }}
+          OCI_STACK_OCID: ${{ secrets.OCI_STACK_OCID }}
+          MAX_CYCLES: 5
+          CYCLE_DELAY: 25
+        run: |
+          python scripts/oracle_retry.py
