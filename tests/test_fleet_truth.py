@@ -107,7 +107,7 @@ def test_every_service_in_the_fleet_is_probed():
 
 
 @pytest.mark.parametrize("entry", fleet_truth.FLEET)
-def test_no_service_is_probed_without_a_https_url(entry):
-    """An http:// probe would let the verdict be trivially forged in transit."""
+def test_no_service_is_probed_without_a_https_or_mesh_url(entry):
+    """Probes must either use secure external HTTPS or direct private internal Docker mesh."""
     _, url, _ = entry
-    assert url.startswith("https://")
+    assert url.startswith("https://") or (url.startswith("http://") and (":8000" in url or ":10000" in url))

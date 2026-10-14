@@ -51,12 +51,10 @@ def resolve_env_file() -> Path:
 class NonEmptyEnvSettingsSource(EnvSettingsSource):
     """Environment settings source that ignores empty-string environment variables."""
 
-
-
     def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:
         val, val_name, is_complex = super().get_field_value(field, field_name)
         if isinstance(val, str) and val.strip() == "":
-            return None, val_name, is_complex
+            return None, None, False
         return val, val_name, is_complex
 
 
@@ -73,9 +71,10 @@ class Settings(BaseSettings):
     def __init__(self, **kwargs):
         import os
         import warnings
+        env_target = kwargs.get("_env_file") or resolve_env_file()
         try:
             from dotenv import load_dotenv
-            load_dotenv(resolve_env_file(), override=False)
+            load_dotenv(env_target, override=False)
         except Exception:
             pass
         
@@ -169,10 +168,11 @@ class Settings(BaseSettings):
         # from the real file reached the auth middleware and defeated test
         # overrides set per-test. Resolving late restores the contract "env var
         # beats file, and the file is whatever resolve_env_file() says now".
+        chosen_env = getattr(dotenv_settings, "env_file", None) or str(resolve_env_file())
         try:
             dotenv_now = DotEnvSettingsSource(
                 settings_cls,
-                env_file=str(resolve_env_file()),
+                env_file=chosen_env,
                 env_file_encoding="utf-8",
                 case_sensitive=False,
                 env_prefix="FRIDAY_",

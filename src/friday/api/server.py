@@ -200,8 +200,8 @@ async def lifespan(_: FastAPI):
         yield
     finally:
         logger.info("Graceful shutdown initiated: stopping background tasks and listener loops...")
-        background_tasks = [supervision_task, memora_task, repair_task, reflex_task, memory_mirror_task]
-        for task in background_tasks:
+        background_tasks = [repair_task, supervision_task, memora_task, reflex_task, memory_mirror_task]
+        for task in (repair_task, supervision_task, memora_task, reflex_task, memory_mirror_task):
             task.cancel()
         try:
             await asyncio.wait_for(

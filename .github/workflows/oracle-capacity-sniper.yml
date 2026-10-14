@@ -2,13 +2,14 @@ name: Oracle Ampere Capacity Sniper
 
 on:
   schedule:
-    # Backup trigger every 4 hours to guarantee continuous 24/7 presence
-    - cron: '0 */4 * * *'
+    # Autonomous persistent trigger every 2 hours to guarantee non-stop 24/7 presence
+    - cron: '0 */2 * * *'
   workflow_dispatch: # Allows manual trigger anytime
 
 permissions:
   actions: write
   contents: read
+  issues: write
 
 concurrency:
   group: oracle-sniper

@@ -49,6 +49,67 @@ def check_active_arm_instance(compute_client, compartment_ocid):
         print(f"⚠️ Warning checking active instances: {e}")
     return None
 
+def resolve_instance_public_ip(network_client, compute_client, compartment_id, instance_id):
+    """Retrieves the public IP address of an instance once provisioned."""
+    print("🌐 Resolving instance public IP address...", end=" ", flush=True)
+    for _ in range(12):  # Poll up to 60s
+        try:
+            vnic_attachments = compute_client.list_vnic_attachments(
+                compartment_id=compartment_id,
+                instance_id=instance_id
+            ).data
+            for vnic_att in vnic_attachments:
+                if vnic_att.vnic_id:
+                    vnic = network_client.get_vnic(vnic_att.vnic_id).data
+                    if vnic.public_ip:
+                        print(f"[{vnic.public_ip}]")
+                        return vnic.public_ip
+        except Exception:
+            pass
+        time.sleep(5)
+    print("[IP Assignment Pending]")
+    return "Pending Public IP"
+
+def notify_success(instance_id, ocpus, ram, public_ip):
+    """Logs markdown summary and creates a GitHub issue to notify the owner immediately."""
+    summary_md = f"""# 🎉 Oracle Ampere A1 Instance Claimed!
+
+- **Instance OCID**: `{instance_id}`
+- **Shape**: `VM.Standard.A1.Flex`
+- **Allocation**: {ocpus} OCPUs & {ram} GB RAM
+- **Public IP**: `{public_ip}`
+- **SSH Connection**: `ssh -i C:\\Users\\Surendra\\.ssh\\friday_universe_oracle.key ubuntu@{public_ip}`
+- **Time**: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}
+"""
+    print(summary_md)
+
+    step_summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if step_summary_path:
+        try:
+            with open(step_summary_path, "a", encoding="utf-8") as f:
+                f.write(summary_md)
+        except Exception as e:
+            print(f"Could not write to GITHUB_STEP_SUMMARY: {e}")
+
+    # Create GitHub Issue to send instant email/push notification
+    try:
+        title = f"🎉 Oracle Ampere ARM Server Claimed ({public_ip})"
+        body = (
+            f"The 24/7 Capacity Sniper has successfully provisioned your Oracle Ampere A1 instance!\n\n"
+            f"- **Public IP**: `{public_ip}`\n"
+            f"- **OCPUs**: {ocpus}\n"
+            f"- **RAM**: {ram} GB\n"
+            f"- **Boot Volume**: 150 GB\n\n"
+            f"### Quick Connect:\n"
+            f"```bash\n"
+            f"ssh -i C:\\Users\\Surendra\\.ssh\\friday_universe_oracle.key ubuntu@{public_ip}\n"
+            f"```\n"
+        )
+        subprocess.run(["gh", "issue", "create", "--title", title, "--body", body], check=False)
+        print("🔔 GitHub notification issue created successfully!")
+    except Exception as e:
+        print(f"Could not create GitHub notification issue: {e}")
+
 def main():
     user_ocid = os.environ.get("OCI_USER_OCID")
     key_content = os.environ.get("OCI_KEY_CONTENT")
@@ -83,6 +144,7 @@ def main():
         sys.exit(1)
 
     compute_client = oci.core.ComputeClient(config)
+    network_client = oci.core.VirtualNetworkClient(config)
 
     # Runtime configuration: 300 minutes per GitHub runner leg, 30s base delay between requests
     run_duration_seconds = int(os.environ.get("RUN_DURATION_MINUTES", "300")) * 60
@@ -94,7 +156,7 @@ def main():
     print("=" * 70)
     print("🚀 HARDENED 24/7 ORACLE AMPERE A1 CAPACITY SNIPER INITIALIZING")
     print("   Target: 2 OCPUs & 12 GB RAM (VM.Standard.A1.Flex) in ap-hyderabad-1")
-    print(f"   Rate-limit protection: {cycle_delay}s intervals + Fault Domain rotation + 75s backoff on 429")
+    print(f"   Protection: {cycle_delay}s intervals + Fault Domain rotation + 75s backoff on 429")
     print("=" * 70)
 
     # Step 0: Check once at startup if instance already exists
@@ -104,7 +166,6 @@ def main():
         print(f"🔍 Existing ARM instance detected: {active_instance.id} (State: {active_instance.lifecycle_state}, OCPUs: {current_ocpus})")
 
     # Sniper search targets: rotation across fault domains and configurations
-    # Prioritizes 2 OCPUs (12 GB RAM), interlaced with 1 OCPU fallback across all 3 fault domains
     TARGET_CONFIGS = [
         {"ocpus": 2, "ram": 12, "fd": "FAULT-DOMAIN-1"},
         {"ocpus": 2, "ram": 12, "fd": "FAULT-DOMAIN-2"},
@@ -132,12 +193,8 @@ def main():
         if active_instance:
             current_ocpus = active_instance.shape_config.ocpus if active_instance.shape_config else 1
             if current_ocpus >= 2:
-                print("\n" + "=" * 70)
-                print("🎉🎉🎉 FULL MISSION ACCOMPLISHED: 2 OCPUs & 12 GB RAM ARM ACTIVE! 🎉🎉🎉")
-                print(f"Instance ID: {active_instance.id}")
-                print(f"Lifecycle State: {active_instance.lifecycle_state}")
-                print(f"Shape: {active_instance.shape} | OCPUs: {current_ocpus}")
-                print("=" * 70)
+                pub_ip = resolve_instance_public_ip(network_client, compute_client, compartment_ocid, active_instance.id)
+                notify_success(active_instance.id, current_ocpus, 12, pub_ip)
                 return 0
 
             # Instance is running on 1 OCPU -> silently attempt upgrade to 2 OCPUs
@@ -150,11 +207,8 @@ def main():
                     )
                 )
                 updated = compute_client.update_instance(active_instance.id, update_details).data
-                print("\n" + "=" * 70)
-                print("🎉🎉🎉 SUCCESS: AUTOMATICALLY UPGRADED TO 2 OCPUs & 12 GB RAM! 🎉🎉🎉")
-                print(f"Instance ID: {updated.id}")
-                print(f"State: {updated.lifecycle_state}")
-                print("=" * 70)
+                pub_ip = resolve_instance_public_ip(network_client, compute_client, compartment_ocid, updated.id)
+                notify_success(updated.id, 2, 12, pub_ip)
                 return 0
             except oci.exceptions.ServiceError as e:
                 if e.status == 429:
@@ -167,6 +221,7 @@ def main():
                     print(f"OCI Service Error ({e.status}): {e.message}")
             except Exception as e:
                 print(f"Unexpected error during upgrade attempt: {e}")
+                time.sleep(10)
 
         # -------------------------------------------------------------
         # PHASE 1: CAPACITY SNIPER (No instance exists yet)
@@ -184,18 +239,15 @@ def main():
             try:
                 launch_spec = make_launch_details(compartment_ocid, ocpus=ocpus, memory_in_gbs=ram, fault_domain=fd)
                 inst = compute_client.launch_instance(launch_spec).data
-                print("\n" + "=" * 70)
-                print(f"🎉🎉🎉 SUCCESS: CLAIMED {ocpus} OCPUs & {ram} GB RAM AMPERE SERVER! 🎉🎉🎉")
-                print(f"Instance ID: {inst.id}")
-                print(f"State: {inst.lifecycle_state}")
-                print(f"Fault Domain: {inst.fault_domain}")
-                print("=" * 70)
+                pub_ip = resolve_instance_public_ip(network_client, compute_client, compartment_ocid, inst.id)
 
                 if ocpus >= 2:
+                    notify_success(inst.id, ocpus, ram, pub_ip)
                     return 0
                 else:
-                    # Claimed 1 OCPU server! Immediately transition to Phase 2 (Auto-Upgrade to 2 OCPUs)
+                    # Claimed 1 OCPU server! Notify owner and immediately transition to Auto-Upgrade loop
                     print("🚀 Server secured on 1 OCPU! Transitioning to silent 2 OCPU upgrade loop...")
+                    notify_success(inst.id, ocpus, ram, pub_ip)
                     active_instance = inst
                     time.sleep(10)
                     continue
@@ -209,11 +261,11 @@ def main():
                     print(f"Capacity full.")
                 else:
                     print(f"\nOCI Service Error ({e.status}): {e.message}")
-                    # If error indicates instance already exists, refresh status
                     if "already exists" in str(e.message).lower() or "limit" in str(e.message).lower():
                         active_instance = check_active_arm_instance(compute_client, compartment_ocid)
             except Exception as e:
-                print(f"\nUnexpected error: {e}")
+                print(f"\nUnexpected error during launch: {e}")
+                time.sleep(10)
 
         # Relay check: gracefully hand off to next runner before GitHub Actions timeout
         if time.time() - start_time >= run_duration_seconds:
