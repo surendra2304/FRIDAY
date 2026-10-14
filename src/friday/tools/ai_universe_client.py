@@ -128,9 +128,14 @@ class AIUniverseClient:
         if not hasattr(self, "_shared_client") or self._shared_client is None or self._shared_client.is_closed:
             self._shared_client = httpx.AsyncClient(
                 timeout=httpx.Timeout(self.timeout, connect=10.0, read=self.timeout, write=10.0),
-                limits=httpx.Limits(max_keepalive_connections=10, keepalive_expiry=60.0),
+                limits=httpx.Limits(max_keepalive_connections=20, max_connections=100, keepalive_expiry=60.0),
             )
         return self._shared_client
+
+    async def aclose(self) -> None:
+        """Close the shared pooled HTTP client."""
+        if hasattr(self, "_shared_client") and self._shared_client is not None and not self._shared_client.is_closed:
+            await self._shared_client.aclose()
 
     async def ask(self, question: str, mode: str = "auto") -> AIUniverseResponse:
         """Query AI Universe via POST /v1/friday/ask with sub-second fast-lane dispatch."""
@@ -156,11 +161,11 @@ class AIUniverseClient:
         key_preview = f"{self.api_key[:4]}..." if self.api_key else "(none)"
         logger.info(f"Sending AI Universe debate request to {url} with key {key_preview}")
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            resp = await client.post(url, json=payload, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
-            return AIUniverseResponse(**data)
+        client = self.get_client()
+        resp = await client.post(url, json=payload, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+        return AIUniverseResponse(**data)
 
 
 class AIUniverseTool(BaseTool):

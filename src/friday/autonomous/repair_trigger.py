@@ -437,22 +437,38 @@ class _Candidate:
 
 
 class HttpxGateClient:
-    """The production gate client: plain HTTP, no shortcuts."""
+    """The production gate client: plain HTTP, persistent connection pool, no shortcuts."""
 
     def __init__(self, base_url: str, api_key: str, timeout: float = 300.0) -> None:
         self._base_url = base_url.rstrip("/")
         self._headers = {"x-friday-api-key": api_key}
         self._timeout = timeout
+        self._client: Any = None
 
-    async def post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
+    def get_client(self) -> Any:
         import httpx
 
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
-            response = await client.post(
-                f"{self._base_url}{path}", json=body, headers=self._headers
+        if self._client is None or self._client.is_closed:
+            limits = httpx.Limits(max_keepalive_connections=15, max_connections=50, keepalive_expiry=30.0)
+            self._client = httpx.AsyncClient(
+                timeout=self._timeout,
+                limits=limits,
             )
-            response.raise_for_status()
-            return response.json()
+        return self._client
+
+    async def aclose(self) -> None:
+        """Close the persistent pooled HTTP client."""
+        client, self._client = self._client, None
+        if client is not None and not client.is_closed:
+            await client.aclose()
+
+    async def post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
+        client = self.get_client()
+        response = await client.post(
+            f"{self._base_url}{path}", json=body, headers=self._headers
+        )
+        response.raise_for_status()
+        return response.json()
 
 
 def render_summary(outcomes: list[TriggerOutcome]) -> str:
