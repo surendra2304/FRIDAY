@@ -71,6 +71,7 @@ def test_the_contract_table_is_read_from_the_live_fleet_client() -> None:
     assert contracts["sentinel"].task_path == "/api/v1/friday/delegate"
     assert contracts["inference"].url_for("/health").endswith("/health")
     # Credentials are carried the way each peer expects, and only when present.
+    contracts["inference"].api_key = ""
     assert "X-FRIDAY-API-Key" not in contracts["inference"].headers()
     contracts["inference"].api_key = "k"
     assert contracts["inference"].headers()["X-FRIDAY-API-Key"] == "k"

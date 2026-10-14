@@ -2,7 +2,7 @@
 
 Every agent runs as a real process on a loopback port with the same credentials it
 uses in production, and every peer URL is pointed at the local fleet instead of
-onrender.com. Nothing is stubbed: the mesh calls here are real HTTP requests against
+friday_mesh (port 8000). Nothing is stubbed: the mesh calls here are real HTTP requests against
 real processes, which in turn reach real upstream APIs.
 
     python research/local_fleet.py --agents memora,intelx,futuris

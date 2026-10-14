@@ -28,6 +28,7 @@ env/
 
 # Environment Variables & Secrets
 .env
+.env.production
 .env.local
 .env.*.local
 *.key

@@ -129,7 +129,7 @@ def test_state_backup_and_recovery(production_setup):
     assert os.path.exists(os.path.join(temp_dir, f"{snap.snapshot_id}.json"))
 
     # 2. Config Change Auto-Snapshot
-    snap_cfg = backup_mgr.snapshot_on_config_change({"trading_bot_url": "http://localhost:5000"})
+    snap_cfg = backup_mgr.snapshot_on_config_change({"trading_bot_url": "http://stratex:8000"})
     assert snap_cfg.snapshot_type == "CONFIG_CHANGE"
 
     # 3. List and Restore Snapshot

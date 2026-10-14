@@ -47,7 +47,7 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
             getattr(settings, "inference_url", None)
             or os.getenv("FRIDAY_INFERENCE_URL")
             or getattr(settings, "universe_api_url", None)
-            or "https://forge-e9kl.onrender.com"
+            or "http://inference:8000"
         )
         key = (
             getattr(settings, "inference_api_key", None)
@@ -67,7 +67,7 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
         )
         if not has_keys and not has_explicit:
             logger.info("Direct Gemini API key not configured; using the configured Inference Gateway provider pool.")
-            url = getattr(settings, "inference_url", None) or os.getenv("FRIDAY_INFERENCE_URL") or "https://forge-e9kl.onrender.com"
+            url = getattr(settings, "inference_url", None) or os.getenv("FRIDAY_INFERENCE_URL") or "http://inference:8000"
             key = getattr(settings, "inference_api_key", None) or os.getenv("FRIDAY_INFERENCE_API_KEY") or ""
             return AIUniverseLLMProvider(base_url=url, api_key=key)
 
@@ -203,7 +203,7 @@ def create_llm_provider(settings: Settings) -> BaseLLMProvider:
             getattr(settings, "inference_url", None)
             or os.getenv("INFERENCE_URL")
             or os.getenv("FRIDAY_INFERENCE_URL")
-            or "https://inference-h7bn.onrender.com"
+            or "http://inference:8000"
         )
         inf_key = (
             getattr(settings, "inference_api_key", None)

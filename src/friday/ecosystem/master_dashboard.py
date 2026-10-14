@@ -141,7 +141,7 @@ class EcosystemMasterDashboard:
         ) or "no delivery recorded"
 
         # FORGE is a local task manager here, not a probed service. The old
-        # dashboard printed "**🟢 HEALTHY** (API: https://forge-e9kl.onrender.com
+        # dashboard printed "**🟢 HEALTHY** (API: http://forge:8000
         # | HMAC-SHA256 Signed)" for it unconditionally - a green light, a URL
         # and a signing claim, none of which anything had checked.
         forge_status: dict[str, Any] = {

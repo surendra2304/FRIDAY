@@ -75,35 +75,35 @@ class ServiceRegistry:
     def _load_standard_services(self) -> dict[str, ServiceConfig]:
         """Load standard service configurations using standardized environment variables."""
         # 1. Inference / ASTRA
-        inference_url = (os.getenv("FRIDAY_INFERENCE_URL") or os.getenv("INFERENCE_URL") or "https://inference-h7bn.onrender.com").rstrip("/")
+        inference_url = (os.getenv("FRIDAY_INFERENCE_URL") or os.getenv("INFERENCE_URL") or "http://inference:8000").rstrip("/")
         inference_key = os.getenv("FRIDAY_INFERENCE_API_KEY") or os.getenv("INFERENCE_API_KEY", "")
 
         # 2. Memora
-        memora_url = (os.getenv("FRIDAY_MEMORA_URL") or os.getenv("MEMORA_URL") or "https://memora-cavc.onrender.com").rstrip("/")
+        memora_url = (os.getenv("FRIDAY_MEMORA_URL") or os.getenv("MEMORA_URL") or "http://memora:8000").rstrip("/")
         memora_key = os.getenv("FRIDAY_MEMORA_API_KEY") or os.getenv("MEMORA_API_KEY", "")
 
         # 3. Stratex
-        stratex_url = (os.getenv("FRIDAY_STRATEX_URL") or os.getenv("STRATEX_URL") or "https://stratex-8wj1.onrender.com").rstrip("/")
+        stratex_url = (os.getenv("FRIDAY_STRATEX_URL") or os.getenv("STRATEX_URL") or "http://stratex:8000").rstrip("/")
         stratex_key = os.getenv("FRIDAY_STRATEX_API_KEY") or os.getenv("STRATEX_API_KEY", "")
 
         # 4. IntelX
-        intelx_url = (os.getenv("FRIDAY_INTELX_URL") or os.getenv("INTELX_URL") or "https://intelx-mygl.onrender.com").rstrip("/")
+        intelx_url = (os.getenv("FRIDAY_INTELX_URL") or os.getenv("INTELX_URL") or "http://intelx:8000").rstrip("/")
         intelx_key = os.getenv("FRIDAY_INTELX_API_KEY") or os.getenv("INTELX_API_KEY", "")
 
         # 5. Futuris
-        futuris_url = os.getenv("FUTURIS_URL", "https://futuris-th6f.onrender.com").rstrip("/")
+        futuris_url = os.getenv("FUTURIS_URL", "http://futuris:8000").rstrip("/")
         futuris_key = os.getenv("FRIDAY_FUTURIS_API_KEY") or os.getenv("FUTURIS_API_KEY", "")
 
         # 6. Cortex
-        cortex_url = (os.getenv("FRIDAY_CORTEX_URL") or os.getenv("CORTEX_URL") or "https://cortex-0m7c.onrender.com").rstrip("/")
+        cortex_url = (os.getenv("FRIDAY_CORTEX_URL") or os.getenv("CORTEX_URL") or "http://cortex:8000").rstrip("/")
         cortex_key = os.getenv("FRIDAY_CORTEX_API_KEY") or os.getenv("CORTEX_API_KEY", "")
 
-        # 7. Forge (Local :8001)
-        forge_url = (os.getenv("FRIDAY_FORGE_URL") or os.getenv("FORGE_URL") or "https://forge-e9kl.onrender.com").rstrip("/")
+        # 7. Forge (:8000 on friday_mesh)
+        forge_url = (os.getenv("FRIDAY_FORGE_URL") or os.getenv("FORGE_URL") or "http://forge:8000").rstrip("/")
         forge_key = os.getenv("FRIDAY_FORGE_API_KEY") or os.getenv("FORGE_API_KEY", "")
 
-        # 8. Sentinel (Local :8003)
-        sentinel_url = (os.getenv("FRIDAY_SENTINEL_URL") or os.getenv("SENTINEL_URL") or "https://sentinel-a861.onrender.com").rstrip("/")
+        # 8. Sentinel (:8000 on friday_mesh)
+        sentinel_url = (os.getenv("FRIDAY_SENTINEL_URL") or os.getenv("SENTINEL_URL") or "http://sentinel:8000").rstrip("/")
         sentinel_key = os.getenv("FRIDAY_SENTINEL_API_KEY") or os.getenv("SENTINEL_API_KEY", "")
 
         is_prod = self.env == "production"

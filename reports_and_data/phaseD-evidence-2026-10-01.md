@@ -94,7 +94,7 @@ the suite looks green while testing nothing.
 
 ### D1.6 Live sweep — 2026-10-02T04:52:32Z to 04:52:37Z
 
-All nine services, `GET https://<service>.onrender.com/health`:
+All nine services, `GET http://<service>:8000/health`:
 
 | Service | Live payload (verbatim) | Verdict |
 |---|---|---|
@@ -145,8 +145,8 @@ failure, and it is not recorded as done.**
   two services prevents this recurring, and costs nothing on the free plan.)
 - **Verify with:**
   ```
-  curl -s https://cortex-0m7c.onrender.com/health   # expect "status":"UP" AND evidence_class AND observed_at
-  curl -s https://memora-cavc.onrender.com/health   # expect evidence_class AND observed_at AND database_backend AND vector_store
+  curl -s http://cortex:8000/health   # expect "status":"UP" AND evidence_class AND observed_at
+  curl -s http://memora:8000/health   # expect evidence_class AND observed_at AND database_backend AND vector_store
   ```
 - **What is still owed after that redeploy:** Memora's live payload has never once
   returned `database_backend` or `vector_store`, and the Phase C journey in

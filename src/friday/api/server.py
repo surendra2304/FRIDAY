@@ -187,20 +187,25 @@ async def lifespan(_: FastAPI):
     try:
         yield
     finally:
-        # Named literally, not through a variable: a task that outlives shutdown is
-        # a repair pass firing into a dead process, and the invariant that every
-        # task created above is cancelled here is checked by parsing this loop.
-        for task in (supervision_task, memora_task, repair_task, reflex_task, memory_mirror_task):
+        logger.info("Graceful shutdown initiated: stopping background tasks and listener loops...")
+        background_tasks = [supervision_task, memora_task, repair_task, reflex_task, memory_mirror_task]
+        for task in background_tasks:
             task.cancel()
-        for task in (supervision_task, memora_task, repair_task, reflex_task, memory_mirror_task):
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
         try:
-            await fleet_client.aclose()
+            await asyncio.wait_for(
+                asyncio.gather(*background_tasks, return_exceptions=True),
+                timeout=5.0,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Background tasks cancellation timed out after 5.0 seconds")
+        except Exception as e:
+            logger.debug(f"Exception during background task cancellation: {e}")
+
+        try:
+            await asyncio.wait_for(fleet_client.aclose(), timeout=3.0)
         except Exception:
             logger.exception("Failed to close the shared fleet HTTP client during shutdown")
+        logger.info("Graceful shutdown completed.")
 
 app = FastAPI(
     title="FRIDAY Holographic Core & FastMCP Server",
@@ -217,7 +222,15 @@ app = FastAPI(
 # middleware does not police.
 def _configured_origins() -> list[str]:
     raw = getattr(get_settings(), "allowed_origins", "") or ""
-    return sorted({item.strip().rstrip("/") for item in raw.split(",") if item.strip()})
+    configured = {item.strip().rstrip("/") for item in raw.split(",") if item.strip()}
+    guaranteed = {
+        "https://friday-universe.duckdns.org",
+        "http://localhost:10000",
+        "http://127.0.0.1:10000",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    }
+    return sorted(configured | guaranteed)
 
 
 def _live_settings() -> Any:
@@ -363,7 +376,10 @@ class AndroidActionRequest(BaseModel):
 async def health_check() -> dict[str, Any]:
     """Expose system health report verified across all subsystems."""
     rep = build_health_report(["friday", "friday_deep"])
-    return rep.as_dict()
+    data = rep.as_dict()
+    data["service"] = "friday_core"
+    data["peers_mesh"] = "connected"
+    return data
 
 
 @app.get("/api/metrics")

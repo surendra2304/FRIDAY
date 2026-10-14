@@ -6,7 +6,7 @@
   "probes": [
     {
       "service": "FRIDAY",
-      "url": "https://friday-zw59.onrender.com",
+      "url": "https://friday-universe.duckdns.org",
       "verdict": "LIVE",
       "reachable": true,
       "status_code": 200,
@@ -19,7 +19,7 @@
     },
     {
       "service": "Inference",
-      "url": "https://inference-r1sn.onrender.com",
+      "url": "http://inference:8000",
       "verdict": "LIVE",
       "reachable": true,
       "status_code": 200,
@@ -32,7 +32,7 @@
     },
     {
       "service": "Memora",
-      "url": "https://memora-cavc.onrender.com",
+      "url": "http://memora:8000",
       "verdict": "STALE_BUILD",
       "reachable": true,
       "status_code": 200,
@@ -48,7 +48,7 @@
     },
     {
       "service": "Stratex",
-      "url": "https://stratex-8wj1.onrender.com",
+      "url": "http://stratex:8000",
       "verdict": "LIVE",
       "reachable": true,
       "status_code": 200,
@@ -61,7 +61,7 @@
     },
     {
       "service": "IntelX",
-      "url": "https://intelx-mygl.onrender.com",
+      "url": "http://intelx:8000",
       "verdict": "LIVE",
       "reachable": true,
       "status_code": 200,
@@ -74,7 +74,7 @@
     },
     {
       "service": "Futuris",
-      "url": "https://futuris-th6f.onrender.com",
+      "url": "http://futuris:8000",
       "verdict": "LIVE",
       "reachable": true,
       "status_code": 200,
@@ -87,7 +87,7 @@
     },
     {
       "service": "Cortex",
-      "url": "https://cortex-0m7c.onrender.com",
+      "url": "http://cortex:8000",
       "verdict": "STALE_BUILD",
       "reachable": true,
       "status_code": 200,
@@ -103,7 +103,7 @@
     },
     {
       "service": "Forge",
-      "url": "https://forge-e9kl.onrender.com",
+      "url": "http://forge:8000",
       "verdict": "LIVE",
       "reachable": true,
       "status_code": 200,
@@ -116,7 +116,7 @@
     },
     {
       "service": "Sentinel",
-      "url": "https://sentinel-a861.onrender.com",
+      "url": "http://sentinel:8000",
       "verdict": "LIVE",
       "reachable": true,
       "status_code": 200,
@@ -216,13 +216,13 @@
       "item": "Cortex redeploy",
       "state": "auto-deploy off for this service only",
       "action": "Render dashboard -> Cortex service -> Manual Deploy -> 'Deploy latest commit'",
-      "verify": "curl -s https://cortex-0m7c.onrender.com/health   # expect evidence_class AND observed_at"
+      "verify": "curl -s http://cortex:8000/health   # expect evidence_class AND observed_at"
     },
     {
       "item": "Memora redeploy",
       "state": "auto-deploy off for this service only",
       "action": "Render dashboard -> Memora service -> Manual Deploy -> 'Deploy latest commit'",
-      "verify": "curl -s https://memora-cavc.onrender.com/health   # expect evidence_class AND observed_at"
+      "verify": "curl -s http://memora:8000/health   # expect evidence_class AND observed_at"
     },
     {
       "item": "Phase D3 \u2014 nine Render dashboards + UptimeRobot",

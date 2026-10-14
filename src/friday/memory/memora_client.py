@@ -164,7 +164,7 @@ class MemoraClient:
                 if configured is not None
                 else bool(os.getenv("FRIDAY_API_KEY"))
             )
-        self.base_url = (base_url or os.getenv("MEMORA_URL", "https://memora-cavc.onrender.com")).rstrip("/")
+        self.base_url = (base_url or os.getenv("MEMORA_URL", "http://memora:8000")).rstrip("/")
         self.api_key = api_key or os.getenv("MEMORA_API_KEY")
         self.timeout = timeout
         self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="friday-memory")

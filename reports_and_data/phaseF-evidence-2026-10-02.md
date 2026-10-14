@@ -138,7 +138,7 @@ Observed results from that run:
 
 - The gate is a loopback process. It is **not a deployed service**, has no
   persistent state across the run, and disappears when the driver exits.
-- Nothing in F2 has run against `friday-*.onrender.com` or any other deployment.
+- Nothing in F2 has run against `friday-*.friday_mesh (port 8000)` or any other deployment.
 
 ## 2.4 Durability: the one thing every proof above was blind to
 
@@ -193,7 +193,7 @@ lifecycle, carried across two process deaths.
   **Exact owner action to make it live:** Render → *friday* → Environment →
   add `FRIDAY_SELF_REPAIR_REPO` (a git checkout on a durable volume, not the
   container disk) and `FRIDAY_SELF_REPAIR_STATE` (a path on durable storage), then
-  redeploy. **Verify with:** `curl -s https://friday-zw59.onrender.com/openapi.json | grep -c self-repair`
+  redeploy. **Verify with:** `curl -s https://friday-universe.duckdns.org/openapi.json | grep -c self-repair`
   for the routes and a propose → review → restart → apply round trip for the ledger.
 - Until `FRIDAY_SELF_REPAIR_REPO` exists, the deployed gate cannot apply anything.
   That is a fail-closed outcome, not a hazard, but it means the deployed gate is
@@ -393,14 +393,14 @@ restart path works on a clean machine, not just on the one that wrote it.
 
 - **Why:** auto-deploy is off for this service only.
 - **Exact action:** Render dashboard → Cortex service → Manual Deploy → *Deploy latest commit*.
-- **Verify:** `curl -s https://cortex-0m7c.onrender.com/health` — expect `evidence_class` **and** `observed_at`.
+- **Verify:** `curl -s http://cortex:8000/health` — expect `evidence_class` **and** `observed_at`.
 - **Measured 2026-10-02T08:42:01Z:** `{"status":"UP","timestamp":"2026-10-02T08:42:01.954450","service":"CORTEX API"}` — no evidence fields, hence `STALE_BUILD`.
 
 ### Memora redeploy — owner-blocked
 
 - **Why:** auto-deploy is off for this service only.
 - **Exact action:** Render dashboard → Memora service → Manual Deploy → *Deploy latest commit*.
-- **Verify:** `curl -s https://memora-cavc.onrender.com/health` — expect `evidence_class` **and** `observed_at`.
+- **Verify:** `curl -s http://memora:8000/health` — expect `evidence_class` **and** `observed_at`.
 - **Measured 2026-10-02T08:42:01Z:** `{"status":"healthy","service":"memora-api","database":"healthy",…}` — no evidence fields, hence `STALE_BUILD`.
 
 Neither is a code failure. Both are reachable and healthy; they are running a build

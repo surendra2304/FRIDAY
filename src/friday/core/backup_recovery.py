@@ -66,7 +66,7 @@ class BackupRecoveryManager:
                 registered_skills=registered_skills or ["trading_bot_operator", "forge_manager", "nexus_operator"],
                 operator_states=operator_states or {"advisory_watchdog": "RUNNING", "nexus_vigilance": "RUNNING"},
                 user_preferences=user_preferences or {"voice_persona": "FRI_BALANCED", "max_drawdown_pct": 5.0},
-                config_summary=config_summary or {"env": "production", "trading_bot_url": "http://localhost:5000"},
+                config_summary=config_summary or {"env": "production", "trading_bot_url": "http://stratex:8000"},
             )
 
             file_path = self.backup_dir / f"{snap_id}.json"

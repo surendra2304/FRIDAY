@@ -61,7 +61,7 @@ class AIUniverseClient:
             self.base_url = (
                 os.getenv("INFERENCE_URL")
                 or os.getenv("FRIDAY_INFERENCE_URL")
-                or "https://inference-h7bn.onrender.com"
+                or "http://inference:8000"
             ).rstrip("/")
 
         if api_key is not None and api_key.strip():
@@ -88,7 +88,6 @@ class AIUniverseClient:
         url = f"{self.base_url}/v1/friday/status"
         headers = self._get_headers()
         key_preview = f"{self.api_key[:4]}..." if self.api_key else "(none)"
-        print(f"[DEBUG] Sending to {url} with key {key_preview}")
         logger.info(f"Sending to {url} with key {key_preview}...")
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -101,7 +100,6 @@ class AIUniverseClient:
         url = f"{self.base_url}/v1/friday/agents"
         headers = self._get_headers()
         key_preview = f"{self.api_key[:4]}..." if self.api_key else "(none)"
-        print(f"[DEBUG] Sending to {url} with key {key_preview}")
         logger.info(f"Sending to {url} with key {key_preview}...")
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -141,7 +139,6 @@ class AIUniverseClient:
         headers = self._get_headers()
 
         key_preview = f"{self.api_key[:4]}..." if self.api_key else "(none)"
-        print(f"[DEBUG] Sending to {url} with key {key_preview}")
         logger.info(f"Sending to {url} with key {key_preview}...")
 
         client = self.get_client()
@@ -157,7 +154,6 @@ class AIUniverseClient:
         headers = self._get_headers()
 
         key_preview = f"{self.api_key[:4]}..." if self.api_key else "(none)"
-        print(f"[DEBUG] Sending to {url} with key {key_preview}")
         logger.info(f"Sending AI Universe debate request to {url} with key {key_preview}")
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:

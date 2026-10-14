@@ -344,7 +344,7 @@ class Settings(BaseSettings):
         description="Base URL for external AI Universe multi-agent debate API",
     )
     inference_url: str = Field(
-        default="https://inference-h7bn.onrender.com",
+        default="http://inference:8000",
         description="Base URL for live Inference Cloud Gateway",
     )
     inference_api_key: str | None = Field(
@@ -368,7 +368,7 @@ class Settings(BaseSettings):
     # always accepted; these entries are the *additional* trusted frontends, e.g.
     # the Next.js dev server on :3000 and the deployed command centre.
     allowed_origins: str = Field(
-        default="http://localhost:3000,http://127.0.0.1:3000",
+        default="https://friday-universe.duckdns.org,http://localhost:10000,http://127.0.0.1:10000,http://localhost:3000,http://127.0.0.1:3000",
         description="Comma-separated extra browser origins permitted to reach the control API",
     )
     require_api_key_on_loopback: bool = Field(
@@ -653,59 +653,59 @@ class Settings(BaseSettings):
     )
     # Specialist Agents in FRIDAY Universe Mesh
     stratex_url: str = Field(
-        default="http://localhost:8000",
+        default="http://stratex:8000",
         description="Base URL for Stratex Quantitative Strategy API",
     )
     trading_bot_base_url: str = Field(
-        default="http://localhost:8000",
+        default="http://stratex:8000",
         description="Alias for Stratex API",
     )
     ai_universe_base_url: str = Field(
-        default="https://forge-e9kl.onrender.com",
+        default="http://inference:8000",
         description="Alias for Inference Core API",
     )
     intelx_url: str = Field(
-        default="http://localhost:8002",
+        default="http://intelx:8000",
         description="Base URL for IntelX Evidence & Research API",
     )
     intelx_base_url: str = Field(
-        default="http://localhost:8002",
+        default="http://intelx:8000",
         description="Alias for IntelX API",
     )
     futuris_url: str = Field(
-        default="https://futuris-th6f.onrender.com",
+        default="http://futuris:8000",
         description="Base URL for Futuris Predictive Forecasting API",
     )
     futuris_base_url: str = Field(
-        default="https://futuris-th6f.onrender.com",
+        default="http://futuris:8000",
         description="Alias for Futuris API",
     )
     memora_url: str = Field(
-        default="http://localhost:8004",
+        default="http://memora:8000",
         description="Base URL for Memora Universal Memory API",
     )
     memora_base_url: str = Field(
-        default="http://localhost:8004",
+        default="http://memora:8000",
         description="Alias for Memora API",
     )
     sentinel_url: str = Field(
-        default="https://sentinel-a861.onrender.com",
+        default="http://sentinel:8000",
         description="Base URL for Sentinel Security API",
     )
     sentinel_base_url: str = Field(
-        default="https://sentinel-a861.onrender.com",
+        default="http://sentinel:8000",
         description="Alias for Sentinel API",
     )
     forge_url: str = Field(
-        default="https://forge-e9kl.onrender.com",
+        default="http://forge:8000",
         description="Base URL for Forge Code Engineering API",
     )
     cortex_url: str = Field(
-        default="http://localhost:8005",
+        default="http://cortex:8000",
         description="Base URL for Cortex Autonomous Website & Growth API",
     )
     nexus_base_url: str = Field(
-        default="http://localhost:8005",
+        default="http://cortex:8000",
         description="Alias for Cortex API",
     )
     nexus_enabled: bool = Field(

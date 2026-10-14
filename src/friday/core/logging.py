@@ -74,7 +74,7 @@ def setup_logging(
     mask_filter = SecretMaskingFilter()
 
     formatter = SanitizedFormatter(
-        fmt="%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
+        fmt="[%(asctime)s] [%(levelname)s] [%(name)s]: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
         filter_obj=mask_filter,
     )

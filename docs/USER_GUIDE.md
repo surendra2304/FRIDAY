@@ -11,9 +11,9 @@ FRIDAY acts as the **single hub** for all commands, telemetry, and cross-system 
 ### 1. Starting the Ecosystem
 Ensure all managed subsystems are running or accessible:
 - **FRIDAY Core**: Runs locally with voice / text / REST interfaces.
-- **Algorithmic Trading Bot**: `http://localhost:5000`
+- **Algorithmic Trading Bot**: `http://stratex:8000`
 - **FORGE SWE Engine**: `http://localhost:8000`
-- **AI-Universe Core**: `https://forge-e9kl.onrender.com`
+- **AI-Universe Core**: `http://forge:8000`
 
 ---
 
@@ -69,9 +69,9 @@ Ensure all managed subsystems are running or accessible:
 ```bash
 # Ecosystem Unified Settings
 ECOSYSTEM_ENABLED=True
-TRADING_BOT_BASE_URL=http://localhost:5000
+TRADING_BOT_BASE_URL=http://stratex:8000
 FORGE_BASE_URL=http://localhost:8000
-AI_UNIVERSE_BASE_URL=https://forge-e9kl.onrender.com
+AI_UNIVERSE_BASE_URL=http://forge:8000
 
 # Polling Intervals
 FORGE_SUPERVISION_INTERVAL_SECONDS=60

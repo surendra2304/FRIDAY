@@ -45,15 +45,15 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 #: The nine deployed services, and the local checkout each one is built from.
 FLEET: tuple[tuple[str, str, str], ...] = (
-    ("FRIDAY", "https://friday-zw59.onrender.com", "FRIDAY"),
-    ("Inference", "https://inference-h7bn.onrender.com", "Inference"),
-    ("Memora", "https://memora-cavc.onrender.com", "Memora"),
-    ("Stratex", "https://stratex-8wj1.onrender.com", "Stratex"),
-    ("IntelX", "https://intelx-mygl.onrender.com", "IntelX"),
-    ("Futuris", "https://futuris-th6f.onrender.com", "Futuris"),
-    ("Cortex", "https://cortex-0m7c.onrender.com", "Cortex"),
-    ("Forge", "https://forge-e9kl.onrender.com", "Forge"),
-    ("Sentinel", "https://sentinel-a861.onrender.com", "Sentinel"),
+    ("FRIDAY", "https://friday-universe.duckdns.org", "FRIDAY"),
+    ("Inference", "http://inference:8000", "Inference"),
+    ("Memora", "http://memora:8000", "Memora"),
+    ("Stratex", "http://stratex:8000", "Stratex"),
+    ("IntelX", "http://intelx:8000", "IntelX"),
+    ("Futuris", "http://futuris:8000", "Futuris"),
+    ("Cortex", "http://cortex:8000", "Cortex"),
+    ("Forge", "http://forge:8000", "Forge"),
+    ("Sentinel", "http://sentinel:8000", "Sentinel"),
 )
 
 #: What a service must carry for its health claim to be falsifiable.
@@ -66,13 +66,13 @@ OWNER_BLOCKED: tuple[dict[str, str], ...] = (
         "item": "Cortex redeploy",
         "state": "auto-deploy off for this service only",
         "action": "Render dashboard -> Cortex service -> Manual Deploy -> 'Deploy latest commit'",
-        "verify": 'curl -s https://cortex-0m7c.onrender.com/health   # expect evidence_class AND observed_at',
+        "verify": 'curl -s http://cortex:8000/health   # expect evidence_class AND observed_at',
     },
     {
         "item": "Memora redeploy",
         "state": "auto-deploy off for this service only",
         "action": "Render dashboard -> Memora service -> Manual Deploy -> 'Deploy latest commit'",
-        "verify": 'curl -s https://memora-cavc.onrender.com/health   # expect evidence_class AND observed_at',
+        "verify": 'curl -s http://memora:8000/health   # expect evidence_class AND observed_at',
     },
     {
         "item": "Phase D3 — nine Render dashboards + UptimeRobot",

@@ -90,14 +90,14 @@ This runbook serves as the authoritative operational manual for deploying, monit
 
 | Subsystem | Port | Default URL | Common Issue | Diagnostic & Automated Healing |
 | :--- | :--- | :--- | :--- | :--- |
-| **Trading Bot** | `5000` | `http://localhost:5000` | Socket timeout / Disconnection | `FridayDoctorEnhanced` auto-reconnects socket; verify exchange API keys in `.env`. |
+| **Trading Bot** | `5000` | `http://stratex:8000` | Socket timeout / Disconnection | `FridayDoctorEnhanced` auto-reconnects socket; verify exchange API keys in `.env`. |
 | **FORGE Engine** | `8000` | `http://localhost:8000` | Build task loop / High CPU | Cancel task via `ForgeManagerSkill.cancel_task(task_id)`; run `PLAYBOOK:forge_runaway`. |
-| **AI-Universe** | `8001` | `https://forge-e9kl.onrender.com` | LLM rate limit / 500s | Multi-model failover auto-switches across 7 providers; fallback to rule advisory. |
+| **AI-Universe** | `8001` | `http://forge:8000` | LLM rate limit / 500s | Multi-model failover auto-switches across 7 providers; fallback to rule advisory. |
 | **Nexus Growth** | `8002` | `http://localhost:8002` | Conversion drop / 503 error | Run `PLAYBOOK:website_down`; check deploy correlation and execute rollback. |
-| **Sentinel Security** | `8003` | `https://sentinel-a861.onrender.com` | Scan queue timeout / Stale token | Run `PLAYBOOK:data_breach`; verify scope enforcement in `SentinelManagerSkill`. |
+| **Sentinel Security** | `8003` | `http://sentinel:8000` | Scan queue timeout / Stale token | Run `PLAYBOOK:data_breach`; verify scope enforcement in `SentinelManagerSkill`. |
 | **IntelX Research** | `8004` | `http://localhost:8004` | Research timeout / Stale contradiction | `ResearchSupervisorOperator` auto-alerts; prune or refresh via `ResearchLibrary.apply_retention_decay()`. |
 | **Futuris Forecaster** | `8005` | `http://localhost:8005` | Calibration degradation / High Brier score | `ForecastSupervisorOperator` triggers model recalibration and flags uncertainty bounds. |
-| **FRIDAY Core** | `9000` | `https://friday-zw59.onrender.com` | Voice session audio stutter | Rotate Gemini API keys in `GeminiCredentialPool`; restart `MicrophoneStream`. |
+| **FRIDAY Core** | `9000` | `https://friday-universe.duckdns.org` | Voice session audio stutter | Rotate Gemini API keys in `GeminiCredentialPool`; restart `MicrophoneStream`. |
 
 ### 4.5 IntelX Autonomous Deep Research Operations Manual
 1. **Research Delegation**: Submit research via `IntelXManagerSkill.submit_research(question, domain_hint, depth)` or voice (*"Research [topic]"*, *"Deep dive into [topic]"*).
@@ -140,14 +140,14 @@ FRIDAY_SECURITY_LOCKOUT_MINUTES=15
 FRIDAY_MAX_FAILED_BIOMETRIC_ATTEMPTS=5
 
 # Managed Subsystem URLs (All 8 Subsystems)
-TRADING_BOT_BASE_URL=http://localhost:5000
+TRADING_BOT_BASE_URL=http://stratex:8000
 FORGE_BASE_URL=http://localhost:8000
-AI_UNIVERSE_BASE_URL=https://forge-e9kl.onrender.com
+AI_UNIVERSE_BASE_URL=http://forge:8000
 NEXUS_BASE_URL=http://localhost:8002
-SENTINEL_BASE_URL=https://sentinel-a861.onrender.com
+SENTINEL_BASE_URL=http://sentinel:8000
 INTELX_BASE_URL=http://localhost:8004
 FUTURIS_BASE_URL=http://localhost:8005
-FRIDAY_CORE_BASE_URL=https://friday-zw59.onrender.com
+FRIDAY_CORE_BASE_URL=https://friday-universe.duckdns.org
 
 # Environment & Performance
 FRIDAY_ENV=production

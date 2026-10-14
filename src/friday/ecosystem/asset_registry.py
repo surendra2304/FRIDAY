@@ -112,14 +112,14 @@ class AssetRegistry:
                 asset_id="asset-trading-bot",
                 name="Trading Bot Execution Gateway",
                 asset_type=AssetType.TRADING_ENDPOINT,
-                target="http://localhost:5000/api/v1/trading",
+                target="http://stratex:8000/api/v1/trading",
                 subsystem="trading_bot",
                 risk_level="CLEAN",
                 open_findings_count=0,
                 last_scan_time=now_iso,
                 last_scan_result={"status": "COMPLETED", "mode": "api_security", "summary": "Clean."},
                 next_scheduled_scan=next_week_iso,
-                metadata={"environment": "trading_core", "port": 5000},
+                metadata={"environment": "trading_core", "port": 8000},
             )
         )
 

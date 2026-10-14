@@ -80,7 +80,7 @@ This document provides the operational guide, architecture, cross-system workflo
 ```bash
 # ============================ UNIFIED ECOSYSTEM COMMAND CENTER ==============================
 ECOSYSTEM_ENABLED=True
-TRADING_BOT_BASE_URL=http://localhost:5000
+TRADING_BOT_BASE_URL=http://stratex:8000
 FORGE_BASE_URL=http://localhost:8000
-AI_UNIVERSE_BASE_URL=https://forge-e9kl.onrender.com
+AI_UNIVERSE_BASE_URL=http://forge:8000
 ```

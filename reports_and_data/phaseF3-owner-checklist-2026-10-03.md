@@ -113,7 +113,7 @@ independent of the loop):
 **To prove it**
 
 ```bash
-curl -s https://friday-zw59.onrender.com/api/self-repair/autonomous
+curl -s https://friday-universe.duckdns.org/api/self-repair/autonomous
 ```
 
 `GET` is unauthenticated and read-only on purpose — you should not need a control

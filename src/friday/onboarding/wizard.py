@@ -4,7 +4,7 @@ Provides an interactive, voice-guided first-run onboarding experience:
 1. Detects missing configurations and credentials on initial startup
 2. Step-by-step guided configuration:
    - LLM Provider API Keys (Groq, Mistral, OpenRouter, Gemini)
-   - Managed Subsystem URLs (Trading Bot: 5000, Forge: 8000, AI-Universe: 8001, Nexus: 8002)
+   - Managed Subsystem URLs (Trading Bot: 8000, Forge: 8000, AI-Universe: 8001, Nexus: 8002)
    - Voice Biometric Enrollment (records & verifies 3 distinct spoken passphrase samples)
    - User Preferences (morning briefing time, response detail level, alert urgency thresholds)
    - Optional third-party integrations (Telegram, Web Push, VAPID, FCM)
@@ -130,7 +130,7 @@ class OnboardingWizard:
                         "Step 2: Subsystem Endpoints. I can manage your Trading Bot, Forge SWE Engine, "
                         "AI-Universe Core, and Nexus Growth Engine. Would you like to use default localhost ports?"
                     ),
-                    "text_instructions": "Default URLs: Trading (5000), Forge (8000), AI-Universe (8001), Nexus (8002).",
+                    "text_instructions": "Default URLs: Trading (8000), Forge (8000), AI-Universe (8001), Nexus (8002).",
                     "required_input": "subsystem_urls",
                 }
 
@@ -196,10 +196,10 @@ class OnboardingWizard:
 
             elif step == OnboardingStep.SUBSYSTEM_URLS:
                 urls = user_input.get("urls", {
-                    "trading_bot": "http://localhost:5000",
-                    "forge": "http://localhost:8000",
-                    "ai_universe": "https://forge-e9kl.onrender.com",
-                    "nexus": "http://localhost:8002",
+                    "trading_bot": "http://stratex:8000",
+                    "forge": "http://forge:8000",
+                    "ai_universe": "http://inference:8000",
+                    "nexus": "http://cortex:8000",
                 })
                 self.state.subsystems_configured.update(urls)
                 self.state.completed_steps.append(step)
