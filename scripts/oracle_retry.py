@@ -87,8 +87,8 @@ def main():
         try:
             instances = compute_client.list_instances(compartment_id=compartment_ocid).data
             for inst in instances:
-                if inst.lifecycle_state in ["RUNNING", "PROVISIONING"]:
-                    if "A1" in (inst.shape or "") or "FRIDAY" in (inst.display_name or ""):
+                    # Specifically target Ampere A1 (ARM) instances so AMD micro instances are ignored
+                    if "A1" in (inst.shape or ""):
                         active_instance = inst
                         break
         except Exception as e:
