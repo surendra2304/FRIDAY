@@ -42,7 +42,7 @@ jobs:
           OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
           OCI_REGION: ${{ secrets.OCI_REGION || 'ap-hyderabad-1' }}
           RUN_DURATION_MINUTES: 320
-          CYCLE_DELAY: 10
+          CYCLE_DELAY: 30
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python scripts/oracle_retry.py
