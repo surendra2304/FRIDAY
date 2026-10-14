@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from pydantic import Field, model_validator
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import (
     BaseSettings,
     EnvSettingsSource,
@@ -370,6 +370,16 @@ class Settings(BaseSettings):
     allowed_origins: str = Field(
         default="https://friday-universe.duckdns.org,http://localhost:10000,http://127.0.0.1:10000,http://localhost:3000,http://127.0.0.1:3000",
         description="Comma-separated extra browser origins permitted to reach the control API",
+    )
+    port: int = Field(
+        default=10000,
+        description="Internal listening port for FRIDAY Core gateway (standard port 10000)",
+        validation_alias=AliasChoices("PORT", "FRIDAY_PORT", "port"),
+    )
+    host: str = Field(
+        default="0.0.0.0",
+        description="Host binding address",
+        validation_alias=AliasChoices("HOST", "FRIDAY_HOST", "host"),
     )
     require_api_key_on_loopback: bool = Field(
         default=False,

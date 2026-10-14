@@ -90,10 +90,10 @@ class AIUniverseClient:
         key_preview = f"{self.api_key[:4]}..." if self.api_key else "(none)"
         logger.info(f"Sending to {url} with key {key_preview}...")
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            resp = await client.get(url, headers=headers)
-            resp.raise_for_status()
-            return resp.json()
+        client = self.get_client()
+        resp = await client.get(url, headers=headers)
+        resp.raise_for_status()
+        return resp.json()
 
     async def get_agents(self) -> list[AIAgentInfo]:
         """Discover live roster of all specialist agents from GET /v1/friday/agents."""
@@ -102,13 +102,13 @@ class AIUniverseClient:
         key_preview = f"{self.api_key[:4]}..." if self.api_key else "(none)"
         logger.info(f"Sending to {url} with key {key_preview}...")
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            resp = await client.get(url, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
-            if isinstance(data, list):
-                return [AIAgentInfo(**item) for item in data]
-            return []
+        client = self.get_client()
+        resp = await client.get(url, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+        if isinstance(data, list):
+            return [AIAgentInfo(**item) for item in data]
+        return []
 
     async def get_info(self) -> dict[str, Any]:
         """Fetch AI Universe platform info from GET /v1/friday/info."""
@@ -117,11 +117,11 @@ class AIUniverseClient:
         key_preview = f"{self.api_key[:4]}..." if self.api_key else "(none)"
         logger.info(f"Sending to {url} with key {key_preview}...")
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            resp = await client.get(url, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
-            return data if isinstance(data, dict) else {"info": data}
+        client = self.get_client()
+        resp = await client.get(url, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+        return data if isinstance(data, dict) else {"info": data}
 
     def get_client(self) -> httpx.AsyncClient:
         """Provide a persistent connection-pooled HTTP client for sub-second communication."""

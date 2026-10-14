@@ -32,6 +32,43 @@
 5. **Universal Computer Control**: Native Win32 UI automation, application lifecycle management, and Android ADB device abstraction.
 6. **Standing-Mandate Autonomy**: Signed, cryptographic self-repair and diagnostic loops capable of fixing codebase errors in sandboxes before deployment.
 
+### Core Architecture & Mesh Flow
+```mermaid
+flowchart TD
+    User([User / Web Browser / Voice]) -->|HTTPS / WSS| Caddy[Caddy Reverse Proxy\nfriday-universe.duckdns.org]
+    Caddy -->|Host Port 10000| Core[FRIDAY Core Gateway\nContainer Port :10000]
+
+    subgraph CoreEngine [FRIDAY Core Gateway Internals]
+        API[FastAPI & FastMCP Endpoints\n/health, /ready, /api/chat, /v1/tasks]
+        Resilience[Async Resilience & Connection Pooling\nAsyncCircuitBreaker + TTLCache + Retry with Jitter]
+        DB[(SQLite WAL Storage\nPRAGMA journal_mode=WAL;\nPRAGMA busy_timeout=5000;)]
+        API --> Resilience
+        API --> DB
+    end
+
+    Core --> CoreEngine
+
+    subgraph DockerMesh [Private Container Mesh: friday_mesh]
+        Cortex[Cortex :8000\nCognitive Reasoning]
+        Forge[Forge :8000\nCode Synthesis]
+        Futuris[Futuris :8000\nPredictive Modeling]
+        Inference[Inference :8000\nLLM Routing & Stream]
+        IntelX[IntelX :8000\nOSINT & Search]
+        Memora[Memora :8000\nEpisodic Memory]
+        Sentinel[Sentinel :8000\nSecurity Watchdog]
+        Stratex[Stratex :8000\nAlgorithmic Trading]
+    end
+
+    Resilience -->|Async HTTP / Keep-Alive| Cortex
+    Resilience -->|Async HTTP / Keep-Alive| Forge
+    Resilience -->|Async HTTP / Keep-Alive| Futuris
+    Resilience -->|Async HTTP / Keep-Alive| Inference
+    Resilience -->|Async HTTP / Keep-Alive| IntelX
+    Resilience -->|Async HTTP / Keep-Alive| Memora
+    Resilience -->|Async HTTP / Keep-Alive| Sentinel
+    Resilience -->|Async HTTP / Keep-Alive| Stratex
+```
+
 ---
 
 ## 🌐 Universe Mesh Topology
@@ -56,19 +93,43 @@ All 8 specialist peer agents run internally on **Container Port 8000** across th
 
 FRIDAY Core exposes a comprehensive REST and WebSocket interface:
 
-### Core & Health
+### Core, Health & Readiness
 - `GET /` & `GET /ui`: Serves the WebGL Holographic Command Center HUD.
-- `GET /health` & `GET /api/health`: Verified health endpoint returning process liveness and peer connectivity:
+- `GET /health` & `GET /api/health`: Liveness probe returning process health and peer connectivity:
   ```json
   {
-    "overall": "healthy",
+    "status": "healthy",
     "service": "friday_core",
+    "version": "2.0.0",
+    "overall": "healthy",
     "evidence_class": "process_liveness",
     "observed_at": "2026-10-14T16:00:00.000000+00:00",
     "peers_mesh": "connected",
     "checks": [...]
   }
   ```
+- `GET /ready` & `GET /api/ready`: Readiness probe verifying local SQLite integrity and pre-flight configuration:
+  ```json
+  {
+    "status": "ready",
+    "ready": true,
+    "service": "friday_core",
+    "version": "2.0.0",
+    "timestamp": "2026-10-14T16:00:00.000000+00:00",
+    "database": "healthy",
+    "mesh": "configured"
+  }
+  ```
+
+### Standardized Error Envelope
+All error responses strictly follow the unified envelope:
+```json
+{
+  "error": "HTTP_404",
+  "message": "Not Found",
+  "success": false
+}
+```
 
 ### Chat & LLM
 - `POST /api/chat`: Multi-turn conversational interface with multi-provider failover.

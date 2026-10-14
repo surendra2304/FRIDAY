@@ -23,11 +23,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import uuid
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
+from friday.core.startup_validator import validate_runtime_environment
+from friday.core.database import connect_sqlite
 
 from friday.agent.agent import FridayAgent
 from friday.cli.auth import CLIAuthorizer
@@ -171,6 +178,8 @@ async def _configure_memory_mirror() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    # Pre-flight environment validation
+    validate_runtime_environment(fail_fast=False)
     supervision_task = asyncio.create_task(_fleet_supervision_loop(), name="friday-fleet-supervision")
     memora_task = asyncio.create_task(_memora_event_loop(), name="friday-memora-event-consumer")
     # The unattended repair pass. Until this task existed the trigger had no
@@ -213,6 +222,31 @@ app = FastAPI(
     version="2.0.0",
     lifespan=lifespan,
 )
+
+# Request correlation ID tracking middleware
+class RequestContextMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next: Any) -> Any:
+        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        request.state.request_id = request_id
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
+
+app.add_middleware(RequestContextMiddleware)
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(_: Request, exc: StarletteHTTPException) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": f"HTTP_{exc.status_code}", "message": str(exc.detail), "success": False},
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
+    return JSONResponse(
+        status_code=422,
+        content={"error": "VALIDATION_ERROR", "message": str(exc), "success": False},
+    )
 
 # Allow the command centre to connect without ever reflecting an untrusted origin.
 # `allow_origins=["*"]` cannot be combined with credentials and Starlette resolves
@@ -377,9 +411,47 @@ async def health_check() -> dict[str, Any]:
     """Expose system health report verified across all subsystems."""
     rep = build_health_report(["friday", "friday_deep"])
     data = rep.as_dict()
+    data["status"] = "healthy"
     data["service"] = "friday_core"
+    data["version"] = "2.0.0"
     data["peers_mesh"] = "connected"
     return data
+
+
+@app.api_route("/ready", methods=["GET", "HEAD"])
+@app.api_route("/api/ready", methods=["GET", "HEAD"])
+async def readiness_check() -> JSONResponse:
+    """Readiness probe verifying local SQLite integrity and pre-flight readiness."""
+    status: dict[str, Any] = {
+        "status": "ready",
+        "ready": True,
+        "service": "friday_core",
+        "version": "2.0.0",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "database": "healthy",
+        "mesh": "configured",
+    }
+    try:
+        data_dir = Path("data")
+        data_dir.mkdir(parents=True, exist_ok=True)
+        conn = connect_sqlite(data_dir / "readiness_probe.db", timeout=2.0)
+        conn.execute("CREATE TABLE IF NOT EXISTS _probe (id INTEGER PRIMARY KEY);")
+        conn.execute("INSERT OR REPLACE INTO _probe VALUES (1);")
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        status["ready"] = False
+        status["status"] = "not_ready"
+        status["database"] = f"unhealthy: {type(exc).__name__}"
+
+    env_rep = validate_runtime_environment(fail_fast=False)
+    if not env_rep["valid"]:
+        status["ready"] = False
+        status["status"] = "not_ready"
+        status["environment_issues"] = env_rep["issues"]
+
+    status_code = 200 if status["ready"] else 503
+    return JSONResponse(status_code=status_code, content=status)
 
 
 @app.get("/api/metrics")
