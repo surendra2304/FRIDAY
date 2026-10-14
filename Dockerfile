@@ -57,5 +57,5 @@ EXPOSE 10000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD curl -f http://localhost:10000/health || exit 1
 
-# Start FRIDAY FastAPI/MCP server listening on Container Port 10000
-CMD ["sh", "-c", "uvicorn friday.api.server:app --host 0.0.0.0 --port ${PORT:-10000}"]
+# Start FRIDAY FastAPI/MCP server listening on Container Port 10000 (exec forwards PID 1 signals)
+CMD ["sh", "-c", "exec uvicorn friday.api.server:app --host 0.0.0.0 --port ${PORT:-10000}"]

@@ -35,6 +35,7 @@ from pydantic import BaseModel
 
 from friday.core.startup_validator import validate_runtime_environment
 from friday.core.database import connect_sqlite
+from friday.core.cache import TTLCache
 
 from friday.agent.agent import FridayAgent
 from friday.cli.auth import CLIAuthorizer
@@ -179,7 +180,8 @@ async def _configure_memory_mirror() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     # Pre-flight environment validation
-    validate_runtime_environment(fail_fast=False)
+    is_prod = os.getenv("FRIDAY_ENV", "").lower() == "production"
+    validate_runtime_environment(fail_fast=is_prod)
     supervision_task = asyncio.create_task(_fleet_supervision_loop(), name="friday-fleet-supervision")
     memora_task = asyncio.create_task(_memora_event_loop(), name="friday-memora-event-consumer")
     # The unattended repair pass. Until this task existed the trigger had no
@@ -236,16 +238,30 @@ app.add_middleware(RequestContextMiddleware)
 
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(_: Request, exc: StarletteHTTPException) -> JSONResponse:
+    from friday.security.scrubber import redact_secrets
+    clean_msg = redact_secrets(str(exc.detail))
     return JSONResponse(
         status_code=exc.status_code,
-        content={"error": f"HTTP_{exc.status_code}", "message": str(exc.detail), "success": False},
+        content={"error": f"HTTP_{exc.status_code}", "message": clean_msg, "success": False},
     )
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
+    from friday.security.scrubber import redact_secrets
+    clean_msg = redact_secrets(str(exc))
     return JSONResponse(
         status_code=422,
-        content={"error": "VALIDATION_ERROR", "message": str(exc), "success": False},
+        content={"error": "VALIDATION_ERROR", "message": clean_msg, "success": False},
+    )
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(_: Request, exc: Exception) -> JSONResponse:
+    from friday.security.scrubber import redact_secrets
+    clean_msg = redact_secrets(str(exc))
+    logger.exception("Unhandled server exception: %s", clean_msg)
+    return JSONResponse(
+        status_code=500,
+        content={"error": "INTERNAL_SERVER_ERROR", "message": clean_msg or "An internal error occurred", "success": False},
     )
 
 # Allow the command centre to connect without ever reflecting an untrusted origin.
@@ -444,6 +460,20 @@ async def readiness_check() -> JSONResponse:
         status["status"] = "not_ready"
         status["database"] = f"unhealthy: {type(exc).__name__}"
 
+    try:
+        import shutil
+        total, used, free = shutil.disk_usage(".")
+        free_mb = free / (1024 * 1024)
+        status["disk_free_mb"] = round(free_mb, 1)
+        if free_mb < 50.0:
+            status["ready"] = False
+            status["status"] = "not_ready"
+            status["disk"] = f"low_disk_space: {round(free_mb, 1)}MB"
+        else:
+            status["disk"] = "healthy"
+    except Exception as exc:
+        status["disk"] = f"unknown: {type(exc).__name__}"
+
     env_rep = validate_runtime_environment(fail_fast=False)
     if not env_rep["valid"]:
         status["ready"] = False
@@ -454,15 +484,22 @@ async def readiness_check() -> JSONResponse:
     return JSONResponse(status_code=status_code, content=status)
 
 
+@app.get("/metrics")
 @app.get("/api/metrics")
 async def metrics_endpoint() -> dict[str, Any]:
     """Return runtime observability metrics from friday_deep."""
     return default_metrics.snapshot()
 
 
+_telemetry_cache = TTLCache(default_ttl=2.0)
+
+
 @app.get("/api/telemetry")
 async def get_telemetry() -> dict[str, Any]:
-    """Expose real-time hardware telemetry (CPU, RAM, Battery) for the UI."""
+    """Expose real-time hardware telemetry (CPU, RAM, Battery) for the UI with TTL caching."""
+    cached = _telemetry_cache.get("telemetry")
+    if cached is not None:
+        return cached
     try:
         import psutil
         cpu = psutil.cpu_percent(interval=None)
@@ -473,7 +510,7 @@ async def get_telemetry() -> dict[str, Any]:
     except Exception as exc:
         return {"status": "unavailable", "error": type(exc).__name__, "timestamp": datetime.now(timezone.utc).isoformat()}
 
-    return {
+    data = {
         "status": "ok",
         "battery_available": batt is not None,
         "cpu_usage": cpu,
@@ -484,18 +521,23 @@ async def get_telemetry() -> dict[str, Any]:
         "power_plugged": power_plugged,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+    _telemetry_cache.set("telemetry", data, ttl=2.0)
+    return data
 
 
 @app.get("/api/system_telemetry")
 async def get_system_telemetry() -> dict[str, Any]:
-    """Expose detailed system hardware telemetry for the HUD core cards."""
+    """Expose detailed system hardware telemetry for the HUD core cards with TTL caching."""
+    cached = _telemetry_cache.get("system_telemetry")
+    if cached is not None:
+        return cached
     try:
         import platform
         import psutil
         cpu_percent = psutil.cpu_percent(interval=None)
         cpu_cores = psutil.cpu_count(logical=True) or 8
         vm = psutil.virtual_memory()
-        return {
+        data = {
             "status": "ok",
             "cpu_percent": round(cpu_percent, 1),
             "cpu_cores": cpu_cores,
@@ -507,6 +549,8 @@ async def get_system_telemetry() -> dict[str, Any]:
             "operator": "Surendra",
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
+        _telemetry_cache.set("system_telemetry", data, ttl=2.0)
+        return data
     except Exception as e:
         return {
             "status": "unavailable",
@@ -522,14 +566,25 @@ async def get_system_telemetry() -> dict[str, Any]:
 from friday.core.task_manager import task_manager
 
 
+@app.get("/v1/tasks")
+@app.get("/api/tasks")
+async def list_tasks_endpoint(limit: int = 50) -> dict[str, Any]:
+    """List recent tasks managed by FRIDAY Core."""
+    tasks = [t.model_dump() for t in task_manager.list_tasks(limit=limit)]
+    return {"status": "ok", "tasks": tasks, "count": len(tasks), "success": True}
+
+
 @app.get("/v1/tasks/{task_id}")
 @app.get("/api/tasks/{task_id}")
 async def get_task_status(task_id: str) -> Any:
     """Retrieve state and observability progress for a task envelope."""
     t = task_manager.get_task(task_id)
     if not t:
-        return JSONResponse({"status": "not_found", "task_id": task_id}, status_code=404)
-    return {"status": "ok", "task": t.model_dump()}
+        return JSONResponse(
+            status_code=404,
+            content={"error": "TASK_NOT_FOUND", "message": f"Task '{task_id}' was not found", "success": False},
+        )
+    return {"status": "ok", "task": t.model_dump(), "success": True}
 
 
 @app.get("/v1/tasks/{task_id}/events")

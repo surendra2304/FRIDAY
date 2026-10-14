@@ -15,6 +15,7 @@ from pathlib import Path
 import re
 import sqlite3
 import time
+from friday.core.database import connect_sqlite
 from typing import Any, Dict, List, Optional
 import urllib.error
 import urllib.parse
@@ -175,15 +176,17 @@ class MemoraClient:
         except Exception:
             default_local = os.path.abspath("data/memora.db")
 
-        candidates = [
-            local_db_path,
-            os.getenv("MEMORA_DB_PATH"),
-            "d:/FRIDAY Universe/Memora/data/memora.db",
-            "../Memora/data/memora.db",
-            "data/memora.db",
-            default_local,
-        ]
-        self.local_db_path = next((p for p in candidates if p and (p == ":memory:" or os.path.exists(p))), default_local)
+        if local_db_path:
+            self.local_db_path = local_db_path
+        else:
+            candidates = [
+                os.getenv("MEMORA_DB_PATH"),
+                "d:/FRIDAY Universe/Memora/data/memora.db",
+                "../Memora/data/memora.db",
+                "data/memora.db",
+                default_local,
+            ]
+            self.local_db_path = next((p for p in candidates if p and (p == ":memory:" or os.path.exists(p))), default_local)
         self._ensure_tables()
 
     def _remote_headers(self, agent_name: str, *, json_body: bool = False, api_key: Optional[str] = None) -> dict[str, str]:
@@ -414,7 +417,7 @@ class MemoraClient:
             if self.local_db_path != ":memory:":
                 db_dir = os.path.dirname(os.path.abspath(self.local_db_path))
                 os.makedirs(db_dir, exist_ok=True)
-            with sqlite3.connect(self.local_db_path, timeout=5.0) as conn:
+            with connect_sqlite(self.local_db_path, timeout=5.0) as conn:
                 c = conn.cursor()
                 c.execute("""
                     CREATE TABLE IF NOT EXISTS agents (
@@ -776,7 +779,7 @@ class MemoraClient:
         created_ids = []
 
         try:
-            with sqlite3.connect(self.local_db_path, timeout=5.0) as conn:
+            with connect_sqlite(self.local_db_path, timeout=5.0) as conn:
                 aid, nid = self._get_agent_and_ns(conn, agent_name)
                 c = conn.cursor()
 
@@ -812,7 +815,7 @@ class MemoraClient:
         now_iso = time.strftime("%Y-%m-%d %H:%M:%S")
         mid = str(uuid.uuid4())
         try:
-            with sqlite3.connect(self.local_db_path, timeout=5.0) as conn:
+            with connect_sqlite(self.local_db_path, timeout=5.0) as conn:
                 aid, nid = self._get_agent_and_ns(conn, agent_name)
                 c = conn.cursor()
                 c.execute("""
@@ -844,7 +847,7 @@ class MemoraClient:
 
         results = []
         try:
-            with sqlite3.connect(self.local_db_path, timeout=5.0) as conn:
+            with connect_sqlite(self.local_db_path, timeout=5.0) as conn:
                 c = conn.cursor()
                 c.execute("""
                     SELECT m.id, m.content_text, m.memory_type, m.importance, m.created_at, a.name 
@@ -924,7 +927,7 @@ class MemoraClient:
         now_iso = time.strftime("%Y-%m-%d %H:%M:%S")
         mid = str(uuid.uuid4())
         try:
-            with sqlite3.connect(self.local_db_path, timeout=5.0) as conn:
+            with connect_sqlite(self.local_db_path, timeout=5.0) as conn:
                 aid, nid = self._get_agent_and_ns(conn, agent_name)
                 c = conn.cursor()
                 c.execute("""
@@ -950,7 +953,7 @@ class MemoraClient:
 
         results = []
         try:
-            with sqlite3.connect(self.local_db_path, timeout=5.0) as conn:
+            with connect_sqlite(self.local_db_path, timeout=5.0) as conn:
                 c = conn.cursor()
                 query = """
                     SELECT m.id, m.content_text, m.memory_type, m.importance, m.created_at, a.name 

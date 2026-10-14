@@ -34,6 +34,16 @@ def validate_runtime_environment(fail_fast: bool = False) -> dict[str, Any]:
     except Exception as exc:
         issues.append(f"Data directory '{data_dir}' is not writable: {exc}")
 
+    # 2. Check PORT variable if present
+    port_str = os.getenv("PORT")
+    if port_str:
+        try:
+            port_int = int(port_str)
+            if not (1 <= port_int <= 65535):
+                issues.append(f"PORT '{port_str}' is out of range 1..65535")
+        except ValueError:
+            issues.append(f"PORT environment variable must be an integer, got '{port_str}'")
+
     # 2. Check provider credentials in production
     provider = os.getenv("FRIDAY_LLM_PROVIDER", "chain").lower()
     if env == "production":

@@ -371,7 +371,7 @@ Modes:
     parser.add_argument("--instincts", action="store_true", help="List active continuous learning instincts and confidence ratings")
     parser.add_argument("--serve", action="store_true", help="Start FRIDAY as a FastAPI/WebSocket server for U.L.T.R.O.N. web UI")
     parser.add_argument("--host", type=str, default=None, help="Host network interface for --serve (default: 0.0.0.0 on Render/cloud, 127.0.0.1 locally)")
-    parser.add_argument("--port", type=int, default=None, help="Port for --serve (default: $PORT or 9000)")
+    parser.add_argument("--port", type=int, default=None, help="Port for --serve (default: $PORT or 10000)")
     parser.add_argument("--text", action="store_true", help="Start explicitly in interactive text conversation mode")
     parser.add_argument("--debug", action="store_true", help="Enable verbose debug logging in terminal console")
     autonomy = parser.add_argument_group("autonomy (self-repair without being asked)")
@@ -641,8 +641,8 @@ Modes:
     if args.serve:
         import uvicorn
         from friday.api.server import app
-        host = args.host or os.getenv("HOST", "0.0.0.0" if (os.getenv("RENDER") or os.getenv("PORT")) else "127.0.0.1")
-        port = args.port or int(os.getenv("PORT", 9000))
+        host = args.host or os.getenv("HOST", "0.0.0.0" if (os.getenv("PORT") or os.getenv("FRIDAY_ENV") == "production") else "127.0.0.1")
+        port = args.port or int(os.getenv("PORT", getattr(settings, "port", 10000)))
         print("\n==================================================")
         print(f"  🌐 FRIDAY SERVER STARTING (http://{host}:{port})")
         print("==================================================")

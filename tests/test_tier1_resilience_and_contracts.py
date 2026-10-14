@@ -284,3 +284,115 @@ async def test_retry_exhaustion_and_circuit_half_open_failure() -> None:
     await breaker.record_failure(RuntimeError("Probe failed"))
     assert breaker.state == CircuitState.OPEN
 
+
+@pytest.mark.asyncio
+async def test_fleet_client_circuit_breaker_blocks_dispatch() -> None:
+    """Verify fleet_client blocks dispatch_task when target agent's circuit breaker is OPEN."""
+    from friday.core.task_envelope import TaskEnvelope, TaskStatus
+    from friday.ecosystem.fleet_client import fleet_client
+
+    breaker = fleet_client.get_circuit_breaker("cortex")
+    breaker.state = CircuitState.OPEN
+    breaker.last_failure_time = time.monotonic()
+
+    envelope = TaskEnvelope(
+        task_id="test-task-1",
+        source_agent="friday",
+        target_agent="cortex",
+        action="reason",
+        payload={"query": "mesh test"},
+    )
+
+    res = await fleet_client.dispatch_task(envelope)
+    assert res.status == TaskStatus.BLOCKED
+    assert "Circuit breaker for peer 'cortex' is OPEN" in str(res.error)
+
+    # Healing breaker allows dispatch attempt
+    await breaker.record_success()
+    breaker.state = CircuitState.CLOSED
+
+
+def test_telemetry_ttl_caching(client: TestClient) -> None:
+    """Verify /api/telemetry and /api/system_telemetry return cached responses within TTL window."""
+    resp1 = client.get("/api/telemetry")
+    assert resp1.status_code == 200
+    t1 = resp1.json().get("timestamp")
+
+    resp2 = client.get("/api/telemetry")
+    assert resp2.status_code == 200
+    t2 = resp2.json().get("timestamp")
+    assert t1 == t2  # Cached hit within 2.0s
+
+    sys_resp1 = client.get("/api/system_telemetry")
+    assert sys_resp1.status_code == 200
+    st1 = sys_resp1.json().get("timestamp")
+
+    sys_resp2 = client.get("/api/system_telemetry")
+    assert sys_resp2.status_code == 200
+    st2 = sys_resp2.json().get("timestamp")
+    assert st1 == st2
+
+
+def test_memora_wal_mode(tmp_path: Path) -> None:
+    """Verify MemoraClient initializes local database with SQLite WAL journal mode."""
+    from friday.memory.memora_client import MemoraClient
+    import sqlite3
+
+    db_path = str(tmp_path / "memora_test.db")
+    _ = MemoraClient(local_db_path=db_path)
+
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute("PRAGMA journal_mode;")
+    mode = cur.fetchone()[0]
+    conn.close()
+
+    assert mode.upper() == "WAL"
+
+
+def test_metrics_root_alias(client: TestClient) -> None:
+    """Verify /metrics root endpoint acts as an alias to /api/metrics."""
+    resp = client.get("/metrics")
+    assert resp.status_code == 200
+    assert isinstance(resp.json(), dict)
+
+
+def test_v1_tasks_endpoints(client: TestClient) -> None:
+    """Verify /v1/tasks listing and standardized 404 error envelope on missing task."""
+    resp_list = client.get("/v1/tasks")
+    assert resp_list.status_code == 200
+    data_list = resp_list.json()
+    assert data_list["status"] == "ok"
+    assert isinstance(data_list["tasks"], list)
+
+    resp_404 = client.get("/v1/tasks/nonexistent-task-999")
+    assert resp_404.status_code == 404
+    data_404 = resp_404.json()
+    assert data_404["error"] == "TASK_NOT_FOUND"
+    assert data_404["success"] is False
+    assert "nonexistent-task-999" in data_404["message"]
+
+
+def test_error_envelope_secret_scrubbing(client: TestClient) -> None:
+    """Verify secrets are redacted in error messages."""
+    fake_key = "AIzaSyFakeSecretKeyForTesting12345"
+    resp = client.get(f"/nonexistent-route-with-secret?key={fake_key}")
+    assert resp.status_code == 404
+    body = resp.text
+    assert fake_key not in body
+
+
+def test_startup_validator_port_checking() -> None:
+    """Verify validate_runtime_environment detects invalid PORT values."""
+    with patch.dict("os.environ", {"PORT": "invalid_not_number"}):
+        rep = validate_runtime_environment(fail_fast=False)
+        assert rep["valid"] is False
+        assert any("PORT environment variable must be an integer" in issue for issue in rep["issues"])
+
+    with patch.dict("os.environ", {"PORT": "99999"}):
+        rep2 = validate_runtime_environment(fail_fast=False)
+        assert rep2["valid"] is False
+        assert any("out of range" in issue for issue in rep2["issues"])
+
+
+

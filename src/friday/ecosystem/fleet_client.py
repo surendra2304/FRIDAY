@@ -28,6 +28,7 @@ from typing import Any
 import httpx
 
 from friday.core.task_envelope import ActionReceipt, TaskEnvelope, TaskResult, TaskStatus
+from friday.core.resilience import AsyncCircuitBreaker
 
 
 def _classify_health_response(response: httpx.Response) -> str:
@@ -111,6 +112,17 @@ class FleetClient:
         self.sentinel_url = configured_url("sentinel_url", "")
         self.sentinel_key = configured_key("sentinel_api_key")
         self._shared_client: httpx.AsyncClient | None = None
+        self._breakers: dict[str, AsyncCircuitBreaker] = {}
+
+    def get_circuit_breaker(self, peer: str) -> AsyncCircuitBreaker:
+        name = peer.lower().strip()
+        if name not in self._breakers:
+            self._breakers[name] = AsyncCircuitBreaker(
+                service_name=name,
+                failure_threshold=4,
+                recovery_time_seconds=20.0,
+            )
+        return self._breakers[name]
 
     def get_shared_client(self) -> httpx.AsyncClient:
         if self._shared_client is None or self._shared_client.is_closed:
@@ -860,6 +872,16 @@ class FleetClient:
         """Dispatches a structured TaskEnvelope to any peer agent in the FRIDAY Universe."""
         t0 = time.time()
         target = envelope.target_agent.lower().strip()
+        breaker = self.get_circuit_breaker(target)
+        if not await breaker.can_execute():
+            return TaskResult(
+                task_id=envelope.task_id,
+                target_agent=envelope.target_agent,
+                status=TaskStatus.BLOCKED,
+                error=f"Circuit breaker for peer '{target}' is OPEN. Requests blocked to protect mesh stability.",
+                execution_time_ms=0,
+            )
+
         client = self.get_shared_client()
         contract_endpoint_used = True
 
@@ -964,6 +986,7 @@ class FleetClient:
 
             lat = int((time.time() - t0) * 1000)
             if resp.status_code in (200, 201, 202):
+                await breaker.record_success()
                 res_data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {"text": resp.text}
                 if resp.status_code == 202:
                     pending_task_id = (
@@ -1052,6 +1075,8 @@ class FleetClient:
                     receipt=receipt,
                 )
             else:
+                if resp.status_code >= 500:
+                    await breaker.record_failure()
                 return TaskResult(
                     task_id=envelope.task_id,
                     target_agent=envelope.target_agent,
@@ -1061,6 +1086,7 @@ class FleetClient:
                 )
 
         except Exception as e:
+            await breaker.record_failure(e)
             lat = int((time.time() - t0) * 1000)
             return TaskResult(
                 task_id=envelope.task_id,
