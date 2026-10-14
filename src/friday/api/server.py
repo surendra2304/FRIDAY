@@ -242,7 +242,12 @@ async def http_exception_handler(_: Request, exc: StarletteHTTPException) -> JSO
     clean_msg = redact_secrets(str(exc.detail))
     return JSONResponse(
         status_code=exc.status_code,
-        content={"error": f"HTTP_{exc.status_code}", "message": clean_msg, "success": False},
+        content={
+            "error": f"HTTP_{exc.status_code}",
+            "message": clean_msg,
+            "detail": clean_msg,
+            "success": False,
+        },
     )
 
 @app.exception_handler(RequestValidationError)
@@ -251,7 +256,12 @@ async def validation_exception_handler(_: Request, exc: RequestValidationError) 
     clean_msg = redact_secrets(str(exc))
     return JSONResponse(
         status_code=422,
-        content={"error": "VALIDATION_ERROR", "message": clean_msg, "success": False},
+        content={
+            "error": "VALIDATION_ERROR",
+            "message": clean_msg,
+            "detail": clean_msg,
+            "success": False,
+        },
     )
 
 @app.exception_handler(Exception)
@@ -261,7 +271,12 @@ async def unhandled_exception_handler(_: Request, exc: Exception) -> JSONRespons
     logger.exception("Unhandled server exception: %s", clean_msg)
     return JSONResponse(
         status_code=500,
-        content={"error": "INTERNAL_SERVER_ERROR", "message": clean_msg or "An internal error occurred", "success": False},
+        content={
+            "error": "INTERNAL_SERVER_ERROR",
+            "message": clean_msg or "An internal error occurred",
+            "detail": clean_msg or "An internal error occurred",
+            "success": False,
+        },
     )
 
 # Allow the command centre to connect without ever reflecting an untrusted origin.

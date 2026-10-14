@@ -28,7 +28,8 @@ from typing import Any
 import httpx
 
 from friday.core.task_envelope import ActionReceipt, TaskEnvelope, TaskResult, TaskStatus
-from friday.core.resilience import AsyncCircuitBreaker
+from friday.core.resilience import AsyncCircuitBreaker, retry_with_backoff, safe_peer_call
+
 
 
 def _classify_health_response(response: httpx.Response) -> str:
@@ -126,7 +127,9 @@ class FleetClient:
 
     def get_shared_client(self) -> httpx.AsyncClient:
         if self._shared_client is None or self._shared_client.is_closed:
-            self._shared_client = httpx.AsyncClient(timeout=30.0)
+            limits = httpx.Limits(max_connections=100, max_keepalive_connections=20, keepalive_expiry=30.0)
+            timeout = httpx.Timeout(30.0, connect=5.0, read=30.0, write=10.0)
+            self._shared_client = httpx.AsyncClient(limits=limits, timeout=timeout, follow_redirects=True)
         return self._shared_client
 
     async def aclose(self) -> None:
@@ -406,18 +409,18 @@ class FleetClient:
         if not force_refresh and self._status_cache and (now - self._last_cache_time < self._cache_ttl):
             return list(self._status_cache.values())
 
-        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
-            tasks = [
-                self.probe_inference(client),
-                self.probe_memora(client),
-                self.probe_stratex(client),
-                self.probe_intelx(client),
-                self.probe_futuris(client),
-                self.probe_cortex(client),
-                self.probe_forge(client),
-                self.probe_sentinel(client),
-            ]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+        client = self.get_shared_client()
+        tasks = [
+            self.probe_inference(client),
+            self.probe_memora(client),
+            self.probe_stratex(client),
+            self.probe_intelx(client),
+            self.probe_futuris(client),
+            self.probe_cortex(client),
+            self.probe_forge(client),
+            self.probe_sentinel(client),
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
         statuses: list[AgentStatus] = []
         for res in results:
@@ -434,6 +437,13 @@ class FleetClient:
 
     async def ask_inference(self, question: str) -> dict[str, Any]:
         """Queries the live Inference AI Gateway."""
+        breaker = self.get_circuit_breaker("inference")
+        if not await breaker.can_execute():
+            return {
+                "reply": "⚡ [INFERENCE GATEWAY // CIRCUIT OPEN] Peer circuit breaker is OPEN. Requests blocked to protect mesh stability.",
+                "metadata": {"agent_id": "inference", "error": "circuit_open", "status": "degraded"},
+                "success": False,
+            }
         url = f"{self.inference_url}/v1/agent/assist"
         headers = {
             "X-FRIDAY-API-Key": self.inference_key,
@@ -451,6 +461,7 @@ class FleetClient:
             client = self.get_shared_client()
             resp = await client.post(url, json=payload, headers=headers)
             if resp.status_code == 200:
+                await breaker.record_success()
                 data = resp.json()
                 answer = data.get("response", str(data))
                 model_used = data.get("model_used", "auto")
@@ -477,11 +488,14 @@ class FleetClient:
                     },
                 }
             else:
+                if resp.status_code >= 500:
+                    await breaker.record_failure()
                 return {
                     "reply": f"⚡ [INFERENCE GATEWAY] Error HTTP {resp.status_code}: {resp.text}",
                     "metadata": {"agent_id": "inference", "error": resp.text},
                 }
         except Exception as e:
+            await breaker.record_failure(e)
             return {
                 "reply": f"⚡ [INFERENCE GATEWAY] Direct connection error: {e}",
                 "metadata": {"agent_id": "inference", "error": str(e)},
@@ -489,6 +503,13 @@ class FleetClient:
 
     async def ask_memora(self, query: str) -> dict[str, Any]:
         """Queries the live Memora Cloud Persistent Memory Fabric (Sub-second SLA)."""
+        breaker = self.get_circuit_breaker("memora")
+        if not await breaker.can_execute():
+            return {
+                "reply": "🧠 [MEMORA // CIRCUIT OPEN] Peer circuit breaker is OPEN. Requests blocked to protect mesh stability.",
+                "metadata": {"agent_id": "memora", "error": "circuit_open", "status": "degraded"},
+                "success": False,
+            }
         headers = {
             "Authorization": f"Bearer {self.memora_key}",
             "X-Agent-Name": "friday",
@@ -504,7 +525,10 @@ class FleetClient:
             )
 
             if r_ctx.status_code != 200:
+                if r_ctx.status_code >= 500:
+                    await breaker.record_failure()
                 return {"reply": f"Memora context request failed with HTTP {r_ctx.status_code}.", "metadata": {"agent_id": "memora", "error": f"HTTP {r_ctx.status_code}", "success": False}}
+            await breaker.record_success()
             ctx_data = r_ctx.json()
             bundle_id = ctx_data.get("bundle_id")
             summary = ctx_data.get("summary") or "Memora did not include a summary in its response."
@@ -534,6 +558,7 @@ class FleetClient:
                 },
             }
         except Exception as e:
+            await breaker.record_failure(e)
             return {
                 "reply": f"🧠 [MEMORA PERSISTENT MEMORY] Error connecting to Turso Cloud: {e}",
                 "metadata": {"agent_id": "memora", "error": str(e)},
@@ -541,12 +566,22 @@ class FleetClient:
 
     async def ask_stratex(self, query: str) -> dict[str, Any]:
         """Queries the live Stratex Algorithmic Trading Platform (Sub-second SLA)."""
+        breaker = self.get_circuit_breaker("stratex")
+        if not await breaker.can_execute():
+            return {
+                "reply": "📈 [STRATEX // CIRCUIT OPEN] Peer circuit breaker is OPEN. Requests blocked to protect mesh stability.",
+                "metadata": {"agent_id": "stratex", "error": "circuit_open", "status": "degraded"},
+                "success": False,
+            }
         headers = {"X-API-Key": self.stratex_key, "Authorization": f"Bearer {self.stratex_key}"}
         try:
             client = self.get_shared_client()
             r_health = await client.get(f"{self.stratex_url}/api/engine-health", headers=headers, timeout=3.0)
             if r_health.status_code != 200:
+                if r_health.status_code >= 500:
+                    await breaker.record_failure()
                 return {"reply": f"Stratex engine health request failed with HTTP {r_health.status_code}.", "metadata": {"agent_id": "stratex", "error": f"HTTP {r_health.status_code}", "success": False}}
+            await breaker.record_success()
             h_data = r_health.json()
 
             eng_status = h_data.get("engine_status", "not reported")
@@ -580,6 +615,7 @@ class FleetClient:
                 },
             }
         except Exception as e:
+            await breaker.record_failure(e)
             return {
                 "reply": f"📈 [STRATEX 24/7 TRADING] Error connecting to trading platform: {e}",
                 "metadata": {"agent_id": "stratex", "error": str(e)},
@@ -587,12 +623,22 @@ class FleetClient:
 
     async def ask_intelx(self, query: str) -> dict[str, Any]:
         """Queries the live IntelX Macro Research & Evidence Engine."""
+        breaker = self.get_circuit_breaker("intelx")
+        if not await breaker.can_execute():
+            return {
+                "reply": "🔍 [INTELX // CIRCUIT OPEN] Peer circuit breaker is OPEN. Requests blocked to protect mesh stability.",
+                "metadata": {"agent_id": "intelx", "error": "circuit_open", "status": "degraded"},
+                "success": False,
+            }
         headers = {"Authorization": f"Bearer {self.intelx_key}"}
         try:
             client = self.get_shared_client()
             r_health = await client.get(f"{self.intelx_url}/api/v1/healthz", headers=headers, timeout=8.0)
             if r_health.status_code != 200:
+                if r_health.status_code >= 500:
+                    await breaker.record_failure()
                 return {"reply": f"IntelX health request failed with HTTP {r_health.status_code}.", "metadata": {"agent_id": "intelx", "error": f"HTTP {r_health.status_code}", "success": False}}
+            await breaker.record_success()
             h_data = r_health.json()
             ver = h_data.get("version", "not reported")
             db_st = h_data.get("database", "not reported")
@@ -612,6 +658,7 @@ class FleetClient:
                 },
             }
         except Exception as e:
+            await breaker.record_failure(e)
             return {
                 "reply": f"🔍 [INTELX RESEARCH] Error connecting to IntelX engine: {e}",
                 "metadata": {"agent_id": "intelx", "error": str(e)},
@@ -619,6 +666,13 @@ class FleetClient:
 
     async def ask_futuris(self, query: str) -> dict[str, Any]:
         """Queries the live Futuris Probabilistic Forecasting Engine (Local port :8004 first, cloud fallback)."""
+        breaker = self.get_circuit_breaker("futuris")
+        if not await breaker.can_execute():
+            return {
+                "reply": "🔮 [FUTURIS // CIRCUIT OPEN] Peer circuit breaker is OPEN. Requests blocked to protect mesh stability.",
+                "metadata": {"agent_id": "futuris", "error": "circuit_open", "status": "degraded"},
+                "success": False,
+            }
         headers = {"X-API-Key": self.futuris_key}
         targets = [
             ("LOCAL DAEMON", f"{self.futuris_local_url}/v1/friday/calibration", 1.5),
@@ -631,6 +685,7 @@ class FleetClient:
             try:
                 r_cal = await client.get(target_url, headers=headers, timeout=timeout_val)
                 if r_cal.status_code == 200:
+                    await breaker.record_success()
                     cal_data = r_cal.json()
                     ece = cal_data.get("overall_ece")
                     trend = cal_data.get("trend")
@@ -669,6 +724,7 @@ class FleetClient:
                 last_error = str(e)
                 continue
 
+        await breaker.record_failure(Exception(last_error))
         return {
             "reply": f"🔮 [FUTURIS FORECASTER] Error connecting to Futuris engine: {last_error}",
             "metadata": {"agent_id": "futuris", "error": last_error},
@@ -676,12 +732,22 @@ class FleetClient:
 
     async def ask_cortex(self, query: str) -> dict[str, Any]:
         """Queries the live Cortex Web Operations & Growth Engine."""
+        breaker = self.get_circuit_breaker("cortex")
+        if not await breaker.can_execute():
+            return {
+                "reply": "🌐 [CORTEX // CIRCUIT OPEN] Peer circuit breaker is OPEN. Requests blocked to protect mesh stability.",
+                "metadata": {"agent_id": "cortex", "error": "circuit_open", "status": "degraded"},
+                "success": False,
+            }
         headers = {"X-Friday-Api-Key": self.cortex_key}
         try:
             client = self.get_shared_client()
             r_summary = await client.get(f"{self.cortex_url}/v1/friday/health_summary", headers=headers, timeout=8.0)
             if r_summary.status_code != 200:
+                if r_summary.status_code >= 500:
+                    await breaker.record_failure()
                 return {"reply": f"Cortex health summary request failed with HTTP {r_summary.status_code}.", "metadata": {"agent_id": "cortex", "error": f"HTTP {r_summary.status_code}", "success": False}}
+            await breaker.record_success()
             data = r_summary.json()
             if not isinstance(data, dict):
                 return {"reply": "Cortex returned an unexpected health-summary format.", "metadata": {"agent_id": "cortex", "error": "unexpected_response_format", "success": False}}
@@ -699,6 +765,7 @@ class FleetClient:
                 },
             }
         except Exception as e:
+            await breaker.record_failure(e)
             return {
                 "reply": f"🌐 [CORTEX WEB OPS] Error connecting to Cortex engine: {e}",
                 "metadata": {"agent_id": "cortex", "error": str(e)},
@@ -706,6 +773,13 @@ class FleetClient:
 
     async def ask_forge(self, query: str) -> dict[str, Any]:
         """Queries the live Forge Autonomous Software Engineering Engine."""
+        breaker = self.get_circuit_breaker("forge")
+        if not await breaker.can_execute():
+            return {
+                "reply": "🛠️ [FORGE // CIRCUIT OPEN] Peer circuit breaker is OPEN. Requests blocked to protect mesh stability.",
+                "metadata": {"agent_id": "forge", "error": "circuit_open", "status": "degraded"},
+                "success": False,
+            }
         headers = {"Authorization": f"Bearer {self.forge_key}"}
         try:
             client = self.get_shared_client()
@@ -716,7 +790,9 @@ class FleetClient:
             )
 
             if not hasattr(r_analytics, "status_code") or not hasattr(r_tasks, "status_code") or r_analytics.status_code != 200 or r_tasks.status_code != 200:
+                await breaker.record_failure()
                 return {"reply": "Forge analytics/tasks query did not receive HTTP 200 from both endpoints.", "metadata": {"agent_id": "forge", "error": "one_or_more_status_endpoints_unavailable", "success": False}}
+            await breaker.record_success()
 
             ana_data = r_analytics.json()
             tasks_data = r_tasks.json()
@@ -752,6 +828,7 @@ class FleetClient:
                 },
             }
         except Exception as e:
+            await breaker.record_failure(e)
             return {
                 "reply": f"🛠️ [FORGE SWE ENGINE] Error connecting to Forge local engine: {e}",
                 "metadata": {"agent_id": "forge", "error": str(e)},
@@ -759,6 +836,13 @@ class FleetClient:
 
     async def ask_sentinel(self, query: str) -> dict[str, Any]:
         """Queries the live Sentinel Zero-Trust Cybersecurity Shield."""
+        breaker = self.get_circuit_breaker("sentinel")
+        if not await breaker.can_execute():
+            return {
+                "reply": "🛡️ [SENTINEL // CIRCUIT OPEN] Peer circuit breaker is OPEN. Requests blocked to protect mesh stability.",
+                "metadata": {"agent_id": "sentinel", "error": "circuit_open", "status": "degraded"},
+                "success": False,
+            }
         headers = {"X-API-Key": self.sentinel_key, "Authorization": f"Bearer {self.sentinel_key}"}
         try:
             client = self.get_shared_client()
@@ -770,6 +854,11 @@ class FleetClient:
 
             p_data = r_posture.json() if hasattr(r_posture, "status_code") and r_posture.status_code == 200 else {}
             h_data = r_health.json() if hasattr(r_health, "status_code") and r_health.status_code == 200 else {}
+
+            if hasattr(r_posture, "status_code") and r_posture.status_code == 200:
+                await breaker.record_success()
+            else:
+                await breaker.record_failure()
 
             score = p_data.get("overall_posture_score", "not reported")
             findings = p_data.get("open_findings_by_severity", {})
@@ -796,6 +885,7 @@ class FleetClient:
                 },
             }
         except Exception as e:
+            await breaker.record_failure(e)
             return {
                 "reply": f"🛡️ [SENTINEL SHIELD] Error connecting to Sentinel cybersecurity shield: {e}",
                 "metadata": {"agent_id": "sentinel", "error": str(e)},

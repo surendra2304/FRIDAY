@@ -248,22 +248,40 @@ class Transport(Protocol):
 
 
 class HttpTransport:
-    """The real transport. Unverified from this machine (no egress)."""
+    """The real transport with persistent pooled httpx.AsyncClient and connection limits."""
 
     def __init__(self, timeout: float = 15.0) -> None:
         self.timeout = timeout
+        self._client: Any = None
 
-    async def send(self, request: PeerRequest) -> PeerResponse:
+    def get_client(self) -> Any:
         import httpx
 
+        if self._client is None or self._client.is_closed:
+            limits = httpx.Limits(max_keepalive_connections=20, max_connections=100)
+            self._client = httpx.AsyncClient(
+                timeout=self.timeout,
+                limits=limits,
+                follow_redirects=True,
+            )
+        return self._client
+
+    async def aclose(self) -> None:
+        """Close the persistent pooled HTTP client."""
+        client, self._client = self._client, None
+        if client is not None and not client.is_closed:
+            await client.aclose()
+
+    async def send(self, request: PeerRequest) -> PeerResponse:
+        client = self.get_client()
+
         try:
-            async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
-                response = await client.request(
-                    request.method,
-                    request.url,
-                    headers=request.headers,
-                    json=request.json_body,
-                )
+            response = await client.request(
+                request.method,
+                request.url,
+                headers=request.headers,
+                json=request.json_body,
+            )
         except Exception as exc:  # DNS, TCP, TLS, timeout: no response was received
             raise TransportError(f"{type(exc).__name__}: {exc}") from exc
 
@@ -783,9 +801,18 @@ class Mesh:
                 # a breaker trip at one attempt in N instead of at N.
                 self.breaker.record(peer, outcome.state)
                 if self.backoff_seconds:
-                    await asyncio.sleep(self.backoff_seconds * attempt)
+                    import random
+                    # Exponential backoff with randomized jitter
+                    delay = min(self.backoff_seconds * (2 ** (attempt - 1)), 5.0)
+                    delay = delay * (0.5 + random.random() * 0.5)
+                    await asyncio.sleep(delay)
         assert last is not None
         return self._record(last)
+
+    async def aclose(self) -> None:
+        """Release underlying transport resources if applicable."""
+        if hasattr(self.transport, "aclose"):
+            await self.transport.aclose()
 
     async def _attempt(
         self,
