@@ -111,8 +111,9 @@ async def test_f2_b02_circuit_breaker_zero_recovery_time_permits_immediate_half_
 @pytest.mark.asyncio
 async def test_f2_b03_circuit_breaker_failure_during_half_open_trips_back_to_open() -> None:
     """F2.B3: Verify failure during HALF_OPEN probe immediately trips breaker back to OPEN."""
-    breaker = AsyncCircuitBreaker(recovery_time_seconds=0.01)
+    breaker = AsyncCircuitBreaker(failure_threshold=1, recovery_time_seconds=0.01)
     await breaker.record_failure()
+    assert breaker.state == CircuitState.OPEN
     await asyncio.sleep(0.02)
     assert await breaker.can_execute() is True
     assert breaker.state == CircuitState.HALF_OPEN
@@ -605,22 +606,30 @@ def test_f11_b03_dockerfile_port_fallback_syntax() -> None:
 @pytest.mark.asyncio
 async def test_f11_b04_lifespan_timeout_aborts_hung_cancellation() -> None:
     """F11.B4: Verify lifespan shutdown cancellation timeout enforces 5.0s upper bound on hung tasks."""
+    fut = asyncio.get_running_loop().create_future()
+
     async def hung_task() -> None:
         try:
-            while True:
-                await asyncio.sleep(0.1)
+            await asyncio.sleep(1.0)
         except asyncio.CancelledError:
-            # Emulate misbehaving background task that refuses to cancel
-            while True:
-                await asyncio.sleep(0.1)
+            try:
+                await fut
+            except asyncio.CancelledError:
+                pass
 
     t = asyncio.create_task(hung_task())
+    await asyncio.sleep(0.01)
     t.cancel()
     timed_out = False
     try:
-        await asyncio.wait_for(t, timeout=0.1)
+        await asyncio.wait_for(asyncio.gather(t, return_exceptions=True), timeout=0.05)
     except asyncio.TimeoutError:
         timed_out = True
+    finally:
+        if not fut.done():
+            fut.set_result(None)
+        await asyncio.gather(t, return_exceptions=True)
+
     assert timed_out is True
 
 

@@ -1299,22 +1299,28 @@ async def _dispatch_command(command: str) -> dict[str, Any]:
             if not sub_q:
                 sub_q = "Report operational status, active metrics, and readiness."
 
+            fallback_data = {
+                "reply": f"⚡ [{agent_id.upper()} // DEGRADED] Peer is temporarily unavailable.",
+                "metadata": {"agent_id": agent_id, "status": "degraded", "fallback": True},
+                "success": False,
+                "error": "PEER_TIMEOUT",
+            }
             if agent_id == "inference":
-                return await fleet_client.ask_inference(sub_q)
+                return await safe_peer_call(fleet_client.ask_inference(sub_q), fallback_data=fallback_data, peer_name="inference")
             elif agent_id == "memora":
-                return await fleet_client.ask_memora(sub_q)
+                return await safe_peer_call(fleet_client.ask_memora(sub_q), fallback_data=fallback_data, peer_name="memora")
             elif agent_id == "stratex":
-                return await fleet_client.ask_stratex(sub_q)
+                return await safe_peer_call(fleet_client.ask_stratex(sub_q), fallback_data=fallback_data, peer_name="stratex")
             elif agent_id == "intelx":
-                return await fleet_client.ask_intelx(sub_q)
+                return await safe_peer_call(fleet_client.ask_intelx(sub_q), fallback_data=fallback_data, peer_name="intelx")
             elif agent_id == "futuris":
-                return await fleet_client.ask_futuris(sub_q)
+                return await safe_peer_call(fleet_client.ask_futuris(sub_q), fallback_data=fallback_data, peer_name="futuris")
             elif agent_id == "cortex":
-                return await fleet_client.ask_cortex(sub_q)
+                return await safe_peer_call(fleet_client.ask_cortex(sub_q), fallback_data=fallback_data, peer_name="cortex")
             elif agent_id == "forge":
-                return await fleet_client.ask_forge(sub_q)
+                return await safe_peer_call(fleet_client.ask_forge(sub_q), fallback_data=fallback_data, peer_name="forge")
             elif agent_id == "sentinel":
-                return await fleet_client.ask_sentinel(sub_q)
+                return await safe_peer_call(fleet_client.ask_sentinel(sub_q), fallback_data=fallback_data, peer_name="sentinel")
 
     # 2. Android Automation Fast-paths
     try:

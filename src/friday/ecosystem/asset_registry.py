@@ -18,6 +18,7 @@ from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import TrustLevel
+from friday.core.cache import ttl_cached
 
 logger = get_logger("ecosystem.asset_registry")
 
@@ -57,7 +58,11 @@ class AssetRegistry:
     def __init__(self) -> None:
         self._assets: dict[str, SecurableAsset] = {}
         self._lock = threading.RLock()
+        self._version = 0
         self._init_default_assets()
+
+    def __repr__(self) -> str:
+        return f"AssetRegistry(v={self._version}, count={len(self._assets)})"
 
     def _init_default_assets(self) -> None:
         """Initialize baseline inventory from active subsystems."""
@@ -143,6 +148,7 @@ class AssetRegistry:
     def register_asset(self, asset: SecurableAsset) -> None:
         """Register or update a securable asset."""
         with self._lock:
+            self._version += 1
             self._assets[asset.asset_id] = asset
             logger.info(f"[ASSET_REGISTRY] Registered asset: {asset.asset_id} ({asset.name})")
 
@@ -150,6 +156,7 @@ class AssetRegistry:
         """Remove an asset from inventory."""
         with self._lock:
             if asset_id in self._assets:
+                self._version += 1
                 del self._assets[asset_id]
                 return True
             return False
