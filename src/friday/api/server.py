@@ -35,7 +35,8 @@ from pydantic import BaseModel
 
 from friday.core.startup_validator import validate_runtime_environment
 from friday.core.database import connect_sqlite
-from friday.core.cache import TTLCache
+from friday.core.cache import TTLCache, ttl_cached
+from friday.core.resilience import safe_peer_call
 
 from friday.agent.agent import FridayAgent
 from friday.cli.auth import CLIAuthorizer
@@ -506,15 +507,8 @@ async def metrics_endpoint() -> dict[str, Any]:
     return default_metrics.snapshot()
 
 
-_telemetry_cache = TTLCache(default_ttl=2.0)
-
-
-@app.get("/api/telemetry")
-async def get_telemetry() -> dict[str, Any]:
-    """Expose real-time hardware telemetry (CPU, RAM, Battery) for the UI with TTL caching."""
-    cached = _telemetry_cache.get("telemetry")
-    if cached is not None:
-        return cached
+@ttl_cached(ttl_seconds=2.0, maxsize=16)
+def _sample_telemetry() -> dict[str, Any]:
     try:
         import psutil
         cpu = psutil.cpu_percent(interval=None)
@@ -525,7 +519,7 @@ async def get_telemetry() -> dict[str, Any]:
     except Exception as exc:
         return {"status": "unavailable", "error": type(exc).__name__, "timestamp": datetime.now(timezone.utc).isoformat()}
 
-    data = {
+    return {
         "status": "ok",
         "battery_available": batt is not None,
         "cpu_usage": cpu,
@@ -536,23 +530,24 @@ async def get_telemetry() -> dict[str, Any]:
         "power_plugged": power_plugged,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
-    _telemetry_cache.set("telemetry", data, ttl=2.0)
-    return data
 
 
-@app.get("/api/system_telemetry")
-async def get_system_telemetry() -> dict[str, Any]:
-    """Expose detailed system hardware telemetry for the HUD core cards with TTL caching."""
-    cached = _telemetry_cache.get("system_telemetry")
-    if cached is not None:
-        return cached
+@app.get("/api/telemetry")
+@ttl_cached(ttl_seconds=2.0)
+async def get_telemetry() -> dict[str, Any]:
+    """Expose real-time hardware telemetry (CPU, RAM, Battery) for the UI with TTL caching."""
+    return _sample_telemetry()
+
+
+@ttl_cached(ttl_seconds=2.0, maxsize=16)
+def _sample_system_telemetry() -> dict[str, Any]:
     try:
         import platform
         import psutil
         cpu_percent = psutil.cpu_percent(interval=None)
         cpu_cores = psutil.cpu_count(logical=True) or 8
         vm = psutil.virtual_memory()
-        data = {
+        return {
             "status": "ok",
             "cpu_percent": round(cpu_percent, 1),
             "cpu_cores": cpu_cores,
@@ -564,14 +559,19 @@ async def get_system_telemetry() -> dict[str, Any]:
             "operator": "Surendra",
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
-        _telemetry_cache.set("system_telemetry", data, ttl=2.0)
-        return data
     except Exception as e:
         return {
             "status": "unavailable",
             "error": type(e).__name__,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
+
+
+@app.get("/api/system_telemetry")
+@ttl_cached(ttl_seconds=2.0)
+async def get_system_telemetry() -> dict[str, Any]:
+    """Expose detailed system hardware telemetry for the HUD core cards with TTL caching."""
+    return _sample_system_telemetry()
 
 
 # ==============================================================================
