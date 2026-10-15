@@ -6,10 +6,11 @@ import subprocess
 import oci
 
 SUBNET_ID = "ocid1.subnet.oc1.ap-hyderabad-1.aaaaaaaa2rox2pqtptjmmm6p6ddritbf6uxxa7zpeiicxwx6kbsydcfudibq"
-IMAGE_ID = "ocid1.image.oc1.ap-hyderabad-1.aaaaaaaacx5cw6qxwnemznb2wojrfdbkuepvgwzlwzqa2snxqslops3nmlua"
+UBUNTU_24_IMAGE = "ocid1.image.oc1.ap-hyderabad-1.aaaaaaaacx5cw6qxwnemznb2wojrfdbkuepvgwzlwzqa2snxqslops3nmlua"
+UBUNTU_22_IMAGE = "ocid1.image.oc1.ap-hyderabad-1.aaaaaaaal66vxpbfui73cgdt2bzw7s2bs7blexelkda5ij7xbtnsct4qmqyq"
 SSH_KEY = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDsKkIMQ/GEBLSdYRPkvO6k1f8PJF/Xeva6qbEz2aUmE9DzWAg473x+tyH3iwSxYsg6j/jw/KZvnj8cqlSWYPq+93H88gyi5+etoXmL3Ej4bpQalSboL91HOqiVgeXtzx4XKtuizmY+w6osOlJJQiW0nFiHyeKzDFWfE02P4ljvIku7Fe3O2tu531qzzLBjzDWHWS9LRb5TvQ9f3rHZSnCXs4RiAXSj1fEyjjMOFcIzyfyqeORMM/3816Vv4eQ6/6hrx7V127s8f+14JKQJfykQryDdcOvKjLons+wm61/yMKbQgFASIHHTIPVE3ZRedkEQP1Q80BWh15wm9USmMkgP ssh-key-2026-10-13"
 
-def make_launch_details(compartment_ocid, ocpus, memory_in_gbs, fault_domain=None):
+def make_launch_details(compartment_ocid, ocpus, memory_in_gbs, fault_domain=None, image_id=UBUNTU_24_IMAGE):
     details = oci.core.models.LaunchInstanceDetails(
         display_name="FRIDAY Universe",
         compartment_id=compartment_ocid,
@@ -20,7 +21,7 @@ def make_launch_details(compartment_ocid, ocpus, memory_in_gbs, fault_domain=Non
             memory_in_gbs=memory_in_gbs
         ),
         source_details=oci.core.models.InstanceSourceViaImageDetails(
-            image_id=IMAGE_ID,
+            image_id=image_id,
             boot_volume_size_in_gbs=int(os.environ.get("BOOT_VOLUME_GB", "50")),
             boot_volume_vpus_per_gb=10
         ),
@@ -165,16 +166,22 @@ def main():
         current_ocpus = active_instance.shape_config.ocpus if active_instance.shape_config else 1
         print(f"🔍 Existing ARM instance detected: {active_instance.id} (State: {active_instance.lifecycle_state}, OCPUs: {current_ocpus})")
 
-    # Sniper search targets: prioritized across all fault domains simultaneously
+    # Sniper search targets: prioritized across all fault domains simultaneously with memory-stepping
     TARGET_CONFIGS = [
-        {"ocpus": 2, "ram": 12, "fd": None},  # Oracle placement engine across ALL 3 fault domains
-        {"ocpus": 1, "ram": 6,  "fd": None},  # Fast stepping stone: claims 1 OCPU if single core drops
-        {"ocpus": 2, "ram": 12, "fd": "FAULT-DOMAIN-1"},
-        {"ocpus": 2, "ram": 12, "fd": "FAULT-DOMAIN-2"},
-        {"ocpus": 2, "ram": 12, "fd": "FAULT-DOMAIN-3"},
-        {"ocpus": 1, "ram": 6,  "fd": "FAULT-DOMAIN-1"},
-        {"ocpus": 1, "ram": 6,  "fd": "FAULT-DOMAIN-2"},
-        {"ocpus": 1, "ram": 6,  "fd": "FAULT-DOMAIN-3"},
+        {"ocpus": 2, "ram": 12, "fd": None, "img": UBUNTU_24_IMAGE},  # Target: 2 OCPUs, 12 GB (Any FD)
+        {"ocpus": 2, "ram": 8,  "fd": None, "img": UBUNTU_24_IMAGE},  # 2 OCPUs with 8 GB (fits memory fragmentation gaps)
+        {"ocpus": 1, "ram": 6,  "fd": None, "img": UBUNTU_24_IMAGE},  # 1 OCPU with 6 GB (stepping stone)
+        {"ocpus": 1, "ram": 4,  "fd": None, "img": UBUNTU_24_IMAGE},  # 1 OCPU minimal RAM footprint
+        {"ocpus": 2, "ram": 12, "fd": None, "img": UBUNTU_22_IMAGE},  # Target with Ubuntu 22.04 fallback
+        {"ocpus": 2, "ram": 12, "fd": "FAULT-DOMAIN-1", "img": UBUNTU_24_IMAGE},
+        {"ocpus": 2, "ram": 8,  "fd": "FAULT-DOMAIN-1", "img": UBUNTU_24_IMAGE},
+        {"ocpus": 2, "ram": 12, "fd": "FAULT-DOMAIN-2", "img": UBUNTU_24_IMAGE},
+        {"ocpus": 2, "ram": 8,  "fd": "FAULT-DOMAIN-2", "img": UBUNTU_24_IMAGE},
+        {"ocpus": 2, "ram": 12, "fd": "FAULT-DOMAIN-3", "img": UBUNTU_24_IMAGE},
+        {"ocpus": 2, "ram": 8,  "fd": "FAULT-DOMAIN-3", "img": UBUNTU_24_IMAGE},
+        {"ocpus": 1, "ram": 6,  "fd": "FAULT-DOMAIN-1", "img": UBUNTU_24_IMAGE},
+        {"ocpus": 1, "ram": 6,  "fd": "FAULT-DOMAIN-2", "img": UBUNTU_24_IMAGE},
+        {"ocpus": 1, "ram": 6,  "fd": "FAULT-DOMAIN-3", "img": UBUNTU_24_IMAGE},
     ]
 
     target_idx = 0
@@ -188,17 +195,18 @@ def main():
             active_instance = check_active_arm_instance(compute_client, compartment_ocid)
 
         # -------------------------------------------------------------
-        # PHASE 2: AUTO-UPGRADE (Instance already exists on 1 OCPU)
+        # PHASE 2: AUTO-UPGRADE (Instance already secured)
         # -------------------------------------------------------------
         if active_instance:
             current_ocpus = active_instance.shape_config.ocpus if active_instance.shape_config else 1
-            if current_ocpus >= 2:
+            current_ram = active_instance.shape_config.memory_in_gbs if active_instance.shape_config else 6
+            if current_ocpus >= 2 and current_ram >= 12:
                 pub_ip = resolve_instance_public_ip(network_client, compute_client, compartment_ocid, active_instance.id)
-                notify_success(active_instance.id, current_ocpus, 12, pub_ip)
+                notify_success(active_instance.id, current_ocpus, current_ram, pub_ip)
                 return 0
 
-            # Instance is running on 1 OCPU -> silently attempt upgrade to 2 OCPUs
-            print(f"[Attempt #{attempt} | {elapsed_min}m] Instance active on 1 OCPU. Attempting upgrade to 2 OCPUs & 12 GB RAM...")
+            # Instance is running on <2 OCPUs or <12 GB RAM -> silently attempt in-place upgrade
+            print(f"[Attempt #{attempt} | {elapsed_min}m] Instance active ({current_ocpus} OCPUs, {current_ram} GB). Upgrading to 2 OCPUs & 12 GB RAM...")
             try:
                 update_details = oci.core.models.UpdateInstanceDetails(
                     shape_config=oci.core.models.UpdateInstanceShapeConfigDetails(
@@ -212,11 +220,11 @@ def main():
                 return 0
             except oci.exceptions.ServiceError as e:
                 if e.status == 429:
-                    print(f"⚠️ Rate limit (429). Sleeping 75s for full token bucket refill...")
-                    time.sleep(75)
+                    print(f"⚠️ Rate limit (429). Sleeping 90s for full token bucket refill...")
+                    time.sleep(90)
                     continue
                 elif "Out of host capacity" in str(e.message) or e.status in [500]:
-                    print(f"[Attempt #{attempt} | {elapsed_min}m] 2nd core not yet released in Hyderabad. Active on 1 OCPU. Retrying in {cycle_delay}s...")
+                    print(f"[Attempt #{attempt} | {elapsed_min}m] Full 2 OCPUs / 12 GB not yet released in Hyderabad. Active on {current_ocpus} OCPU / {current_ram} GB. Retrying in {cycle_delay}s...")
                 else:
                     print(f"OCI Service Error ({e.status}): {e.message}")
             except Exception as e:
@@ -232,21 +240,22 @@ def main():
             ocpus = cfg["ocpus"]
             ram = cfg["ram"]
             fd = cfg["fd"]
+            img = cfg.get("img", UBUNTU_24_IMAGE)
             fd_label = fd if fd else "Any Fault Domain"
 
             print(f"[Attempt #{attempt} | {elapsed_min}m] Snipe request: {ocpus} OCPUs, {ram} GB RAM ({fd_label})...", end=" ", flush=True)
 
             try:
-                launch_spec = make_launch_details(compartment_ocid, ocpus=ocpus, memory_in_gbs=ram, fault_domain=fd)
+                launch_spec = make_launch_details(compartment_ocid, ocpus=ocpus, memory_in_gbs=ram, fault_domain=fd, image_id=img)
                 inst = compute_client.launch_instance(launch_spec).data
                 pub_ip = resolve_instance_public_ip(network_client, compute_client, compartment_ocid, inst.id)
 
-                if ocpus >= 2:
+                if ocpus >= 2 and ram >= 12:
                     notify_success(inst.id, ocpus, ram, pub_ip)
                     return 0
                 else:
-                    # Claimed 1 OCPU server! Notify owner and immediately transition to Auto-Upgrade loop
-                    print("🚀 Server secured on 1 OCPU! Transitioning to silent 2 OCPU upgrade loop...")
+                    # Claimed server (e.g. 2 OCPU / 8 GB or 1 OCPU / 6 GB)!
+                    print(f"🚀 Server secured ({ocpus} OCPUs, {ram} GB)! Transitioning to live in-place upgrade loop...")
                     notify_success(inst.id, ocpus, ram, pub_ip)
                     active_instance = inst
                     time.sleep(10)
