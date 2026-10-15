@@ -3,6 +3,8 @@ import sys
 import time
 import random
 import subprocess
+import base64
+import urllib.request
 import oci
 
 SUBNET_ID = "ocid1.subnet.oc1.ap-hyderabad-1.aaaaaaaa2rox2pqtptjmmm6p6ddritbf6uxxa7zpeiicxwx6kbsydcfudibq"
@@ -10,9 +12,39 @@ UBUNTU_24_IMAGE = "ocid1.image.oc1.ap-hyderabad-1.aaaaaaaacx5cw6qxwnemznb2wojrfd
 UBUNTU_22_IMAGE = "ocid1.image.oc1.ap-hyderabad-1.aaaaaaaal66vxpbfui73cgdt2bzw7s2bs7blexelkda5ij7xbtnsct4qmqyq"
 SSH_KEY = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDsKkIMQ/GEBLSdYRPkvO6k1f8PJF/Xeva6qbEz2aUmE9DzWAg473x+tyH3iwSxYsg6j/jw/KZvnj8cqlSWYPq+93H88gyi5+etoXmL3Ej4bpQalSboL91HOqiVgeXtzx4XKtuizmY+w6osOlJJQiW0nFiHyeKzDFWfE02P4ljvIku7Fe3O2tu531qzzLBjzDWHWS9LRb5TvQ9f3rHZSnCXs4RiAXSj1fEyjjMOFcIzyfyqeORMM/3816Vv4eQ6/6hrx7V127s8f+14JKQJfykQryDdcOvKjLons+wm61/yMKbQgFASIHHTIPVE3ZRedkEQP1Q80BWh15wm9USmMkgP ssh-key-2026-10-13"
 
+DUCKDNS_DOMAIN = "friday-universe"
+DUCKDNS_TOKEN = "742e2800-6ad7-4f87-9c34-bcc9cfeaa414"
+
+def generate_cloud_init():
+    """Generates a cloud-init bash script executed by Oracle on instance first boot."""
+    script = f"""#!/bin/bash
+set -e
+
+# 1. Update DuckDNS immediately upon acquiring IP
+curl -s "https://www.duckdns.org/update?domains={DUCKDNS_DOMAIN}&token={DUCKDNS_TOKEN}&ip=" || true
+
+# 2. Open firewall for Dokploy, Traefik, HTTP & HTTPS
+iptables -I INPUT 6 -m state --state NEW -p tcp --dport 80 -j ACCEPT || true
+iptables -I INPUT 6 -m state --state NEW -p tcp --dport 443 -j ACCEPT || true
+iptables -I INPUT 6 -m state --state NEW -p tcp --dport 3000 -j ACCEPT || true
+netfilter-persistent save || true
+
+# 3. Autonomous unattended Dokploy installation
+curl -sSL https://dokploy.com/install.sh | sh || true
+
+# 4. Final DuckDNS check
+curl -s "https://www.duckdns.org/update?domains={DUCKDNS_DOMAIN}&token={DUCKDNS_TOKEN}&ip=" || true
+"""
+    return base64.b64encode(script.encode("utf-8")).decode("utf-8")
+
 def make_launch_details(compartment_ocid, ocpus, memory_in_gbs, fault_domain=None, image_id=UBUNTU_24_IMAGE):
+    metadata = {
+        "ssh_authorized_keys": SSH_KEY,
+        "user_data": generate_cloud_init()
+    }
+
     details = oci.core.models.LaunchInstanceDetails(
-        display_name="FRIDAY Universe",
+        display_name="FRIDAY Universe ARM",
         compartment_id=compartment_ocid,
         availability_domain="qvRd:AP-HYDERABAD-1-AD-1",
         shape="VM.Standard.A1.Flex",
@@ -27,12 +59,10 @@ def make_launch_details(compartment_ocid, ocpus, memory_in_gbs, fault_domain=Non
         ),
         create_vnic_details=oci.core.models.CreateVnicDetails(
             assign_public_ip=True,
-            display_name="FRIDAY Universe VNIC",
+            display_name="FRIDAY Universe ARM VNIC",
             subnet_id=SUBNET_ID
         ),
-        metadata={
-            "ssh_authorized_keys": SSH_KEY
-        },
+        metadata=metadata,
         is_pv_encryption_in_transit_enabled=True
     )
     if fault_domain:
@@ -53,7 +83,7 @@ def check_active_arm_instance(compute_client, compartment_ocid):
 def resolve_instance_public_ip(network_client, compute_client, compartment_id, instance_id):
     """Retrieves the public IP address of an instance once provisioned."""
     print("🌐 Resolving instance public IP address...", end=" ", flush=True)
-    for _ in range(12):  # Poll up to 60s
+    for _ in range(15):  # Poll up to 75s
         try:
             vnic_attachments = compute_client.list_vnic_attachments(
                 compartment_id=compartment_id,
@@ -71,15 +101,31 @@ def resolve_instance_public_ip(network_client, compute_client, compartment_id, i
     print("[IP Assignment Pending]")
     return "Pending Public IP"
 
+def update_duckdns(public_ip=None):
+    """Updates DuckDNS to point to the newly acquired ARM public IP immediately."""
+    try:
+        url = f"https://www.duckdns.org/update?domains={DUCKDNS_DOMAIN}&token={DUCKDNS_TOKEN}"
+        if public_ip and public_ip != "Pending Public IP":
+            url += f"&ip={public_ip}"
+        req = urllib.request.urlopen(url, timeout=10)
+        res = req.read().decode("utf-8").strip()
+        print(f"🦆 DuckDNS updated: {res}")
+    except Exception as e:
+        print(f"⚠️ DuckDNS update notice: {e}")
+
 def notify_success(instance_id, ocpus, ram, public_ip):
-    """Logs markdown summary and creates a GitHub issue to notify the owner immediately."""
+    """Logs markdown summary, updates DNS, and creates a GitHub notification issue."""
+    update_duckdns(public_ip)
+
     summary_md = f"""# 🎉 Oracle Ampere A1 Instance Claimed!
 
 - **Instance OCID**: `{instance_id}`
 - **Shape**: `VM.Standard.A1.Flex`
 - **Allocation**: {ocpus} OCPUs & {ram} GB RAM
 - **Public IP**: `{public_ip}`
-- **SSH Connection**: `ssh -i C:\\Users\\Surendra\\.ssh\\friday_universe_oracle.key ubuntu@{public_ip}`
+- **Domain**: `http://friday-universe.duckdns.org`
+- **SSH Quick Connect**: `ssh -i C:\\Users\\Surendra\\.ssh\\friday_universe_oracle.key ubuntu@{public_ip}`
+- **Cloud-Init Status**: Cloud-init is automatically installing Dokploy and configuring firewall on first boot!
 - **Time**: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}
 """
     print(summary_md)
@@ -92,7 +138,6 @@ def notify_success(instance_id, ocpus, ram, public_ip):
         except Exception as e:
             print(f"Could not write to GITHUB_STEP_SUMMARY: {e}")
 
-    # Create GitHub Issue to send instant email/push notification
     try:
         title = f"🎉 Oracle Ampere ARM Server Claimed ({public_ip})"
         body = (
@@ -100,8 +145,8 @@ def notify_success(instance_id, ocpus, ram, public_ip):
             f"- **Public IP**: `{public_ip}`\n"
             f"- **OCPUs**: {ocpus}\n"
             f"- **RAM**: {ram} GB\n"
-            f"- **Boot Volume**: 150 GB\n\n"
-            f"### Quick Connect:\n"
+            f"- **Domain**: `http://friday-universe.duckdns.org`\n\n"
+            f"### SSH Quick Connect:\n"
             f"```bash\n"
             f"ssh -i C:\\Users\\Surendra\\.ssh\\friday_universe_oracle.key ubuntu@{public_ip}\n"
             f"```\n"
@@ -147,32 +192,44 @@ def main():
     compute_client = oci.core.ComputeClient(config)
     network_client = oci.core.VirtualNetworkClient(config)
 
-    # Runtime configuration: 300 minutes per GitHub runner leg, 30s base delay between requests
-    run_duration_seconds = int(os.environ.get("RUN_DURATION_MINUTES", "300")) * 60
-    cycle_delay = int(os.environ.get("CYCLE_DELAY", "30"))
+    run_duration_seconds = int(os.environ.get("RUN_DURATION_MINUTES", "320")) * 60
+    cycle_delay = int(os.environ.get("CYCLE_DELAY", "45"))
 
     start_time = time.time()
     attempt = 0
 
-    print("=" * 70)
-    print("🚀 HARDENED 24/7 ORACLE AMPERE A1 CAPACITY SNIPER INITIALIZING")
-    print("   Target: 2 OCPUs & 12 GB RAM (VM.Standard.A1.Flex) in ap-hyderabad-1")
-    print(f"   Protection: {cycle_delay}s intervals + Fault Domain rotation + 75s backoff on 429")
-    print("=" * 70)
+    print("=" * 75)
+    print("🚀 HARDENED 24/7 MULTI-TIER ORACLE AMPERE A1 CAPACITY SNIPER INITIALIZING")
+    print("   Region: ap-hyderabad-1 (AD-1) | Always Free Allocation: Up to 4 OCPUs & 24 GB")
+    print("   Targets: 2C/12G (Primary), 2C/8G, 1C/6G, 1C/4G, 4C/24G, 3C/18G")
+    print("   Cadence: 45s intervals + Cloud-Init embedded + In-Place Live Upgrade scaling")
+    print("=" * 75)
 
-    # Step 0: Check once at startup if instance already exists
     active_instance = check_active_arm_instance(compute_client, compartment_ocid)
     if active_instance:
         current_ocpus = active_instance.shape_config.ocpus if active_instance.shape_config else 1
-        print(f"🔍 Existing ARM instance detected: {active_instance.id} (State: {active_instance.lifecycle_state}, OCPUs: {current_ocpus})")
+        current_ram = active_instance.shape_config.memory_in_gbs if active_instance.shape_config else 6
+        print(f"🔍 Existing ARM instance detected: {active_instance.id} ({current_ocpus} OCPUs, {current_ram} GB RAM, State: {active_instance.lifecycle_state})")
 
-    # Sniper search targets: prioritized across all fault domains simultaneously with memory-stepping
+    # Comprehensive target hierarchy: All valid Always-Free shapes across all fault domains
     TARGET_CONFIGS = [
-        {"ocpus": 2, "ram": 12, "fd": None, "img": UBUNTU_24_IMAGE},  # Target: 2 OCPUs, 12 GB (Any FD)
-        {"ocpus": 2, "ram": 8,  "fd": None, "img": UBUNTU_24_IMAGE},  # 2 OCPUs with 8 GB (fits memory fragmentation gaps)
-        {"ocpus": 1, "ram": 6,  "fd": None, "img": UBUNTU_24_IMAGE},  # 1 OCPU with 6 GB (stepping stone)
-        {"ocpus": 1, "ram": 4,  "fd": None, "img": UBUNTU_24_IMAGE},  # 1 OCPU minimal RAM footprint
-        {"ocpus": 2, "ram": 12, "fd": None, "img": UBUNTU_22_IMAGE},  # Target with Ubuntu 22.04 fallback
+        # Tier 1: Target Shape across ALL fault domains simultaneously
+        {"ocpus": 2, "ram": 12, "fd": None, "img": UBUNTU_24_IMAGE},
+        {"ocpus": 2, "ram": 8,  "fd": None, "img": UBUNTU_24_IMAGE},  # Memory fragmentation fit
+
+        # Tier 2: Stepping Stones across ALL fault domains simultaneously
+        {"ocpus": 1, "ram": 6,  "fd": None, "img": UBUNTU_24_IMAGE},  # Single core standard
+        {"ocpus": 1, "ram": 4,  "fd": None, "img": UBUNTU_24_IMAGE},  # Single core minimal
+
+        # Tier 3: Maximum Always Free capacity slots (if full instance dropped)
+        {"ocpus": 4, "ram": 24, "fd": None, "img": UBUNTU_24_IMAGE},  # Max 4-core allocation
+        {"ocpus": 3, "ram": 18, "fd": None, "img": UBUNTU_24_IMAGE},  # 3-core allocation
+
+        # Tier 4: Alternate LTS OS image across ALL fault domains
+        {"ocpus": 2, "ram": 12, "fd": None, "img": UBUNTU_22_IMAGE},
+        {"ocpus": 1, "ram": 6,  "fd": None, "img": UBUNTU_22_IMAGE},
+
+        # Tier 5: Targeted Fault Domains (FD-1, FD-2, FD-3)
         {"ocpus": 2, "ram": 12, "fd": "FAULT-DOMAIN-1", "img": UBUNTU_24_IMAGE},
         {"ocpus": 2, "ram": 8,  "fd": "FAULT-DOMAIN-1", "img": UBUNTU_24_IMAGE},
         {"ocpus": 2, "ram": 12, "fd": "FAULT-DOMAIN-2", "img": UBUNTU_24_IMAGE},
@@ -190,7 +247,7 @@ def main():
         attempt += 1
         elapsed_min = round((time.time() - start_time) / 60, 1)
 
-        # Health check every 60 attempts (~30 minutes) to refresh instance status without spamming list_instances
+        # Health check every 60 attempts (~45 minutes) to sync instance state
         if attempt % 60 == 0:
             active_instance = check_active_arm_instance(compute_client, compartment_ocid)
 
@@ -200,12 +257,14 @@ def main():
         if active_instance:
             current_ocpus = active_instance.shape_config.ocpus if active_instance.shape_config else 1
             current_ram = active_instance.shape_config.memory_in_gbs if active_instance.shape_config else 6
+
+            # If already 2 OCPU and 12 GB (or higher), we are fully done
             if current_ocpus >= 2 and current_ram >= 12:
                 pub_ip = resolve_instance_public_ip(network_client, compute_client, compartment_ocid, active_instance.id)
                 notify_success(active_instance.id, current_ocpus, current_ram, pub_ip)
                 return 0
 
-            # Instance is running on <2 OCPUs or <12 GB RAM -> silently attempt in-place upgrade
+            # Instance is running on partial specs -> attempt live in-place upgrade
             print(f"[Attempt #{attempt} | {elapsed_min}m] Instance active ({current_ocpus} OCPUs, {current_ram} GB). Upgrading to 2 OCPUs & 12 GB RAM...")
             try:
                 update_details = oci.core.models.UpdateInstanceDetails(
@@ -254,8 +313,8 @@ def main():
                     notify_success(inst.id, ocpus, ram, pub_ip)
                     return 0
                 else:
-                    # Claimed server (e.g. 2 OCPU / 8 GB or 1 OCPU / 6 GB)!
-                    print(f"🚀 Server secured ({ocpus} OCPUs, {ram} GB)! Transitioning to live in-place upgrade loop...")
+                    # Claimed stepping stone server (e.g. 2C/8G, 1C/6G, 4C/24G)!
+                    print(f"\n🚀 Server secured ({ocpus} OCPUs, {ram} GB)! Transitioning to live in-place upgrade loop...")
                     notify_success(inst.id, ocpus, ram, pub_ip)
                     active_instance = inst
                     time.sleep(10)
@@ -267,7 +326,7 @@ def main():
                     time.sleep(90)
                     continue
                 elif "Out of host capacity" in str(e.message) or e.status in [500]:
-                    print(f"Capacity full.")
+                    print("Capacity full.")
                 else:
                     print(f"\nOCI Service Error ({e.status}): {e.message}")
                     if "already exists" in str(e.message).lower() or "limit" in str(e.message).lower():
