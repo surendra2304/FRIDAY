@@ -21,7 +21,7 @@ def make_launch_details(compartment_ocid, ocpus, memory_in_gbs, fault_domain=Non
         ),
         source_details=oci.core.models.InstanceSourceViaImageDetails(
             image_id=IMAGE_ID,
-            boot_volume_size_in_gbs=150,
+            boot_volume_size_in_gbs=int(os.environ.get("BOOT_VOLUME_GB", "50")),
             boot_volume_vpus_per_gb=10
         ),
         create_vnic_details=oci.core.models.CreateVnicDetails(
@@ -165,16 +165,16 @@ def main():
         current_ocpus = active_instance.shape_config.ocpus if active_instance.shape_config else 1
         print(f"🔍 Existing ARM instance detected: {active_instance.id} (State: {active_instance.lifecycle_state}, OCPUs: {current_ocpus})")
 
-    # Sniper search targets: rotation across fault domains and configurations
+    # Sniper search targets: prioritized across all fault domains simultaneously
     TARGET_CONFIGS = [
+        {"ocpus": 2, "ram": 12, "fd": None},  # Oracle placement engine across ALL 3 fault domains
+        {"ocpus": 1, "ram": 6,  "fd": None},  # Fast stepping stone: claims 1 OCPU if single core drops
         {"ocpus": 2, "ram": 12, "fd": "FAULT-DOMAIN-1"},
         {"ocpus": 2, "ram": 12, "fd": "FAULT-DOMAIN-2"},
         {"ocpus": 2, "ram": 12, "fd": "FAULT-DOMAIN-3"},
-        {"ocpus": 2, "ram": 12, "fd": None},  # Oracle decides fault domain
         {"ocpus": 1, "ram": 6,  "fd": "FAULT-DOMAIN-1"},
         {"ocpus": 1, "ram": 6,  "fd": "FAULT-DOMAIN-2"},
         {"ocpus": 1, "ram": 6,  "fd": "FAULT-DOMAIN-3"},
-        {"ocpus": 1, "ram": 6,  "fd": None},
     ]
 
     target_idx = 0
@@ -254,8 +254,8 @@ def main():
 
             except oci.exceptions.ServiceError as e:
                 if e.status == 429:
-                    print(f"\n⚠️ Rate limit (429). Backing off 75s to clear OCI quota...")
-                    time.sleep(75)
+                    print(f"\n⚠️ Rate limit (429). Backing off 90s to refill OCI token bucket...")
+                    time.sleep(90)
                     continue
                 elif "Out of host capacity" in str(e.message) or e.status in [500]:
                     print(f"Capacity full.")
@@ -277,9 +277,9 @@ def main():
                 print(f"⚠️ Could not dispatch relay: {ex}")
             return 0
 
-        # Jittered delay to prevent harmonic pattern detection by Oracle API
-        jittered_sleep = cycle_delay + random.uniform(-2, 3)
-        time.sleep(max(15, jittered_sleep))
+        # Jittered delay to prevent harmonic pattern detection and avoid 429 rate limit
+        jittered_sleep = cycle_delay + random.uniform(1.0, 5.0)
+        time.sleep(max(42, jittered_sleep))
 
 if __name__ == "__main__":
     sys.exit(main())
