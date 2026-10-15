@@ -317,8 +317,9 @@ def main():
         if time.time() - start_time >= run_duration_seconds:
             print(f"\n⏰ Reached {elapsed_min}m runner threshold. Triggering relay to next runner...")
             try:
-                subprocess.run(["gh", "workflow", "run", "oracle-capacity-sniper.yml"], check=False)
-                print("✅ Next 24/7 sniper relay dispatched successfully!")
+                workflow_name = os.environ.get("WORKFLOW_NAME", "oracle-capacity-sniper.yml")
+                subprocess.run(["gh", "workflow", "run", workflow_name], check=False)
+                print(f"✅ Next 24/7 sniper relay ({workflow_name}) dispatched successfully!")
             except Exception as ex:
                 print(f"⚠️ Could not dispatch relay: {ex}")
             return 0

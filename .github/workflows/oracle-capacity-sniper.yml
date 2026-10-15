@@ -12,7 +12,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: oracle-sniper
+  group: oracle-sniper-worker1
   cancel-in-progress: true
 
 jobs:
@@ -45,5 +45,6 @@ jobs:
           RUN_DURATION_MINUTES: 320
           CYCLE_DELAY: 40
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WORKFLOW_NAME: "oracle-capacity-sniper.yml"
         run: |
           python scripts/oracle_retry.py
