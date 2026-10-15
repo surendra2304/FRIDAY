@@ -211,30 +211,12 @@ def main():
         current_ram = active_instance.shape_config.memory_in_gbs if active_instance.shape_config else 6
         print(f"🔍 Existing ARM instance detected: {active_instance.id} ({current_ocpus} OCPUs, {current_ram} GB RAM, State: {active_instance.lifecycle_state})")
 
-    # Comprehensive target hierarchy: Strictly capped at 2 OCPUs / 12 GB RAM
+    # High-density target hierarchy: 100% of attempts search across ALL fault domains simultaneously
     TARGET_CONFIGS = [
-        # Tier 1: Target Shape (2 OCPUs / 12 GB) across ALL fault domains simultaneously
-        {"ocpus": 2, "ram": 12, "fd": None, "img": UBUNTU_24_IMAGE},
-        {"ocpus": 2, "ram": 8,  "fd": None, "img": UBUNTU_24_IMAGE},  # Memory fragmentation fit (auto-scales to 12G)
-
-        # Tier 2: Stepping Stones (1 OCPU) across ALL fault domains simultaneously
-        {"ocpus": 1, "ram": 6,  "fd": None, "img": UBUNTU_24_IMAGE},  # Single core standard (auto-scales to 2C/12G)
-        {"ocpus": 1, "ram": 4,  "fd": None, "img": UBUNTU_24_IMAGE},  # Single core minimal (auto-scales to 2C/12G)
-
-        # Tier 3: Alternate LTS OS image across ALL fault domains
-        {"ocpus": 2, "ram": 12, "fd": None, "img": UBUNTU_22_IMAGE},
-        {"ocpus": 1, "ram": 6,  "fd": None, "img": UBUNTU_22_IMAGE},
-
-        # Tier 4: Targeted Fault Domains (FD-1, FD-2, FD-3)
-        {"ocpus": 2, "ram": 12, "fd": "FAULT-DOMAIN-1", "img": UBUNTU_24_IMAGE},
-        {"ocpus": 2, "ram": 8,  "fd": "FAULT-DOMAIN-1", "img": UBUNTU_24_IMAGE},
-        {"ocpus": 2, "ram": 12, "fd": "FAULT-DOMAIN-2", "img": UBUNTU_24_IMAGE},
-        {"ocpus": 2, "ram": 8,  "fd": "FAULT-DOMAIN-2", "img": UBUNTU_24_IMAGE},
-        {"ocpus": 2, "ram": 12, "fd": "FAULT-DOMAIN-3", "img": UBUNTU_24_IMAGE},
-        {"ocpus": 2, "ram": 8,  "fd": "FAULT-DOMAIN-3", "img": UBUNTU_24_IMAGE},
-        {"ocpus": 1, "ram": 6,  "fd": "FAULT-DOMAIN-1", "img": UBUNTU_24_IMAGE},
-        {"ocpus": 1, "ram": 6,  "fd": "FAULT-DOMAIN-2", "img": UBUNTU_24_IMAGE},
-        {"ocpus": 1, "ram": 6,  "fd": "FAULT-DOMAIN-3", "img": UBUNTU_24_IMAGE},
+        {"ocpus": 2, "ram": 12, "fd": None, "img": UBUNTU_24_IMAGE},  # Primary target (ALL 3 fault domains)
+        {"ocpus": 1, "ram": 6,  "fd": None, "img": UBUNTU_24_IMAGE},  # 1-core stepping stone (ALL 3 fault domains)
+        {"ocpus": 2, "ram": 8,  "fd": None, "img": UBUNTU_24_IMAGE},  # 2-core memory fragmentation fit (ALL 3 fault domains)
+        {"ocpus": 1, "ram": 4,  "fd": None, "img": UBUNTU_24_IMAGE},  # 1-core minimal RAM footprint (ALL 3 fault domains)
     ]
 
     target_idx = 0
