@@ -166,27 +166,26 @@ def generate_tests() -> None:
 
 
 def commit_and_push() -> None:
-    """Commits changes and pushes to GitHub."""
-    subprocess.run(["git", "add", "."], check=True)
-    subprocess.run(["git", "commit", "-m", "Autonomous upgrade: docstrings, type hints, logging, config, CI/CD"], check=True)
-    subprocess.run(["git", "push", "origin", "main"], check=True)
-    logger.info("Pushed changes to GitHub.")
+    """Refuse autonomous commits and pushes; use a reviewed feature branch and PR."""
+    raise RuntimeError(
+        "Automatic Git staging/commit/push is disabled. Review changes, run tests, "
+        "push a feature branch, and open a pull request instead."
+    )
 
 
 def main() -> None:
-    """Executes the autonomous upgrade."""
-    logger.info("Starting autonomous upgrade...")
-    add_missing_docstrings()
-    enforce_type_hints()
-    replace_print_with_logging()
-    sanitize_command_execution()
-    centralize_configuration()
-    cache_ocr_results()
-    update_dependencies()
-    setup_ci_cd()
-    generate_tests()
-    commit_and_push()
-    logger.info("Autonomous upgrade completed successfully.")
+    """Safely retire the legacy source-rewriting routine.
+
+    The previous entry point modified Python files with text replacements, upgraded
+    dependencies to unpinned latest releases, overwrote CI configuration, and pushed
+    directly to main. Those actions cannot be made safe by trusting the script's own
+    completion message, so the CLI is now a no-op until a reviewed replacement exists.
+    """
+    logger.warning(
+        "This legacy upgrade script is disabled: automated regex edits, dependency "
+        "replacement, workflow overwrites, and direct pushes require a reviewed PR workflow."
+    )
+    logger.info("No source files, dependencies, Git branches, or remotes were modified.")
 
 
 if __name__ == "__main__":
