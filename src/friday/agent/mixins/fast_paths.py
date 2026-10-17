@@ -300,16 +300,18 @@ class FastPathMixin:
             if sys.platform.startswith("win"):
                 try:
                     if args:
-                        cmd = f'start "" "{executable}" ' + " ".join(f'"{a}"' for a in args)
-                        subprocess.Popen(cmd, shell=True)
+                        # Do not interpolate executable/arguments into cmd.exe. When
+                        # App Paths resolution is required, fail closed rather than
+                        # opening a command shell with user-controlled argument text.
+                        subprocess.Popen([executable, *args], shell=False)
                     else:
                         try:
                             os.startfile(executable)
-                        except Exception:
-                            subprocess.Popen(f'start "" "{executable}"', shell=True)
+                        except OSError:
+                            subprocess.Popen([executable], shell=False)
                     return True
                 except Exception as e:
-                    logger.warning(f"Desktop launch error for {executable}: {e}")
+                    logger.warning("Desktop launch error for %s (%s)", executable, type(e).__name__)
                     return False
 
             logger.warning(f"Cannot launch {executable}: it is not installed on this machine.")
