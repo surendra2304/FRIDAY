@@ -39,7 +39,10 @@ class NetworkDiagnosticSkill(BaseSkill):
     ) -> SkillExecutionResult:
         step_results: list[dict[str, Any]] = []
         is_windows = platform.system() == "Windows"
-        ping_cmd = "ping -n 3 8.8.8.8" if is_windows else "ping -c 3 8.8.8.8"
+        ping_args = ["ping", "-n", "3", "8.8.8.8"] if is_windows else ["ping", "-c", "3", "8.8.8.8"]
+        # Keep a human-readable fixed command for the delegated tool and report;
+        # subprocess execution below always uses argv with shell=False.
+        ping_cmd = " ".join(ping_args)
 
         # Step 1: Run ping command via tool or subprocess
         cmd_tool = tool_registry.get("execute_command") if tool_registry else None
@@ -57,7 +60,14 @@ class NetworkDiagnosticSkill(BaseSkill):
                 output = f"Ping failed: {e}"
         else:
             try:
-                proc = subprocess.run(ping_cmd, shell=True, capture_output=True, text=True, timeout=10)
+                proc = subprocess.run(
+                    ping_args,
+                    shell=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    check=False,
+                )
                 output = proc.stdout if proc.returncode == 0 else (proc.stderr or proc.stdout)
                 step_results.append({"step": "ping", "output": output, "returncode": proc.returncode})
                 success = proc.returncode == 0
