@@ -1,6 +1,7 @@
 """Safety regression tests for the legacy FRIDAY upgrade script."""
 
 import importlib.util
+import logging
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,7 @@ def _load_upgrade_script():
 
 def test_legacy_upgrade_entrypoint_is_non_mutating(monkeypatch, tmp_path, caplog):
     monkeypatch.chdir(tmp_path)
+    caplog.set_level(logging.INFO, logger="friday_upgrade")
     script = _load_upgrade_script()
 
     script.main()
