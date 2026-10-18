@@ -101,7 +101,7 @@ class OpenApplicationTool(BaseTool):
         return ""
 
     def _launch(self, executable: str) -> bool:
-        """Launch natively via direct executable spawn, App Paths, or shell."""
+        """Launch natively via direct executable spawn or Windows App Paths."""
         try:
             # If web URL, open in default browser
             if executable.startswith("http://") or executable.startswith("https://"):
@@ -122,9 +122,9 @@ class OpenApplicationTool(BaseTool):
                 os.startfile(executable)
                 return True
             except OSError:
-                logger.warning(f"App Paths/ShellExecute failed for '{executable}'; trying PATH via shell.")
+                logger.warning("App Paths/ShellExecute failed for %r; trying direct PATH lookup.", executable)
 
-            subprocess.Popen([executable] if not executable.endswith(".exe") else executable, shell=True)
+            subprocess.Popen([executable], shell=False)
             return True
         except Exception as e:
             logger.error(f"Failed to launch '{executable}': {e}")

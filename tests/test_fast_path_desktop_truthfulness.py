@@ -211,3 +211,29 @@ def test_launch_process_reports_success_for_a_real_program():
 
     agent = _agent(RecordingApprover())
     assert agent._launch_process(sys.executable, "-c", "import time; time.sleep(0.6)") is True
+
+
+
+def test_windows_fast_path_launch_uses_argv_without_shell(monkeypatch):
+    import friday.agent.mixins.fast_paths as fast_paths
+
+    agent = _agent(RecordingApprover())
+    observed = {}
+
+    monkeypatch.setattr(fast_paths.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(fast_paths.sys, "platform", "win32")
+
+    def no_startfile(_executable):
+        raise OSError("App Paths unavailable")
+
+    def fake_popen(args, **kwargs):
+        observed["args"] = args
+        observed.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(fast_paths.os, "startfile", no_startfile, raising=False)
+    monkeypatch.setattr(fast_paths.subprocess, "Popen", fake_popen)
+
+    assert agent._launch_process("chrome.exe", "--new-window", "https://example.com")
+    assert observed["args"] == ["chrome.exe", "--new-window", "https://example.com"]
+    assert observed["shell"] is False
