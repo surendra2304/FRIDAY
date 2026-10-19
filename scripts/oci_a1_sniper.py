@@ -53,6 +53,17 @@ def find_active_a1(instances: list[Any]) -> Any | None:
     return None
 
 
+def has_target_resources(instance: Any) -> bool:
+    """Return whether an A1 instance already meets the requested shape size."""
+    shape_config = getattr(instance, "shape_config", None)
+    try:
+        ocpus = float(getattr(shape_config, "ocpus", 0) or 0)
+        memory = float(getattr(shape_config, "memory_in_gbs", 0) or 0)
+    except (TypeError, ValueError):
+        return False
+    return ocpus >= TARGET_OCPUS and memory >= TARGET_MEMORY_GB
+
+
 def available_capacity(entries: list[Any], lane: str) -> list[Any]:
     """Return capacity rows with an available status and positive/unspecified count."""
     candidates = [
@@ -154,10 +165,22 @@ def main() -> int:
                     f"Existing A1 instance detected (state={state}, "
                     f"OCPUs={ocpus}, memory_gb={memory}); no duplicate launch attempted."
                 )
+                if not has_target_resources(existing):
+                    print("Existing A1 instance is below the requested 2 OCPU / 12 GB target; manual review is required.")
+                    _write_result(
+                        "error", "existing_a1_below_target",
+                        instance_id=instance_id, state=state
+                    )
+                    _summary(
+                        "## OCI A1 sniper\n\n"
+                        "Status: **existing A1 instance below target**. No duplicate launch or automatic resize was attempted. "
+                        f"Observed resources: {ocpus} OCPUs / {memory} GB RAM; required: {TARGET_OCPUS} OCPUs / {TARGET_MEMORY_GB} GB RAM."
+                    )
+                    return 1
                 _write_result("existing", instance_id=instance_id, state=state)
                 _summary(
                     "## OCI A1 sniper\n\n"
-                    f"Status: existing A1 instance detected (`{state}`). "
+                    f"Status: existing A1 instance meets the requested shape size (`{state}`). "
                     "No duplicate instance was requested."
                 )
                 return 0
