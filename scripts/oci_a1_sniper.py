@@ -175,7 +175,7 @@ def main() -> int:
                 return 2
 
             capacity_details = oci.core.models.CreateComputeCapacityReportDetails(
-                compartment_id=tenancy_id,
+                compartment_id=compartment_id,
                 availability_domain=availability_domain,
                 shape_availabilities=[
                     oci.core.models.CreateCapacityReportShapeAvailabilityDetails(
