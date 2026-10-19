@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from scripts.oci_a1_sniper import SHAPE, available_capacity, find_active_a1
+from scripts.oci_a1_sniper import SHAPE, available_capacity, find_active_a1, has_target_resources
 
 
 def test_find_active_a1_skips_terminated_instances():
@@ -54,3 +54,14 @@ def test_sniper_lanes_prefer_opposite_fault_domain_order():
     )
     assert available_capacity([last, first], "primary") == [first, last]
     assert available_capacity([last, first], "fallback") == [last, first]
+
+
+def test_target_resource_check_requires_both_cpu_and_memory():
+    target = SimpleNamespace(
+        shape_config=SimpleNamespace(ocpus=2, memory_in_gbs=12)
+    )
+    undersized = SimpleNamespace(
+        shape_config=SimpleNamespace(ocpus=1, memory_in_gbs=6)
+    )
+    assert has_target_resources(target)
+    assert not has_target_resources(undersized)
