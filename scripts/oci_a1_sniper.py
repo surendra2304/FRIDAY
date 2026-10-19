@@ -197,8 +197,10 @@ def main() -> int:
                 _write_result("error", "image_not_available")
                 return 2
 
+            # OCI's capacity-report API requires the tenancy/root compartment,
+            # even when the instance launch is delegated to a child compartment.
             capacity_details = oci.core.models.CreateComputeCapacityReportDetails(
-                compartment_id=compartment_id,
+                compartment_id=tenancy_id,
                 availability_domain=availability_domain,
                 shape_availabilities=[
                     oci.core.models.CreateCapacityReportShapeAvailabilityDetails(
