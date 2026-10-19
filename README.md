@@ -186,7 +186,10 @@ Configure FRIDAY Core by creating a `.env` file (copied from `.env.example`):
 | `FRIDAY_INTELX_URL` | `http://intelx:8000` | Real-time search & OSINT specialist URL |
 | `FRIDAY_MEMORA_URL` | `http://memora:8000` | Vector memory & recall specialist URL |
 | `FRIDAY_SENTINEL_URL` | `http://sentinel:8000` | Security watchdog specialist URL |
+| `FRIDAY_VYRALX_URL` | `http://vyralx:8000` | Video production and approval-governed YouTube distribution agent URL |
 | `FRIDAY_STRATEX_URL` | `http://stratex:8000` | 24/7 Algorithmic trading bot URL |
+
+FRIDAY uses VyralX's documented authenticated `POST /api/v1/tasks` contract for explicit structured tasks. HTTP 202 is recorded as pending, not completed; a separate status query reads the queue and never creates or publishes content. Publishing remains approval-governed within VyralX and is not exposed as a direct FRIDAY upload action.
 | **Autonomy & Self-Repair** | | |
 | `FRIDAY_AUTONOMY_KEY` | *(empty)* | Secret HMAC key authorizing autonomous standing mandates |
 | `FRIDAY_AUTONOMY_LEDGER` | `data/autonomy_mandates.json` | Path to persistent mandate ledger |
