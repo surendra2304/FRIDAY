@@ -1,6 +1,6 @@
 """FRIDAY Universe Live Fleet Client.
 
-Provides resilient, low-latency asynchronous communication with all 8 specialist
+Provides resilient, low-latency asynchronous communication with all 9 specialist
 microservices in the FRIDAY Universe:
 1. Inference  (Multi-Model Consensus AI Gateway)
 2. Memora     (Persistent Cloud Vector Memory Fabric)
@@ -10,6 +10,7 @@ microservices in the FRIDAY Universe:
 6. Cortex     (Autonomous Web Operations & Scraper)
 7. Forge      (Autonomous Software Engineering Engine)
 8. Sentinel   (Zero-Trust Cybersecurity & Threat Defense)
+9. VyralX     (Video Production & Approval-Governed YouTube Distribution)
 
 Live probes and task receipts are evidence-labelled; reachability is not treated as
 agent health, and HTTP acceptance is not treated as task completion.
@@ -112,6 +113,8 @@ class FleetClient:
         self.forge_key = configured_key("forge_api_key")
         self.sentinel_url = configured_url("sentinel_url", "")
         self.sentinel_key = configured_key("sentinel_api_key")
+        self.vyralx_url = configured_url("vyralx_url", "http://vyralx:8000")
+        self.vyralx_key = configured_key("vyralx_api_key") or os.getenv("FRIDAY_VYRALX_API_KEY") or os.getenv("VYRALX_API_KEY") or ""
         self._shared_client: httpx.AsyncClient | None = None
         self._breakers: dict[str, AsyncCircuitBreaker] = {}
 
@@ -403,8 +406,58 @@ class FleetClient:
             last_checked=datetime.now(timezone.utc).isoformat(),
         )
 
+    async def probe_vyralx(self, client: httpx.AsyncClient) -> AgentStatus:
+        """Checks VyralX process liveness without claiming worker or publishing readiness."""
+        t0 = time.time()
+        if not self.vyralx_url:
+            return AgentStatus(
+                id="vyralx", name="VyralX", role="Video Production", icon="🎬",
+                status="UNREACHABLE", latency_ms=0, endpoint="",
+                details="VyralX base URL is not configured; no network request was attempted.",
+                last_checked=datetime.now(timezone.utc).isoformat(),
+            )
+        try:
+            headers = {}
+            if self.vyralx_key:
+                headers = {
+                    "X-API-Key": self.vyralx_key,
+                    "Authorization": f"Bearer {self.vyralx_key}",
+                }
+            response = await client.get(
+                f"{self.vyralx_url}/health",
+                headers=headers,
+                timeout=3.5,
+                follow_redirects=False,
+            )
+            latency = int((time.time() - t0) * 1000)
+            status = _classify_health_response(response)
+            if status in {"ONLINE", "REACHABLE"}:
+                return AgentStatus(
+                    id="vyralx", name="VyralX", role="Video Production", icon="🎬",
+                    status=status, latency_ms=latency, endpoint=self.vyralx_url,
+                    details=(
+                        f"{status}: VyralX process health responded ({latency}ms). "
+                        "Database readiness, worker heartbeat, rights checks, and publishing were not verified."
+                    ),
+                    last_checked=datetime.now(timezone.utc).isoformat(),
+                )
+            return AgentStatus(
+                id="vyralx", name="VyralX", role="Video Production", icon="🎬",
+                status="DEGRADED", latency_ms=latency, endpoint=self.vyralx_url,
+                details=f"VyralX health endpoint returned HTTP {response.status_code}; task execution was not checked.",
+                last_checked=datetime.now(timezone.utc).isoformat(),
+            )
+        except Exception as exc:
+            latency = int((time.time() - t0) * 1000)
+            return AgentStatus(
+                id="vyralx", name="VyralX", role="Video Production", icon="🎬",
+                status="UNREACHABLE", latency_ms=latency, endpoint=self.vyralx_url,
+                details=f"VyralX health probe could not complete ({type(exc).__name__}).",
+                last_checked=datetime.now(timezone.utc).isoformat(),
+            )
+
     async def get_all_statuses(self, force_refresh: bool = False) -> list[AgentStatus]:
-        """Probes all 8 specialist agents concurrently with caching."""
+        """Probes all 9 specialist agents concurrently with caching."""
         now = time.time()
         if not force_refresh and self._status_cache and (now - self._last_cache_time < self._cache_ttl):
             return list(self._status_cache.values())
@@ -419,6 +472,7 @@ class FleetClient:
             self.probe_cortex(client),
             self.probe_forge(client),
             self.probe_sentinel(client),
+            self.probe_vyralx(client),
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -891,8 +945,101 @@ class FleetClient:
                 "metadata": {"agent_id": "sentinel", "error": str(e)},
             }
 
+    async def ask_vyralx(self, query: str) -> dict[str, Any]:
+        """Reports VyralX health and queue status; it never creates or publishes content."""
+        breaker = self.get_circuit_breaker("vyralx")
+        if not await breaker.can_execute():
+            return {
+                "reply": "🎬 [VYRALX // CIRCUIT OPEN] Requests blocked to protect fleet stability.",
+                "metadata": {"agent_id": "vyralx", "error": "circuit_open", "status": "degraded"},
+                "success": False,
+            }
+        if not self.vyralx_url:
+            return {
+                "reply": "VyralX is not configured; no network request was attempted.",
+                "metadata": {"agent_id": "vyralx", "error": "base_url_not_configured"},
+                "success": False,
+            }
+
+        headers = {}
+        if self.vyralx_key:
+            headers = {
+                "X-API-Key": self.vyralx_key,
+                "Authorization": f"Bearer {self.vyralx_key}",
+            }
+        client = self.get_shared_client()
+        try:
+            health = await client.get(
+                f"{self.vyralx_url}/health",
+                headers=headers,
+                timeout=3.5,
+                follow_redirects=False,
+            )
+            if health.status_code != 200:
+                if health.status_code >= 500:
+                    await breaker.record_failure()
+                return {
+                    "reply": f"VyralX health check returned HTTP {health.status_code}.",
+                    "metadata": {"agent_id": "vyralx", "error": f"HTTP {health.status_code}"},
+                    "success": False,
+                }
+
+            queue_summary = "Task queue not checked because the VyralX API key is not configured."
+            task_count = None
+            statuses: list[str] = []
+            if self.vyralx_key:
+                tasks_response = await client.get(
+                    f"{self.vyralx_url}/api/v1/tasks",
+                    params={"limit": 5},
+                    headers=headers,
+                    timeout=5.0,
+                    follow_redirects=False,
+                )
+                if tasks_response.status_code == 200:
+                    data = tasks_response.json()
+                    if isinstance(data, dict):
+                        task_count = data.get("count")
+                        items = data.get("items", [])
+                        if isinstance(items, list):
+                            statuses = [
+                                str(item.get("status", "unknown"))
+                                for item in items[:5]
+                                if isinstance(item, dict)
+                            ]
+                        queue_summary = (
+                            f"Recent task statuses: {', '.join(statuses) if statuses else 'no tasks returned'}; "
+                            f"reported task count: {task_count if task_count is not None else 'not reported'}."
+                        )
+                else:
+                    queue_summary = f"Health responded, but task queue inspection returned HTTP {tasks_response.status_code}."
+            await breaker.record_success()
+            health_data = health.json() if health.headers.get("content-type", "").startswith("application/json") else {}
+            version = health_data.get("version", "not reported") if isinstance(health_data, dict) else "not reported"
+            reply = (
+                "🎬 [VYRALX STATUS RESPONSE]\n"
+                f"Process status: {health_data.get('status', 'not reported') if isinstance(health_data, dict) else 'not reported'} | "
+                f"Version: {version}\n{queue_summary}\n"
+                "This was a status query only; no video task was submitted and no publishing action was taken."
+            )
+            return {
+                "reply": reply,
+                "metadata": {
+                    "agent_id": "vyralx", "agent_name": "VyralX",
+                    "version": version, "task_count": task_count, "recent_task_statuses": statuses,
+                    "endpoint_response_received": True, "task_completion_verified": False,
+                    "content_task_submitted": False, "publishing_performed": False,
+                },
+            }
+        except Exception as exc:
+            await breaker.record_failure(exc)
+            return {
+                "reply": f"VyralX status query failed ({type(exc).__name__}).",
+                "metadata": {"agent_id": "vyralx", "error": type(exc).__name__},
+                "success": False,
+            }
+
     async def get_fleet_summary(self) -> dict[str, Any]:
-        """Generates a complete real-time status matrix across all 8 agents."""
+        """Generates a complete real-time status matrix across all 9 agents."""
         statuses = await self.get_all_statuses(force_refresh=True)
         online_count = sum(1 for s in statuses if s.status == "ONLINE")
         total_count = len(statuses)
@@ -955,6 +1102,8 @@ class FleetClient:
             return await self.ask_intelx(directive)
         elif any(k in d for k in ["memory", "memora", "recall", "remember", "context"]):
             return await self.ask_memora(directive)
+        elif any(k in d for k in ["vyralx", "video agent status", "youtube production status"]):
+            return await self.ask_vyralx(directive)
         else:
             return await self.ask_inference(directive)
 
@@ -1063,6 +1212,78 @@ class FleetClient:
                 if sentinel_payload.get("capability") not in ("sentinel.security_assessment", "sentinel.reconnaissance", "sentinel.incident_investigation"):
                     sentinel_payload["capability"] = "sentinel.security_assessment"
                 resp = await client.post(url, json=sentinel_payload, headers=headers, timeout=10.0)
+
+            elif target == "vyralx":
+                supported_types = {
+                    "discover.youtube", "discover.pexels", "content.generate",
+                    "content.voiceover", "project.create", "render.create", "publish.request",
+                }
+                requested_type = str(
+                    envelope.payload.get("task_type") or envelope.action or envelope.capability
+                ).strip().lower()
+                if requested_type not in supported_types:
+                    return TaskResult(
+                        task_id=envelope.task_id,
+                        target_agent=envelope.target_agent,
+                        status=TaskStatus.BLOCKED,
+                        error=(
+                            "Unsupported VyralX task type. Use one of: "
+                            + ", ".join(sorted(supported_types))
+                            + ". No task was submitted."
+                        ),
+                        execution_time_ms=int((time.time() - t0) * 1000),
+                    )
+                if not self.vyralx_url or not self.vyralx_key:
+                    return TaskResult(
+                        task_id=envelope.task_id,
+                        target_agent=envelope.target_agent,
+                        status=TaskStatus.BLOCKED,
+                        error="VyralX base URL/API key is not configured; no request was sent.",
+                        execution_time_ms=int((time.time() - t0) * 1000),
+                    )
+
+                raw_input = envelope.payload.get("input")
+                if raw_input is not None:
+                    if not isinstance(raw_input, dict):
+                        return TaskResult(
+                            task_id=envelope.task_id,
+                            target_agent=envelope.target_agent,
+                            status=TaskStatus.BLOCKED,
+                            error="VyralX input must be a JSON object; no task was submitted.",
+                            execution_time_ms=int((time.time() - t0) * 1000),
+                        )
+                    task_input = raw_input
+                else:
+                    task_input = {
+                        key: value
+                        for key, value in envelope.payload.items()
+                        if key not in {"task_type", "correlation_id"}
+                    }
+
+                correlation_id = str(
+                    envelope.payload.get("correlation_id")
+                    or envelope.trace_id
+                    or envelope.request_id
+                    or envelope.task_id
+                )[:120]
+                vyralx_payload = {
+                    "task_id": envelope.task_id,
+                    "task_type": requested_type,
+                    "correlation_id": correlation_id,
+                    "input": task_input,
+                }
+                headers = {
+                    "X-API-Key": self.vyralx_key,
+                    "Authorization": f"Bearer {self.vyralx_key}",
+                    "Content-Type": "application/json",
+                }
+                resp = await client.post(
+                    f"{self.vyralx_url}/api/v1/tasks",
+                    json=vyralx_payload,
+                    headers=headers,
+                    timeout=10.0,
+                    follow_redirects=False,
+                )
 
             else:
                 lat = int((time.time() - t0) * 1000)
