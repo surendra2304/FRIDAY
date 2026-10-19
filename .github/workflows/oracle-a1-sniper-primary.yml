@@ -1,0 +1,134 @@
+name: OCI A1 Capacity Sniper A (primary)
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  # Shared across both workflows; never cancel an in-flight allocation attempt.
+  group: friday-oci-a1-allocation
+  cancel-in-progress: false
+
+jobs:
+  allocate:
+    name: One bounded OCI A1 allocation attempt
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Checkout FRIDAY
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      - name: Install pinned OCI SDK
+        run: python -m pip install --disable-pip-version-check "oci==2.188.0"
+
+      - name: Check capacity and attempt one allocation
+        id: sniper
+        continue-on-error: true
+        env:
+          SNIPER_LANE: primary
+          OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
+          OCI_KEY_CONTENT: ${{ secrets.OCI_KEY_CONTENT }}
+          OCI_KEY_PASSPHRASE: ${{ secrets.OCI_KEY_PASSPHRASE }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+          OCI_COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
+          OCI_REGION: ${{ secrets.OCI_REGION || 'ap-hyderabad-1' }}
+          OCI_SUBNET_ID: ${{ vars.OCI_SUBNET_ID }}
+          OCI_IMAGE_ID: ${{ vars.OCI_IMAGE_ID }}
+          OCI_AVAILABILITY_DOMAIN: ${{ vars.OCI_AVAILABILITY_DOMAIN }}
+          OCI_SSH_PUBLIC_KEY: ${{ vars.OCI_SSH_PUBLIC_KEY }}
+        run: python scripts/oci_a1_sniper.py
+
+      - name: Reconcile one persistent sniper incident and report allocation
+        if: always()
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          SNIPER_OUTCOME: ${{ steps.sniper.outcome || 'skipped' }}
+          SNIPER_RESULT: ${{ steps.sniper.outputs.result || 'unknown' }}
+          SNIPER_REASON: ${{ steps.sniper.outputs.reason || 'runner_or_setup_failure' }}
+          SNIPER_INSTANCE_ID: ${{ steps.sniper.outputs.instance_id || '' }}
+          SNIPER_INSTANCE_STATE: ${{ steps.sniper.outputs.instance_state || '' }}
+          SNIPER_LANE: primary
+          SNIPER_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const alertTitle = "[automation] OCI A1 sniper needs attention";
+            const successTitle = "[automation] OCI A1 allocation accepted";
+            const issues = await github.rest.issues.listForRepo({
+              owner, repo, state: "open", per_page: 100,
+            });
+            const ordinaryIssues = issues.data.filter(issue => !issue.pull_request);
+            const alerts = ordinaryIssues.filter(issue => issue.title === alertTitle);
+
+            if (process.env.SNIPER_OUTCOME !== "success") {
+              const body = [
+                "The scheduled OCI A1 sniper could not complete its bounded attempt.",
+                "",
+                "- Lane: " + process.env.SNIPER_LANE,
+                "- Safe diagnostic: " + process.env.SNIPER_REASON,
+                "- Run: " + process.env.SNIPER_RUN_URL,
+                "",
+                "This incident deliberately contains no credential values or SDK response body.",
+                "Check the workflow summary. Correct credentials/permissions/configuration if required; capacity unavailability is handled as a normal no-capacity result.",
+              ].join("\n");
+              if (alerts.length) {
+                await github.rest.issues.update({
+                  owner, repo, issue_number: alerts[0].number, body,
+                });
+                for (const duplicate of alerts.slice(1)) {
+                  await github.rest.issues.update({
+                    owner, repo, issue_number: duplicate.number,
+                    state: "closed", state_reason: "not_planned",
+                  });
+                }
+              } else {
+                await github.rest.issues.create({ owner, repo, title: alertTitle, body });
+              }
+            } else {
+              for (const alert of alerts) {
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: alert.number,
+                  body: "The sniper completed successfully on the latest run. " +
+                    "Run: " + process.env.SNIPER_RUN_URL,
+                });
+                await github.rest.issues.update({
+                  owner, repo, issue_number: alert.number,
+                  state: "closed", state_reason: "completed",
+                });
+              }
+            }
+
+            if (process.env.SNIPER_RESULT === "allocated") {
+              const existing = ordinaryIssues.find(issue => issue.title === successTitle);
+              if (!existing) {
+                await github.rest.issues.create({
+                  owner, repo, title: successTitle,
+                  body: [
+                    "OCI accepted a request to allocate the FRIDAY Universe ARM instance.",
+                    "",
+                    "- Lane: " + process.env.SNIPER_LANE,
+                    "- Instance OCID: " + process.env.SNIPER_INSTANCE_ID,
+                    "- Initial lifecycle state: " + process.env.SNIPER_INSTANCE_STATE,
+                    "- Run: " + process.env.SNIPER_RUN_URL,
+                    "",
+                    "This confirms allocation request acceptance only. Verify the instance is RUNNING, confirm network/SSH access, and complete hardening before deploying agents.",
+                  ].join("\n"),
+                });
+              }
+            }
+
+      - name: Mark OCI attempt failed when its worker failed
+        if: always() && steps.sniper.outcome != 'success'
+        run: |
+          echo "OCI A1 sniper attempt failed; a sanitized incident was created or updated."
+          exit 1
