@@ -128,7 +128,7 @@ jobs:
             }
 
       - name: Mark OCI attempt failed when its worker failed
-        if: steps.sniper.outcome == 'failure'
+        if: always() && steps.sniper.outcome != 'success'
         run: |
           echo "OCI A1 sniper attempt failed; a sanitized incident was created or updated."
           exit 1
