@@ -57,7 +57,7 @@ jobs:
           SNIPER_REASON: ${{ steps.sniper.outputs.reason || 'runner_or_setup_failure' }}
           SNIPER_INSTANCE_ID: ${{ steps.sniper.outputs.instance_id || '' }}
           SNIPER_INSTANCE_STATE: ${{ steps.sniper.outputs.instance_state || '' }}
-          SNIPER_LANE: LANE_NAME
+          SNIPER_LANE: primary
           SNIPER_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
           script: |
