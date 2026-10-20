@@ -1,6 +1,11 @@
 name: Task 3 — VyralX, Forge, Sentinel, Cortex
 run-name: "Task 3 — VyralX, Forge, Sentinel, Cortex • scheduled engineering"
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/friday-universe-task-3.yml
   schedule:
     # Asia/Kolkata time, expressed in UTC because GitHub scheduled workflows use UTC.
     - cron: '10 * * * *'
