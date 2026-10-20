@@ -41,7 +41,7 @@ jobs:
 
       - name: Validate allocator source and installer syntax
         run: |
-          python -m py_compile scripts/oci_a1_sniper.py scripts/oci_a1_continuous.py
+          python -m py_compile scripts/oci_a1_common.py scripts/oci_a1_continuous.py
           bash -n scripts/install_oci_a1_continuous.sh
 
       - name: Run pytest test suite
