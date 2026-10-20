@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -21,9 +22,10 @@ from friday.voice.gemini_provider import GeminiVoiceInput, GeminiVoiceOutput
 @pytest.mark.asyncio
 async def test_microphone_stream_stop_unblocks_waiting_reader():
     """Verify that stopping MicrophoneStream unblocks read_chunk immediately with b''."""
-    with patch("friday.voice.audio_io.sd.RawInputStream") as mock_input_stream:
+    fake_sounddevice = SimpleNamespace(RawInputStream=MagicMock())
+    with patch("friday.voice.audio_io.sd", fake_sounddevice):
         mock_inst = MagicMock()
-        mock_input_stream.return_value = mock_inst
+        fake_sounddevice.RawInputStream.return_value = mock_inst
 
         mic = MicrophoneStream()
         loop = asyncio.get_running_loop()
@@ -90,7 +92,11 @@ def test_close_stream_safely_handles_exceptions_and_none():
 @pytest.mark.asyncio
 async def test_gemini_voice_adapters_async_lifecycle():
     """Verify GeminiVoiceInput and GeminiVoiceOutput async methods."""
-    with patch("friday.voice.audio_io.sd.RawInputStream"), patch("friday.voice.audio_io.sd.RawOutputStream"):
+    fake_sounddevice = SimpleNamespace(
+        RawInputStream=MagicMock(),
+        RawOutputStream=MagicMock(),
+    )
+    with patch("friday.voice.audio_io.sd", fake_sounddevice):
         v_in = GeminiVoiceInput(sample_rate=16000)
         loop = asyncio.get_running_loop()
         v_in.start(loop=loop)
