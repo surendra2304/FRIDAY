@@ -212,7 +212,7 @@ def do_run(task):
             'wire_api = "responses"\n\n'
             '[model_providers.openrouter.auth]\n'
             'command = "sh"\n'
-            'args = ["-c", "printf \'%s\' \"$OPENROUTER_API_KEY\""]\n\n'
+            "args = [\"-c\", 'printf \"%s\" \"$OPENROUTER_API_KEY\"']\n\n"
             '[shell_environment_policy]\n'
             'ignore_default_excludes = false\n'
         )
