@@ -1,3 +1,8 @@
+from friday.agent.router import (
+    SafetyGateViolationError,
+    SpecialistRouter,
+    specialist_router,
+)
 """Agent module for FRIDAY."""
 
 from friday.agent.agent import FridayAgent
@@ -73,6 +78,9 @@ __all__ = [
     "TaskState",
     "VerificationResult",
     "VerificationStatus",
+    "SafetyGateViolationError",
+    "SpecialistRouter",
+    "specialist_router",
     "build_system_message",
     "get_default_system_prompt",
 ]

@@ -1,13 +1,14 @@
 """Daily Rhythm & Goal Accountability Manager for FRIDAY.
 
-Adapted from Jarvis goals/rhythm.ts and accountability.ts.
-Provides lightweight, local goal pursuit, morning intention planning, and evening reflection.
-
-100% Free and Local: Backed by local SQLite database (~/.friday/goals.db).
+Provides:
+- Daily focus objectives, morning intention planning, and evening reflection.
+- Primary persistence directly into `friday_db.daily_goals` in PostgreSQL via SQLAlchemy / asyncpg.
+- Resilient local SQLite fallback (~/.friday/goals.db) for zero-downtime offline and unit testing.
 """
 
 from __future__ import annotations
 
+import asyncio
 import os
 import sqlite3
 from dataclasses import dataclass
@@ -15,12 +16,60 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+from sqlalchemy import (
+    Column,
+    Float,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    Text,
+    desc,
+    select,
+    update,
+)
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+
 from friday.core.logging import get_logger
 
 logger = get_logger("autonomous.daily_rhythm")
 
+metadata = MetaData()
+daily_goals_table = Table(
+    "daily_goals",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("goal_date", String(32), nullable=False, index=True),
+    Column("title", String(512), nullable=False),
+    Column("description", Text, default=""),
+    Column("status", String(64), default="in_progress"),
+    Column("progress", Float, default=0.0),
+    Column("created_at", String(64), nullable=False),
+    Column("updated_at", String(64), nullable=False),
+    Column("notes", Text, default=""),
+)
 
-@dataclass
+
+def get_postgres_dsn() -> str | None:
+    """Resolve PostgreSQL asyncpg DSN with fallback to friday_db defaults."""
+    raw_url = os.getenv("DATABASE_URL") or os.getenv("FRIDAY_DATABASE_URL")
+    if raw_url:
+        if raw_url.startswith("postgresql://"):
+            return raw_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        elif raw_url.startswith("postgres://"):
+            return raw_url.replace("postgres://", "postgresql+asyncpg://", 1)
+        return raw_url
+
+    host = os.getenv("POSTGRES_HOST") or os.getenv("FRIDAY_POSTGRES_HOST") or "localhost"
+    port = os.getenv("POSTGRES_PORT") or os.getenv("FRIDAY_POSTGRES_PORT") or "5432"
+    db = os.getenv("POSTGRES_DB") or os.getenv("FRIDAY_POSTGRES_DB") or "friday_db"
+    user = os.getenv("POSTGRES_USER") or os.getenv("FRIDAY_POSTGRES_USER") or "friday_user"
+    pw = os.getenv("POSTGRES_PASSWORD") or os.getenv("FRIDAY_POSTGRES_PASSWORD") or ""
+
+    return f"postgresql+asyncpg://{user}:{pw}@{host}:{port}/{db}"
+
+
+@dataclass(frozen=True)
 class DailyGoal:
     id: int
     goal_date: str  # YYYY-MM-DD
@@ -34,17 +83,32 @@ class DailyGoal:
 
 
 class DailyRhythmManager:
-    """Manages daily focus objectives, morning briefings, and evening check-ins."""
+    """Manages daily focus objectives, morning briefings, and evening check-ins.
 
-    def __init__(self, db_path: Optional[str] = None) -> None:
+    Persists into PostgreSQL (friday_db.daily_goals) with transparent SQLite fallback.
+    """
+
+    def __init__(
+        self,
+        db_path: Optional[str] = None,
+        postgres_dsn: Optional[str] = None,
+        enable_postgres: bool = True,
+    ) -> None:
         if not db_path:
             base_dir = Path.home() / ".friday"
             base_dir.mkdir(parents=True, exist_ok=True)
             db_path = str(base_dir / "goals.db")
         self.db_path = db_path
-        self._init_db()
+        self._init_sqlite()
 
-    def _init_db(self) -> None:
+        self.postgres_dsn = postgres_dsn or get_postgres_dsn()
+        self.enable_postgres = enable_postgres
+        self._async_engine: Optional[AsyncEngine] = None
+        self._postgres_available: Optional[bool] = None
+        self._last_postgres_failure: float = 0.0
+        self._postgres_retry_cooldown: float = 60.0
+
+    def _init_sqlite(self) -> None:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute(
@@ -65,24 +129,40 @@ class DailyRhythmManager:
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_goals_date ON daily_goals(goal_date)")
                 conn.commit()
         except Exception as e:
-            logger.error("Failed to initialize goals DB: %s", e)
+            logger.error("Failed to initialize SQLite goals DB: %s", e)
+
+    def _can_try_postgres(self) -> bool:
+        if not self.enable_postgres or not self.postgres_dsn:
+            return False
+        if self._postgres_available is False:
+            import time
+            if time.monotonic() - self._last_postgres_failure < self._postgres_retry_cooldown:
+                return False
+            # Cooldown expired, allow retry
+            self._postgres_available = None
+        return True
+
+    def _get_engine(self) -> Optional[AsyncEngine]:
+        if not self._can_try_postgres():
+            return None
+        if self._async_engine is None:
+            try:
+                self._async_engine = create_async_engine(
+                    self.postgres_dsn,
+                    echo=False,
+                    pool_pre_ping=True,
+                )
+            except Exception as e:
+                logger.warning("Failed to create async engine for postgres: %s", e)
+                self._async_engine = None
+        return self._async_engine
 
     def _today(self) -> str:
         return datetime.now().strftime("%Y-%m-%d")
 
-    def set_daily_goal(
-        self,
-        title: str,
-        description: str = "",
-        target_date: Optional[str] = None,
-    ) -> DailyGoal:
-        """Set the primary focus goal for today (or target date)."""
-        dt = target_date or self._today()
-        now_iso = datetime.now(timezone.utc).isoformat()
-        clean_title = title.strip()
+    def _sync_sqlite_set(self, dt: str, clean_title: str, description: str, now_iso: str) -> int:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            # If an active goal for today already exists, update it; otherwise insert
             cursor.execute(
                 "SELECT id FROM daily_goals WHERE goal_date = ? ORDER BY id DESC LIMIT 1",
                 (dt,),
@@ -108,10 +188,136 @@ class DailyRhythmManager:
                 )
                 gid = cursor.lastrowid
             conn.commit()
+            return gid
+
+    def _sync_sqlite_update(self, gid: int, new_progress: float, new_status: str, notes: str, now_iso: str) -> None:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                UPDATE daily_goals
+                SET progress = ?, status = ?, notes = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (new_progress, new_status, notes, now_iso, gid),
+            )
+            conn.commit()
+
+    async def set_daily_goal_async(
+        self,
+        title: str,
+        description: str = "",
+        target_date: Optional[str] = None,
+    ) -> DailyGoal:
+        """Set the primary focus goal for today (or target date) asynchronously in PostgreSQL."""
+        dt = target_date or self._today()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        clean_title = title.strip()
+
+        engine = self._get_engine()
+        if engine is not None and self._postgres_available is not False:
+            try:
+                async with engine.begin() as conn:
+                    stmt = select(daily_goals_table.c.id).where(
+                        daily_goals_table.c.goal_date == dt
+                    ).order_by(desc(daily_goals_table.c.id)).limit(1)
+                    res = await conn.execute(stmt)
+                    row = res.fetchone()
+                    if row:
+                        gid = row[0]
+                        upd = (
+                            update(daily_goals_table)
+                            .where(daily_goals_table.c.id == gid)
+                            .values(
+                                title=clean_title,
+                                description=description,
+                                updated_at=now_iso,
+                                status="in_progress",
+                            )
+                        )
+                        await conn.execute(upd)
+                    else:
+                        ins = daily_goals_table.insert().values(
+                            goal_date=dt,
+                            title=clean_title,
+                            description=description,
+                            status="in_progress",
+                            progress=0.0,
+                            created_at=now_iso,
+                            updated_at=now_iso,
+                            notes="",
+                        )
+                        await conn.execute(ins)
+                self._postgres_available = True
+                logger.info("Persisted daily goal into PostgreSQL (friday_db.daily_goals): %s", clean_title)
+                self._sync_sqlite_set(dt, clean_title, description, now_iso)
+                goal = await self.get_active_goal_async(dt)
+                if goal:
+                    return goal
+            except Exception as exc:
+                import time
+                logger.warning("PostgreSQL daily_goals persist failed, falling back to local SQLite: %s", exc)
+                self._postgres_available = False
+                self._last_postgres_failure = time.monotonic()
+
+        # Fallback directly to local SQLite without re-triggering loop tasks
+        self._sync_sqlite_set(dt, clean_title, description, now_iso)
+        goal = self.get_active_goal(dt)
+        return goal  # type: ignore
+
+    def set_daily_goal(
+        self,
+        title: str,
+        description: str = "",
+        target_date: Optional[str] = None,
+    ) -> DailyGoal:
+        """Set the primary focus goal for today (or target date)."""
+        dt = target_date or self._today()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        clean_title = title.strip()
+        self._sync_sqlite_set(dt, clean_title, description, now_iso)
+
+        # Trigger async postgres sync if inside an active running loop
+        try:
+            loop = asyncio.get_running_loop()
+            if loop.is_running():
+                loop.create_task(self.set_daily_goal_async(clean_title, description, dt))
+        except RuntimeError:
+            pass
 
         goal = self.get_active_goal(dt)
         logger.info("Set daily goal for %s: %s", dt, clean_title)
         return goal  # type: ignore
+
+    async def get_active_goal_async(self, target_date: Optional[str] = None) -> Optional[DailyGoal]:
+        """Get the active goal for today (or specified date) asynchronously."""
+        dt = target_date or self._today()
+        engine = self._get_engine()
+        if engine is not None and self._postgres_available is not False:
+            try:
+                async with engine.connect() as conn:
+                    stmt = select(daily_goals_table).where(
+                        daily_goals_table.c.goal_date == dt
+                    ).order_by(desc(daily_goals_table.c.id)).limit(1)
+                    res = await conn.execute(stmt)
+                    row = res.fetchone()
+                    if row:
+                        self._postgres_available = True
+                        return DailyGoal(
+                            id=row[0],
+                            goal_date=row[1],
+                            title=row[2],
+                            description=row[3] or "",
+                            status=row[4] or "in_progress",
+                            progress=float(row[5] or 0.0),
+                            created_at=str(row[6]),
+                            updated_at=str(row[7]),
+                            notes=row[8] or "",
+                        )
+            except Exception as exc:
+                logger.warning("PostgreSQL get_active_goal failed, falling back to SQLite: %s", exc)
+                self._postgres_available = False
+
+        return self.get_active_goal(dt)
 
     def get_active_goal(self, target_date: Optional[str] = None) -> Optional[DailyGoal]:
         """Get the active goal for today (or specified date)."""
@@ -142,6 +348,64 @@ class DailyRhythmManager:
                 )
         return None
 
+    async def update_goal_progress_async(
+        self,
+        progress: float,
+        status: Optional[str] = None,
+        notes: str = "",
+        target_date: Optional[str] = None,
+    ) -> Optional[DailyGoal]:
+        """Update progress (0.0 to 1.0) and optional status asynchronously."""
+        dt = target_date or self._today()
+        new_progress = max(0.0, min(1.0, progress))
+        new_status = status or ("completed" if new_progress >= 1.0 else "in_progress")
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        engine = self._get_engine()
+        if engine is not None and self._postgres_available is not False:
+            try:
+                gid = None
+                existing_notes = ""
+                async with engine.begin() as conn:
+                    stmt = select(daily_goals_table.c.id, daily_goals_table.c.notes).where(
+                        daily_goals_table.c.goal_date == dt
+                    ).order_by(desc(daily_goals_table.c.id)).limit(1)
+                    res = await conn.execute(stmt)
+                    row = res.fetchone()
+                    if row:
+                        gid = row[0]
+                        existing_notes = row[1] or ""
+                        upd = (
+                            update(daily_goals_table)
+                            .where(daily_goals_table.c.id == gid)
+                            .values(
+                                progress=new_progress,
+                                status=new_status,
+                                notes=notes or existing_notes,
+                                updated_at=now_iso,
+                            )
+                        )
+                        await conn.execute(upd)
+                        self._postgres_available = True
+
+                if gid is not None:
+                    self._sync_sqlite_update(gid, new_progress, new_status, notes or existing_notes, now_iso)
+                    goal = await self.get_active_goal_async(dt)
+                    if goal:
+                        return goal
+            except Exception as exc:
+                import time
+                logger.warning("PostgreSQL update_goal_progress failed, falling back to SQLite: %s", exc)
+                self._postgres_available = False
+                self._last_postgres_failure = time.monotonic()
+
+        # Fallback directly to local SQLite without re-triggering loop tasks
+        fallback_goal = self.get_active_goal(dt)
+        if not fallback_goal:
+            return None
+        self._sync_sqlite_update(fallback_goal.id, new_progress, new_status, notes or fallback_goal.notes, now_iso)
+        return self.get_active_goal(dt)
+
     def update_goal_progress(
         self,
         progress: float,
@@ -159,18 +423,60 @@ class DailyRhythmManager:
         new_status = status or ("completed" if new_progress >= 1.0 else "in_progress")
         now_iso = datetime.now(timezone.utc).isoformat()
 
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                """
-                UPDATE daily_goals
-                SET progress = ?, status = ?, notes = ?, updated_at = ?
-                WHERE id = ?
-                """,
-                (new_progress, new_status, notes or goal.notes, now_iso, goal.id),
-            )
-            conn.commit()
+        self._sync_sqlite_update(goal.id, new_progress, new_status, notes or goal.notes, now_iso)
+
+        try:
+            loop = asyncio.get_running_loop()
+            if loop.is_running():
+                loop.create_task(self.update_goal_progress_async(new_progress, new_status, notes, dt))
+        except RuntimeError:
+            pass
 
         return self.get_active_goal(dt)
+
+    async def periodic_task_sweep_async(
+        self,
+        target_date: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """Perform a periodic sweep over daily goals and task checkpoints."""
+        dt = target_date or self._today()
+        goal = await self.get_active_goal_async(dt)
+        sweep_result = {
+            "sweep_timestamp": datetime.now(timezone.utc).isoformat(),
+            "target_date": dt,
+            "has_active_goal": goal is not None,
+            "goal_title": goal.title if goal else None,
+            "goal_progress": goal.progress if goal else 0.0,
+            "goal_status": goal.status if goal else "none",
+            "swept_items": 1 if goal else 0,
+        }
+        logger.info("Completed daily rhythm periodic task sweep: %s", sweep_result)
+        return sweep_result
+
+    def periodic_task_sweep(
+        self,
+        target_date: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """Synchronous wrapper for periodic task sweep."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop is not None and loop.is_running():
+            dt = target_date or self._today()
+            goal = self.get_active_goal(dt)
+            return {
+                "sweep_timestamp": datetime.now(timezone.utc).isoformat(),
+                "target_date": dt,
+                "has_active_goal": goal is not None,
+                "goal_title": goal.title if goal else None,
+                "goal_progress": goal.progress if goal else 0.0,
+                "goal_status": goal.status if goal else "none",
+                "swept_items": 1 if goal else 0,
+            }
+
+        return asyncio.run(self.periodic_task_sweep_async(target_date))
 
     def get_morning_briefing(self) -> str:
         """Generate morning focus prompt."""

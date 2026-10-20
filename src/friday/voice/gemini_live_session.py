@@ -871,9 +871,21 @@ class GeminiLiveVoiceSession:
             self._active = False
             self._session = None
             self._connected_event.clear()
-            mic.stop()
+            if hasattr(mic, "stop_async"):
+                try:
+                    await mic.stop_async()
+                except Exception:
+                    mic.stop()
+            else:
+                mic.stop()
             spk.stop()
-            spk.close()
+            if hasattr(spk, "close_async"):
+                try:
+                    await spk.close_async()
+                except Exception:
+                    spk.close()
+            else:
+                spk.close()
             self._set_state(LiveSessionState.STOPPED)
             logger.info("Gemini Live session closed.")
 

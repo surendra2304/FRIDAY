@@ -121,6 +121,36 @@ def normalize_audio_device(device: int | str | None) -> int | str | None:
         return text
 
 
+def _close_stream_safely(stream: Any, timeout_seconds: float = 1.5) -> None:
+    """Safely terminate and close a PortAudio stream off-loop in a daemon worker thread.
+
+    PortAudio C library attempts to terminate its internal callback thread and join it
+    inside stream.stop() and stream.close(). If called directly from the asyncio event loop thread,
+    it causes an unrecoverable thread deadlock with call_soon_threadsafe dispatches.
+    """
+    if stream is None:
+        return
+
+    def _teardown() -> None:
+        try:
+            stream.stop()
+        except Exception as e:
+            logger.debug(f"Error stopping stream in teardown thread: {e}")
+        try:
+            stream.close()
+        except Exception as e:
+            logger.debug(f"Error closing stream in teardown thread: {e}")
+
+    thread = threading.Thread(target=_teardown, daemon=True, name="portaudio-stream-teardown")
+    thread.start()
+    thread.join(timeout=timeout_seconds)
+    if thread.is_alive():
+        logger.warning(
+            "PortAudio stream teardown thread exceeded timeout (%.1fs). Hardware driver may be unresponsive.",
+            timeout_seconds,
+        )
+
+
 class MicrophoneStream:
     """Continuous non-blocking microphone stream capturing 16kHz 16-bit mono PCM."""
 
@@ -241,16 +271,32 @@ class MicrophoneStream:
                 pass
 
     def stop(self) -> None:
-        """Stop microphone capture and close the input stream."""
+        """Stop microphone capture and safely close the input stream off-loop."""
         self._active = False
-        if self._stream is not None:
+        if self._queue is not None:
             try:
-                self._stream.stop()
-                self._stream.close()
-            except Exception as e:
-                logger.debug(f"Error closing microphone stream: {e}")
+                self._queue.put_nowait(b"")
+            except Exception:
+                pass
+        if self._stream is not None:
+            stream = self._stream
             self._stream = None
+            _close_stream_safely(stream)
         logger.debug("MicrophoneStream stopped")
+
+    async def stop_async(self) -> None:
+        """Asynchronously stop microphone capture without blocking the event loop."""
+        self._active = False
+        if self._queue is not None:
+            try:
+                self._queue.put_nowait(b"")
+            except Exception:
+                pass
+        if self._stream is not None:
+            stream = self._stream
+            self._stream = None
+            await asyncio.to_thread(_close_stream_safely, stream)
+        logger.debug("MicrophoneStream stopped asynchronously")
 
     async def read_chunk(self) -> bytes:
         """Read the next captured 16kHz PCM chunk from the queue."""
@@ -258,7 +304,10 @@ class MicrophoneStream:
             await asyncio.sleep(0.02)
             return b""
         try:
-            return await self._queue.get()
+            chunk = await self._queue.get()
+            if not self._active or not chunk:
+                return b""
+            return chunk
         except Exception:
             return b""
 
@@ -494,6 +543,13 @@ class SpeakerStream:
         while self.is_playing and time.time() < deadline:
             time.sleep(0.02)
 
+    async def drain_async(self, timeout_seconds: float = 0.5) -> None:
+        """Gracefully wait for pending playback blocks to finish playing without blocking the asyncio loop."""
+        self.flush()
+        deadline = time.time() + max(0.05, timeout_seconds)
+        while self.is_playing and time.time() < deadline:
+            await asyncio.sleep(0.02)
+
     def stop(self) -> None:
         """Instantly purge all buffered playback chunks and remainder (barge-in interruption)."""
         with self._lock:
@@ -515,16 +571,22 @@ class SpeakerStream:
         logger.debug("SpeakerStream playback queue purged (barge-in)")
 
     def close(self) -> None:
-        """Shut down the speaker stream completely."""
+        """Shut down the speaker stream completely off-loop."""
         self.stop()
         self._active = False
         if self._stream is not None:
-            try:
-                self._stream.stop()
-                self._stream.close()
-            except Exception as e:
-                logger.debug(f"Error closing speaker stream: {e}")
+            stream = self._stream
             self._stream = None
+            _close_stream_safely(stream)
+
+    async def close_async(self) -> None:
+        """Asynchronously shut down the speaker stream completely."""
+        self.stop()
+        self._active = False
+        if self._stream is not None:
+            stream = self._stream
+            self._stream = None
+            await asyncio.to_thread(_close_stream_safely, stream)
 
     @property
     def is_active(self) -> bool:
@@ -590,12 +652,25 @@ class MockMicrophoneStream:
 
     def stop(self) -> None:
         self._active = False
+        try:
+            self._queue.put_nowait(b"")
+        except Exception:
+            pass
+
+    async def stop_async(self) -> None:
+        self.stop()
 
     async def read_chunk(self) -> bytes:
         if not self._active or self._queue.empty():
             await asyncio.sleep(0.01)
             return b""
-        return await self._queue.get()
+        try:
+            chunk = await self._queue.get()
+            if not self._active or not chunk:
+                return b""
+            return chunk
+        except Exception:
+            return b""
 
     async def iter_chunks(self) -> AsyncIterator[bytes]:
         while self._active and not self._queue.empty():
@@ -649,8 +724,14 @@ class MockSpeakerStream:
     def queue_size(self) -> int:
         return len(self.played_chunks)
 
+    async def drain_async(self, timeout_seconds: float = 0.5) -> None:
+        pass
+
     def close(self) -> None:
         self._active = False
+
+    async def close_async(self) -> None:
+        self.close()
 
     @property
     def is_active(self) -> bool:

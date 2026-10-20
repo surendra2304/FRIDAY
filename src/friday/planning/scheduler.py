@@ -80,6 +80,17 @@ class TaskGraphScheduler:
             )
         )
 
+        # Synchronize initial goal and periodic sweep into friday_db.daily_goals
+        if graph.goal:
+            try:
+                from friday.autonomous.daily_rhythm import daily_rhythm
+                daily_rhythm.set_daily_goal(
+                    title=graph.goal,
+                    description=f"TaskGraph {graph.graph_id} with {len(graph.list_tasks())} tasks",
+                )
+            except Exception as exc:
+                logger.debug("Failed to register initial daily goal from scheduler: %s", exc)
+
         try:
             waves = graph.compute_waves()
         except TaskGraphValidationError as e:
@@ -131,7 +142,32 @@ class TaskGraphScheduler:
                 },
             )
         )
+
+        # Persist final progress and trigger periodic task sweep into friday_db.daily_goals
+        try:
+            from friday.autonomous.daily_rhythm import daily_rhythm
+            completed = len(graph.get_completed_ids())
+            total = len(graph.list_tasks())
+            progress = (completed / total) if total > 0 else 1.0
+            status = "completed" if graph.is_successful() else ("deferred" if cancel_token.is_set() else "in_progress")
+            daily_rhythm.update_goal_progress(
+                progress=progress,
+                status=status,
+                notes=f"TaskGraph {graph.graph_id} execution sweep: {completed}/{total} tasks finished.",
+            )
+            daily_rhythm.periodic_task_sweep()
+        except Exception as exc:
+            logger.debug("Failed to update daily goal progress from scheduler: %s", exc)
+
         return graph
+
+    async def execute_graph_async(
+        self,
+        graph: TaskGraph,
+        cancellation_token: threading.Event | None = None,
+    ) -> TaskGraph:
+        """Asynchronously execute the TaskGraph to completion in a background thread."""
+        return await asyncio.to_thread(self.execute_graph, graph, cancellation_token)
 
     def _execute_single_task(
         self,

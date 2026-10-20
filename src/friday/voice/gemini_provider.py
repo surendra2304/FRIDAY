@@ -31,11 +31,17 @@ class GeminiVoiceInput(VoiceInput):
         self.sample_rate = sample_rate
         self.stream = MicrophoneStream(sample_rate=sample_rate)
 
-    def start(self) -> None:
-        self.stream.start()
+    def start(self, loop: asyncio.AbstractEventLoop | None = None) -> None:
+        self.stream.start(loop=loop)
 
     def stop(self) -> None:
         self.stream.stop()
+
+    async def stop_async(self) -> None:
+        if hasattr(self.stream, "stop_async"):
+            await self.stream.stop_async()
+        else:
+            self.stream.stop()
 
     def read_chunk(self) -> str:
         """Read audio chunk from stream or return description."""
@@ -64,6 +70,23 @@ class GeminiVoiceOutput(VoiceOutput):
 
     def stop(self) -> None:
         self.stream.stop()
+
+    async def stop_async(self) -> None:
+        if hasattr(self.stream, "close_async"):
+            await self.stream.close_async()
+        elif hasattr(self.stream, "close"):
+            self.stream.close()
+        else:
+            self.stream.stop()
+
+    def drain(self, timeout_seconds: float = 0.5) -> None:
+        self.stream.drain(timeout_seconds=timeout_seconds)
+
+    async def drain_async(self, timeout_seconds: float = 0.5) -> None:
+        if hasattr(self.stream, "drain_async"):
+            await self.stream.drain_async(timeout_seconds=timeout_seconds)
+        else:
+            self.stream.drain(timeout_seconds=timeout_seconds)
 
 
 class GeminiVoiceProvider(VoiceProvider):
