@@ -130,6 +130,8 @@ class Settings(BaseSettings):
             'FRIDAY_MEMORA_API_KEY': ['MEMORA_API_KEY', 'memora_api_key'],
             'FRIDAY_SENTINEL_URL': ['SENTINEL_URL', 'sentinel_url', 'SENTINEL_BASE_URL', 'sentinel_base_url', 'FRIDAY_SENTINEL_BASE_URL'],
             'FRIDAY_SENTINEL_API_KEY': ['SENTINEL_API_KEY', 'sentinel_api_key'],
+            'FRIDAY_VYRALX_URL': ['VYRALX_URL', 'vyralx_url'],
+            'FRIDAY_VYRALX_API_KEY': ['VYRALX_API_KEY', 'vyralx_api_key'],
             'FRIDAY_CORTEX_URL': ['CORTEX_URL', 'cortex_url', 'NEXUS_URL', 'NEXUS_BASE_URL', 'nexus_base_url', 'FRIDAY_NEXUS_BASE_URL'],
             'FRIDAY_CORTEX_API_KEY': ['CORTEX_API_KEY', 'cortex_api_key'],
             'FRIDAY_CORTEX_ENABLED': ['CORTEX_ENABLED', 'NEXUS_ENABLED', 'cortex_enabled', 'nexus_enabled'],
@@ -357,6 +359,14 @@ class Settings(BaseSettings):
     futuris_api_key: str | None = Field(default=None, description="Configured Futuris peer API key")
     cortex_api_key: str | None = Field(default=None, description="Configured Cortex peer API key")
     sentinel_api_key: str | None = Field(default=None, description="Configured Sentinel peer API key")
+    vyralx_url: str = Field(
+        default="http://vyralx:8000",
+        description="Base URL for the authenticated VyralX video-production agent on the private mesh",
+    )
+    vyralx_api_key: str | None = Field(
+        default=None,
+        description="Configured VyralX peer API key; task submission fails closed when absent",
+    )
     api_key: str | None = Field(
         default=None,
         description="API Key for authenticating FRIDAY with external AI Universe services",
