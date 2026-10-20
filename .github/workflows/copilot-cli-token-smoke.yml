@@ -26,5 +26,5 @@ jobs:
           COPILOT_GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          copilot -p "Reply exactly with the word READY. Do not use tools." --model gpt-4.1 --no-ask-user --secret-env-vars COPILOT_GITHUB_TOKEN -s | tee response.txt
+          copilot -p "Reply exactly with the word READY. Do not use tools." --no-ask-user --secret-env-vars COPILOT_GITHUB_TOKEN -s | tee response.txt
           grep -q READY response.txt
