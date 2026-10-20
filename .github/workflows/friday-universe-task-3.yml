@@ -1,0 +1,57 @@
+name: FRIDAY Universe Task 3 — VyralX, Forge, Sentinel, Cortex
+run-name: "Task 3 — Content automation, engineering and defense"
+on:
+  schedule:
+    # 00:40 Asia/Kolkata (UTC+05:30)
+    - cron: '10 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: friday-universe-task-3
+  cancel-in-progress: false
+jobs:
+  engineer:
+    name: Implement, test, checkpoint and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Checkout FRIDAY orchestration repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install autonomous coding CLI
+        run: npm install --global @openai/codex
+      - name: Validate required credentials
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CONTINUOUS_ENGINEERING_TOKEN: ${{ secrets.CONTINUOUS_ENGINEERING_TOKEN }}
+        run: |
+          test -n "$OPENAI_API_KEY" || { echo "::error::Add OPENAI_API_KEY as a repository Actions secret."; exit 1; }
+          test -n "$CONTINUOUS_ENGINEERING_TOKEN" || { echo "::error::Add CONTINUOUS_ENGINEERING_TOKEN with contents write and pull-request write on all ten repositories."; exit 1; }
+      - name: Prepare isolated repositories and restore handoff
+        env:
+          CONTINUOUS_ENGINEERING_TOKEN: ${{ secrets.CONTINUOUS_ENGINEERING_TOKEN }}
+        run: python scripts/continuous_engineering_runner.py prepare --task 3
+      - name: Execute code changes and tests for at least 31 active minutes
+        id: coding
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CODE_AGENT: codex
+          CODEX_PROVIDER: ${{ vars.CODEX_PROVIDER }}
+          CONTINUOUS_ENGINEERING_TOKEN: ${{ secrets.CONTINUOUS_ENGINEERING_TOKEN }}
+        run: python scripts/continuous_engineering_runner.py run --task 3
+      - name: Publish code PRs and persist the next-run handoff
+        if: always() && steps.coding.outcome != 'skipped'
+        env:
+          CONTINUOUS_ENGINEERING_TOKEN: ${{ secrets.CONTINUOUS_ENGINEERING_TOKEN }}
+          GH_TOKEN: ${{ secrets.CONTINUOUS_ENGINEERING_TOKEN }}
+        run: python scripts/continuous_engineering_runner.py publish --task 3
