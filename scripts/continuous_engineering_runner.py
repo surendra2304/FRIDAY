@@ -194,14 +194,19 @@ def do_run(task):
     repos, state = root / "repos", root / "state"
     if not repos.exists() or not state.exists():
         raise RuntimeError("Prepared workspaces are missing; prepare must finish before coding.")
-    if not os.environ.get("OPENAI_API_KEY", "").strip():
-        raise RuntimeError("OPENAI_API_KEY is missing; Codex cannot start substantive coding.")
+    agent = os.environ.get("CODE_AGENT", "codex").strip().lower()
+    if agent not in {"codex", "copilot"}:
+        raise RuntimeError(f"Unsupported CODE_AGENT={agent!r}; use codex or copilot.")
+    if agent == "codex" and not os.environ.get("OPENAI_API_KEY", "").strip():
+        raise RuntimeError("Codex selected but OPENAI_API_KEY is missing.")
+    if agent == "copilot" and not os.environ.get("COPILOT_GITHUB_TOKEN", "").strip():
+        raise RuntimeError("Copilot selected but COPILOT_GITHUB_TOKEN is missing.")
     checkpoint, next_run = state_files(state, task)
     before = json.loads((root / "initial-state.json").read_text(encoding="utf-8"))
     codex_home = root / "codex-home"
     codex_home.mkdir(exist_ok=True)
-    # Exclude key/token/secret-named environment variables from shell commands launched by the model.
-    if os.environ.get("CODEX_PROVIDER", "openai") == "openrouter":
+    # Codex uses its default environment policy to exclude key/token/secret vars from tool shells.
+    if agent == "codex" and os.environ.get("CODEX_PROVIDER", "openai") == "openrouter":
         codex_config = (
             'model = "openai/gpt-5.6-luna"\n'
             'model_provider = "openrouter"\n'
@@ -212,16 +217,15 @@ def do_run(task):
             'wire_api = "responses"\n\n'
             '[model_providers.openrouter.auth]\n'
             'command = "sh"\n'
-            "args = [\"-c\", 'printf \"%s\" \"$OPENROUTER_API_KEY\"']\n\n"
+            "args = [\"-c\", 'printf \"%s\" \"$OPENROUTER_API_KEY\"']\\n\\n"
             '[shell_environment_policy]\n'
             'ignore_default_excludes = false\n'
         )
-    else:
-        codex_config = (
-            '[shell_environment_policy]\n'
-            'ignore_default_excludes = false\n'
+        (codex_home / "config.toml").write_text(codex_config, encoding="utf-8")
+    elif agent == "codex":
+        (codex_home / "config.toml").write_text(
+            '[shell_environment_policy]\nignore_default_excludes = false\n', encoding="utf-8"
         )
-    (codex_home / "config.toml").write_text(codex_config, encoding="utf-8")
     start = time.monotonic()
     pass_no = 0
     while time.monotonic() - start < MIN_WORK_SECONDS:
@@ -230,20 +234,39 @@ def do_run(task):
         prompt_path = root / f"pass-{pass_no}-prompt.md"
         prompt_path.write_text(build_prompt(task, state, repos, pass_no, elapsed), encoding="utf-8")
         log_path, last_message = root / f"pass-{pass_no}.jsonl", root / f"pass-{pass_no}-final.md"
-        cmd = ["codex", "exec", "--sandbox", "workspace-write", "--cd", str(repos / WORKSTREAMS[task][0])]
-        for name in WORKSTREAMS[task][1:]:
-            cmd.extend(["--add-dir", str(repos / name)])
-        cmd.extend(["--add-dir", str(state), "--json", "--output-last-message", str(last_message), "-"])
+        prompt_text = prompt_path.read_text(encoding="utf-8")
+        if agent == "codex":
+            cmd = ["codex", "exec", "--sandbox", "workspace-write", "--cd", str(repos / WORKSTREAMS[task][0])]
+            for name in WORKSTREAMS[task][1:]:
+                cmd.extend(["--add-dir", str(repos / name)])
+            cmd.extend(["--add-dir", str(state), "--json", "--output-last-message", str(last_message), "-"])
+            work_cwd = repos / WORKSTREAMS[task][0]
+        else:
+            cmd = [
+                "copilot", "-p", prompt_text, "--model", os.environ.get("COPILOT_MODEL", "gpt-4.1"),
+                "--allow-all-tools", "--allow-all-paths", "--no-ask-user",
+                "--secret-env-vars", "COPILOT_GITHUB_TOKEN", "-s",
+            ]
+            work_cwd = root
         env = os.environ.copy()
-        env["CODEX_HOME"] = str(codex_home)
-        for key in ("GH_TOKEN", "GITHUB_TOKEN", "CONTINUOUS_ENGINEERING_TOKEN"):
+        if agent == "codex":
+            env["CODEX_HOME"] = str(codex_home)
+            env.pop("COPILOT_GITHUB_TOKEN", None)
+        for key in ("GH_TOKEN", "GITHUB_TOKEN", "CONTINUOUS_ENGINEERING_TOKEN", "FRIDAY_AUTOMATION_TOKEN"):
             env.pop(key, None)
-        print(f"Starting task {task} coding pass {pass_no}; active time {elapsed}s")
+        print(f"Starting task {task} coding pass {pass_no} with {agent}; active time {elapsed}s")
         try:
             with log_path.open("w", encoding="utf-8") as log:
-                result = subprocess.run(cmd, input=prompt_path.read_text(encoding="utf-8"), text=True,
-                                        cwd=str(repos / WORKSTREAMS[task][0]), env=env,
-                                        stdout=log, stderr=subprocess.STDOUT, timeout=24*60, check=False)
+                if agent == "codex":
+                    result = subprocess.run(cmd, input=prompt_text, text=True,
+                                            cwd=str(work_cwd), env=env,
+                                            stdout=log, stderr=subprocess.STDOUT, timeout=24*60, check=False)
+                else:
+                    result = subprocess.run(cmd, text=True, cwd=str(work_cwd), env=env,
+                                            stdout=log, stderr=subprocess.STDOUT, timeout=24*60, check=False)
+                    if result.returncode == 0:
+                        last_message.write_text(log_path.read_text(encoding="utf-8", errors="replace")[-12000:],
+                                                encoding="utf-8")
         except subprocess.TimeoutExpired:
             # A timed-out model pass is still a failed run that needs a durable next-run handoff.
             with log_path.open("a", encoding="utf-8") as log:
