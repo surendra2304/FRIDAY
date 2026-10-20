@@ -79,10 +79,14 @@ class BackendWorker(QObject):
     confirm_request_signal = pyqtSignal(str)
     task_progress_signal = pyqtSignal(str, str, str)  # (task_id, description, status)
     clear_tasks_signal = pyqtSignal()
+    screen_grounding_signal = pyqtSignal(str)
 
     def __init__(self) -> None:
         super().__init__()
         self.settings = get_settings()
+
+        from friday.desktop.grounding import DesktopScreenGrounding
+        self.screen_grounding = DesktopScreenGrounding()
 
         self._confirm_event = threading.Event()
         self.authorizer = DesktopAuthorizer(
@@ -163,6 +167,13 @@ class BackendWorker(QObject):
 
         async def _process():
             try:
+                # Capture fresh screen delta and active window context
+                has_changed, diff_ratio, win_ctx = await self.loop.run_in_executor(
+                    None, self.screen_grounding.check_screen_freshness
+                )
+                grounding_summary = self.screen_grounding.format_grounding_context()
+                self.screen_grounding_signal.emit(grounding_summary)
+
                 # Fast path execution where appropriate
                 res = await self.loop.run_in_executor(None, self.agent.process_message, text)
                 self.response_signal.emit(res.content)
@@ -272,6 +283,7 @@ def run_desktop_app() -> int:
     worker.response_signal.connect(lambda text: overlay.append_transcript("FRIDAY", text))
     worker.status_signal.connect(overlay.set_status)
     worker.confirm_request_signal.connect(overlay.request_confirmation)
+    worker.screen_grounding_signal.connect(lambda ctx: logger.debug("Screen Grounding: %s", ctx))
     worker.task_progress_signal.connect(overlay.update_task_progress)
     worker.clear_tasks_signal.connect(overlay.clear_task_progress)
 
