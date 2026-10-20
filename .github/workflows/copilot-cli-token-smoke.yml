@@ -23,7 +23,7 @@ jobs:
         run: npm install --global @github/copilot
       - name: Authenticate using the scoped Actions token
         env:
-          COPILOT_GITHUB_TOKEN: \${{ github.token }}
+          COPILOT_GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           copilot -p "Reply exactly with the word READY. Do not use tools." --model gpt-6-astra --no-ask-user --secret-env-vars COPILOT_GITHUB_TOKEN -s | tee response.txt
