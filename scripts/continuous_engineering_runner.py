@@ -54,7 +54,7 @@ def clone(name, destination):
 
 def prepare_branch(path, task, state=False):
     branch = f"{STATE_PREFIX}-{task}" if state else f"{BRANCH_PREFIX}-{task}"
-    git(path, "fetch", "--depth=1", "origin", "+refs/heads/main:refs/remotes/origin/main")
+    git(path, "fetch", "origin", "+refs/heads/main:refs/remotes/origin/main")
     remote = git(path, "ls-remote", "--heads", "origin", branch, check=False)
     if remote.returncode == 0 and remote.stdout.strip():
         git(path, "fetch", "origin", f"{branch}:refs/remotes/origin/{branch}")
