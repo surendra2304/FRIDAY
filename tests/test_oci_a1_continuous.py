@@ -167,7 +167,7 @@ def test_allocator_does_not_label_empty_capacity_report_as_no_capacity(tmp_path,
     state = json.loads((Path(tmp_path) / "state.json").read_text())
     assert result.outcome == "capacity_report_unusable"
     assert result.delay_seconds == AUTH_OR_CONFIG_ERROR_SECONDS
-    assert state["details"]["diagnostic"] == "empty_or_unrecognized_capacity_report"
+    assert state["details"]["diagnostic"] == "empty_shape_availabilities"
 
 def test_allocator_does_not_label_unknown_capacity_status_as_no_capacity(tmp_path, monkeypatch):
     from scripts.oci_a1_continuous import AUTH_OR_CONFIG_ERROR_SECONDS, ContinuousAllocator
@@ -180,7 +180,7 @@ def test_allocator_does_not_label_unknown_capacity_status_as_no_capacity(tmp_pat
     state = json.loads((Path(tmp_path) / "state.json").read_text())
     assert result.outcome == "capacity_report_unusable"
     assert result.delay_seconds == AUTH_OR_CONFIG_ERROR_SECONDS
-    assert state["details"]["diagnostic"] == "empty_or_unrecognized_capacity_report"
+    assert state["details"]["diagnostic"] == "unknown_availability_status"
 
 def test_allocator_does_not_label_hardware_not_supported_as_no_capacity(tmp_path, monkeypatch):
     from scripts.oci_a1_continuous import AUTH_OR_CONFIG_ERROR_SECONDS, ContinuousAllocator
@@ -193,7 +193,7 @@ def test_allocator_does_not_label_hardware_not_supported_as_no_capacity(tmp_path
     state = json.loads((Path(tmp_path) / "state.json").read_text())
     assert result.outcome == "capacity_report_unusable"
     assert result.delay_seconds == AUTH_OR_CONFIG_ERROR_SECONDS
-    assert state["details"]["diagnostic"] == "empty_or_unrecognized_capacity_report"
+    assert state["details"]["diagnostic"] == "hardware_not_supported"
 
 
 def test_allocator_reports_no_capacity_and_keeps_retry_delay(tmp_path, monkeypatch):
