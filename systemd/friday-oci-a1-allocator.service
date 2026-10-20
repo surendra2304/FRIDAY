@@ -1,0 +1,30 @@
+[Unit]
+Description=FRIDAY Universe continuous Oracle Ampere A1 allocator
+Documentation=https://github.com/surendra2304/FRIDAY
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=friday-arm-sniper
+Group=friday-arm-sniper
+WorkingDirectory=/opt/friday-arm-sniper/app
+Environment=PYTHONUNBUFFERED=1
+Environment=OCI_REGION=ap-hyderabad-1
+EnvironmentFile=-/etc/friday-arm-sniper.env
+StateDirectory=friday-arm-sniper
+StateDirectoryMode=0750
+ExecStart=/opt/friday-arm-sniper/venv/bin/python -m scripts.oci_a1_continuous
+Restart=on-failure
+RestartSec=15s
+TimeoutStopSec=25s
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target
