@@ -47,7 +47,7 @@ def clone(name, destination):
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():
         shutil.rmtree(destination)
-    command(["git", "clone", "--depth", "1", "--branch", "main",
+    command(["git", "clone", "--branch", "main",
              f"https://github.com/{OWNER}/{name}.git", str(destination)], timeout=600)
     return destination
 
@@ -290,7 +290,15 @@ def do_publish(task):
         full_name = f"{OWNER}/{name}"
         view = command(["gh", "pr", "view", branch, "--repo", full_name, "--json", "url,state"],
                        env=gh_env, check=False, timeout=180)
-        if view.returncode:
+        existing = {}
+        if view.returncode == 0:
+            try:
+                existing = json.loads(view.stdout)
+            except json.JSONDecodeError:
+                existing = {}
+        if existing.get("state") == "OPEN":
+            urls.append(existing["url"])
+        else:
             body = (
                 f"## Continuous engineering task {task}\n\n"
                 f"Workstream repositories: {', '.join(WORKSTREAMS[task])}.\n\n"
@@ -302,12 +310,6 @@ def do_publish(task):
                                "--title", f"feat: continue FRIDAY Universe task {task} engineering",
                                "--body", body], env=gh_env, timeout=180)
             urls.append(created.stdout.strip().splitlines()[-1])
-        else:
-            try:
-                data = json.loads(view.stdout)
-                urls.append(data["url"])
-            except Exception:
-                urls.append(view.stdout.strip())
     checkpoint, next_run = state_files(state, task)
     if not checkpoint.exists() or not next_run.exists():
         raise RuntimeError("Checkpoint or next-run instructions are missing; refusing to publish an incomplete handoff.")
