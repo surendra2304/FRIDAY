@@ -259,9 +259,14 @@ class ContinuousAllocator:
                     launch_details.fault_domain = fault_domain
                 # Stable per fault-domain idempotency tokens prevent duplicate
                 # launches if the API accepts a request but the client times out.
+                ssh_key_fingerprint = hashlib.sha256(
+                    self.ssh_public_key.encode("utf-8")
+                ).hexdigest()
                 token_input = (
-                    f"friday-a1|{tenancy_id}|{self.region}|{self.availability_domain}|"
-                    f"{fault_domain}|{TARGET_OCPUS}|{TARGET_MEMORY_GB}|{BOOT_VOLUME_GB}"
+                    f"friday-a1|{tenancy_id}|{compartment_id}|{self.region}|"
+                    f"{self.availability_domain}|{fault_domain}|{TARGET_OCPUS}|"
+                    f"{TARGET_MEMORY_GB}|{BOOT_VOLUME_GB}|{self.subnet_id}|"
+                    f"{self.image_id}|{ssh_key_fingerprint}"
                 )
                 retry_token = hashlib.sha256(token_input.encode("utf-8")).hexdigest()
                 try:
