@@ -23,7 +23,7 @@ if ! id -u "${SERVICE_USER}" >/dev/null 2>&1; then
 fi
 
 install -d -o root -g root -m 0755 "${INSTALL_ROOT}" "${APP_ROOT}" "${APP_ROOT}/scripts"
-install -m 0644 "${REPO_ROOT}/scripts/oci_a1_sniper.py" "${APP_ROOT}/scripts/oci_a1_sniper.py"
+install -m 0644 "${REPO_ROOT}/scripts/oci_a1_common.py" "${APP_ROOT}/scripts/oci_a1_common.py"
 install -m 0644 "${REPO_ROOT}/scripts/oci_a1_continuous.py" "${APP_ROOT}/scripts/oci_a1_continuous.py"
 install -m 0644 "${REPO_ROOT}/scripts/__init__.py" "${APP_ROOT}/scripts/__init__.py"
 install -m 0644 "${REPO_ROOT}/systemd/friday-oci-a1-allocator.service" "/etc/systemd/system/${SERVICE_NAME}"
