@@ -73,7 +73,7 @@ def is_capacity_error(exc: Exception) -> bool:
     if status in (500, 503, 409, 404):
         if any(term in msg for term in ("out of host capacity", "capacity", "not authorized or not found")):
             return True
-        if any(term in code.lower() for term in ("outofhostcapacity", "outofcapacity", "internalerror", "serviceerror")):
+        if any(term in code.lower() for term in ("outofhostcapacity", "outofcapacity")):
             return True
     return False
 
@@ -496,16 +496,17 @@ def main() -> int:
     )
     signal.signal(signal.SIGTERM, lambda *_: _STOP.set())
     signal.signal(signal.SIGINT, lambda *_: _STOP.set())
+    allocator = ContinuousAllocator()
     LOGGER.info(
         "Starting continuous OCI A1 search: region=%s shape=%s OCPUs=%s RAM_GB=%s boot_GB=%s retry_on_no_capacity_seconds=%s",
-        os.environ.get("OCI_REGION", DEFAULT_REGION),
+        allocator.region,
         SHAPE,
-        TARGET_OCPUS,
-        TARGET_MEMORY_GB,
+        allocator.target_ocpus,
+        allocator.target_memory_gb,
         BOOT_VOLUME_GB,
-        NO_CAPACITY_SECONDS,
+        allocator.retry_seconds,
     )
-    return run_forever(ContinuousAllocator())
+    return run_forever(allocator)
 
 
 if __name__ == "__main__":

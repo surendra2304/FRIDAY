@@ -363,6 +363,13 @@ def test_is_capacity_error_identifies_500_internalerror_and_capacity_messages():
     exc3 = SimpleNamespace(status=401, code='NotAuthorized', message='Bad key')
     assert is_capacity_error(exc3) is False
 
+    # Generic server failures are not proof of host-capacity exhaustion.
+    exc4 = SimpleNamespace(status=500, code='InternalError', message='Unexpected server error.')
+    assert is_capacity_error(exc4) is False
+
+    exc5 = SimpleNamespace(status=503, code='ServiceError', message='Service temporarily unavailable.')
+    assert is_capacity_error(exc5) is False
+
 
 def test_allocator_attempts_direct_launch_when_capacity_report_is_empty(tmp_path, monkeypatch):
     from scripts.oci_a1_continuous import ContinuousAllocator
