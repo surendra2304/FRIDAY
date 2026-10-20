@@ -156,13 +156,12 @@ class ContinuousAllocator:
             )
             if not tenancy_id:
                 LOGGER.error("OCI instance principal did not expose a tenancy ID.")
-                return self._record(
+                self._record(
                     "configuration_error",
                     diagnostic="missing_tenancy_id",
-                    delay_seconds=AUTH_OR_CONFIG_ERROR_SECONDS,
-                ).__class__(
-                    "configuration_error", AUTH_OR_CONFIG_ERROR_SECONDS, False
+                    retry_seconds=AUTH_OR_CONFIG_ERROR_SECONDS,
                 )
+                return AttemptResult("configuration_error", AUTH_OR_CONFIG_ERROR_SECONDS)
             compartment_id = os.environ.get("OCI_COMPARTMENT_OCID", "").strip() or tenancy_id
 
             instances = self.oci.pagination.list_call_get_all_results(
@@ -199,16 +198,12 @@ class ContinuousAllocator:
 
             subnet = self.network.get_subnet(self.subnet_id).data
             if str(getattr(subnet, "lifecycle_state", "")).upper() != "AVAILABLE":
-                return AttemptResult(
-                    self._record("configuration_error", diagnostic="subnet_not_available").outcome,
-                    AUTH_OR_CONFIG_ERROR_SECONDS,
-                )
+                self._record("configuration_error", diagnostic="subnet_not_available")
+                return AttemptResult("configuration_error", AUTH_OR_CONFIG_ERROR_SECONDS)
             image = self.compute.get_image(self.image_id).data
             if str(getattr(image, "lifecycle_state", "")).upper() != "AVAILABLE":
-                return AttemptResult(
-                    self._record("configuration_error", diagnostic="image_not_available").outcome,
-                    AUTH_OR_CONFIG_ERROR_SECONDS,
-                )
+                self._record("configuration_error", diagnostic="image_not_available")
+                return AttemptResult("configuration_error", AUTH_OR_CONFIG_ERROR_SECONDS)
 
             capacity_details = self.oci.core.models.CreateComputeCapacityReportDetails(
                 compartment_id=tenancy_id,
@@ -335,7 +330,12 @@ def run_forever(
             result.delay_seconds,
             result.outcome,
         )
-        if stop_event.wait(result.delay_seconds) if hasattr(stop_event, "wait") else wait(result.delay_seconds):
+        if hasattr(stop_event, "wait"):
+            stopped = stop_event.wait(result.delay_seconds)
+        else:
+            wait(result.delay_seconds)
+            stopped = False
+        if stopped:
             break
     LOGGER.info("Allocator stopped by a termination signal.")
     return 0
