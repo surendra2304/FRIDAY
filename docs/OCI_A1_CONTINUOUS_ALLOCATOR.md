@@ -32,7 +32,7 @@ sudo journalctl -u friday-oci-a1-allocator.service -f
 sudo cat /var/lib/friday-arm-sniper/state.json
 ```
 
-The repository checkout used for installation must be current and must not be the stale `/opt/friday_universe` deployment snapshot. Verify OCI policy permissions and the exact configured subnet, image, compartment and SSH public key before starting the service.
+The repository checkout used for installation must be current and must not be the stale `/opt/friday_universe` deployment snapshot. The installer checks for Python venv support and, on Ubuntu/Debian, installs the matching `python3-venv` package if it is missing. Verify OCI policy permissions and the exact configured subnet, image, compartment and SSH public key before starting the service.
 
 ## Rollback
 
