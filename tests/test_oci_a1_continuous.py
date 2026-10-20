@@ -256,3 +256,48 @@ def test_allocator_starts_stopped_target_and_keeps_polling():
     assert result.outcome == "instance_pending"
     assert result.delay_seconds > 0
     assert actions == [("ocid1.instance.stopped", "START")]
+
+
+def test_is_capacity_error_identifies_500_internalerror_and_capacity_messages():
+    from scripts.oci_a1_continuous import is_capacity_error
+
+    exc1 = SimpleNamespace(status=500, code='InternalError', message='Out of host capacity.')
+    assert is_capacity_error(exc1) is True
+
+    exc2 = SimpleNamespace(status=409, code='OutOfHostCapacity', message='Capacity limit.')
+    assert is_capacity_error(exc2) is True
+
+    exc3 = SimpleNamespace(status=401, code='NotAuthorized', message='Bad key')
+    assert is_capacity_error(exc3) is False
+
+
+def test_allocator_attempts_direct_launch_when_capacity_report_is_empty(tmp_path, monkeypatch):
+    from scripts.oci_a1_continuous import ContinuousAllocator
+    from scripts.oci_a1_common import SHAPE
+
+    oci, signer, compute, network = _fake_oci_with_no_capacity()
+    monkeypatch.setenv('STATE_DIRECTORY', str(tmp_path))
+    monkeypatch.setenv('OCI_RETRY_INTERVAL', '25')
+
+    # Add mock launch_instance that raises out of capacity
+    class MockServiceError(Exception):
+        def __init__(self, status, code, message):
+            self.status = status
+            self.code = code
+            self.message = message
+            super().__init__(message)
+
+    launch_calls = []
+    def mock_launch(details, opc_retry_token=None):
+        launch_calls.append((details, opc_retry_token))
+        raise MockServiceError(500, 'InternalError', 'Out of host capacity.')
+
+    compute.launch_instance = mock_launch
+    allocator = ContinuousAllocator(
+        oci_module=oci, signer=signer, compute=compute, network=network
+    )
+
+    result = allocator.attempt_once()
+    assert result.outcome == 'no_capacity'
+    assert result.delay_seconds == 25
+    assert len(launch_calls) > 0
