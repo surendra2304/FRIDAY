@@ -1,10 +1,6 @@
 name: FRIDAY Universe Task 1 — FRIDAY
 run-name: "Task 1 — FRIDAY engineering"
 on:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/friday-universe-task-1.yml
   schedule:
     - cron: '30 * * * *'
   workflow_dispatch:
