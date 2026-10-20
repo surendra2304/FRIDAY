@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from scripts.oci_a1_continuous import (
     AUTH_OR_CONFIG_ERROR_SECONDS,
@@ -100,3 +101,105 @@ def test_state_persistence_is_atomic_and_contains_no_credentials(tmp_path, monke
     assert state["details"]["diagnostic"] == "capacity unavailable"
     assert "OCI_KEY_CONTENT" not in json.dumps(state)
     assert not (Path(tmp_path) / "state.json.tmp").exists()
+
+
+def _fake_oci_with_no_capacity():
+    def model(**kwargs):
+        return SimpleNamespace(**kwargs)
+
+    models = SimpleNamespace(
+        CreateComputeCapacityReportDetails=model,
+        CreateCapacityReportShapeAvailabilityDetails=model,
+        CapacityReportInstanceShapeConfig=model,
+        LaunchInstanceDetails=model,
+        LaunchInstanceShapeConfigDetails=model,
+        InstanceSourceViaImageDetails=model,
+        CreateVnicDetails=model,
+    )
+
+    def paginate(call, **kwargs):
+        return SimpleNamespace(data=call(**kwargs))
+
+    oci = SimpleNamespace(
+        pagination=SimpleNamespace(list_call_get_all_results=paginate),
+        core=SimpleNamespace(models=models),
+    )
+    compute = SimpleNamespace(
+        list_instances=lambda **_: [],
+        get_image=lambda *_args, **_kwargs: SimpleNamespace(
+            data=SimpleNamespace(lifecycle_state="AVAILABLE")
+        ),
+        create_compute_capacity_report=lambda *_args, **_kwargs: SimpleNamespace(
+            data=SimpleNamespace(shape_availabilities=[])
+        ),
+    )
+    network = SimpleNamespace(
+        get_subnet=lambda *_args, **_kwargs: SimpleNamespace(
+            data=SimpleNamespace(lifecycle_state="AVAILABLE")
+        )
+    )
+    signer = SimpleNamespace(tenancy_id="ocid1.tenancy.test")
+    return oci, signer, compute, network
+
+
+def test_allocator_reports_no_capacity_and_keeps_retry_delay(tmp_path, monkeypatch):
+    from scripts.oci_a1_continuous import ContinuousAllocator
+
+    oci, signer, compute, network = _fake_oci_with_no_capacity()
+    monkeypatch.setenv("STATE_DIRECTORY", str(tmp_path))
+    allocator = ContinuousAllocator(
+        oci_module=oci, signer=signer, compute=compute, network=network
+    )
+
+    result = allocator.attempt_once()
+
+    assert result.outcome == "no_capacity"
+    assert result.delay_seconds == NO_CAPACITY_SECONDS
+    assert not result.complete
+    assert json.loads((Path(tmp_path) / "state.json").read_text())["outcome"] == "no_capacity"
+
+
+def test_allocator_does_not_launch_duplicate_for_running_target_vm():
+    from scripts.oci_a1_continuous import ContinuousAllocator
+    from scripts.oci_a1_sniper import SHAPE
+
+    instance = SimpleNamespace(
+        shape=SHAPE,
+        lifecycle_state="RUNNING",
+        id="ocid1.instance.target",
+        shape_config=SimpleNamespace(ocpus=2, memory_in_gbs=12),
+    )
+    oci, signer, compute, network = _fake_oci_with_no_capacity()
+    compute.list_instances = lambda **_: [instance]
+    allocator = ContinuousAllocator(
+        oci_module=oci, signer=signer, compute=compute, network=network
+    )
+
+    result = allocator.attempt_once()
+
+    assert result.outcome == "allocated_running"
+    assert result.complete
+    assert not hasattr(compute, "launch_instance")
+
+
+def test_allocator_refuses_duplicate_if_existing_a1_is_undersized():
+    from scripts.oci_a1_continuous import ContinuousAllocator
+    from scripts.oci_a1_sniper import SHAPE
+
+    instance = SimpleNamespace(
+        shape=SHAPE,
+        lifecycle_state="RUNNING",
+        id="ocid1.instance.undersized",
+        shape_config=SimpleNamespace(ocpus=1, memory_in_gbs=6),
+    )
+    oci, signer, compute, network = _fake_oci_with_no_capacity()
+    compute.list_instances = lambda **_: [instance]
+    allocator = ContinuousAllocator(
+        oci_module=oci, signer=signer, compute=compute, network=network
+    )
+
+    result = allocator.attempt_once()
+
+    assert result.outcome == "manual_review"
+    assert not result.complete
+    assert not hasattr(compute, "launch_instance")
