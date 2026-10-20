@@ -37,7 +37,8 @@ from scripts.oci_a1_common import (
 NO_CAPACITY_SECONDS = 60
 PENDING_INSTANCE_SECONDS = 20
 TRANSIENT_ERROR_SECONDS = 120
-RATE_LIMIT_SECONDS = 180
+# OCI kept returning 429 after the previous 180-second cooldown; avoid repeated bursts.
+RATE_LIMIT_SECONDS = 600
 AUTH_OR_CONFIG_ERROR_SECONDS = 300
 LOGGER = logging.getLogger("friday.oci_a1_allocator")
 _STOP = threading.Event()

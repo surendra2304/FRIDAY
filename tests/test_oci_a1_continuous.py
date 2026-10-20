@@ -70,6 +70,7 @@ def test_retry_loop_continues_across_repeated_no_capacity_results():
 
 
 def test_error_backoff_distinguishes_rate_limit_authorization_and_transient():
+    assert RATE_LIMIT_SECONDS == 600
     assert error_delay(429, "TooManyRequests") == RATE_LIMIT_SECONDS
     assert error_delay(403, "NotAuthorizedOrNotFound") == AUTH_OR_CONFIG_ERROR_SECONDS
     assert error_delay(503, "ServiceError") == TRANSIENT_ERROR_SECONDS
