@@ -17,11 +17,11 @@ jobs:
     steps:
       - name: Call GitHub Models using the built-in Actions token
         env:
-          GITHUB_TOKEN: \${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           response=$(curl --fail-with-body --silent --show-error https://models.github.ai/inference/chat/completions \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
             -d '{"model":"openai/gpt-4.1","messages":[{"role":"user","content":"Reply with exactly READY"}],"max_tokens":20}')
-          echo "$response" | jq -e '.choices[0].message.content | strings | contains("READY")'
+          echo "$response" | jq -e '.choices[0].message.content | strings | contains("READY")' || { echo "$response"; exit 1; }
