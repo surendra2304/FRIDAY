@@ -57,7 +57,7 @@ def prepare_branch(path, task, state=False):
     git(path, "fetch", "--depth=1", "origin", "+refs/heads/main:refs/remotes/origin/main")
     remote = git(path, "ls-remote", "--heads", "origin", branch, check=False)
     if remote.returncode == 0 and remote.stdout.strip():
-        git(path, "fetch", "--depth=1", "origin", f"{branch}:refs/remotes/origin/{branch}")
+        git(path, "fetch", "origin", f"{branch}:refs/remotes/origin/{branch}")
         git(path, "checkout", "-B", branch, f"origin/{branch}")
         if not state:
             # Bring an existing work branch forward without discarding prior engineering.
@@ -217,7 +217,7 @@ def do_run(task):
             'wire_api = "responses"\n\n'
             '[model_providers.openrouter.auth]\n'
             'command = "sh"\n'
-            "args = [\"-c\", 'printf \"%s\" \"$OPENROUTER_API_KEY\"']\\n\\n"
+            'args = ["-c", "echo $OPENROUTER_API_KEY"]\n\n'
             '[shell_environment_policy]\n'
             'ignore_default_excludes = false\n'
         )
