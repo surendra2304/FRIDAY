@@ -75,3 +75,5 @@ def test_three_workflow_schedules_are_twenty_minutes_apart_in_ist() -> None:
         assert f"run --task {task}" in workflow
         assert f"publish --task {task}" in workflow
         assert "cancel-in-progress: false" in workflow
+        assert "Fail fast if cross-repository publisher token is missing" in workflow
+        assert "Run real engineering work for at least 35 active minutes" in workflow
