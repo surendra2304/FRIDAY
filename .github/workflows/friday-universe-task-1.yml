@@ -30,6 +30,7 @@ jobs:
           fetch-depth: 1
 
       - name: Verify coding and cross-repository write credentials
+        id: credentials
         shell: bash
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -45,6 +46,14 @@ jobs:
           fi
           echo "Required secret names are present; values will not be printed."
 
+      - name: Cache pip downloads for target repositories
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-friday-ce-pip-v1
+          restore-keys: |
+            ${{ runner.os }}-friday-ce-pip-
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -59,14 +68,17 @@ jobs:
         run: npm install --global @openai/codex
 
       - name: Prepare isolated workspaces and project dependencies
+        id: prepare
         run: python scripts/continuous_engineering_runner.py prepare --task 1
 
       - name: Run continuous coding passes (minimum 31 active minutes)
+        id: code
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: python scripts/continuous_engineering_runner.py run --task 1
 
       - name: Publish code branches, PRs, and persistent handoff
+        if: always() && steps.credentials.outcome == 'success' && steps.prepare.outcome == 'success'
         env:
           CONTINUOUS_ENGINEERING_TOKEN: ${{ secrets.CONTINUOUS_ENGINEERING_TOKEN }}
         run: python scripts/continuous_engineering_runner.py publish --task 1
