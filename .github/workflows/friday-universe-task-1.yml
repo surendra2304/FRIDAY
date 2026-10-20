@@ -7,6 +7,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  copilot-requests: write
 concurrency:
   group: friday-universe-task-1
   cancel-in-progress: false
@@ -29,12 +30,10 @@ jobs:
           node-version: '22'
       - name: Install autonomous coding CLI
         run: npm install --global @openai/codex
-      - name: Validate required credentials
+      - name: Validate cross-repository publishing credential
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           CONTINUOUS_ENGINEERING_TOKEN: ${{ secrets.CONTINUOUS_ENGINEERING_TOKEN }}
         run: |
-          test -n "$OPENAI_API_KEY" || { echo "::error::Add OPENAI_API_KEY as a repository Actions secret."; exit 1; }
           test -n "$CONTINUOUS_ENGINEERING_TOKEN" || { echo "::error::Add CONTINUOUS_ENGINEERING_TOKEN with contents write and pull-request write on all ten repositories."; exit 1; }
       - name: Prepare isolated repositories and restore handoff
         env:
@@ -43,10 +42,9 @@ jobs:
       - name: Execute code changes and tests for at least 31 active minutes
         id: coding
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          CODE_AGENT: codex
-          CODEX_PROVIDER: ${{ vars.CODEX_PROVIDER }}
+          COPILOT_GITHUB_TOKEN: ${{ github.token }}
+          COPILOT_MODEL: ${{ vars.COPILOT_MODEL }}
+          CODE_AGENT: copilot
           CONTINUOUS_ENGINEERING_TOKEN: ${{ secrets.CONTINUOUS_ENGINEERING_TOKEN }}
         run: python scripts/continuous_engineering_runner.py run --task 1
       - name: Publish code PRs and persist the next-run handoff
