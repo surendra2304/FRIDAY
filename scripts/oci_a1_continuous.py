@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from scripts.oci_a1_sniper import (
+from scripts.oci_a1_common import (
     BOOT_VOLUME_GB,
     DEFAULT_AVAILABILITY_DOMAIN,
     DEFAULT_IMAGE_ID,
