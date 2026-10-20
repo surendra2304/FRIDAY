@@ -20,6 +20,9 @@ from pathlib import Path
 
 MIN_WORK_SECONDS = 31 * 60
 PASS_TIMEOUT_SECONDS = 24 * 60
+FAST_FAILURE_SECONDS = 90
+MAX_CONSECUTIVE_FAST_FAILURES = 3
+RETRY_BACKOFF_SECONDS = 15
 BRANCH_PREFIX = "automation/friday-universe-task"
 HANDOFF_DIR = Path(".github/friday-continuation")
 
@@ -55,6 +58,19 @@ def git(root: Path, *args: str, check: bool = True,
 
 def branch_for(task: int) -> str:
     return f"{BRANCH_PREFIX}-{task}"
+
+
+def next_fast_failure_streak(return_code: int, pass_seconds: float,
+                             previous_streak: int) -> int:
+    """Count consecutive fast failures while allowing slow/transient failures to retry."""
+    if return_code == 0 or pass_seconds >= FAST_FAILURE_SECONDS:
+        return 0
+    return previous_streak + 1
+
+
+def should_stop_after_fast_failures(streak: int) -> bool:
+    """Fail fast only after repeated immediate errors (for example, missing Copilot access)."""
+    return streak >= MAX_CONSECUTIVE_FAST_FAILURES
 
 
 def handoff_paths(root: Path, task: int) -> tuple[Path, Path, Path]:
@@ -224,6 +240,7 @@ def code(root: Path, task: int, task_file: Path) -> int:
     started = time.monotonic()
     pass_count = 0
     failures: list[str] = []
+    fast_failure_streak = 0
     while time.monotonic() - started < MIN_WORK_SECONDS:
         pass_count += 1
         elapsed = int(time.monotonic() - started)
@@ -244,6 +261,7 @@ def code(root: Path, task: int, task_file: Path) -> int:
                     "PERSONAL_ACCESS_TOKEN", "FRIDAY_GITHUB_TOKEN"):
             env.pop(key, None)
         print(f"Task {task}, repository {repository_name(root)}, coding pass {pass_count}, elapsed {elapsed}s")
+        pass_started = time.monotonic()
         try:
             with log_file.open("w", encoding="utf-8") as output:
                 proc = subprocess.run(cmd, cwd=root, env=env, text=True, stdout=output,
@@ -253,11 +271,25 @@ def code(root: Path, task: int, task_file: Path) -> int:
             with log_file.open("a", encoding="utf-8") as output:
                 output.write(f"\nRunner timeout after {PASS_TIMEOUT_SECONDS} seconds.\n")
             rc = 124
+        pass_seconds = time.monotonic() - pass_started
         ensure_fallback_handoff(root, task, pass_count, log_file, cp_hash, next_hash,
                                 "success" if rc == 0 else f"failed with exit code {rc}")
         if rc:
-            failures.append(f"Pass {pass_count} failed with exit {rc}. See log {log_file.name}.")
-            break
+            failures.append(
+                f"Pass {pass_count} failed with exit {rc} after {int(pass_seconds)} seconds. "
+                f"See log {log_file.name}."
+            )
+            fast_failure_streak = next_fast_failure_streak(rc, pass_seconds, fast_failure_streak)
+            if should_stop_after_fast_failures(fast_failure_streak):
+                print("::error::Copilot failed quickly three times; stopping to avoid burning runner time on a persistent configuration/authentication error.")
+                break
+            # A long-running pass can time out transiently. Retry instead of abandoning the
+            # required 31-minute engineering window after the first failed attempt.
+            remaining = MIN_WORK_SECONDS - (time.monotonic() - started)
+            if remaining > 0:
+                time.sleep(min(RETRY_BACKOFF_SECONDS, remaining))
+            continue
+        fast_failure_streak = 0
     elapsed = int(time.monotonic() - started)
     source_changes = source_paths(root, task)
     summary = {
