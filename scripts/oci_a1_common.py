@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 SHAPE = "VM.Standard.A1.Flex"
+TARGET_DISPLAY_NAME = "FRIDAY Universe ARM"
 TARGET_OCPUS = 2
 TARGET_MEMORY_GB = 12
 BOOT_VOLUME_GB = 50
