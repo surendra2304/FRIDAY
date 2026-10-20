@@ -322,6 +322,7 @@ def do_run(task):
         "checkpoint_updated": hashlib.sha256(checkpoint.read_bytes()).hexdigest() != before["checkpoint_hash"],
         "next_run_updated": hashlib.sha256(next_run.read_bytes()).hexdigest() != before["next_run_hash"],
         "finished_at": now(),
+        "publish_code": any(bool(lines) for lines in changed.values()),
     }
     (root / "run-summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps(summary, indent=2))
