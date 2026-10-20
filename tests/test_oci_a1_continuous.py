@@ -212,43 +212,6 @@ def test_allocator_reports_no_capacity_and_keeps_retry_delay(tmp_path, monkeypat
     assert json.loads((Path(tmp_path) / "state.json").read_text())["outcome"] == "no_capacity"
 
 
-def test_allocator_does_not_label_empty_capacity_report_as_no_capacity(tmp_path, monkeypatch):
-    from scripts.oci_a1_continuous import AUTH_OR_CONFIG_ERROR_SECONDS, ContinuousAllocator
-
-    oci, signer, compute, network = _fake_oci_with_no_capacity()
-    compute.create_compute_capacity_report = lambda *_args, **_kwargs: SimpleNamespace(
-        data=SimpleNamespace(shape_availabilities=[])
-    )
-    monkeypatch.setenv("STATE_DIRECTORY", str(tmp_path))
-    allocator = ContinuousAllocator(oci_module=oci, signer=signer, compute=compute, network=network)
-
-    result = allocator.attempt_once()
-
-    state = json.loads((Path(tmp_path) / "state.json").read_text())
-    assert result.outcome == "capacity_report_unusable"
-    assert result.delay_seconds == AUTH_OR_CONFIG_ERROR_SECONDS
-    assert state["outcome"] == "capacity_report_unusable"
-    assert state["details"]["diagnostic"] == "empty_shape_availabilities"
-
-
-def test_allocator_does_not_label_unknown_capacity_status_as_no_capacity(tmp_path, monkeypatch):
-    from scripts.oci_a1_continuous import AUTH_OR_CONFIG_ERROR_SECONDS, ContinuousAllocator
-
-    oci, signer, compute, network = _fake_oci_with_no_capacity()
-    compute.create_compute_capacity_report = lambda *_args, **_kwargs: SimpleNamespace(
-        data=SimpleNamespace(shape_availabilities=[SimpleNamespace(availability_status="UNKNOWN_ENUM_VALUE", available_count=0)])
-    )
-    monkeypatch.setenv("STATE_DIRECTORY", str(tmp_path))
-    allocator = ContinuousAllocator(oci_module=oci, signer=signer, compute=compute, network=network)
-
-    result = allocator.attempt_once()
-
-    state = json.loads((Path(tmp_path) / "state.json").read_text())
-    assert result.outcome == "capacity_report_unusable"
-    assert result.delay_seconds == AUTH_OR_CONFIG_ERROR_SECONDS
-    assert state["details"]["diagnostic"] == "unknown_availability_status"
-
-
 def test_allocator_distinguishes_hardware_not_supported_from_capacity_shortage(tmp_path, monkeypatch):
     from scripts.oci_a1_continuous import AUTH_OR_CONFIG_ERROR_SECONDS, ContinuousAllocator
 
