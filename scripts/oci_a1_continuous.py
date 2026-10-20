@@ -246,14 +246,40 @@ class ContinuousAllocator:
                 ],
             )
             report = self.compute.create_compute_capacity_report(capacity_details).data
-            candidates = available_capacity(
-                list(getattr(report, "shape_availabilities", []) or []), "primary"
-            )
+            capacity_entries = list(getattr(report, "shape_availabilities", []) or [])
+            candidates = available_capacity(capacity_entries, "primary")
             if not candidates:
+                # Only classify a shortage when OCI returned a non-empty,
+                # recognized capacity result. Empty payloads and unsupported /
+                # unknown statuses indicate a report/configuration problem;
+                # don't hide them as no_capacity.
+                if not capacity_entries:
+                    diagnostic = "empty_shape_availabilities"
+                else:
+                    statuses = {
+                        str(getattr(entry, "availability_status", "UNKNOWN")).upper()
+                        for entry in capacity_entries
+                    }
+                    if "HARDWARE_NOT_SUPPORTED" in statuses:
+                        diagnostic = "hardware_not_supported"
+                    elif not statuses.issubset({"AVAILABLE", "OUT_OF_HOST_CAPACITY"}):
+                        diagnostic = "unknown_availability_status"
+                    else:
+                        diagnostic = ""
+                if diagnostic:
+                    self._record(
+                        "capacity_report_unusable",
+                        diagnostic=diagnostic,
+                        retry_seconds=AUTH_OR_CONFIG_ERROR_SECONDS,
+                    )
+                    return AttemptResult(
+                        "capacity_report_unusable", AUTH_OR_CONFIG_ERROR_SECONDS
+                    )
                 self._record(
                     "no_capacity",
                     region=self.region,
                     availability_domain=self.availability_domain,
+                    capacity_statuses=sorted(statuses),
                     retry_seconds=NO_CAPACITY_SECONDS,
                 )
                 return AttemptResult("no_capacity", NO_CAPACITY_SECONDS)
