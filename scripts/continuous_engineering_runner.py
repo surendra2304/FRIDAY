@@ -208,7 +208,7 @@ def do_run(task):
     # Codex uses its default environment policy to exclude key/token/secret vars from tool shells.
     if agent == "codex" and os.environ.get("CODEX_PROVIDER", "openai") == "openrouter":
         codex_config = (
-            'model = "openai/gpt-5.6-luna"\n'
+            'model = "openai/gpt-5.6-sol"\n'
             'model_provider = "openrouter"\n'
             'model_reasoning_effort = "high"\n\n'
             '[model_providers.openrouter]\n'
@@ -243,7 +243,7 @@ def do_run(task):
             work_cwd = repos / WORKSTREAMS[task][0]
         else:
             cmd = [
-                "copilot", "-p", prompt_text, "--model", os.environ.get("COPILOT_MODEL", "gpt-4.1"),
+                "copilot", "-p", prompt_text, "--model", os.environ.get("COPILOT_MODEL", "gpt-6-astra"),
                 "--allow-all-tools", "--allow-all-paths", "--no-ask-user",
                 "--secret-env-vars", "COPILOT_GITHUB_TOKEN", "-s",
             ]
