@@ -195,6 +195,7 @@ def test_allocator_does_not_label_hardware_not_supported_as_no_capacity(tmp_path
     assert result.delay_seconds == AUTH_OR_CONFIG_ERROR_SECONDS
     assert state["details"]["diagnostic"] == "empty_or_unrecognized_capacity_report"
 
+
 def test_allocator_reports_no_capacity_and_keeps_retry_delay(tmp_path, monkeypatch):
     from scripts.oci_a1_continuous import ContinuousAllocator
 
