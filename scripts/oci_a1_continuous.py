@@ -244,7 +244,9 @@ class ContinuousAllocator:
                             memory_in_gbs=TARGET_MEMORY_GB,
                         ),
                     )
-                  report = self.compute.create_compute_capacity_report(capacity_details).data
+                ],
+            )
+            report = self.compute.create_compute_capacity_report(capacity_details).data
             capacity_entries = list(getattr(report, "shape_availabilities", []) or [])
             if not has_capacity_evidence(capacity_entries):
                 self._record(
@@ -269,7 +271,6 @@ class ContinuousAllocator:
                     retry_seconds=NO_CAPACITY_SECONDS,
                 )
                 return AttemptResult("no_capacity", NO_CAPACITY_SECONDS)
-
             for candidate in candidates:
                 fault_domain = str(getattr(candidate, "fault_domain", "") or "")
                 launch_details = self.oci.core.models.LaunchInstanceDetails(
