@@ -4,11 +4,13 @@ Communicates asynchronously with the external AI Universe multi-agent debate API
 hosted locally at http://localhost:8000 (or configured via FRIDAY_UNIVERSE_API_URL).
 """
 
+import asyncio
 import json
-from typing import Any
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Coroutine, TypeVar
 
 import httpx
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel, ToolResult
@@ -16,6 +18,26 @@ from friday.core.verification import evaluate_ai_universe_response
 from friday.tools.base import BaseTool
 
 logger = get_logger("tools.ai_universe")
+_T = TypeVar("_T")
+
+
+async def _client_call(client: Any, request: Coroutine[Any, Any, _T]) -> _T:
+    try:
+        return await request
+    finally:
+        if isinstance(client, AIUniverseClient):
+            await client.aclose()
+
+
+def _run_sync(request: Coroutine[Any, Any, _T]) -> _T:
+    """Run a client coroutine from synchronous tools, even inside an active loop."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(request)
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(asyncio.run, request).result()
 
 
 class AIAgentInfo(BaseModel):
@@ -93,7 +115,12 @@ class AIUniverseClient:
         client = self.get_client()
         resp = await client.get(url, headers=headers)
         resp.raise_for_status()
-        return resp.json()
+        data = resp.json()
+        if not isinstance(data, dict):
+            raise ValueError(
+                f"AI Universe status response must be a JSON object, got {type(data).__name__}"
+            )
+        return data
 
     async def get_agents(self) -> list[AIAgentInfo]:
         """Discover live roster of all specialist agents from GET /v1/friday/agents."""
@@ -107,8 +134,24 @@ class AIUniverseClient:
         resp.raise_for_status()
         data = resp.json()
         if isinstance(data, list):
-            return [AIAgentInfo(**item) for item in data]
-        return []
+            agents = []
+            for index, item in enumerate(data):
+                if not isinstance(item, dict):
+                    raise ValueError(
+                        "AI Universe agents response item at index "
+                        f"{index} must be a JSON object, got {type(item).__name__}"
+                    )
+                try:
+                    agents.append(AIAgentInfo(**item))
+                except ValidationError as exc:
+                    raise ValueError(
+                        f"AI Universe agents response item at index {index} failed "
+                        f"validation: {exc}"
+                    ) from exc
+            return agents
+        raise ValueError(
+            f"AI Universe agents response must be a JSON array, got {type(data).__name__}"
+        )
 
     async def get_info(self) -> dict[str, Any]:
         """Fetch AI Universe platform info from GET /v1/friday/info."""
@@ -137,6 +180,15 @@ class AIUniverseClient:
         if hasattr(self, "_shared_client") and self._shared_client is not None and not self._shared_client.is_closed:
             await self._shared_client.aclose()
 
+    @staticmethod
+    def _parse_response(data: Any, endpoint: str) -> AIUniverseResponse:
+        if not isinstance(data, dict):
+            raise ValueError(
+                f"AI Universe {endpoint} response must be a JSON object, "
+                f"got {type(data).__name__}"
+            )
+        return AIUniverseResponse(**data)
+
     async def ask(self, question: str, mode: str = "auto") -> AIUniverseResponse:
         """Query AI Universe via POST /v1/friday/ask with sub-second fast-lane dispatch."""
         url = f"{self.base_url}/v1/friday/ask"
@@ -149,8 +201,7 @@ class AIUniverseClient:
         client = self.get_client()
         resp = await client.post(url, json=payload, headers=headers)
         resp.raise_for_status()
-        data = resp.json()
-        return AIUniverseResponse(**data)
+        return self._parse_response(resp.json(), "/v1/friday/ask")
 
     async def debate(self, question: str, max_agents: int = 5) -> AIUniverseResponse:
         """Trigger an in-depth multi-agent debate via POST /v1/friday/debate."""
@@ -164,8 +215,7 @@ class AIUniverseClient:
         client = self.get_client()
         resp = await client.post(url, json=payload, headers=headers)
         resp.raise_for_status()
-        data = resp.json()
-        return AIUniverseResponse(**data)
+        return self._parse_response(resp.json(), "/v1/friday/debate")
 
 
 class AIUniverseTool(BaseTool):
@@ -208,18 +258,12 @@ class AIUniverseTool(BaseTool):
 
     def execute(self, question: str = "", mode: str = "debate", max_agents: int = 5, **kwargs: Any) -> ToolResult:
         """Execute query synchronously by running the async client call."""
-        import asyncio
-
         clean_q = (question or "").strip()
 
         # Handle agent discovery and system info queries directly
         if mode == "agents" or clean_q.lower() in ("agents", "list agents", "show agents", "roster", "who are you"):
             try:
-                try:
-                    loop = asyncio.get_running_loop()
-                    agents_list = loop.run_until_complete(self.client.get_agents())
-                except RuntimeError:
-                    agents_list = asyncio.run(self.client.get_agents())
+                agents_list = _run_sync(_client_call(self.client, self.client.get_agents()))
 
                 if not agents_list:
                     return ToolResult(
@@ -249,11 +293,7 @@ class AIUniverseTool(BaseTool):
 
         if mode == "info":
             try:
-                try:
-                    loop = asyncio.get_running_loop()
-                    info_data = loop.run_until_complete(self.client.get_info())
-                except RuntimeError:
-                    info_data = asyncio.run(self.client.get_info())
+                info_data = _run_sync(_client_call(self.client, self.client.get_info()))
 
                 return ToolResult(
                     name=self.name,
@@ -279,17 +319,10 @@ class AIUniverseTool(BaseTool):
             )
 
         try:
-            try:
-                loop = asyncio.get_running_loop()
-                if mode == "ask":
-                    resp = loop.run_until_complete(self.client.ask(clean_q))
-                else:
-                    resp = loop.run_until_complete(self.client.debate(clean_q, max_agents=max_agents))
-            except RuntimeError:
-                if mode == "ask":
-                    resp = asyncio.run(self.client.ask(clean_q))
-                else:
-                    resp = asyncio.run(self.client.debate(clean_q, max_agents=max_agents))
+            if mode == "ask":
+                resp = _run_sync(_client_call(self.client, self.client.ask(clean_q)))
+            else:
+                resp = _run_sync(_client_call(self.client, self.client.debate(clean_q, max_agents=max_agents)))
 
             # Run verification pipeline
             resp_dict = resp.model_dump()
@@ -390,15 +423,10 @@ class GetAIUniverseStatusTool(BaseTool):
 
     def execute(self, **kwargs: Any) -> ToolResult:
         """Execute status check synchronously against the AI Universe API."""
-        import asyncio
         import json
 
         try:
-            try:
-                loop = asyncio.get_running_loop()
-                status_data = loop.run_until_complete(self.client.get_status())
-            except RuntimeError:
-                status_data = asyncio.run(self.client.get_status())
+            status_data = _run_sync(_client_call(self.client, self.client.get_status()))
 
             return ToolResult(
                 name=self.name,
@@ -409,12 +437,9 @@ class GetAIUniverseStatusTool(BaseTool):
             )
         except Exception as ex:
             # Fallback to agents list if status endpoint differs
+            fallback_error: Exception | None = None
             try:
-                try:
-                    loop = asyncio.get_running_loop()
-                    agents = loop.run_until_complete(self.client.get_agents())
-                except RuntimeError:
-                    agents = asyncio.run(self.client.get_agents())
+                agents = _run_sync(_client_call(self.client, self.client.get_agents()))
 
                 if agents:
                     lines = ["### AI Universe Active Specialist Agents & Models:"]
@@ -427,13 +452,21 @@ class GetAIUniverseStatusTool(BaseTool):
                         safety_level=self.safety_level,
                         metadata={"agents": [a.model_dump() for a in agents]},
                     )
-            except Exception:
-                pass
+            except Exception as fallback_ex:
+                fallback_error = fallback_ex
+                logger.warning(f"AI Universe status fallback failed: {fallback_ex}")
 
+            fallback_detail = (
+                f" Agent discovery also failed: {fallback_error!s}."
+                if fallback_error is not None
+                else ""
+            )
             return ToolResult(
                 name=self.name,
-                content=f"Failed to query AI Universe status: {ex!s}. Ensure AI Universe is running at {self.client.base_url}.",
+                content=(
+                    f"Failed to query AI Universe status: {ex!s}."
+                    f"{fallback_detail} Ensure AI Universe is running at {self.client.base_url}."
+                ),
                 is_error=True,
                 safety_level=self.safety_level,
             )
-

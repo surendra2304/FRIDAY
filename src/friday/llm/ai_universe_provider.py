@@ -6,6 +6,7 @@ experience outages or rate limits.
 """
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from friday.core.exceptions import LLMProviderError
@@ -74,6 +75,25 @@ class AIUniverseLLMProvider(BaseLLMProvider):
             return "\n".join(non_system)
         return "Provide reasoning and solution for current task."
 
+    def _ask_sync(self, query: str) -> AIUniverseResponse:
+        """Run the async client from this synchronous provider's interface."""
+        async def ask_and_close() -> AIUniverseResponse:
+            try:
+                return await self.client.ask(query, mode=self.mode)
+            finally:
+                await self.client.aclose()
+
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(ask_and_close())
+
+        # A synchronous provider may be called by code already running an event
+        # loop. Run the request on a worker loop rather than nesting or blocking
+        # the caller's loop with run_until_complete.
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            return executor.submit(asyncio.run, ask_and_close()).result()
+
     def generate(
         self,
         messages: list[Message],
@@ -85,15 +105,7 @@ class AIUniverseLLMProvider(BaseLLMProvider):
         logger.info(f"Routing query to AI Universe fallback provider (URL: {self.client.base_url})")
 
         try:
-            try:
-                loop = asyncio.get_running_loop()
-                resp = loop.run_until_complete(
-                    self.client.ask(query, mode=self.mode)
-                )
-            except RuntimeError:
-                resp = asyncio.run(
-                    self.client.ask(query, mode=self.mode)
-                )
+            resp = self._ask_sync(query)
         except Exception as ex:
             logger.error(f"AI Universe provider request failed: {ex}")
             raise LLMProviderError(f"AI Universe communication error: {ex}") from ex
