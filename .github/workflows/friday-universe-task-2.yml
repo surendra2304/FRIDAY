@@ -52,7 +52,7 @@ jobs:
         id: prepare
         run: python scripts/continuous_engineering_runner.py prepare --task 2
 
-      - name: Run real engineering work for at least 31 active minutes
+      - name: Run real engineering work for at least 35 active minutes
         id: code
         if: steps.prepare.outcome == 'success'
         env:
