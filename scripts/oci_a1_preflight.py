@@ -122,16 +122,28 @@ def run_preflight(
             timeout=(8, 15),
         )
 
-        try:
-            instances = oci_module.pagination.list_call_get_all_results(
-                compute.list_instances, compartment_id=compartment_id
-            ).data
-        except Exception as exc:
-            return 1, {
-                "status": "blocked",
-                "failed_check": "list_instances",
-                **sanitized_error(exc),
-            }
+        # OCI ListInstances only lists one compartment at a time. Check
+        # both the tenancy root and target compartment to reduce duplicate risk.
+        inventory_compartments = [tenancy_id]
+        if compartment_id != tenancy_id:
+            inventory_compartments.append(compartment_id)
+        for inventory_compartment in inventory_compartments:
+            try:
+                oci_module.pagination.list_call_get_all_results(
+                    compute.list_instances,
+                    compartment_id=inventory_compartment,
+                )
+            except Exception as exc:
+                return 1, {
+                    "status": "blocked",
+                    "failed_check": "list_instances",
+                    "compartment_scope": (
+                        "tenancy_root"
+                        if inventory_compartment == tenancy_id
+                        else "target_compartment"
+                    ),
+                    **sanitized_error(exc),
+                }
 
         try:
             subnet = network.get_subnet(subnet_id).data
