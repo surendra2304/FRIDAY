@@ -41,10 +41,21 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.OPENROUTER_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           CODEX_PROVIDER: ${{ secrets.OPENAI_API_KEY && 'openai' || 'openrouter' }}
+          CODE_AGENT: ${{ (secrets.OPENAI_API_KEY || secrets.OPENROUTER_API_KEY) && 'codex' || secrets.COPILOT_GITHUB_TOKEN && 'copilot' || 'missing' }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          COPILOT_MODEL: ${{ vars.COPILOT_MODEL || 'gpt-6-astra' }}
           CONTINUOUS_ENGINEERING_TOKEN: ${{ secrets.CONTINUOUS_ENGINEERING_TOKEN || secrets.CROSS_REPO_GITHUB_TOKEN || secrets.GITHUB_PAT || secrets.GH_PAT || secrets.PERSONAL_ACCESS_TOKEN || secrets.FRIDAY_GITHUB_TOKEN }}
         run: |
-          if [[ -z "$OPENAI_API_KEY" ]]; then
+          if [[ "$CODE_AGENT" == "codex" && -z "$OPENAI_API_KEY" ]]; then
             echo "::error title=Missing coding provider credential::Configure OPENAI_API_KEY or OPENROUTER_API_KEY in surendra2304/FRIDAY Actions secrets."
+            exit 1
+          fi
+          if [[ "$CODE_AGENT" == "copilot" && -z "$COPILOT_GITHUB_TOKEN" ]]; then
+            echo "::error title=Missing coding provider credential::Configure an eligible fine-grained COPILOT_GITHUB_TOKEN with Copilot Requests permission, or provide OPENAI_API_KEY / OPENROUTER_API_KEY."
+            exit 1
+          fi
+          if [[ "$CODE_AGENT" == "missing" ]]; then
+            echo "::error title=Missing coding provider credential::Configure OPENAI_API_KEY, OPENROUTER_API_KEY, or COPILOT_GITHUB_TOKEN."
             exit 1
           fi
           if [[ -z "$CONTINUOUS_ENGINEERING_TOKEN" ]]; then
@@ -72,7 +83,7 @@ jobs:
           node-version: '22'
 
       - name: Install Codex CLI
-        run: npm install --global @openai/codex
+        run: npm install --global @openai/codex @github/copilot
 
       - name: Prepare isolated workspaces and project dependencies
         id: prepare
@@ -84,6 +95,9 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.OPENROUTER_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           CODEX_PROVIDER: ${{ secrets.OPENAI_API_KEY && 'openai' || 'openrouter' }}
+          CODE_AGENT: ${{ (secrets.OPENAI_API_KEY || secrets.OPENROUTER_API_KEY) && 'codex' || secrets.COPILOT_GITHUB_TOKEN && 'copilot' || 'missing' }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          COPILOT_MODEL: ${{ vars.COPILOT_MODEL || 'gpt-6-astra' }}
         run: python scripts/continuous_engineering_runner.py run --task 1
 
       - name: Publish code branches, PRs, and persistent handoff
