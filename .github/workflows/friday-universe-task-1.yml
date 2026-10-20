@@ -29,7 +29,7 @@ jobs:
         with:
           node-version: '22'
       - name: Install autonomous coding CLI
-        run: npm install --global @openai/codex
+        run: npm install --global @github/copilot
       - name: Validate cross-repository publishing credential
         env:
           CONTINUOUS_ENGINEERING_TOKEN: ${{ secrets.CONTINUOUS_ENGINEERING_TOKEN }}
