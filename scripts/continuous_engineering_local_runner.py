@@ -18,7 +18,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-MIN_WORK_SECONDS = 31 * 60
+MIN_WORK_SECONDS = 35 * 60
 PASS_TIMEOUT_SECONDS = 24 * 60
 BRANCH_PREFIX = "automation/friday-universe-task"
 HANDOFF_DIR = Path(".github/friday-continuation")
