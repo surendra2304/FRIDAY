@@ -37,11 +37,13 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run syntax & linter check
-        run: python -m ruff check src/ tests/
+        run: |
+          python -m ruff check src/ tests/
+          python -m ruff check scripts/continuous_engineering_runner.py
 
       - name: Validate allocator source and installer syntax
         run: |
-          python -m py_compile scripts/oci_a1_common.py scripts/oci_a1_continuous.py
+          python -m py_compile scripts/oci_a1_common.py scripts/oci_a1_continuous.py scripts/continuous_engineering_runner.py tests/test_continuous_engineering_runner.py
           bash -n scripts/install_oci_a1_continuous.sh
 
       - name: Run pytest test suite
