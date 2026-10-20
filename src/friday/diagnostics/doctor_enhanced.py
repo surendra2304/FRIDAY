@@ -71,6 +71,7 @@ class FridayDoctorEnhanced:
             "inference_url_configured": bool(getattr(self.settings, "inference_url", None) or os.getenv("FRIDAY_INFERENCE_URL") or os.getenv("INFERENCE_URL")),
             "cortex_url_configured": bool(getattr(self.settings, "cortex_url", None) or os.getenv("FRIDAY_CORTEX_URL") or os.getenv("CORTEX_URL")),
             "sentinel_url_configured": bool(getattr(self.settings, "sentinel_url", None) or os.getenv("FRIDAY_SENTINEL_URL") or os.getenv("SENTINEL_URL")),
+            "vyralx_url_configured": bool(getattr(self.settings, "vyralx_url", None) or os.getenv("FRIDAY_VYRALX_URL") or os.getenv("VYRALX_URL")),
         }
 
         passed = sum(1 for v in checks.values() if v)

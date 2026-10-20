@@ -31,6 +31,7 @@ AGENT_NAMESPACE = frozenset(
         "intelx",
         "futuris",
         "cortex",
+        "vyralx",
         "system",
         "bot",
         "agent",

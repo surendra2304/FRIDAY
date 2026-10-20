@@ -1281,7 +1281,7 @@ async def _dispatch_command(command: str) -> dict[str, Any]:
         return await fleet_client.get_fleet_summary()
 
     # 2. Live Specialist Agent Direct Execution
-    for agent_id in ["inference", "stratex", "memora", "intelx", "futuris", "cortex", "forge", "sentinel"]:
+    for agent_id in ["inference", "stratex", "memora", "intelx", "futuris", "cortex", "forge", "sentinel", "vyralx"]:
         if (
             cmd.startswith(f"ask {agent_id}")
             or cmd.startswith(f"{agent_id} ")
@@ -1321,6 +1321,8 @@ async def _dispatch_command(command: str) -> dict[str, Any]:
                 return await safe_peer_call(fleet_client.ask_forge(sub_q), fallback_data=fallback_data, peer_name="forge")
             elif agent_id == "sentinel":
                 return await safe_peer_call(fleet_client.ask_sentinel(sub_q), fallback_data=fallback_data, peer_name="sentinel")
+            elif agent_id == "vyralx":
+                return await safe_peer_call(fleet_client.ask_vyralx(sub_q), fallback_data=fallback_data, peer_name="vyralx")
 
     # 2. Android Automation Fast-paths
     try:

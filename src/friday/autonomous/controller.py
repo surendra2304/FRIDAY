@@ -2,8 +2,8 @@
 
 Provides:
 1. Autonomous Mode State Management (enabled/standby, execution logs).
-2. Autonomous Agent Control: Dispatches directives to the 8 FRIDAY Universe specialist
-   agents (Inference, Stratex, IntelX, Futuris, Cortex, Forge, Sentinel, Memora),
+2. Autonomous Agent Control: Dispatches directives to the 9 FRIDAY Universe specialist
+   agents (Inference, Stratex, IntelX, Futuris, Cortex, Forge, Sentinel, Memora, VyralX),
    verifies outputs, and handles multi-agent handoffs.
 3. Autonomous Self-Healing & Auto-Repair: Proactively detects runtime errors, zombie
    processes, socket disconnects, or tool failures, and applies self-correction
@@ -69,6 +69,22 @@ FLEET_AGENTS = {
         "name": "MEMORA",
         "role": "Persistent Vector Memory Fabric",
         "domain": ["memory", "remember", "recall", "turso", "vector", "episodic", "profile", "storage"],
+    },
+    "vyralx": {
+        "name": "VYRALX",
+        "role": "Autonomous Video Production & Governed Distribution",
+        "domain": [
+            "video",
+            "youtube",
+            "render",
+            "media",
+            "upload",
+            "thumbnail",
+            "shorts",
+            "script",
+            "voiceover",
+            "pexels",
+        ],
     },
 }
 
@@ -196,9 +212,9 @@ class AutonomousController:
         # A. Explicit agent invocation patterns:
         # e.g. "tell intelx to research...", "have stratex check positions", "control forge and run tests", "make cortex scrape..."
         patterns = [
-            r"^(?:friday\s*,?\s*)?(?:tell|have|make|command|control|ask|let|direct|instruct)\s+(?P<agent>inference|stratex|intelx|futuris|cortex|forge|sentinel|memora)\s+(?:to\s+|and\s+)?(?P<task>.+)$",
-            r"^(?:friday\s*,?\s*)?(?:delegate\s+to\s+|dispatch\s+to\s+|route\s+to\s+)(?P<agent>inference|stratex|intelx|futuris|cortex|forge|sentinel|memora)\s+(?:to\s+|and\s+)?(?P<task>.+)$",
-            r"^(?:friday\s*,?\s*)?(?:can\s+you\s+)?(?:get|use)\s+(?P<agent>inference|stratex|intelx|futuris|cortex|forge|sentinel|memora)\s+(?:to\s+)?(?P<task>.+)$",
+            r"^(?:friday\s*,?\s*)?(?:tell|have|make|command|control|ask|let|direct|instruct)\s+(?P<agent>inference|stratex|intelx|futuris|cortex|forge|sentinel|memora|vyralx)\s+(?:to\s+|and\s+)?(?P<task>.+)$",
+            r"^(?:friday\s*,?\s*)?(?:delegate\s+to\s+|dispatch\s+to\s+|route\s+to\s+)(?P<agent>inference|stratex|intelx|futuris|cortex|forge|sentinel|memora|vyralx)\s+(?:to\s+|and\s+)?(?P<task>.+)$",
+            r"^(?:friday\s*,?\s*)?(?:can\s+you\s+)?(?:get|use)\s+(?P<agent>inference|stratex|intelx|futuris|cortex|forge|sentinel|memora|vyralx)\s+(?:to\s+)?(?P<task>.+)$",
         ]
 
         for pat in patterns:

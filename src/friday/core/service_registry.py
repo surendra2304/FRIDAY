@@ -106,6 +106,10 @@ class ServiceRegistry:
         sentinel_url = (os.getenv("FRIDAY_SENTINEL_URL") or os.getenv("SENTINEL_URL") or "http://sentinel:8000").rstrip("/")
         sentinel_key = os.getenv("FRIDAY_SENTINEL_API_KEY") or os.getenv("SENTINEL_API_KEY", "")
 
+        # 9. VyralX (:8000 on friday_mesh)
+        vyralx_url = (os.getenv("FRIDAY_VYRALX_URL") or os.getenv("VYRALX_URL") or "http://vyralx:8000").rstrip("/")
+        vyralx_key = os.getenv("FRIDAY_VYRALX_API_KEY") or os.getenv("VYRALX_API_KEY", "")
+
         is_prod = self.env == "production"
 
         return {
@@ -182,6 +186,17 @@ class ServiceRegistry:
                 required=False,
                 health_path=os.getenv("FRIDAY_SENTINEL_HEALTH_PATH", "/health"),
                 timeout_sec=2.0,
+                auth_header_name="X-API-Key",
+                auth_header_format="{key}",
+            ),
+            "vyralx": ServiceConfig(
+                name="vyralx",
+                url=vyralx_url,
+                api_key=vyralx_key,
+                enabled=True,
+                required=False,
+                health_path=os.getenv("FRIDAY_VYRALX_HEALTH_PATH", "/health"),
+                timeout_sec=3.5,
                 auth_header_name="X-API-Key",
                 auth_header_format="{key}",
             ),
