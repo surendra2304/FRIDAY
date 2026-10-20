@@ -277,15 +277,22 @@ def code(root: Path, task: int, task_file: Path) -> int:
             f"- Coding passes: {pass_count}\n- Changed source paths: {len(source_changes)}\n"
             f"- Failures: {'; '.join(failures) if failures else 'none'}\n"
         )
-    # The next-run prompt is updated after every run, even if the model never managed it.
+    # Rewrite the continuation prompt every cycle while retaining the coding agent's detailed handoff.
+    prior_prompt = next_prompt.read_text(encoding="utf-8")
+    changed_list = "\n".join("- " + p for p in source_changes) if source_changes else "- No source change detected; inspect TODOs, test failures and incomplete product paths."
+    failure_list = "\n".join("- " + item for item in failures) if failures else "- None recorded by the runner."
     next_prompt.write_text(
         f"# Task {task} next-run instructions — {repository_name(root)}\n\n"
         f"Last updated: {now()}\n\n"
-        f"Read {checkpoint.relative_to(root)} before coding. Resume branch {branch_for(task)}; do not restart the repository review.\n\n"
-        f"- Previous run status: {summary['status']}\n- Active coding seconds: {elapsed}\n"
-        f"- Coding passes: {pass_count}\n- Source paths changed against main: {len(source_changes)}\n"
-        + ("\n".join("- " + p for p in source_changes) if source_changes else "- No source change detected; inspect test failures and incomplete product behavior to choose an implementation task.")
-        + "\n\n## First action next run\n\nRead the checkpoint and the last run log, run focused tests for the last change, fix failures, and implement the next highest-impact feature or regression fix. Record exact commands/results and rewrite this prompt again before ending.\n",
+        f"Read {checkpoint.relative_to(root)} before coding. Resume branch {branch_for(task)}; continue existing implementation rather than restarting repository review.\n\n"
+        f"## Previous run evidence\n\n"
+        f"- Result: {summary['status']}\n- Active coding seconds: {elapsed}\n"
+        f"- Coding passes: {pass_count}\n- Source paths changed against main: {len(source_changes)}\n\n"
+        f"### Changed source paths\n\n{changed_list}\n\n"
+        f"### Runner failures or blockers\n\n{failure_list}\n\n"
+        "## Detailed continuation notes from the previous coding pass\n\n"
+        + prior_prompt
+        + "\n\n## First action next run\n\nRead the checkpoint and these previous notes, inspect the branch diff, run the focused tests for the last implementation, fix failures, and implement the next highest-impact feature or regression fix. Record exact commands/results and revise both handoff files before ending.\n",
         encoding="utf-8",
     )
     print(json.dumps(summary, indent=2))
@@ -297,6 +304,12 @@ def source_paths(root: Path, task: int) -> list[str]:
     git(root, "fetch", "origin", "+refs/heads/main:refs/remotes/origin/main", check=False)
     diff = git(root, "diff", "--name-only", "refs/remotes/origin/main...HEAD", check=False)
     paths = set(diff.stdout.splitlines()) if diff.returncode == 0 else set()
+    for line in run_git_status(root):
+        path = line[3:].strip() if len(line) > 3 else ""
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        if path:
+            paths.add(path.replace("\\", "/"))
     prefix = str(HANDOFF_DIR).replace("\\", "/") + "/"
     return sorted(path for path in paths if path and not path.startswith(prefix))
 
