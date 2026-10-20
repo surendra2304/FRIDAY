@@ -101,9 +101,11 @@ def bootstrap_deps(path, name):
             pip = venv / ("Scripts/pip.exe" if os.name == "nt" else "bin/pip")
             if req.exists():
                 command([str(pip), "install", "-r", str(req)], cwd=path, timeout=600)
+                if pyproject.exists():
+                    command([str(pip), "install", "-e", ".[dev]"], cwd=path, timeout=600)
             else:
                 command([str(pip), "install", "-e", ".[dev]"], cwd=path, timeout=600)
-            notes.append(f"{name}: Python dependencies installed in .venv")
+            notes.append(f"{name}: Python runtime and dev/test dependencies installed in .venv")
         if (path / "package.json").exists():
             if (path / "package-lock.json").exists():
                 command(["npm", "ci", "--no-audit", "--no-fund"], cwd=path, timeout=900)
@@ -176,6 +178,7 @@ def build_prompt(task, state, repos, pass_no, elapsed):
         "This is a coding session, not a reporting session. Inspect code and Git status, select a concrete "
         "unfixed issue or feature, edit implementation and tests, run relevant checks, and fix failures.",
         "Work across each assigned repository where a justified change exists; do not force empty or cosmetic edits.",
+        "Where a repository has a .venv directory, use that repository-specific environment to run Python tests and linters (for example .venv/bin/python -m pytest) so dependencies do not bleed across projects.",
         "Long-term target is thousands of lines of meaningful code across useful features, integrations, tests and fixes; never pad code just to hit a line count.",
         "Do not commit or push. The workflow publisher handles commits and PRs after the session.",
         "Do not merge PRs, force-push, reset user work, change production/cloud infrastructure, or work outside assigned repositories and the two state files.",
