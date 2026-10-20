@@ -335,6 +335,7 @@ def package(root: Path, task: int) -> None:
 
 def publish(task: int, bundle: Path) -> int:
     slug = os.environ.get("GITHUB_REPOSITORY", "surendra2304/FRIDAY")
+    branch = branch_for(task)
     destination = temp_dir() / f"friday-task-{task}-publish-{os.environ.get('GITHUB_RUN_ID','local')}"
     if destination.exists():
         shutil.rmtree(destination)
