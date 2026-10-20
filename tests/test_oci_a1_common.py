@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from scripts.oci_a1_sniper import SHAPE, available_capacity, find_active_a1, has_target_resources
+from scripts.oci_a1_common import SHAPE, available_capacity, find_active_a1, has_target_resources
 
 
 def test_find_active_a1_skips_terminated_instances():
