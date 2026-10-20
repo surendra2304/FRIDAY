@@ -226,7 +226,29 @@ def do_run(task):
                                     stdout=log, stderr=subprocess.STDOUT, timeout=24*60, check=False)
         if result.returncode:
             tail = log_path.read_text(encoding="utf-8", errors="replace")[-12000:]
-            raise RuntimeError(f"Codex pass {pass_no} failed; stopping instead of claiming work succeeded:\n{tail}")
+            changes = {n: git(repos / n, "status", "--short").stdout.strip().splitlines() for n in WORKSTREAMS[task]}
+            failure_at = now()
+            with checkpoint.open("a", encoding="utf-8") as f:
+                f.write(f"\n\n## Interrupted coding pass ({failure_at})\n\n"
+                        f"Codex pass {pass_no} failed with exit code {result.returncode}. "
+                        f"Inspect log {log_path.name} before deciding whether partial changes are usable.\n\n"
+                        f"Log tail:\n\n{textwrap.indent(tail[-5000:], '    ')}\n")
+            lines = [f"# Task {task}: next-run instructions",
+                     f"\nUpdated after failed Codex pass at {failure_at}. Do not assume partial edits are correct.",
+                     f"\nFirst inspect the log {log_path.name}, the checkpoint, and all listed repository diffs. "
+                     "Fix the underlying runner/model error or discard only clearly broken partial edits, then resume implementation and tests."]
+            for name, files in changes.items():
+                lines.append(f"\n## {name}")
+                lines.extend("- " + item for item in files[:80] or ["No working-tree diff detected."])
+            next_run.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            failure_summary = {
+                "task": task, "active_seconds": int(time.monotonic() - start),
+                "passes": pass_no, "repo_changes": changes, "checkpoint_updated": True,
+                "next_run_updated": True, "finished_at": now(), "publish_code": False,
+                "failure": f"Codex pass {pass_no} exited {result.returncode}",
+            }
+            (root / "run-summary.json").write_text(json.dumps(failure_summary, indent=2), encoding="utf-8")
+            raise RuntimeError(f"Codex pass {pass_no} failed; handoff saved for the next run:\n{tail}")
         if not checkpoint.exists() or not next_run.exists():
             raise RuntimeError("The coding agent removed a required state file.")
     elapsed = int(time.monotonic() - start)
@@ -274,12 +296,21 @@ def push(repo_path, branch, auth):
 def do_publish(task):
     root = run_dir(task)
     repos, state = root / "repos", root / "state"
+    if not state.exists():
+        raise RuntimeError("No prepared task state exists; preserve the workflow artifact and diagnose preparation.")
     auth = get_push_auth()
     gh_env = os.environ.copy()
     gh_env["GH_TOKEN"] = os.environ["CONTINUOUS_ENGINEERING_TOKEN"]
+    summary_path = root / "run-summary.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8")) if summary_path.exists() else {
+        "task": task, "active_seconds": 0, "passes": 0, "repo_changes": {},
+        "checkpoint_updated": False, "next_run_updated": False, "publish_code": False,
+        "failure": "Coding step did not produce a run summary; only persist the handoff.",
+    }
+    publish_code = bool(summary.get("publish_code", False))
     branch = f"{BRANCH_PREFIX}-{task}"
     urls = []
-    for name in WORKSTREAMS[task]:
+    for name in (WORKSTREAMS[task] if publish_code else ()):
         path = repos / name
         diff_check = git(path, "diff", "--check", check=False)
         if diff_check.returncode:
@@ -320,7 +351,6 @@ def do_publish(task):
     if git(state, "status", "--porcelain").stdout.strip():
         git(state, "commit", "-m", f"chore: persist task {task} continuation handoff")
         push(state, f"{STATE_PREFIX}-{task}", auth)
-    summary = json.loads((root / "run-summary.json").read_text(encoding="utf-8"))
     summary["pull_requests"] = urls
     summary["published_at"] = now()
     print(json.dumps(summary, indent=2))
@@ -362,6 +392,8 @@ def prepare_state_checkout(task, root):
     else:
         git(state, "checkout", "--orphan", branch)
         git(state, "rm", "-rf", ".", check=False)
+        # An orphan checkout may leave the old main files as untracked.
+        git(state, "clean", "-fdx")
     git(state, "config", "user.name", "FRIDAY Universe Engineering")
     git(state, "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com")
     return state, branch
