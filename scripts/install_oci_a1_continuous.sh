@@ -29,6 +29,16 @@ install -m 0644 "${REPO_ROOT}/scripts/__init__.py" "${APP_ROOT}/scripts/__init__
 install -m 0644 "${REPO_ROOT}/systemd/friday-oci-a1-allocator.service" "/etc/systemd/system/${SERVICE_NAME}"
 
 if [[ ! -x "${INSTALL_ROOT}/venv/bin/python" ]]; then
+  if ! python3 -c 'import ensurepip' >/dev/null 2>&1; then
+    if command -v apt-get >/dev/null 2>&1; then
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update
+      apt-get install -y python3-venv
+    else
+      echo "Python venv/ensurepip is unavailable and apt-get is not available to install it." >&2
+      exit 2
+    fi
+  fi
   python3 -m venv "${INSTALL_ROOT}/venv"
 fi
 "${INSTALL_ROOT}/venv/bin/python" -m pip install --disable-pip-version-check "oci==2.188.0"
