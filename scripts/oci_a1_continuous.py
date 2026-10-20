@@ -30,6 +30,7 @@ from scripts.oci_a1_common import (
     TARGET_MEMORY_GB,
     TARGET_OCPUS,
     available_capacity,
+    has_capacity_evidence,
     find_active_a1,
     has_target_resources,
 )
@@ -243,43 +244,28 @@ class ContinuousAllocator:
                             memory_in_gbs=TARGET_MEMORY_GB,
                         ),
                     )
-                ],
-            )
-            report = self.compute.create_compute_capacity_report(capacity_details).data
+                  report = self.compute.create_compute_capacity_report(capacity_details).data
             capacity_entries = list(getattr(report, "shape_availabilities", []) or [])
+            if not has_capacity_evidence(capacity_entries):
+                self._record(
+                    "capacity_report_unusable",
+                    diagnostic="empty_or_unrecognized_capacity_report",
+                    retry_seconds=AUTH_OR_CONFIG_ERROR_SECONDS,
+                )
+                LOGGER.error(
+                    "OCI capacity report was empty or contained unrecognized data; treating it as an error, not no_capacity."
+                )
+                return AttemptResult("capacity_report_unusable", AUTH_OR_CONFIG_ERROR_SECONDS)
             candidates = available_capacity(capacity_entries, "primary")
             if not candidates:
-                # Only classify a shortage when OCI returned a non-empty,
-                # recognized capacity result. Empty payloads and unsupported /
-                # unknown statuses indicate a report/configuration problem;
-                # don't hide them as no_capacity.
-                if not capacity_entries:
-                    diagnostic = "empty_shape_availabilities"
-                else:
-                    statuses = {
-                        str(getattr(entry, "availability_status", "UNKNOWN")).upper()
-                        for entry in capacity_entries
-                    }
-                    if "HARDWARE_NOT_SUPPORTED" in statuses:
-                        diagnostic = "hardware_not_supported"
-                    elif not statuses.issubset({"AVAILABLE", "OUT_OF_HOST_CAPACITY"}):
-                        diagnostic = "unknown_availability_status"
-                    else:
-                        diagnostic = ""
-                if diagnostic:
-                    self._record(
-                        "capacity_report_unusable",
-                        diagnostic=diagnostic,
-                        retry_seconds=AUTH_OR_CONFIG_ERROR_SECONDS,
-                    )
-                    return AttemptResult(
-                        "capacity_report_unusable", AUTH_OR_CONFIG_ERROR_SECONDS
-                    )
                 self._record(
                     "no_capacity",
                     region=self.region,
                     availability_domain=self.availability_domain,
-                    capacity_statuses=sorted(statuses),
+                    capacity_statuses=sorted({
+                        str(getattr(entry, "availability_status", "UNKNOWN")).upper()
+                        for entry in capacity_entries
+                    }),
                     retry_seconds=NO_CAPACITY_SECONDS,
                 )
                 return AttemptResult("no_capacity", NO_CAPACITY_SECONDS)
