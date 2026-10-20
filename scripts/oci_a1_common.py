@@ -40,17 +40,57 @@ def has_target_resources(instance: Any) -> bool:
 
 
 def available_capacity(entries: list[Any], lane: str = "primary") -> list[Any]:
-    """Return available positive/unspecified capacity, ordered by fault domain."""
-    candidates = [
-        entry
-        for entry in entries
-        if str(getattr(entry, "availability_status", "")).upper() == "AVAILABLE"
-        and (
-            getattr(entry, "available_count", None) is None
-            or int(getattr(entry, "available_count")) > 0
-        )
-    ]
+    """Return available capacity ordered by fault domain.
+
+    Invalid report rows raise instead of being silently interpreted as a capacity
+    shortage. The caller uses ``has_capacity_evidence`` to reject empty reports.
+    """
+    candidates = []
+    for entry in entries:
+        status = str(getattr(entry, "availability_status", "") or "").upper()
+        count = getattr(entry, "available_count", None)
+        if status == "AVAILABLE":
+            if count is None:
+                raise ValueError("missing_capacity_available_count")
+            try:
+                count = int(count)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("invalid_capacity_available_count") from exc
+            if count < 0:
+                raise ValueError("invalid_capacity_available_count")
+            if count > 0:
+                candidates.append(entry)
+        elif status in {"OUT_OF_HOST_CAPACITY", "HARDWARE_NOT_SUPPORTED"}:
+            # OCI documents these statuses; neither offers launchable capacity.
+            continue
+        else:
+            raise ValueError("invalid_capacity_availability_status")
     candidates.sort(key=lambda entry: str(getattr(entry, "fault_domain", "") or ""))
     if lane == "fallback":
         candidates.reverse()
     return candidates
+
+
+def has_capacity_evidence(entries: list[Any]) -> bool:
+    """Return true only if every entry is a recognized capacity-report row."""
+    if not entries:
+        return False
+    recognized = {"AVAILABLE", "OUT_OF_HOST_CAPACITY", "HARDWARE_NOT_SUPPORTED"}
+    for entry in entries:
+        status = str(getattr(entry, "availability_status", "") or "").upper()
+        if status not in recognized:
+            return False
+        count = getattr(entry, "available_count", None)
+        if status == "AVAILABLE" and count is None:
+            return False
+        if count is not None:
+            try:
+                numeric_count = int(count)
+            except (TypeError, ValueError):
+                return False
+            if numeric_count < 0:
+                return False
+            if status == "AVAILABLE" and numeric_count == 0:
+                return False
+    return True
+
