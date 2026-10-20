@@ -248,14 +248,30 @@ class ContinuousAllocator:
             )
             report = self.compute.create_compute_capacity_report(capacity_details).data
             capacity_entries = list(getattr(report, "shape_availabilities", []) or [])
+            capacity_statuses = {
+                str(getattr(entry, "availability_status", "UNKNOWN")).upper()
+                for entry in capacity_entries
+            }
             if not has_capacity_evidence(capacity_entries):
+                diagnostic = (
+                    "hardware_not_supported"
+                    if "HARDWARE_NOT_SUPPORTED" in capacity_statuses
+                    else (
+                        "unknown_availability_status"
+                        if "UNKNOWN_ENUM_VALUE" in capacity_statuses
+                        or not capacity_statuses.issubset({"AVAILABLE", "OUT_OF_HOST_CAPACITY"})
+                        else "empty_shape_availabilities"
+                    )
+                )
                 self._record(
                     "capacity_report_unusable",
-                    diagnostic="empty_or_unrecognized_capacity_report",
+                    diagnostic=diagnostic,
+                    capacity_statuses=sorted(capacity_statuses),
                     retry_seconds=AUTH_OR_CONFIG_ERROR_SECONDS,
                 )
                 LOGGER.error(
-                    "OCI capacity report was empty or contained unrecognized data; treating it as an error, not no_capacity."
+                    "OCI capacity report was unusable (%s); treating it as an error, not no_capacity.",
+                    diagnostic,
                 )
                 return AttemptResult("capacity_report_unusable", AUTH_OR_CONFIG_ERROR_SECONDS)
             candidates = available_capacity(capacity_entries, "primary")
