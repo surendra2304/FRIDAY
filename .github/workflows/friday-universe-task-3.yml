@@ -38,11 +38,13 @@ jobs:
         id: credentials
         shell: bash
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          CONTINUOUS_ENGINEERING_TOKEN: ${{ secrets.CONTINUOUS_ENGINEERING_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CODEX_PROVIDER: ${{ secrets.OPENAI_API_KEY && 'openai' || 'openrouter' }}
+          CONTINUOUS_ENGINEERING_TOKEN: ${{ secrets.CONTINUOUS_ENGINEERING_TOKEN || secrets.CROSS_REPO_GITHUB_TOKEN || secrets.GITHUB_PAT || secrets.GH_PAT || secrets.PERSONAL_ACCESS_TOKEN || secrets.FRIDAY_GITHUB_TOKEN }}
         run: |
           if [[ -z "$OPENAI_API_KEY" ]]; then
-            echo "::error title=Missing coding provider credential::Configure the OPENAI_API_KEY Actions secret in surendra2304/FRIDAY. The ChatGPT subscription is not itself an API key."
+            echo "::error title=Missing coding provider credential::Configure OPENAI_API_KEY or OPENROUTER_API_KEY in surendra2304/FRIDAY Actions secrets."
             exit 1
           fi
           if [[ -z "$CONTINUOUS_ENGINEERING_TOKEN" ]]; then
@@ -85,7 +87,7 @@ jobs:
       - name: Publish code branches, PRs, and persistent handoff
         if: always() && steps.credentials.outcome == 'success' && steps.prepare.outcome == 'success'
         env:
-          CONTINUOUS_ENGINEERING_TOKEN: ${{ secrets.CONTINUOUS_ENGINEERING_TOKEN }}
+          CONTINUOUS_ENGINEERING_TOKEN: ${{ secrets.CONTINUOUS_ENGINEERING_TOKEN || secrets.CROSS_REPO_GITHUB_TOKEN || secrets.GITHUB_PAT || secrets.GH_PAT || secrets.PERSONAL_ACCESS_TOKEN || secrets.FRIDAY_GITHUB_TOKEN }}
         run: python scripts/continuous_engineering_runner.py publish --task 3
 
       - name: Upload run logs and execution evidence
