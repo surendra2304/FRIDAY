@@ -165,10 +165,24 @@ class ContinuousAllocator:
                 return AttemptResult("configuration_error", AUTH_OR_CONFIG_ERROR_SECONDS)
             compartment_id = os.environ.get("OCI_COMPARTMENT_OCID", "").strip() or tenancy_id
 
-            instances = self.oci.pagination.list_call_get_all_results(
-                self.compute.list_instances, compartment_id=compartment_id
-            ).data
-            existing = find_active_a1(instances)
+            # List both the tenancy root and target compartment. OCI list APIs
+            # are not recursive, so a dedicated target compartment must not hide
+            # an existing A1 in the root compartment. De-duplicate by OCID when
+            # the target compartment is the tenancy itself.
+            inventory_compartments = [tenancy_id]
+            if compartment_id != tenancy_id:
+                inventory_compartments.append(compartment_id)
+            inventory_by_id: dict[str, Any] = {}
+            for inventory_compartment in inventory_compartments:
+                listed = self.oci.pagination.list_call_get_all_results(
+                    self.compute.list_instances,
+                    compartment_id=inventory_compartment,
+                ).data
+                for item in listed:
+                    item_id = str(getattr(item, "id", "") or "")
+                    if item_id:
+                        inventory_by_id[item_id] = item
+            existing = find_active_a1(list(inventory_by_id.values()))
             if existing is not None:
                 instance_id = str(getattr(existing, "id", ""))
                 state = str(getattr(existing, "lifecycle_state", "UNKNOWN")).upper()

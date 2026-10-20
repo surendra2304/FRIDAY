@@ -256,3 +256,29 @@ def test_allocator_starts_stopped_target_and_keeps_polling():
     assert result.outcome == "instance_pending"
     assert result.delay_seconds > 0
     assert actions == [("ocid1.instance.stopped", "START")]
+
+
+def test_allocator_scans_tenancy_root_and_target_compartment(monkeypatch):
+    from scripts.oci_a1_continuous import ContinuousAllocator
+
+    root_tenancy = "ocid1.tenancy.test"
+    target_compartment = "ocid1.compartment.target"
+    monkeypatch.setenv("OCI_COMPARTMENT_OCID", target_compartment)
+    oci, signer, compute, network = _fake_oci_with_no_capacity()
+    signer.tenancy_id = root_tenancy
+    listed_compartments = []
+
+    def list_instances(*, compartment_id):
+        listed_compartments.append(compartment_id)
+        return []
+
+    compute.list_instances = list_instances
+    allocator = ContinuousAllocator(
+        oci_module=oci, signer=signer, compute=compute, network=network
+    )
+
+    result = allocator.attempt_once()
+
+    assert result.outcome == "no_capacity"
+    assert listed_compartments == [root_tenancy, target_compartment]
+
