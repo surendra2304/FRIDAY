@@ -15,6 +15,7 @@ Environment=LOG_LEVEL=INFO
 Environment=OCI_A1_STATE_PATH=/var/lib/friday-oci-a1-allocator/state.json
 ExecStart=/opt/friday-oci-a1-allocator/.venv/bin/python /opt/friday-oci-a1-allocator/oci_a1_continuous_allocator.py
 Restart=on-failure
+RestartPreventExitStatus=2
 RestartSec=30
 StartLimitIntervalSec=0
 TimeoutStopSec=20
