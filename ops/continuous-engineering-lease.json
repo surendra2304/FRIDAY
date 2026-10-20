@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "status": "idle",
-  "lease_id": null,
-  "acquired_at": null,
-  "expires_at": null,
-  "holder_description": null,
+  "status": "running",
+  "lease_id": "engineering-session-20261020T0316Z-oci-allocator",
+  "acquired_at": "2026-10-20T03:16:00Z",
+  "expires_at": "2026-10-20T03:51:00Z",
+  "holder_description": "Current engineering session: replace scheduled OCI snipers with persistent A1 allocator, validate CI, deploy and verify",
   "handoff_issue": "https://github.com/surendra2304/FRIDAY/issues/9",
-  "note": "Update only with the current blob SHA. GitHub SHA conflict is the acquisition compare-and-swap."
+  "note": "Acquire/release with current blob SHA; GitHub SHA conflict is the compare-and-swap. FRIDAY issue #9 is the canonical engineering handoff."
 }
