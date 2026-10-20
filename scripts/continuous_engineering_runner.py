@@ -221,10 +221,16 @@ def do_run(task):
         for key in ("GH_TOKEN", "GITHUB_TOKEN", "CONTINUOUS_ENGINEERING_TOKEN"):
             env.pop(key, None)
         print(f"Starting task {task} coding pass {pass_no}; active time {elapsed}s")
-        with log_path.open("w", encoding="utf-8") as log:
-            result = subprocess.run(cmd, input=prompt_path.read_text(encoding="utf-8"), text=True,
-                                    cwd=str(repos / WORKSTREAMS[task][0]), env=env,
-                                    stdout=log, stderr=subprocess.STDOUT, timeout=24*60, check=False)
+        try:
+            with log_path.open("w", encoding="utf-8") as log:
+                result = subprocess.run(cmd, input=prompt_path.read_text(encoding="utf-8"), text=True,
+                                        cwd=str(repos / WORKSTREAMS[task][0]), env=env,
+                                        stdout=log, stderr=subprocess.STDOUT, timeout=24*60, check=False)
+        except subprocess.TimeoutExpired:
+            # A timed-out model pass is still a failed run that needs a durable next-run handoff.
+            with log_path.open("a", encoding="utf-8") as log:
+                log.write("\nRunner: Codex exceeded the 24-minute per-pass timeout and was terminated.\n")
+            result = subprocess.CompletedProcess(cmd, 124, "Codex pass timed out after 24 minutes")
         if result.returncode:
             tail = log_path.read_text(encoding="utf-8", errors="replace")[-12000:]
             changes = {n: git(repos / n, "status", "--short").stdout.strip().splitlines() for n in WORKSTREAMS[task]}
