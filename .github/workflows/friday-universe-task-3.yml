@@ -1,0 +1,62 @@
+name: FRIDAY Universe Task 3 — VyralX, Forge, Sentinel, Cortex
+run-name: "Task 3 — content, software engineering, and defensive operations"
+on:
+  # GitHub cron uses UTC. These three times map to :00, :20, and :40 each hour in India (IST, UTC+05:30).
+  schedule:
+    - cron: '10 * * * *'
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: friday-universe-task-3
+  cancel-in-progress: false
+jobs:
+  engineer:
+    name: Implement, test, checkpoint, and publish code
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    permissions:
+      contents: read
+      copilot-requests: write
+    steps:
+      - name: Checkout orchestration instructions
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Node for GitHub Copilot CLI
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install GitHub Copilot CLI
+        run: npm install --global @github/copilot
+
+      - name: Prepare all repositories and restore Task 3 checkpoint
+        id: prepare
+        run: python scripts/continuous_engineering_runner.py prepare --task 3
+
+      - name: Run real engineering work for at least 31 active minutes
+        id: code
+        if: steps.prepare.outcome == 'success'
+        env:
+          CODE_AGENT: copilot
+          COPILOT_GITHUB_TOKEN: ${{ github.token }}
+          COPILOT_MODEL: ${{ vars.COPILOT_MODEL || 'gpt-6-astra' }}
+        run: python scripts/continuous_engineering_runner.py run --task 3
+
+      # This step alone receives the cross-repository write token. The coding agent never does.
+      - name: Publish code PRs and persist the next-run handoff
+        if: always() && steps.prepare.outcome == 'success'
+        env:
+          CONTINUOUS_ENGINEERING_TOKEN: ${{ secrets.CONTINUOUS_ENGINEERING_TOKEN }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+        run: python scripts/continuous_engineering_runner.py publish --task 3
