@@ -26,6 +26,7 @@ from scripts.oci_a1_common import (
     DEFAULT_SSH_PUBLIC_KEY,
     DEFAULT_SUBNET_ID,
     SHAPE,
+    TARGET_DISPLAY_NAME,
     TARGET_MEMORY_GB,
     TARGET_OCPUS,
     available_capacity,
@@ -171,26 +172,38 @@ class ContinuousAllocator:
             if existing is not None:
                 instance_id = str(getattr(existing, "id", ""))
                 state = str(getattr(existing, "lifecycle_state", "UNKNOWN")).upper()
+                display_name = str(getattr(existing, "display_name", "") or "")
                 shape_config = getattr(existing, "shape_config", None)
                 ocpus = getattr(shape_config, "ocpus", None)
                 memory = getattr(shape_config, "memory_in_gbs", None)
                 details = {
                     "instance_id": instance_id,
+                    "display_name": display_name,
                     "lifecycle_state": state,
                     "ocpus": ocpus,
                     "memory_gb": memory,
                 }
+                if display_name != TARGET_DISPLAY_NAME:
+                    persist_state("manual_review", {**details, "diagnostic": "unrelated_a1_instance"})
+                    LOGGER.error(
+                        "An unrelated A1 instance exists; refusing to misreport it as the FRIDAY target or launch a duplicate."
+                    )
+                    return AttemptResult("manual_review", AUTH_OR_CONFIG_ERROR_SECONDS)
                 if not has_target_resources(existing):
                     persist_state("manual_review", details)
                     LOGGER.error(
-                        "An A1 instance already exists below target size; refusing to create a duplicate."
+                        "The FRIDAY A1 instance exists below target size; refusing to create a duplicate."
                     )
                     return AttemptResult("manual_review", AUTH_OR_CONFIG_ERROR_SECONDS)
                 if state == "RUNNING":
                     persist_state("allocated_running", details)
                     LOGGER.info("Target ARM instance is RUNNING; allocation objective is complete.")
                     return AttemptResult("allocated_running", 0, True)
-                if state in {"PROVISIONING", "STARTING"}:
+                if state == "STOPPED":
+                    self.compute.instance_action(instance_id, "START")
+                    self._record("existing_instance_start_requested", **details)
+                    return AttemptResult("instance_pending", PENDING_INSTANCE_SECONDS)
+                if state in {"PROVISIONING", "STARTING", "STOPPING", "TERMINATING"}:
                     self._record("instance_pending", **details)
                     return AttemptResult("instance_pending", PENDING_INSTANCE_SECONDS)
                 self._record("existing_instance_requires_attention", **details)
@@ -234,7 +247,7 @@ class ContinuousAllocator:
             for candidate in candidates:
                 fault_domain = str(getattr(candidate, "fault_domain", "") or "")
                 launch_details = self.oci.core.models.LaunchInstanceDetails(
-                    display_name="FRIDAY Universe ARM",
+                    display_name=TARGET_DISPLAY_NAME,
                     compartment_id=compartment_id,
                     availability_domain=self.availability_domain,
                     shape=SHAPE,
