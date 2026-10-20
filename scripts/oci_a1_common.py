@@ -60,9 +60,11 @@ def available_capacity(entries: list[Any], lane: str = "primary") -> list[Any]:
                 raise ValueError("invalid_capacity_available_count")
             if count > 0:
                 candidates.append(entry)
-        elif status in {"OUT_OF_HOST_CAPACITY", "HARDWARE_NOT_SUPPORTED"}:
-            # OCI documents these statuses; neither offers launchable capacity.
+        elif status == "OUT_OF_HOST_CAPACITY":
+            # Explicit OCI shortage: no launchable host capacity in this row.
             continue
+        elif status == "HARDWARE_NOT_SUPPORTED":
+            raise ValueError("capacity_hardware_not_supported")
         else:
             raise ValueError("invalid_capacity_availability_status")
     candidates.sort(key=lambda entry: str(getattr(entry, "fault_domain", "") or ""))
@@ -75,7 +77,7 @@ def has_capacity_evidence(entries: list[Any]) -> bool:
     """Return true only if every entry is a recognized capacity-report row."""
     if not entries:
         return False
-    recognized = {"AVAILABLE", "OUT_OF_HOST_CAPACITY", "HARDWARE_NOT_SUPPORTED"}
+    recognized = {"AVAILABLE", "OUT_OF_HOST_CAPACITY"}
     for entry in entries:
         status = str(getattr(entry, "availability_status", "") or "").upper()
         if status not in recognized:
