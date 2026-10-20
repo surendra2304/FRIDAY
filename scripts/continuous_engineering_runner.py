@@ -201,9 +201,27 @@ def do_run(task):
     codex_home = root / "codex-home"
     codex_home.mkdir(exist_ok=True)
     # Exclude key/token/secret-named environment variables from shell commands launched by the model.
-    (codex_home / "config.toml").write_text(
-        "[shell_environment_policy]\nignore_default_excludes = false\n", encoding="utf-8"
-    )
+    if os.environ.get("CODEX_PROVIDER", "openai") == "openrouter":
+        codex_config = (
+            'model = "openai/gpt-5.6-luna"\n'
+            'model_provider = "openrouter"\n'
+            'model_reasoning_effort = "high"\n\n'
+            '[model_providers.openrouter]\n'
+            'name = "OpenRouter"\n'
+            'base_url = "https://openrouter.ai/api/v1"\n'
+            'wire_api = "responses"\n\n'
+            '[model_providers.openrouter.auth]\n'
+            'command = "sh"\n'
+            'args = ["-c", "printf \'%s\' \"$OPENROUTER_API_KEY\""]\n\n'
+            '[shell_environment_policy]\n'
+            'ignore_default_excludes = false\n'
+        )
+    else:
+        codex_config = (
+            '[shell_environment_policy]\n'
+            'ignore_default_excludes = false\n'
+        )
+    (codex_home / "config.toml").write_text(codex_config, encoding="utf-8")
     start = time.monotonic()
     pass_no = 0
     while time.monotonic() - start < MIN_WORK_SECONDS:
