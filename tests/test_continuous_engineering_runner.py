@@ -36,8 +36,8 @@ def test_each_workstream_has_task_specific_continuation_instructions() -> None:
         assert "End-of-run obligations" in instructions
 
 
-def test_each_session_requires_more_than_thirty_minutes_of_active_work() -> None:
-    assert MIN_WORK_SECONDS > 30 * 60
+def test_each_session_runs_for_at_least_thirty_five_active_minutes() -> None:
+    assert MIN_WORK_SECONDS == 35 * 60
 
 
 def test_code_and_state_branches_are_separate() -> None:
