@@ -322,6 +322,7 @@ def do_run(task):
         "checkpoint_updated": hashlib.sha256(checkpoint.read_bytes()).hexdigest() != before["checkpoint_hash"],
         "next_run_updated": hashlib.sha256(next_run.read_bytes()).hexdigest() != before["next_run_hash"],
         "finished_at": now(),
+        "publish_code": elapsed >= MIN_WORK_SECONDS,
     }
     (root / "run-summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps(summary, indent=2))
@@ -341,6 +342,15 @@ def push(repo_path, branch, auth):
     env["GIT_CONFIG_VALUE_0"] = f"AUTHORIZATION: basic {auth}"
     command(["git", "push", "--set-upstream", "origin", branch], cwd=repo_path, env=env, timeout=600)
 
+def should_publish_code(summary):
+    """Allow repository PR publication only after a successful full-length coding session."""
+    return (
+        bool(summary.get("publish_code", False))
+        and int(summary.get("active_seconds", 0)) >= MIN_WORK_SECONDS
+        and not summary.get("failure")
+    )
+
+
 def do_publish(task):
     root = run_dir(task)
     repos, state = root / "repos", root / "state"
@@ -355,7 +365,7 @@ def do_publish(task):
         "checkpoint_updated": False, "next_run_updated": False, "publish_code": False,
         "failure": "Coding step did not produce a run summary; only persist the handoff.",
     }
-    publish_code = bool(summary.get("publish_code", False))
+    publish_code = should_publish_code(summary)
     branch = f"{BRANCH_PREFIX}-{task}"
     urls = []
     for name in (WORKSTREAMS[task] if publish_code else ()):
