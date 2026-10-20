@@ -20,7 +20,7 @@ WORKSTREAMS = {
     2: ("Stratex", "IntelX", "Futuris"),
     3: ("VyralX", "Forge", "Sentinel", "Cortex"),
 }
-MIN_WORK_SECONDS = 31 * 60
+MIN_WORK_SECONDS = 35 * 60
 BRANCH_PREFIX = "automation/friday-universe-task"
 STATE_PREFIX = "automation/friday-universe-task-state"
 
