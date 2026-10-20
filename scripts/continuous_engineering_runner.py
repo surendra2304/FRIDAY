@@ -1,7 +1,15 @@
 #!/usr/bin/env python3
 """Persistent multi-repository engineering runner for scheduled FRIDAY Universe workstreams."""
 from __future__ import annotations
-import argparse, base64, hashlib, json, os, shutil, subprocess, sys, time
+import argparse
+import base64
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -45,7 +53,7 @@ def clone(name, destination):
 
 def prepare_branch(path, task, state=False):
     branch = f"{STATE_PREFIX}-{task}" if state else f"{BRANCH_PREFIX}-{task}"
-    git(path, "fetch", "--depth=1", "origin", "main")
+    git(path, "fetch", "--depth=1", "origin", "+refs/heads/main:refs/remotes/origin/main")
     remote = git(path, "ls-remote", "--heads", "origin", branch, check=False)
     if remote.returncode == 0 and remote.stdout.strip():
         git(path, "fetch", "--depth=1", "origin", f"{branch}:refs/remotes/origin/{branch}")
@@ -188,6 +196,10 @@ def do_run(task):
     before = json.loads((root / "initial-state.json").read_text(encoding="utf-8"))
     codex_home = root / "codex-home"
     codex_home.mkdir(exist_ok=True)
+    # Exclude key/token/secret-named environment variables from shell commands launched by the model.
+    (codex_home / "config.toml").write_text(
+        "[shell_environment_policy]\nignore_default_excludes = false\n", encoding="utf-8"
+    )
     start = time.monotonic()
     pass_no = 0
     while time.monotonic() - start < MIN_WORK_SECONDS:
