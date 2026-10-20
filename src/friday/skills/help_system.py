@@ -93,6 +93,11 @@ class HelpSystemSkill(BaseSkill):
                 "description": "Autonomous threat detection, capability gating, audit logging, and security verification.",
                 "sample_commands": ["Security status", "Run system security audit"],
             },
+            "vyralx": {
+                "name": "🎬 VyralX Autonomous Video Production & Distribution",
+                "description": "Automated video generation, YouTube/Pexels asset discovery, voiceovers, rendering, and approval-governed YouTube channel distribution.",
+                "sample_commands": ["VyralX status", "Ask VyralX to generate video on solar energy", "Show video production queue"],
+            },
         }
 
     def execute(

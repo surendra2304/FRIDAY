@@ -214,6 +214,16 @@ def build_contracts(fleet: Any | None = None, settings: Any | None = None) -> di
             auth_style="x-api-key",
             capability_prefix="sentinel",
         ),
+        "vyralx": PeerContract(
+            name="vyralx",
+            role="Autonomous Video Production & Governed Distribution",
+            base_url=fleet.vyralx_url,
+            api_key=fleet.vyralx_key,
+            task_path="/api/v1/tasks",
+            health_path="/health",
+            auth_style="x-api-key",
+            capability_prefix="vyralx",
+        ),
     }
 
 

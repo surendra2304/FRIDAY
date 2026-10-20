@@ -21,6 +21,7 @@ _AGENT_NAMES = {
     "cortex": "Cortex",
     "forge": "Forge",
     "sentinel": "Sentinel",
+    "vyralx": "VyralX",
 }
 
 

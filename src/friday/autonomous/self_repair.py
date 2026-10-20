@@ -63,6 +63,7 @@ NON_OWNER_ACTORS = frozenset(
         "intelx",
         "futuris",
         "cortex",
+        "vyralx",
         "system",
         "bot",
         "agent",

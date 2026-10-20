@@ -94,8 +94,21 @@ SPECIALIST_CONFIGS: dict[str, dict[str, Any]] = {
     "vyralx": {
         "default_url": "http://vyralx:8000",
         "env_var": "VYRALX_URL",
-        "role": "Video Production & Governed Distribution",
-        "keywords": ["video", "youtube", "render_video", "media", "upload", "thumbnail", "shorts"],
+        "role": "Autonomous Video Production & Governed Distribution",
+        "keywords": [
+            "video",
+            "youtube",
+            "render_video",
+            "media",
+            "upload",
+            "thumbnail",
+            "shorts",
+            "script",
+            "voiceover",
+            "pexels",
+            "render",
+            "vyralx",
+        ],
     },
 }
 
@@ -204,6 +217,21 @@ class SpecialistRouter:
                     "Safety Invariant 1 Violation: FRIDAY Core CANNOT breach Forge sandbox boundaries."
                 )
 
+        # VyralX Approval-Governed Publishing Boundaries
+        if target == "vyralx":
+            forbidden_vyralx_keys = {
+                "bypass_approval",
+                "direct_upload",
+                "skip_human_approval",
+                "auto_publish",
+                "force_publish_without_review",
+                "publish_now",
+            }
+            if any(_is_truthy(inputs.get(k)) for k in forbidden_vyralx_keys):
+                raise SafetyGateViolationError(
+                    "Safety Invariant 1 Violation: FRIDAY Core CANNOT bypass VyralX human approval governance for video publishing."
+                )
+
         # --- SAFETY INVARIANT 3: DESKTOP NATIVE BOUNDARY ---
         # Container specialists cannot execute Win32 native APIs
         if target in SPECIALIST_CONFIGS:
@@ -285,7 +313,17 @@ class SpecialistRouter:
             )
 
         base_url = custom_endpoint or self.get_agent_url(target)
-        endpoint = f"{base_url}/v1/tasks" if not custom_endpoint else custom_endpoint
+        if custom_endpoint:
+            endpoint = custom_endpoint
+        elif target == "vyralx":
+            endpoint = f"{base_url}/api/v1/tasks"
+        elif target == "forge":
+            endpoint = f"{base_url}/api/v1/forge/delegate"
+        elif target == "sentinel":
+            endpoint = f"{base_url}/api/v1/friday/delegate"
+        else:
+            endpoint = f"{base_url}/v1/tasks"
+
         headers = {
             "Content-Type": "application/json",
             "X-Source-Agent": "friday",
@@ -293,6 +331,11 @@ class SpecialistRouter:
             "X-Trace-Id": envelope.trace_id,
             "X-Request-Id": envelope.request_id or "",
         }
+        if target == "vyralx":
+            vyralx_key = os.getenv("FRIDAY_VYRALX_API_KEY") or os.getenv("VYRALX_API_KEY", "")
+            if vyralx_key:
+                headers["X-API-Key"] = vyralx_key
+                headers["Authorization"] = f"Bearer {vyralx_key}"
 
         payload = envelope.model_dump()
         last_exception: Exception | None = None
@@ -310,10 +353,11 @@ class SpecialistRouter:
 
                     exec_ms = int((time.monotonic() - start_time) * 1000)
                     result_data = data.get("result", data)
+                    res_status = TaskStatus.PENDING if resp.status_code == 202 else TaskStatus.SUCCESS
                     return TaskResult(
                         task_id=envelope.task_id,
                         target_agent=target,
-                        status=TaskStatus.SUCCESS,
+                        status=res_status,
                         result=result_data if isinstance(result_data, dict) else {"data": result_data},
                         summary=data.get("summary", f"Successfully completed by {target}"),
                         execution_time_ms=exec_ms,
