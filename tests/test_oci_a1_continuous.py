@@ -166,6 +166,7 @@ def test_allocator_does_not_launch_duplicate_for_running_target_vm():
     instance = SimpleNamespace(
         shape=SHAPE,
         lifecycle_state="RUNNING",
+        display_name="FRIDAY Universe ARM",
         id="ocid1.instance.target",
         shape_config=SimpleNamespace(ocpus=2, memory_in_gbs=12),
     )
@@ -189,6 +190,7 @@ def test_allocator_refuses_duplicate_if_existing_a1_is_undersized():
     instance = SimpleNamespace(
         shape=SHAPE,
         lifecycle_state="RUNNING",
+        display_name="FRIDAY Universe ARM",
         id="ocid1.instance.undersized",
         shape_config=SimpleNamespace(ocpus=1, memory_in_gbs=6),
     )
@@ -203,3 +205,54 @@ def test_allocator_refuses_duplicate_if_existing_a1_is_undersized():
     assert result.outcome == "manual_review"
     assert not result.complete
     assert not hasattr(compute, "launch_instance")
+
+
+
+def test_allocator_refuses_to_claim_unrelated_a1_instance():
+    from scripts.oci_a1_continuous import ContinuousAllocator
+    from scripts.oci_a1_common import SHAPE
+
+    instance = SimpleNamespace(
+        shape=SHAPE,
+        lifecycle_state="RUNNING",
+        display_name="Unrelated A1 instance",
+        id="ocid1.instance.other",
+        shape_config=SimpleNamespace(ocpus=2, memory_in_gbs=12),
+    )
+    oci, signer, compute, network = _fake_oci_with_no_capacity()
+    compute.list_instances = lambda **_: [instance]
+    allocator = ContinuousAllocator(
+        oci_module=oci, signer=signer, compute=compute, network=network
+    )
+
+    result = allocator.attempt_once()
+
+    assert result.outcome == "manual_review"
+    assert not result.complete
+    assert not hasattr(compute, "launch_instance")
+
+
+def test_allocator_starts_stopped_target_and_keeps_polling():
+    from scripts.oci_a1_continuous import ContinuousAllocator
+    from scripts.oci_a1_common import SHAPE, TARGET_DISPLAY_NAME
+
+    instance = SimpleNamespace(
+        shape=SHAPE,
+        lifecycle_state="STOPPED",
+        display_name=TARGET_DISPLAY_NAME,
+        id="ocid1.instance.stopped",
+        shape_config=SimpleNamespace(ocpus=2, memory_in_gbs=12),
+    )
+    oci, signer, compute, network = _fake_oci_with_no_capacity()
+    compute.list_instances = lambda **_: [instance]
+    actions = []
+    compute.instance_action = lambda instance_id, action: actions.append((instance_id, action))
+    allocator = ContinuousAllocator(
+        oci_module=oci, signer=signer, compute=compute, network=network
+    )
+
+    result = allocator.attempt_once()
+
+    assert result.outcome == "instance_pending"
+    assert result.delay_seconds > 0
+    assert actions == [("ocid1.instance.stopped", "START")]
