@@ -181,10 +181,24 @@ class ContinuousAllocator:
                 return AttemptResult("configuration_error", AUTH_OR_CONFIG_ERROR_SECONDS)
             compartment_id = os.environ.get("OCI_COMPARTMENT_OCID", "").strip() or tenancy_id
 
-            instances = self.oci.pagination.list_call_get_all_results(
-                self.compute.list_instances, compartment_id=compartment_id
-            ).data
-            existing = find_active_a1(instances)
+            # List both the tenancy root and target compartment. OCI list APIs
+            # are not recursive, so a dedicated target compartment must not hide
+            # an existing A1 in the root compartment. De-duplicate by OCID when
+            # the target compartment is the tenancy itself.
+            inventory_compartments = [tenancy_id]
+            if compartment_id != tenancy_id:
+                inventory_compartments.append(compartment_id)
+            inventory_by_id: dict[str, Any] = {}
+            for inventory_compartment in inventory_compartments:
+                listed = self.oci.pagination.list_call_get_all_results(
+                    self.compute.list_instances,
+                    compartment_id=inventory_compartment,
+                ).data
+                for item in listed:
+                    item_id = str(getattr(item, "id", "") or "")
+                    if item_id:
+                        inventory_by_id[item_id] = item
+            existing = find_active_a1(list(inventory_by_id.values()))
             if existing is not None:
                 instance_id = str(getattr(existing, "id", ""))
                 state = str(getattr(existing, "lifecycle_state", "UNKNOWN")).upper()
@@ -234,125 +248,203 @@ class ContinuousAllocator:
                 self._record("configuration_error", diagnostic="image_not_available")
                 return AttemptResult("configuration_error", AUTH_OR_CONFIG_ERROR_SECONDS)
 
-            candidates = []
-            if hasattr(self.compute, "create_compute_capacity_report"):
-                try:
-                    capacity_details = self.oci.core.models.CreateComputeCapacityReportDetails(
-                        compartment_id=tenancy_id,
-                        availability_domain=self.availability_domain,
-                        shape_availabilities=[
-                            self.oci.core.models.CreateCapacityReportShapeAvailabilityDetails(
-                                instance_shape=SHAPE,
-                                instance_shape_config=self.oci.core.models.CapacityReportInstanceShapeConfig(
-                                    ocpus=self.target_ocpus,
-                                    memory_in_gbs=self.target_memory_gb,
-                                ),
-                            )
-                        ],
-                    )
-                    report = self.compute.create_compute_capacity_report(capacity_details).data
-                    candidates = available_capacity(
-                        list(getattr(report, "shape_availabilities", []) or []), "primary"
-                    )
-                except Exception as cap_err:
-                    LOGGER.debug("Capacity report check skipped/failed: %s", cap_err)
-
-            if hasattr(self.compute, "launch_instance"):
-                candidate_domains = [str(getattr(c, "fault_domain", "") or "") for c in candidates if c]
-                if not candidate_domains:
-                    # In OCI Always Free tier, capacity reports return OUT_OF_HOST_CAPACITY.
-                    # We evaluate None (OCI auto-checks all 3 fault domains) then each fault domain directly.
-                    candidate_domains = [None, "FAULT-DOMAIN-1", "FAULT-DOMAIN-2", "FAULT-DOMAIN-3"]
-
-                capacity_exhausted = False
-                for fault_domain in candidate_domains:
-                    launch_details = self.oci.core.models.LaunchInstanceDetails(
-                        display_name=TARGET_DISPLAY_NAME,
-                        compartment_id=compartment_id,
-                        availability_domain=self.availability_domain,
-                        shape=SHAPE,
-                        shape_config=self.oci.core.models.LaunchInstanceShapeConfigDetails(
-                            ocpus=self.target_ocpus,
-                            memory_in_gbs=self.target_memory_gb,
+            capacity_details = self.oci.core.models.CreateComputeCapacityReportDetails(
+                compartment_id=tenancy_id,
+                availability_domain=self.availability_domain,
+                shape_availabilities=[
+                    self.oci.core.models.CreateCapacityReportShapeAvailabilityDetails(
+                        instance_shape=SHAPE,
+                        instance_shape_config=self.oci.core.models.CapacityReportInstanceShapeConfig(
+                            ocpus=TARGET_OCPUS,
+                            memory_in_gbs=TARGET_MEMORY_GB,
                         ),
-                        source_details=self.oci.core.models.InstanceSourceViaImageDetails(
-                            image_id=self.image_id,
-                            boot_volume_size_in_gbs=BOOT_VOLUME_GB,
-                            boot_volume_vpus_per_gb=10,
-                        ),
-                        create_vnic_details=self.oci.core.models.CreateVnicDetails(
-                            assign_public_ip=True,
-                            display_name="FRIDAY Universe ARM VNIC",
-                            subnet_id=self.subnet_id,
-                        ),
-                        metadata={"ssh_authorized_keys": self.ssh_public_key},
-                        is_pv_encryption_in_transit_enabled=True,
                     )
-                    if fault_domain:
-                        launch_details.fault_domain = fault_domain
-
-                    ssh_key_fingerprint = hashlib.sha256(
-                        self.ssh_public_key.encode("utf-8")
-                    ).hexdigest()
-                    token_input = (
-                        f"friday-a1|{tenancy_id}|{compartment_id}|{self.region}|"
-                        f"{self.availability_domain}|{fault_domain}|{self.target_ocpus}|"
-                        f"{self.target_memory_gb}|{BOOT_VOLUME_GB}|{self.subnet_id}|"
-                        f"{self.image_id}|{ssh_key_fingerprint}|{int(time.time() // 60)}"
-                    )
-                    retry_token = hashlib.sha256(token_input.encode("utf-8")).hexdigest()
-                    try:
-                        response = self.compute.launch_instance(
-                            launch_details, opc_retry_token=retry_token
-                        )
-                        instance = response.data
-                        instance_id = str(getattr(instance, "id", ""))
-                        state = str(getattr(instance, "lifecycle_state", "PROVISIONING")).upper()
-                        persist_state(
-                            "launch_accepted",
-                            {
-                                "instance_id": instance_id,
-                                "lifecycle_state": state,
-                                "fault_domain": fault_domain or "unspecified",
-                            },
-                        )
-                        LOGGER.info(
-                            "OCI accepted allocation request; instance_id=%s lifecycle_state=%s fault_domain=%s",
-                            instance_id or "unknown",
-                            state,
-                            fault_domain or "unspecified",
-                        )
-                        return AttemptResult("launch_accepted", PENDING_INSTANCE_SECONDS)
-                    except Exception as exc:
-                        if is_capacity_error(exc):
-                            LOGGER.info(
-                                "Candidate %s out of capacity (%s); checking next candidate...",
-                                fault_domain or "unspecified",
-                                str(getattr(exc, "message", exc))[:80],
-                            )
-                            capacity_exhausted = True
-                            continue
-                        raise
-
-                if capacity_exhausted:
-                    self._record(
-                        "no_capacity",
-                        region=self.region,
-                        availability_domain=self.availability_domain,
-                        retry_seconds=self.retry_seconds,
-                        target_ocpus=self.target_ocpus,
-                        target_memory_gb=self.target_memory_gb,
-                    )
-                    return AttemptResult("no_capacity", self.retry_seconds)
-
+                ],
+            )
+            report = self.compute.create_compute_capacity_report(capacity_details).data
+            capacity_entries = list(getattr(report, "shape_availabilities", []) or [])
+            candidates = available_capacity(capacity_entries, "primary")
             if not candidates:
+                # Only classify a shortage when OCI returned a non-empty,
+                # recognized capacity result. Empty payloads and unsupported /
+                # unknown statuses indicate a report/configuration problem;
+                # don't hide them as no_capacity.
+                if not capacity_entries:
+                    diagnostic = "empty_shape_availabilities"
+                else:
+                    statuses = {
+                        str(getattr(entry, "availability_status", "UNKNOWN")).upper()
+                        for entry in capacity_entries
+                    }
+                    if "HARDWARE_NOT_SUPPORTED" in statuses:
+                        diagnostic = "hardware_not_supported"
+                    elif not statuses.issubset({"AVAILABLE", "OUT_OF_HOST_CAPACITY"}):
+                        diagnostic = "unknown_availability_status"
+                    else:
+                        diagnostic = ""
+                if diagnostic:
+                    self._record(
+                        "capacity_report_unusable",
+                        diagnostic=diagnostic,
+                        retry_seconds=AUTH_OR_CONFIG_ERROR_SECONDS,
+                    )
+                    return AttemptResult(
+                        "capacity_report_unusable", AUTH_OR_CONFIG_ERROR_SECONDS
+                    )
+                if hasattr(self.compute, "launch_instance"):
+                    candidate_domains = [None, "FAULT-DOMAIN-1", "FAULT-DOMAIN-2", "FAULT-DOMAIN-3"]
+                    capacity_exhausted = False
+                    for fault_domain in candidate_domains:
+                        launch_details = self.oci.core.models.LaunchInstanceDetails(
+                            display_name=TARGET_DISPLAY_NAME,
+                            compartment_id=compartment_id,
+                            availability_domain=self.availability_domain,
+                            shape=SHAPE,
+                            shape_config=self.oci.core.models.LaunchInstanceShapeConfigDetails(
+                                ocpus=self.target_ocpus,
+                                memory_in_gbs=self.target_memory_gb,
+                            ),
+                            source_details=self.oci.core.models.InstanceSourceViaImageDetails(
+                                image_id=self.image_id,
+                                boot_volume_size_in_gbs=BOOT_VOLUME_GB,
+                                boot_volume_vpus_per_gb=10,
+                            ),
+                            create_vnic_details=self.oci.core.models.CreateVnicDetails(
+                                assign_public_ip=True,
+                                display_name="FRIDAY Universe ARM VNIC",
+                                subnet_id=self.subnet_id,
+                            ),
+                            metadata={"ssh_authorized_keys": self.ssh_public_key},
+                            is_pv_encryption_in_transit_enabled=True,
+                        )
+                        if fault_domain:
+                            launch_details.fault_domain = fault_domain
+
+                        ssh_key_fingerprint = hashlib.sha256(
+                            self.ssh_public_key.encode("utf-8")
+                        ).hexdigest()
+                        token_input = (
+                            f"friday-a1|{tenancy_id}|{compartment_id}|{self.region}|"
+                            f"{self.availability_domain}|{fault_domain}|{self.target_ocpus}|"
+                            f"{self.target_memory_gb}|{BOOT_VOLUME_GB}|{self.subnet_id}|"
+                            f"{self.image_id}|{ssh_key_fingerprint}|{int(time.time() // 60)}"
+                        )
+                        retry_token = hashlib.sha256(token_input.encode("utf-8")).hexdigest()
+                        try:
+                            response = self.compute.launch_instance(
+                                launch_details, opc_retry_token=retry_token
+                            )
+                            instance = response.data
+                            instance_id = str(getattr(instance, "id", ""))
+                            state = str(getattr(instance, "lifecycle_state", "PROVISIONING")).upper()
+                            persist_state(
+                                "launch_accepted",
+                                {
+                                    "instance_id": instance_id,
+                                    "lifecycle_state": state,
+                                    "fault_domain": fault_domain or "unspecified",
+                                },
+                            )
+                            LOGGER.info(
+                                "OCI accepted allocation request; instance_id=%s lifecycle_state=%s fault_domain=%s",
+                                instance_id or "unknown",
+                                state,
+                                fault_domain or "unspecified",
+                            )
+                            return AttemptResult("launch_accepted", PENDING_INSTANCE_SECONDS)
+                        except Exception as exc:
+                            if is_capacity_error(exc):
+                                LOGGER.info(
+                                    "Candidate %s out of capacity (%s); checking next candidate...",
+                                    fault_domain or "unspecified",
+                                    str(getattr(exc, "message", exc))[:80],
+                                )
+                                capacity_exhausted = True
+                                continue
+                            raise
+
                 self._record(
                     "no_capacity",
                     region=self.region,
                     availability_domain=self.availability_domain,
+                    capacity_statuses=sorted(statuses),
                     retry_seconds=self.retry_seconds,
+                    target_ocpus=self.target_ocpus,
+                    target_memory_gb=self.target_memory_gb,
                 )
                 return AttemptResult("no_capacity", self.retry_seconds)
+
+            for candidate in candidates:
+                fault_domain = str(getattr(candidate, "fault_domain", "") or "")
+                launch_details = self.oci.core.models.LaunchInstanceDetails(
+                    display_name=TARGET_DISPLAY_NAME,
+                    compartment_id=compartment_id,
+                    availability_domain=self.availability_domain,
+                    shape=SHAPE,
+                    shape_config=self.oci.core.models.LaunchInstanceShapeConfigDetails(
+                        ocpus=TARGET_OCPUS,
+                        memory_in_gbs=TARGET_MEMORY_GB,
+                    ),
+                    source_details=self.oci.core.models.InstanceSourceViaImageDetails(
+                        image_id=self.image_id,
+                        boot_volume_size_in_gbs=BOOT_VOLUME_GB,
+                        boot_volume_vpus_per_gb=10,
+                    ),
+                    create_vnic_details=self.oci.core.models.CreateVnicDetails(
+                        assign_public_ip=True,
+                        display_name="FRIDAY Universe ARM VNIC",
+                        subnet_id=self.subnet_id,
+                    ),
+                    metadata={"ssh_authorized_keys": self.ssh_public_key},
+                    is_pv_encryption_in_transit_enabled=True,
+                )
+                if fault_domain:
+                    launch_details.fault_domain = fault_domain
+                # Stable per fault-domain idempotency tokens prevent duplicate
+                # launches if the API accepts a request but the client times out.
+                ssh_key_fingerprint = hashlib.sha256(
+                    self.ssh_public_key.encode("utf-8")
+                ).hexdigest()
+                token_input = (
+                    f"friday-a1|{tenancy_id}|{compartment_id}|{self.region}|"
+                    f"{self.availability_domain}|{fault_domain}|{TARGET_OCPUS}|"
+                    f"{TARGET_MEMORY_GB}|{BOOT_VOLUME_GB}|{self.subnet_id}|"
+                    f"{self.image_id}|{ssh_key_fingerprint}"
+                )
+                retry_token = hashlib.sha256(token_input.encode("utf-8")).hexdigest()
+                try:
+                    response = self.compute.launch_instance(
+                        launch_details, opc_retry_token=retry_token
+                    )
+                    instance = response.data
+                    instance_id = str(getattr(instance, "id", ""))
+                    state = str(getattr(instance, "lifecycle_state", "PROVISIONING")).upper()
+                    persist_state(
+                        "launch_accepted",
+                        {
+                            "instance_id": instance_id,
+                            "lifecycle_state": state,
+                            "fault_domain": fault_domain,
+                        },
+                    )
+                    LOGGER.info(
+                        "OCI accepted allocation request; instance_id=%s lifecycle_state=%s fault_domain=%s",
+                        instance_id or "unknown",
+                        state,
+                        fault_domain or "unspecified",
+                    )
+                    return AttemptResult("launch_accepted", PENDING_INSTANCE_SECONDS)
+                except Exception as exc:
+                    status, code = safe_error(exc)
+                    if status == 409 or "OutOfHostCapacity" in code or "OutOfCapacity" in code:
+                        LOGGER.warning(
+                            "Fault domain %s rejected allocation for capacity/conflict; checking the next reported domain.",
+                            fault_domain or "unspecified",
+                        )
+                        continue
+                    raise
+            self._record("launch_capacity_race", retry_seconds=NO_CAPACITY_SECONDS)
+            return AttemptResult("launch_capacity_race", NO_CAPACITY_SECONDS)
 
         except Exception as exc:
             status, code = safe_error(exc)

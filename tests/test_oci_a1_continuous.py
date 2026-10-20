@@ -104,6 +104,8 @@ def test_state_persistence_is_atomic_and_contains_no_credentials(tmp_path, monke
 
 
 def _fake_oci_with_no_capacity():
+    from scripts.oci_a1_common import SHAPE, TARGET_MEMORY_GB, TARGET_OCPUS
+
     def model(**kwargs):
         return SimpleNamespace(**kwargs)
 
@@ -130,7 +132,19 @@ def _fake_oci_with_no_capacity():
             data=SimpleNamespace(lifecycle_state="AVAILABLE")
         ),
         create_compute_capacity_report=lambda *_args, **_kwargs: SimpleNamespace(
-            data=SimpleNamespace(shape_availabilities=[])
+            data=SimpleNamespace(
+                shape_availabilities=[
+                    model(
+                        availability_status="OUT_OF_HOST_CAPACITY",
+                        available_count=0,
+                        fault_domain="FAULT-DOMAIN-1",
+                        instance_shape=SHAPE,
+                        instance_shape_config=model(
+                            ocpus=TARGET_OCPUS, memory_in_gbs=TARGET_MEMORY_GB
+                        ),
+                    )
+                ]
+            )
         ),
     )
     network = SimpleNamespace(
@@ -157,6 +171,61 @@ def test_allocator_reports_no_capacity_and_keeps_retry_delay(tmp_path, monkeypat
     assert result.delay_seconds == NO_CAPACITY_SECONDS
     assert not result.complete
     assert json.loads((Path(tmp_path) / "state.json").read_text())["outcome"] == "no_capacity"
+
+
+def test_allocator_does_not_label_empty_capacity_report_as_no_capacity(tmp_path, monkeypatch):
+    from scripts.oci_a1_continuous import AUTH_OR_CONFIG_ERROR_SECONDS, ContinuousAllocator
+
+    oci, signer, compute, network = _fake_oci_with_no_capacity()
+    compute.create_compute_capacity_report = lambda *_args, **_kwargs: SimpleNamespace(
+        data=SimpleNamespace(shape_availabilities=[])
+    )
+    monkeypatch.setenv("STATE_DIRECTORY", str(tmp_path))
+    allocator = ContinuousAllocator(oci_module=oci, signer=signer, compute=compute, network=network)
+
+    result = allocator.attempt_once()
+
+    state = json.loads((Path(tmp_path) / "state.json").read_text())
+    assert result.outcome == "capacity_report_unusable"
+    assert result.delay_seconds == AUTH_OR_CONFIG_ERROR_SECONDS
+    assert state["outcome"] == "capacity_report_unusable"
+    assert state["details"]["diagnostic"] == "empty_shape_availabilities"
+
+
+def test_allocator_does_not_label_unknown_capacity_status_as_no_capacity(tmp_path, monkeypatch):
+    from scripts.oci_a1_continuous import AUTH_OR_CONFIG_ERROR_SECONDS, ContinuousAllocator
+
+    oci, signer, compute, network = _fake_oci_with_no_capacity()
+    compute.create_compute_capacity_report = lambda *_args, **_kwargs: SimpleNamespace(
+        data=SimpleNamespace(shape_availabilities=[SimpleNamespace(availability_status="UNKNOWN_ENUM_VALUE", available_count=0)])
+    )
+    monkeypatch.setenv("STATE_DIRECTORY", str(tmp_path))
+    allocator = ContinuousAllocator(oci_module=oci, signer=signer, compute=compute, network=network)
+
+    result = allocator.attempt_once()
+
+    state = json.loads((Path(tmp_path) / "state.json").read_text())
+    assert result.outcome == "capacity_report_unusable"
+    assert result.delay_seconds == AUTH_OR_CONFIG_ERROR_SECONDS
+    assert state["details"]["diagnostic"] == "unknown_availability_status"
+
+
+def test_allocator_distinguishes_hardware_not_supported_from_capacity_shortage(tmp_path, monkeypatch):
+    from scripts.oci_a1_continuous import AUTH_OR_CONFIG_ERROR_SECONDS, ContinuousAllocator
+
+    oci, signer, compute, network = _fake_oci_with_no_capacity()
+    compute.create_compute_capacity_report = lambda *_args, **_kwargs: SimpleNamespace(
+        data=SimpleNamespace(shape_availabilities=[SimpleNamespace(availability_status="HARDWARE_NOT_SUPPORTED", available_count=0)])
+    )
+    monkeypatch.setenv("STATE_DIRECTORY", str(tmp_path))
+    allocator = ContinuousAllocator(oci_module=oci, signer=signer, compute=compute, network=network)
+
+    result = allocator.attempt_once()
+
+    state = json.loads((Path(tmp_path) / "state.json").read_text())
+    assert result.outcome == "capacity_report_unusable"
+    assert result.delay_seconds == AUTH_OR_CONFIG_ERROR_SECONDS
+    assert state["details"]["diagnostic"] == "hardware_not_supported"
 
 
 def test_allocator_does_not_launch_duplicate_for_running_target_vm():
@@ -258,6 +327,30 @@ def test_allocator_starts_stopped_target_and_keeps_polling():
     assert actions == [("ocid1.instance.stopped", "START")]
 
 
+def test_allocator_scans_tenancy_root_and_target_compartment(monkeypatch):
+    from scripts.oci_a1_continuous import ContinuousAllocator
+
+    root_tenancy = "ocid1.tenancy.test"
+    target_compartment = "ocid1.compartment.target"
+    monkeypatch.setenv("OCI_COMPARTMENT_OCID", target_compartment)
+    oci, signer, compute, network = _fake_oci_with_no_capacity()
+    signer.tenancy_id = root_tenancy
+    listed_compartments = []
+
+    def list_instances(*, compartment_id):
+        listed_compartments.append(compartment_id)
+        return []
+
+    compute.list_instances = list_instances
+    allocator = ContinuousAllocator(
+        oci_module=oci, signer=signer, compute=compute, network=network
+    )
+
+    result = allocator.attempt_once()
+
+    assert result.outcome == "no_capacity"
+    assert listed_compartments == [root_tenancy, target_compartment]
+
 def test_is_capacity_error_identifies_500_internalerror_and_capacity_messages():
     from scripts.oci_a1_continuous import is_capacity_error
 
@@ -276,10 +369,13 @@ def test_allocator_attempts_direct_launch_when_capacity_report_is_empty(tmp_path
     from scripts.oci_a1_common import SHAPE
 
     oci, signer, compute, network = _fake_oci_with_no_capacity()
+    # Report says OUT_OF_HOST_CAPACITY (standard free tier state)
+    compute.create_compute_capacity_report = lambda *_args, **_kwargs: SimpleNamespace(
+        data=SimpleNamespace(shape_availabilities=[SimpleNamespace(availability_status="OUT_OF_HOST_CAPACITY", available_count=0)])
+    )
     monkeypatch.setenv('STATE_DIRECTORY', str(tmp_path))
     monkeypatch.setenv('OCI_RETRY_INTERVAL', '25')
 
-    # Add mock launch_instance that raises out of capacity
     class MockServiceError(Exception):
         def __init__(self, status, code, message):
             self.status = status
