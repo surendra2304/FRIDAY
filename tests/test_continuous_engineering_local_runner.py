@@ -39,8 +39,8 @@ def test_each_task_gets_distinct_persistent_handoff_files(tmp_path: Path) -> Non
     assert len(set(all_files)) == 9
 
 
-def test_handoff_contract_explicitly_separates_checkpoint_and_next_prompt() -> None:
-    checkpoint, next_prompt, last_run = handoff_paths(Path("/tmp/friday-runner-test"), 2)
+def test_handoff_contract_explicitly_separates_checkpoint_and_next_prompt(tmp_path: Path) -> None:
+    checkpoint, next_prompt, last_run = handoff_paths(tmp_path, 2)
 
     assert checkpoint != next_prompt
     assert next_prompt != last_run
