@@ -1,6 +1,5 @@
 import json
 from pathlib import Path
-from types import SimpleNamespace
 
 from scripts.oci_a1_continuous import (
     AUTH_OR_CONFIG_ERROR_SECONDS,
@@ -99,4 +98,5 @@ def test_state_persistence_is_atomic_and_contains_no_credentials(tmp_path, monke
     assert state["outcome"] == "no_capacity"
     assert state["target"]["region"] == "ap-hyderabad-1"
     assert state["details"]["diagnostic"] == "capacity unavailable"
+    assert "OCI_KEY_CONTENT" not in json.dumps(state)
     assert not (Path(tmp_path) / "state.json.tmp").exists()
