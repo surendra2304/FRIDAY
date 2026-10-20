@@ -161,7 +161,7 @@ def test_allocator_reports_no_capacity_and_keeps_retry_delay(tmp_path, monkeypat
 
 def test_allocator_does_not_launch_duplicate_for_running_target_vm():
     from scripts.oci_a1_continuous import ContinuousAllocator
-    from scripts.oci_a1_sniper import SHAPE
+    from scripts.oci_a1_common import SHAPE
 
     instance = SimpleNamespace(
         shape=SHAPE,
@@ -184,7 +184,7 @@ def test_allocator_does_not_launch_duplicate_for_running_target_vm():
 
 def test_allocator_refuses_duplicate_if_existing_a1_is_undersized():
     from scripts.oci_a1_continuous import ContinuousAllocator
-    from scripts.oci_a1_sniper import SHAPE
+    from scripts.oci_a1_common import SHAPE
 
     instance = SimpleNamespace(
         shape=SHAPE,
