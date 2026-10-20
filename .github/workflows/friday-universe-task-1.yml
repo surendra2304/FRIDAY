@@ -38,6 +38,16 @@ jobs:
       - name: Install GitHub Copilot CLI
         run: npm install --global @github/copilot
 
+      - name: Fail fast if cross-repository publisher token is missing
+        env:
+          CONTINUOUS_ENGINEERING_TOKEN: ${{ secrets.CONTINUOUS_ENGINEERING_TOKEN }}
+        shell: bash
+        run: |
+          if [[ -z "$CONTINUOUS_ENGINEERING_TOKEN" ]]; then
+            echo "::error::Missing Actions secret CONTINUOUS_ENGINEERING_TOKEN. Configure a fine-grained token with Contents and Pull requests write access on all ten FRIDAY Universe repositories."
+            exit 1
+          fi
+
       - name: Prepare all repositories and restore Task 1 checkpoint
         id: prepare
         run: python scripts/continuous_engineering_runner.py prepare --task 1
