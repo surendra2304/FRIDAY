@@ -94,6 +94,7 @@ class Settings(BaseSettings):
             'FRIDAY_AUDIO_INPUT_DEVICE': ['AUDIO_INPUT_DEVICE', 'audio_input_device'],
             'FRIDAY_AUDIO_OUTPUT_DEVICE': ['AUDIO_OUTPUT_DEVICE', 'audio_output_device'],
             'FRIDAY_VOICE_NAME': ['VOICE_NAME', 'voice_name'],
+            'FRIDAY_VOICE_TTS_MODEL': ['VOICE_TTS_MODEL', 'voice_tts_model'],
             'FRIDAY_VOICE_LIVE_MODEL': ['VOICE_LIVE_MODEL', 'voice_live_model'],
             'FRIDAY_VOICE_VAD_START_SENSITIVITY': ['VOICE_VAD_START_SENSITIVITY', 'voice_vad_start_sensitivity'],
             'FRIDAY_VOICE_VAD_END_SENSITIVITY': ['VOICE_VAD_END_SENSITIVITY', 'voice_vad_end_sensitivity'],
@@ -516,6 +517,10 @@ class Settings(BaseSettings):
     voice_name: str = Field(
         default="Kore",
         description="Prebuilt voice name for Gemini speech synthesis: the single female voice Kore",
+    )
+    voice_tts_model: str = Field(
+        default="gemini-2.5-flash-preview-tts",
+        description="Gemini model used for one-shot text-to-speech synthesis",
     )
     voice_playback_buffer_ms: int = Field(default=100, description="Playback buffer size in milliseconds for non‑blocking audio")
     voice_live_model: str = Field(
