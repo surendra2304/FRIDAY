@@ -2,21 +2,47 @@
   "task": 1,
   "repository": "FRIDAY",
   "updated_at": "2026-10-22",
-  "status": "partial_ci_pending",
+  "status": "implementation_committed_ci_running",
   "branch": "automation/friday-universe-task-1",
-  "commit": "1113ff8ac1696016b9b5762c66651f74dccba3a8",
-  "files_changed": [
-    "tests/tools/test_ai_universe_client.py"
+  "commits": [
+    {
+      "sha": "1113ff8ac1696016b9b5762c66651f74dccba3a8",
+      "files": [
+        "tests/tools/test_ai_universe_client.py"
+      ],
+      "summary": "Four schema-invalid AI Universe response cases; ask/debate × normal/active event loop."
+    },
+    {
+      "sha": "9f659c3edc3902d83968414204003a57a3d402d6",
+      "files": [
+        "pyproject.toml"
+      ],
+      "summary": "Declared respx in dev dependencies to fix pytest collection."
+    }
   ],
-  "change": "Four regression cases: schema-invalid JSON object from ask/debate with/without active event loop; verify ToolResult error and AsyncClient closure.",
-  "ci_run": 39672146283,
-  "ci_url": "https://github.com/surendra2304/FRIDAY/actions/runs/39672146283",
-  "ci_status": "in_progress_at_last_check",
+  "previous_ci": {
+    "id": 39672146283,
+    "url": "https://github.com/surendra2304/FRIDAY/actions/runs/39672146283",
+    "status": "failure",
+    "error": "pytest collection ModuleNotFoundError: No module named respx; Ruff and syntax checks passed; Docker skipped"
+  },
+  "current_ci": {
+    "id": 39672647603,
+    "url": "https://github.com/surendra2304/FRIDAY/actions/runs/39672647603",
+    "status": "in_progress_at_last_check",
+    "step": "Install dependencies"
+  },
+  "existing_pr": {
+    "number": 22,
+    "url": "https://github.com/surendra2304/FRIDAY/pull/22",
+    "head": "9f659c3edc3902d83968414204003a57a3d402d6",
+    "state": "open"
+  },
   "local_tests_run": false,
   "merged": false,
   "blockers": [
     "Laptop execution endpoint returned HTTP 404"
   ],
   "active_duration_seconds": "not measured",
-  "next": "Poll CI, then add schema-invalid list-field regression or fix CI failure."
+  "next": "Poll CI 39672647603; fix exact failure if any; then extend schema-invalid key_evidence coverage."
 }
