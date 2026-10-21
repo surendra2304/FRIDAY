@@ -48,6 +48,7 @@ from friday.devices.app_launcher import launch_desktop_app
 from friday.ecosystem.fleet_client import fleet_client
 from friday.memory.event_consumer import MemoraEventConsumer
 from friday.memory.memora_client import memora_client
+from friday.api.companion_ws import companion_multiplexer
 from friday.autonomous import autonomous_controller
 from friday.autonomous.repair_loop import repair_loop
 from friday.cognition.reflex import get_reflex_brain, parse_incident_scope
@@ -1667,6 +1668,60 @@ async def voice_endpoint(websocket: WebSocket):
 
 
 # =========================================================================
+# Real-Time Companion Event Multiplexer & Desktop Telemetry Stream
+# =========================================================================
+
+@app.websocket("/ws/companion")
+@app.websocket("/api/ws/companion")
+async def companion_ws_endpoint(websocket: WebSocket) -> None:
+    """Real-time companion event multiplexer and desktop telemetry stream."""
+    try:
+        await _require_control_access(websocket)
+    except HTTPException:
+        await websocket.close(code=1008, reason="FRIDAY control authentication required")
+        return
+    await websocket.accept()
+    client_id = f"companion_{uuid.uuid4().hex[:8]}"
+    raw_topics = websocket.query_params.get("topics")
+    topics = {t.strip().lower() for t in raw_topics.split(",")} if raw_topics else {"telemetry", "system"}
+    sub = await companion_multiplexer.connect(websocket, client_id=client_id, initial_topics=topics)
+
+    # Ensure background telemetry streaming is active
+    companion_multiplexer.start_telemetry_streaming(agent.get_system_diagnostics, interval_seconds=2.5)
+
+    await websocket.send_json({
+        "type": "welcome",
+        "client_id": sub.client_id,
+        "topics": sorted(list(sub.topics)),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+
+    async def _exec_cmd(cmd_text: str) -> dict[str, Any]:
+        return await execute_command(CommandRequest(command=cmd_text))
+
+    try:
+        while True:
+            msg = await websocket.receive_json()
+            await companion_multiplexer.handle_message(
+                websocket=websocket,
+                msg=msg,
+                command_executor=_exec_cmd,
+                snapshot_getter=agent.get_system_diagnostics,
+            )
+    except WebSocketDisconnect:
+        await companion_multiplexer.disconnect(websocket)
+    except Exception as exc:
+        logger.warning("Companion WS session error: %s", exc)
+        await companion_multiplexer.disconnect(websocket)
+
+
+@app.get("/api/companion/status")
+async def companion_status_endpoint(_: None = Depends(_require_control_access)) -> dict[str, Any]:
+    """Return status and subscriber diagnostics for the real-time companion multiplexer."""
+    return {"status": "ok", **companion_multiplexer.get_status()}
+
+
+# =========================================================================
 # FastMCP Server Endpoints (Sagar Tamang's FastMCP SSE Architecture)
 # =========================================================================
 
@@ -1732,6 +1787,7 @@ def start_proactive_monitoring() -> None:
     """Start FRIDAY's background proactive monitoring loop. Call at server boot."""
     try:
         agent.start_proactive_monitoring()
+        companion_multiplexer.start_telemetry_streaming(agent.get_system_diagnostics, interval_seconds=2.5)
         logger.info("FRIDAY proactive monitoring started")
     except Exception as e:
         logger.warning(f"Could not start proactive monitoring: {e}")

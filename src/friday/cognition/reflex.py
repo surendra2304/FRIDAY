@@ -339,7 +339,7 @@ class IncidentDetector:
                         "test_file": report.test_file,
                         "exception_type": report.exception_type,
                         "exception_value": report.exception_value,
-                        "source_file": report.source_file,
+                        "source_file": (report.source_file or "").replace("\\", "/"),
                         "source_line": report.source_line,
                         "traceback": report.traceback_text[-4000:],
                     },
@@ -624,8 +624,8 @@ class RepairRunner:
 
     def prove(self, incident: Incident) -> RepairChoice | None:
         """Find a candidate, then try to falsify it against the failing test."""
-        source_rel = str(incident.evidence.get("source_file") or "")
-        node_id = str(incident.evidence.get("test_node_id") or incident.source or "")
+        source_rel = str(incident.evidence.get("source_file") or "").replace("\\", "/")
+        node_id = str(incident.evidence.get("test_node_id") or incident.source or "").replace("\\", "/")
         if not source_rel or not node_id:
             return None
 
