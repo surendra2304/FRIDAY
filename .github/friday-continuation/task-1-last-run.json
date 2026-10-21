@@ -2,58 +2,38 @@
   "task": 1,
   "repository": "FRIDAY",
   "updated_at": "2026-10-22",
-  "status": "pr22_suite_failing_pr31_ci_running",
-  "merged": false,
-  "existing_pr22": {
+  "status": "pr22_suite_failing_pr31_ci_pending",
+  "pr22": {
     "url": "https://github.com/surendra2304/FRIDAY/pull/22",
     "head": "da9140df0a89b2831a13e193c15866753f74d466",
     "ci": {
       "id": 39673561389,
       "url": "https://github.com/surendra2304/FRIDAY/actions/runs/39673561389",
       "status": "failure",
-      "pytest": "2672 passed, 8 failed, 6 skipped, 23 deselected",
-      "lint": "passed",
-      "syntax": "passed",
-      "docker": "skipped"
-    },
-    "changed_commits": [
-      "1113ff8ac1696016b9b5762c66651f74dccba3a8",
-      "9f659c3edc3902d83968414204003a57a3d402d6",
-      "da9140df0a89b2831a13e193c15866753f74d466"
-    ],
-    "files": [
-      "tests/tools/test_ai_universe_client.py",
-      "pyproject.toml"
-    ]
+      "pytest": "2672 passed, 8 failed, 6 skipped, 23 deselected"
+    }
   },
-  "PR31": {
+  "pr31": {
     "url": "https://github.com/surendra2304/FRIDAY/pull/31",
     "branch": "fix/no-invented-consensus-confidence-20261022",
-    "head": "727721652ea8f12daa0fe1083a86aff41097be95",
+    "head": "358960a1258fbca896452459487581f1239fa138",
     "files": [
       "src/friday/agent/router.py",
       "tests/test_no_invented_telemetry_defaults.py"
     ],
-    "ci": {
+    "previous_ci": {
       "id": 39674191089,
-      "url": "https://github.com/surendra2304/FRIDAY/actions/runs/39674191089",
+      "status": "failure",
+      "reason": "Ruff import order"
+    },
+    "current_ci": {
+      "id": 39674371123,
+      "url": "https://github.com/surendra2304/FRIDAY/actions/runs/39674371123",
       "status": "in_progress_at_last_check"
     }
   },
-  "failed_tests": [
-    "tests/test_autonomous_think_loop.py::test_agent_inner_monologue_scratchpad_logged_and_stripped",
-    "tests/test_futuristic_fast_paths.py::test_set_volume_absolute_and_clamp",
-    "tests/test_multiturn_memora_friday.py::test_windows_friday_gmail_and_whatsapp_directives",
-    "tests/test_no_invented_telemetry_defaults.py::test_no_telemetry_reading_is_filled_with_a_plausible_literal",
-    "tests/test_real_usage_battery.py::test_the_agent_remembers_and_recalls_a_fact",
-    "tests/test_voice_agent_integration.py::test_bidirectional_voice_save_text_retrieve[asyncio]",
-    "tests/test_voice_instant_routing.py::TestClassifyInstantCommand::test_conversation_does_not_route_locally",
-    "tests/test_windows_friday_controller.py::TestWindowsFridayController::test_rich_contact_lifecycle_lookup_and_merge"
-  ],
   "local_tests_run": false,
-  "blockers": [
-    "Laptop tool HTTP 404"
-  ],
-  "active_duration_seconds": "not_measured",
-  "next": "Poll PR31 CI; then choose one voice routing or volume fast-path failure and fix with focused test."
+  "merged": false,
+  "active_duration_seconds": "not measured",
+  "next": "Poll PR31 CI, then fix one focused behavior regression from PR22."
 }
