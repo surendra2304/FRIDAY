@@ -1,49 +1,22 @@
 {
   "task": 1,
-  "updated_at": "2026-10-21",
-  "status": "partial",
+  "repository": "FRIDAY",
+  "updated_at": "2026-10-22",
+  "status": "partial_ci_pending",
+  "branch": "automation/friday-universe-task-1",
+  "commit": "1113ff8ac1696016b9b5762c66651f74dccba3a8",
+  "files_changed": [
+    "tests/tools/test_ai_universe_client.py"
+  ],
+  "change": "Four regression cases: schema-invalid JSON object from ask/debate with/without active event loop; verify ToolResult error and AsyncClient closure.",
+  "ci_run": 39672146283,
+  "ci_url": "https://github.com/surendra2304/FRIDAY/actions/runs/39672146283",
+  "ci_status": "in_progress_at_last_check",
   "local_tests_run": false,
   "merged": false,
-  "FRIDAY": {
-    "branch": "fix/verification-runner-safety-20261021",
-    "commit": "9fe96c1d486d3e48cecdbd6715e2b6dd62259f71",
-    "ci_run": 39556916093,
-    "ci_url": "https://github.com/surendra2304/FRIDAY/actions/runs/39556916093",
-    "ci_status": "success",
-    "pytest": "2611 passed, 6 skipped, 23 deselected",
-    "lint": "passed",
-    "docker_build": "passed"
-  },
-  "Inference": {
-    "branch": "fix/bound-forced-agent-selection-20261021",
-    "commit": "4cd82fdb575edc7451076f7f11a85dbdcfe2035e",
-    "ci_run": 39557358134,
-    "ci_url": "https://github.com/surendra2304/Inference/actions/runs/39557358134",
-    "ci_status": "success",
-    "checks": [
-      "ruff",
-      "pytest",
-      "docker build"
-    ]
-  },
-  "Memora": {
-    "branch": "automation/friday-universe-task-1",
-    "commit": "da7ef4fe514e8a0f511572dc917bfa59fdcd1250",
-    "previous_ci_run": 39548261200,
-    "previous_ci_status": "failure",
-    "new_head_ci": "not_visible"
-  },
-  "Memora_idempotency": {
-    "branch": "fix/task1-idempotent-task-write-20261021",
-    "commit": "4f0fac92082eac989b3f8e2f6eee02077a1d2372",
-    "test": "tests/test_task_idempotency.py",
-    "pr_created": false,
-    "tests_verified": false
-  },
   "blockers": [
-    "Laptop MCP HTTP 404",
-    "Remote command execution unavailable",
-    "Memora PR creation blocked"
+    "Laptop execution endpoint returned HTTP 404"
   ],
-  "next": "Obtain Memora CI evidence and review idempotency branch."
+  "active_duration_seconds": "not measured",
+  "next": "Poll CI, then add schema-invalid list-field regression or fix CI failure."
 }
