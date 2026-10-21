@@ -1,11 +1,9 @@
-# Task 1 next-run
+# Task 1 next-run instructions — FRIDAY (2026-10-22)
 
-FRIDAY PR #25 is verified at head 9fe96c1d486d3e48cecdbd6715e2b6dd62259f71: CI run 39556916093 passed lint, syntax, pytest (2611 passed, 6 skipped, 23 deselected), and Docker build. Inference PR #18 is verified at head 4cd82fdb575edc7451076f7f11a85dbdcfe2035e: run 39557358134 passed Ruff, pytest, and Docker build.
+Read `.github/friday-continuation/task-1-checkpoint.md` first.
 
-Next priority is Memora:
-1. PR #7 (https://github.com/surendra2304/Memora/pull/7), head da7ef4fe514e8a0f511572dc917bfa59fdcd1250: no CI run for the updated head is visible. The previous run failed two caplog assertions; the new commit uses direct warning-call capture.
-2. PR #7 is not mergeable: its branch is 5 commits ahead and 9 behind main with 16 changed files. Review divergence and scope before any merge; do not merge blindly.
-3. Memora branch fix/task1-idempotent-task-write-20261021, head 4f0fac92082eac989b3f8e2f6eee02077a1d2372, contains the task endpoint idempotency change and tests/test_task_idempotency.py. Open a focused PR if permitted, then verify replay returns the original memory ID and one record.
-4. Update all task-state files with exact commit SHAs and verified test/CI results.
-
-Laptop MCP returned HTTP 404; remote command execution and Memora PR creation were blocked by connector checks. Continue independent GitHub work where possible.
+1. Check CI run https://github.com/surendra2304/FRIDAY/actions/runs/39672146283 for commit `1113ff8ac1696016b9b5762c66651f74dccba3a8`; it was in progress when last inspected. If failed, inspect job logs and fix root cause.
+2. This run committed `tests/tools/test_ai_universe_client.py` at `1113ff8ac1696016b9b5762c66651f74dccba3a8`: four schema-invalid JSON object cases, ask/debate × normal/active-loop invocation, asserting ToolResult error and AsyncClient closure.
+3. Next code change after CI settles: test wrong-type `key_evidence` fields for ask/debate and both invocation modes; run focused pytest/Ruff if a runner becomes available.
+4. Preserve unrelated `ui/package-lock.json`. Existing PRs #25, #23, #22 remain open; inspect current heads/CI before creating any PR.
+5. No local tests ran due laptop MCP HTTP 404. Update all handoff files only with exact evidence; don't claim unmeasured active minutes.
