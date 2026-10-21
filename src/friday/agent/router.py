@@ -174,7 +174,6 @@ class SafetyGateViolationError(SecurityError):
     pass
 
 
-@dataclass(frozen=True)
 def _normalize_confidence(value: Any) -> float:
     """Normalize provider confidence without treating missing or invalid data as certainty."""
     try:
@@ -186,6 +185,7 @@ def _normalize_confidence(value: Any) -> float:
     return confidence
 
 
+@dataclass(frozen=True)
 class ConsensusVote:
     """Individual vote and response telemetry from an agent during consensus routing."""
     agent: str
