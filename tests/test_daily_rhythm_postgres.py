@@ -29,11 +29,53 @@ def test_get_postgres_dsn_resolution():
         dsn = get_postgres_dsn()
         assert dsn.startswith("postgresql+asyncpg://")
 
-    with patch.dict(os.environ, {"POSTGRES_PASSWORD": "custom_password", "POSTGRES_HOST": "db.mesh"}):
+    with patch.dict(os.environ, {"DATABASE_URL": "", "FRIDAY_DATABASE_URL": "", "POSTGRES_PASSWORD": "custom_password", "POSTGRES_HOST": "db.mesh"}):
         dsn_env = get_postgres_dsn()
         assert "custom_password" in dsn_env
         assert "db.mesh" in dsn_env
         assert "friday_user" in dsn_env
+
+
+def test_daily_rhythm_waking_schedule_and_phases():
+    """Verify Surendra's active waking window (09:00 to 00:00 midnight) and phase transitions."""
+    manager = DailyRhythmManager()
+    assert manager.wake_hour == 9
+    assert manager.sleep_hour == 0
+
+    # Test awake state across hours
+    from datetime import datetime
+    dt_morning = datetime(2026, 10, 21, 9, 30)
+    assert manager.is_user_awake(dt_morning) is True
+    assert manager.get_rhythm_phase(dt_morning) == "morning_focus"
+    assert manager.should_suppress_ambient_noise(dt_morning) is False
+
+    dt_afternoon = datetime(2026, 10, 21, 14, 0)
+    assert manager.is_user_awake(dt_afternoon) is True
+    assert manager.get_rhythm_phase(dt_afternoon) == "afternoon_execution"
+
+    dt_evening = datetime(2026, 10, 21, 19, 0)
+    assert manager.is_user_awake(dt_evening) is True
+    assert manager.get_rhythm_phase(dt_evening) == "evening_momentum"
+
+    dt_night = datetime(2026, 10, 21, 23, 15)
+    assert manager.is_user_awake(dt_night) is True
+    assert manager.get_rhythm_phase(dt_night) == "night_reflection"
+
+    # Deep rest hours (00:00 to 08:59)
+    dt_sleep_early = datetime(2026, 10, 21, 2, 0)
+    assert manager.is_user_awake(dt_sleep_early) is False
+    assert manager.get_rhythm_phase(dt_sleep_early) == "deep_rest"
+    assert manager.should_suppress_ambient_noise(dt_sleep_early) is True
+
+    dt_sleep_late = datetime(2026, 10, 21, 8, 45)
+    assert manager.is_user_awake(dt_sleep_late) is False
+    assert manager.get_rhythm_phase(dt_sleep_late) == "deep_rest"
+    assert manager.should_suppress_ambient_noise(dt_sleep_late) is True
+
+    summary = manager.get_schedule_summary(dt_morning)
+    assert summary["wake_time"] == "09:00"
+    assert summary["sleep_time"] == "00:00"
+    assert summary["is_awake"] is True
 
 
 @pytest.mark.asyncio

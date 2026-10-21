@@ -111,6 +111,11 @@ class DailyRhythmManager:
         self._last_postgres_failure: float = 0.0
         self._postgres_retry_cooldown: float = 60.0
 
+        # Surendra's Operating Rhythm: Awake 09:00 AM to 00:00 Midnight
+        self.wake_hour: int = 9
+        self.sleep_hour: int = 0
+        self.user_name: str = "Surendra"
+
     def _init_sqlite(self) -> None:
         try:
             with sqlite3.connect(self.db_path) as conn:
@@ -476,8 +481,53 @@ class DailyRhythmManager:
         logger.info("Completed daily rhythm periodic task sweep: %s", sweep_result)
         return sweep_result
 
+    def is_user_awake(self, dt: Optional[datetime] = None) -> bool:
+        """Check if user is currently in their active waking window (09:00 to 00:00 midnight)."""
+        check_dt = dt or datetime.now()
+        hour = check_dt.hour
+        # When sleep_hour is 0 (midnight), active awake window is 09:00 <= hour <= 23:59:59
+        if self.sleep_hour == 0 or self.sleep_hour == 24:
+            return hour >= self.wake_hour
+        if self.wake_hour < self.sleep_hour:
+            return self.wake_hour <= hour < self.sleep_hour
+        return hour >= self.wake_hour or hour < self.sleep_hour
+
+    def get_rhythm_phase(self, dt: Optional[datetime] = None) -> str:
+        """Categorize current time into user's daily cognitive rhythm phase."""
+        check_dt = dt or datetime.now()
+        hour = check_dt.hour
+        if not self.is_user_awake(check_dt):
+            return "deep_rest"  # 00:00 - 08:59:59
+        if 9 <= hour < 12:
+            return "morning_focus"  # 09:00 - 11:59:59
+        if 12 <= hour < 17:
+            return "afternoon_execution"  # 12:00 - 16:59:59
+        if 17 <= hour < 21:
+            return "evening_momentum"  # 17:00 - 20:59:59
+        return "night_reflection"  # 21:00 - 23:59:59
+
+    def should_suppress_ambient_noise(self, dt: Optional[datetime] = None) -> bool:
+        """Return True during deep rest hours to silence unprompted ambient chimes."""
+        return not self.is_user_awake(dt)
+
+    def get_schedule_summary(self, dt: Optional[datetime] = None) -> dict[str, Any]:
+        """Return diagnostic metrics of user's active rhythm schedule."""
+        check_dt = dt or datetime.now()
+        awake = self.is_user_awake(check_dt)
+        phase = self.get_rhythm_phase(check_dt)
+        return {
+            "user": self.user_name,
+            "wake_time": f"{self.wake_hour:02d}:00",
+            "sleep_time": f"{self.sleep_hour:02d}:00",
+            "is_awake": awake,
+            "current_phase": phase,
+            "ambient_suppressed": not awake,
+            "current_hour": check_dt.hour,
+            "current_time": check_dt.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+
     def get_morning_briefing(self) -> str:
-        """Generate morning focus prompt."""
+        """Generate morning focus prompt tailored to Surendra's 09:00 start."""
         goal = self.get_active_goal()
         if goal:
             return (
@@ -490,7 +540,7 @@ class DailyRhythmManager:
         )
 
     def get_evening_review(self) -> str:
-        """Generate evening review and accountability check."""
+        """Generate evening/night review and accountability check before midnight."""
         goal = self.get_active_goal()
         if not goal:
             return "Evening review: No primary goal was registered for today."
