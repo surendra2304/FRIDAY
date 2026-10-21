@@ -908,3 +908,53 @@ def test_status_tool_recovers_from_non_object_status_json_inside_active_event_lo
     assert requests == ["/v1/friday/status", "/v1/friday/agents"]
     assert len(clients) == 2
     assert all(client.is_closed for client in clients)
+
+
+
+@pytest.mark.parametrize("mode, path", [("ask", "/v1/friday/ask"), ("debate", "/v1/friday/debate")])
+@pytest.mark.parametrize("inside_active_loop", [False, True])
+def test_ai_universe_tool_reports_schema_invalid_json_and_closes_client(
+    mode, path, inside_active_loop
+):
+    """A JSON object with invalid field types is a tool error, not a successful answer."""
+    clients: list[httpx.AsyncClient] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == path
+        # Confidence is a string, while the response contract requires a number.
+        return httpx.Response(
+            200,
+            json={
+                "answer": "This payload violates the response schema.",
+                "confidence": "not-a-number",
+                "unresolved_disagreements": [],
+                "key_evidence": [],
+                "run_id": "run_invalid_schema",
+            },
+        )
+
+    async_client_type = httpx.AsyncClient
+
+    def create_client(*args, **kwargs) -> httpx.AsyncClient:
+        client = async_client_type(transport=httpx.MockTransport(handler), **kwargs)
+        clients.append(client)
+        return client
+
+    tool = AIUniverseTool(client=AIUniverseClient(base_url="http://inference.test"))
+
+    def invoke():
+        return tool.execute(question="A question", mode=mode)
+
+    with mock.patch("httpx.AsyncClient", side_effect=create_client):
+        if inside_active_loop:
+            async def invoke_inside_loop():
+                return invoke()
+
+            result = asyncio.run(invoke_inside_loop())
+        else:
+            result = invoke()
+
+    assert result.is_error
+    assert "confidence" in result.content
+    assert len(clients) == 1
+    assert clients[0].is_closed
