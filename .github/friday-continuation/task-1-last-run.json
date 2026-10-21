@@ -2,72 +2,58 @@
   "task": 1,
   "repository": "FRIDAY",
   "updated_at": "2026-10-22",
-  "status": "ci_backlog_found_schema_regression_committed",
-  "branch": "automation/friday-universe-task-1",
-  "commits": [
-    {
-      "sha": "1113ff8ac1696016b9b5762c66651f74dccba3a8",
-      "files": [
-        "tests/tools/test_ai_universe_client.py"
-      ],
-      "summary": "Four invalid-confidence cases across ask/debate and loop modes."
-    },
-    {
-      "sha": "9f659c3edc3902d83968414204003a57a3d402d6",
-      "files": [
-        "pyproject.toml"
-      ],
-      "summary": "Add respx dev dependency after collection failure."
-    },
-    {
-      "sha": "da9140df0a89b2831a13e193c15866753f74d466",
-      "files": [
-        "tests/tools/test_ai_universe_client.py"
-      ],
-      "summary": "Four invalid-key_evidence cases across ask/debate and loop modes."
-    }
-  ],
-  "ci": [
-    {
-      "id": 39672146283,
-      "sha": "1113ff8ac1696016b9b5762c66651f74dccba3a8",
-      "status": "failure",
-      "summary": "Missing respx at test collection."
-    },
-    {
-      "id": 39672647603,
-      "sha": "9f659c3edc3902d83968414204003a57a3d402d6",
-      "status": "failure",
-      "url": "https://github.com/surendra2304/FRIDAY/actions/runs/39672647603",
-      "summary": "2,668 passed, 8 failed, 6 skipped, 23 deselected; lint and syntax passed; Docker skipped.",
-      "failed_tests": [
-        "tests/test_autonomous_think_loop.py::test_agent_inner_monologue_scratchpad_logged_and_stripped",
-        "tests/test_futuristic_fast_paths.py::test_set_volume_absolute_and_clamp",
-        "tests/test_multiturn_memora_friday.py::test_windows_friday_gmail_and_whatsapp_directives",
-        "tests/test_no_invented_telemetry_defaults.py::test_no_telemetry_reading_is_filled_with_a_plausible_literal",
-        "tests/test_real_usage_battery.py::test_the_agent_remembers_and_recalls_a_fact",
-        "tests/test_voice_agent_integration.py::test_bidirectional_voice_save_text_retrieve[asyncio]",
-        "tests/test_voice_instant_routing.py::TestClassifyInstantCommand::test_conversation_does_not_route_locally",
-        "tests/test_windows_friday_controller.py::TestWindowsFridayController::test_rich_contact_lifecycle_lookup_and_merge"
-      ]
-    },
-    {
-      "id": 39673561389,
-      "sha": "da9140df0a89b2831a13e193c15866753f74d466",
-      "status": "queued",
-      "url": "https://github.com/surendra2304/FRIDAY/actions/runs/39673561389"
-    }
-  ],
-  "existing_pr": {
-    "number": 22,
-    "url": "https://github.com/surendra2304/FRIDAY/pull/22",
-    "state": "open"
-  },
-  "local_tests_run": false,
+  "status": "pr22_suite_failing_pr31_ci_running",
   "merged": false,
-  "blockers": [
-    "Laptop MCP HTTP 404"
+  "existing_pr22": {
+    "url": "https://github.com/surendra2304/FRIDAY/pull/22",
+    "head": "da9140df0a89b2831a13e193c15866753f74d466",
+    "ci": {
+      "id": 39673561389,
+      "url": "https://github.com/surendra2304/FRIDAY/actions/runs/39673561389",
+      "status": "failure",
+      "pytest": "2672 passed, 8 failed, 6 skipped, 23 deselected",
+      "lint": "passed",
+      "syntax": "passed",
+      "docker": "skipped"
+    },
+    "changed_commits": [
+      "1113ff8ac1696016b9b5762c66651f74dccba3a8",
+      "9f659c3edc3902d83968414204003a57a3d402d6",
+      "da9140df0a89b2831a13e193c15866753f74d466"
+    ],
+    "files": [
+      "tests/tools/test_ai_universe_client.py",
+      "pyproject.toml"
+    ]
+  },
+  "PR31": {
+    "url": "https://github.com/surendra2304/FRIDAY/pull/31",
+    "branch": "fix/no-invented-consensus-confidence-20261022",
+    "head": "727721652ea8f12daa0fe1083a86aff41097be95",
+    "files": [
+      "src/friday/agent/router.py",
+      "tests/test_no_invented_telemetry_defaults.py"
+    ],
+    "ci": {
+      "id": 39674191089,
+      "url": "https://github.com/surendra2304/FRIDAY/actions/runs/39674191089",
+      "status": "in_progress_at_last_check"
+    }
+  },
+  "failed_tests": [
+    "tests/test_autonomous_think_loop.py::test_agent_inner_monologue_scratchpad_logged_and_stripped",
+    "tests/test_futuristic_fast_paths.py::test_set_volume_absolute_and_clamp",
+    "tests/test_multiturn_memora_friday.py::test_windows_friday_gmail_and_whatsapp_directives",
+    "tests/test_no_invented_telemetry_defaults.py::test_no_telemetry_reading_is_filled_with_a_plausible_literal",
+    "tests/test_real_usage_battery.py::test_the_agent_remembers_and_recalls_a_fact",
+    "tests/test_voice_agent_integration.py::test_bidirectional_voice_save_text_retrieve[asyncio]",
+    "tests/test_voice_instant_routing.py::TestClassifyInstantCommand::test_conversation_does_not_route_locally",
+    "tests/test_windows_friday_controller.py::TestWindowsFridayController::test_rich_contact_lifecycle_lookup_and_merge"
   ],
-  "active_duration_seconds": "not measured",
-  "next": "Poll 39673561389; fix .get('confidence', 1.0) with unknown semantics, then isolate voice/contact failures."
+  "local_tests_run": false,
+  "blockers": [
+    "Laptop tool HTTP 404"
+  ],
+  "active_duration_seconds": "not_measured",
+  "next": "Poll PR31 CI; then choose one voice routing or volume fast-path failure and fix with focused test."
 }
