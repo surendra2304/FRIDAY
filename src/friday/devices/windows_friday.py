@@ -1514,13 +1514,14 @@ class WindowsFridayController:
             return True
         if re.search(r"^contact\s+(?:details\s+(?:of|for)\s+)?[a-zA-Z\s]+$", cmd):
             return True
-        # Match contact-management intents, not generic "save a note about ...".
-        # Keep the person/name portion explicit so prose that starts with "save"
-        # cannot be mistaken for a contact command.
+        # Contact writes need an explicit contact noun. Without this guard,
+        # ordinary requests like "save a note about deployment" are incorrectly
+        # diverted to the contact fast path and never reach conversational note
+        # handling. Contact details spoken as "Priya's phone is ..." are handled
+        # by the dedicated phone/email patterns below.
         if re.search(
-            r"^(?:save|add|remember|set|update)\s+(?:contact\s+)?"
-            r"[a-zA-Z][a-zA-Z.'-]*(?:\s+[a-zA-Z][a-zA-Z.'-]*){0,4}"
-            r"(?:\s+(?:phone|number|mobile|whatsapp|email)\b|$)",
+            r"^(?:save|add|remember|set|update)\s+contact\s+"
+            r"[a-zA-Z][a-zA-Z.'-]*(?:\s+[a-zA-Z][a-zA-Z.'-]*){0,4}$",
             cmd,
         ):
             return True
