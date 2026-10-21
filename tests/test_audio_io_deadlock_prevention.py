@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import time
-from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
+from friday.voice import audio_io
 from friday.voice.audio_io import (
     MicrophoneStream,
     MockMicrophoneStream,
@@ -18,27 +20,33 @@ from friday.voice.audio_io import (
 from friday.voice.gemini_provider import GeminiVoiceInput, GeminiVoiceOutput
 
 
+@pytest.fixture()
+def fake_sounddevice(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
+    """Provide deterministic Raw*Stream constructors without PortAudio hardware."""
+    backend = SimpleNamespace(
+        RawInputStream=MagicMock(),
+        RawOutputStream=MagicMock(),
+    )
+    monkeypatch.setattr(audio_io, "sd", backend)
+    return backend
+
+
 @pytest.mark.asyncio
-async def test_microphone_stream_stop_unblocks_waiting_reader():
+async def test_microphone_stream_stop_unblocks_waiting_reader(fake_sounddevice: SimpleNamespace):
     """Verify that stopping MicrophoneStream unblocks read_chunk immediately with b''."""
-    with patch("friday.voice.audio_io.sd.RawInputStream") as mock_input_stream:
-        mock_inst = MagicMock()
-        mock_input_stream.return_value = mock_inst
+    fake_sounddevice.RawInputStream.return_value = MagicMock()
+    mic = MicrophoneStream()
+    loop = asyncio.get_running_loop()
+    mic.start(loop=loop)
 
-        mic = MicrophoneStream()
-        loop = asyncio.get_running_loop()
-        mic.start(loop=loop)
+    read_task = asyncio.create_task(mic.read_chunk())
+    await asyncio.sleep(0.02)
+    assert not read_task.done()
 
-        # Launch read_chunk in background task (queue is initially empty)
-        read_task = asyncio.create_task(mic.read_chunk())
-        await asyncio.sleep(0.02)
-        assert not read_task.done()
-
-        # Call stop_async - must unblock read_task immediately
-        await mic.stop_async()
-        result = await asyncio.wait_for(read_task, timeout=1.0)
-        assert result == b""
-        assert not mic.is_active
+    await mic.stop_async()
+    result = await asyncio.wait_for(read_task, timeout=1.0)
+    assert result == b""
+    assert not mic.is_active
 
 
 @pytest.mark.asyncio
@@ -88,22 +96,24 @@ def test_close_stream_safely_handles_exceptions_and_none():
 
 
 @pytest.mark.asyncio
-async def test_gemini_voice_adapters_async_lifecycle():
+async def test_gemini_voice_adapters_async_lifecycle(fake_sounddevice: SimpleNamespace):
     """Verify GeminiVoiceInput and GeminiVoiceOutput async methods."""
-    with patch("friday.voice.audio_io.sd.RawInputStream"), patch("friday.voice.audio_io.sd.RawOutputStream"):
-        v_in = GeminiVoiceInput(sample_rate=16000)
-        loop = asyncio.get_running_loop()
-        v_in.start(loop=loop)
-        assert v_in.stream._loop is loop
+    fake_sounddevice.RawInputStream.return_value = MagicMock()
+    fake_sounddevice.RawOutputStream.return_value = MagicMock()
 
-        await v_in.stop_async()
-        assert not v_in.stream.is_active
+    v_in = GeminiVoiceInput(sample_rate=16000)
+    loop = asyncio.get_running_loop()
+    v_in.start(loop=loop)
+    assert v_in.stream._loop is loop
 
-        v_out = GeminiVoiceOutput(sample_rate=24000)
-        v_out.play(b"\x00" * 100)
-        await v_out.drain_async(timeout_seconds=0.1)
-        await v_out.stop_async()
-        assert not v_out.stream.is_active
+    await v_in.stop_async()
+    assert not v_in.stream.is_active
+
+    v_out = GeminiVoiceOutput(sample_rate=24000)
+    v_out.play(b"\x00" * 100)
+    await v_out.drain_async(timeout_seconds=0.1)
+    await v_out.stop_async()
+    assert not v_out.stream.is_active
 
 
 @pytest.mark.asyncio
