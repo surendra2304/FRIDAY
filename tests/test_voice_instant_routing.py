@@ -71,6 +71,29 @@ class TestClassifyInstantCommand:
             assert agent.classify_instant_command(phrase) is None, phrase
 
 
+def test_note_requests_are_not_contact_directives():
+    from friday.devices.windows_friday import windows_friday
+
+    for phrase in (
+        "save a note about deployment",
+        "save a note that deployment is Friday",
+        "remember a note about the release",
+    ):
+        assert not windows_friday.is_contact_directive(phrase)
+        assert _make_agent().classify_instant_command(phrase) is None
+
+
+def test_explicit_contact_commands_remain_contact_directives():
+    from friday.devices.windows_friday import windows_friday
+
+    for phrase in (
+        "save contact Priya",
+        "add contact Meera",
+        "remember Rahul",
+    ):
+        assert windows_friday.is_contact_directive(phrase)
+
+
 class _MsgTx:
     def __init__(self, text):
         self.text = text
