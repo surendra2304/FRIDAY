@@ -1521,7 +1521,8 @@ class WindowsFridayController:
         # by the dedicated phone/email patterns below.
         if re.search(
             r"^(?:save|add|remember|set|update)\s+contact\s+"
-            r"[a-zA-Z][a-zA-Z.'-]*(?:\s+[a-zA-Z][a-zA-Z.'-]*){0,4}$",
+            r"[a-zA-Z][a-zA-Z.'-]*(?:\s+[a-zA-Z][a-zA-Z.'-]*){0,4}"
+            r"(?:\s+.+)?$",
             cmd,
         ):
             return True
