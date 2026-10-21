@@ -96,13 +96,13 @@ def test_mock_universe_allowed_in_test_mode(monkeypatch):
 # ==============================================================================
 
 def test_service_registry_standard_variables(monkeypatch):
-    """Verify ServiceRegistry configures all 8 peer services with standardized variables."""
+    """Verify ServiceRegistry configures all 9 peer services with standardized variables."""
     monkeypatch.setenv("FRIDAY_ENV", "development")
     monkeypatch.setenv("MOCK_UNIVERSE_ENABLED", "false")
 
     reg = ServiceRegistry(env="development")
-    assert len(reg.services) == 8
-    expected_names = {"inference", "memora", "stratex", "intelx", "futuris", "cortex", "forge", "sentinel"}
+    assert len(reg.services) == 9
+    expected_names = {"inference", "memora", "stratex", "intelx", "futuris", "cortex", "forge", "sentinel", "vyralx"}
     assert set(reg.services.keys()) == expected_names
 
     inference = reg.get("inference")
