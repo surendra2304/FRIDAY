@@ -65,3 +65,17 @@ Add deterministic ask/debate regressions for HTTP 200 JSON objects that fail `AI
 - Coding passes: 20
 - Changed source paths: 5
 - Failures: none
+
+
+## Runner-enforced checkpoint (2026-10-21T00:47:46Z)
+
+Pass 1 ended: failed with exit code 1. The coding engine did not revise this checkpoint; the next pass must inspect the source diff and test output.
+
+
+## Scheduled run summary (2026-10-21T00:47:46Z)
+
+- Result: failed
+- Active coding seconds: 3
+- Coding passes: 1
+- Changed source paths: 6
+- Failures: Pass 1 failed with exit 1. See log pass-1.log.
