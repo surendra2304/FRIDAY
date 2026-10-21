@@ -87,7 +87,7 @@ def test_synthesize_requires_credentials_only_for_nonempty_text(monkeypatch):
     with pytest.raises(VoiceError, match="API key is required"):
         output.synthesize("Speak")
 
-def make_wav(frames=b"\\x01\\x00\\x02\\x00", sample_rate=24000, channels=1, sample_width=2):
+def make_wav(frames=b"\x01\x00\x02\x00", sample_rate=24000, channels=1, sample_width=2):
     buffer = io.BytesIO()
     with wave.open(buffer, "wb") as wav_file:
         wav_file.setnchannels(channels)
@@ -103,7 +103,7 @@ def test_synthesize_unwraps_wav_container_to_raw_pcm():
     client.models.generate_content.return_value = response_with_audio(wav_data, "audio/wav")
     output = GeminiVoiceOutput(api_key="test-key", client=client)
 
-    assert output.synthesize("Speak") == b"\\x01\\x00\\x02\\x00"
+    assert output.synthesize("Speak") == b"\x01\x00\x02\x00"
 
 
 def test_synthesize_rejects_wav_sample_rate_mismatch():
