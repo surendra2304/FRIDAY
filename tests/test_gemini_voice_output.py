@@ -1,4 +1,6 @@
 """Regression tests for Gemini TTS output parsing and failure behavior."""
+import io
+import wave
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -30,7 +32,7 @@ def test_synthesize_returns_audio_from_genai_response():
     assert audio == b"\x01\x00\x02\x00"
     client.models.generate_content.assert_called_once()
     kwargs = client.models.generate_content.call_args.kwargs
-    assert kwargs["model"] == "gemini-2.5-flash-preview-tts"
+    assert kwargs["model"] == "gemini-3.8-flash-tts"
     assert kwargs["contents"] == "Hello, FRIDAY."
     assert kwargs["config"].response_modalities == ["AUDIO"]
 
@@ -79,8 +81,44 @@ def test_synthesize_requires_credentials_only_for_nonempty_text(monkeypatch):
     monkeypatch.setattr(
         provider_module,
         "get_settings",
-        lambda: SimpleNamespace(gemini_api_key=None, llm_api_key=None, voice_tts_model="gemini-2.5-flash-preview-tts", voice_name="Kore"),
+        lambda: SimpleNamespace(gemini_api_key=None, llm_api_key=None, voice_tts_model="gemini-3.8-flash-tts", voice_name="Kore"),
     )
     output = GeminiVoiceOutput(api_key=None, client=None)
     with pytest.raises(VoiceError, match="API key is required"):
+        output.synthesize("Speak")
+
+def make_wav(frames=b"\\x01\\x00\\x02\\x00", sample_rate=24000, channels=1, sample_width=2):
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav_file:
+        wav_file.setnchannels(channels)
+        wav_file.setsampwidth(sample_width)
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(frames)
+    return buffer.getvalue()
+
+
+def test_synthesize_unwraps_wav_container_to_raw_pcm():
+    client = MagicMock()
+    wav_data = make_wav()
+    client.models.generate_content.return_value = response_with_audio(wav_data, "audio/wav")
+    output = GeminiVoiceOutput(api_key="test-key", client=client)
+
+    assert output.synthesize("Speak") == b"\\x01\\x00\\x02\\x00"
+
+
+def test_synthesize_rejects_wav_sample_rate_mismatch():
+    client = MagicMock()
+    client.models.generate_content.return_value = response_with_audio(make_wav(sample_rate=16000), "audio/wav")
+    output = GeminiVoiceOutput(api_key="test-key", client=client, sample_rate=24000)
+
+    with pytest.raises(VoiceError, match="does not match"):
+        output.synthesize("Speak")
+
+
+def test_synthesize_rejects_stereo_wav():
+    client = MagicMock()
+    client.models.generate_content.return_value = response_with_audio(make_wav(channels=2), "audio/wav")
+    output = GeminiVoiceOutput(api_key="test-key", client=client)
+
+    with pytest.raises(VoiceError, match="mono 16-bit PCM"):
         output.synthesize("Speak")
