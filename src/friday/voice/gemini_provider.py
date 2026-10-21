@@ -5,6 +5,8 @@ Provides full-duplex Gemini Live streaming and separate one-shot speech synthesi
 from __future__ import annotations
 
 import asyncio
+import io
+import wave
 from typing import Any
 
 from google import genai
@@ -60,7 +62,7 @@ class GeminiVoiceOutput(VoiceOutput):
         settings = get_settings()
         self.sample_rate = sample_rate
         self.api_key = api_key or settings.gemini_api_key or settings.llm_api_key
-        self.model = model or getattr(settings, "voice_tts_model", "gemini-2.5-flash-preview-tts")
+        self.model = model or getattr(settings, "voice_tts_model", "gemini-3.8-flash-tts")
         self.voice_name = voice_name or getattr(settings, "voice_name", "Kore")
         self._client = client
         self.stream = SpeakerStream(sample_rate=sample_rate)
@@ -74,8 +76,8 @@ class GeminiVoiceOutput(VoiceOutput):
         return self._client
 
     @staticmethod
-    def _extract_audio(response: Any) -> bytes:
-        """Return the first audio inline payload, ignoring text and non-audio parts."""
+    def _extract_audio(response: Any) -> tuple[bytes, str]:
+        """Return the first audio inline payload and its MIME type."""
         for candidate in (getattr(response, "candidates", None) or []):
             content = getattr(candidate, "content", None)
             for part in (getattr(content, "parts", None) or []):
@@ -87,10 +89,10 @@ class GeminiVoiceOutput(VoiceOutput):
                 if not data or (mime_type and not mime_type.lower().startswith("audio/")):
                     continue
                 if isinstance(data, bytes):
-                    return data
+                    return data, mime_type.lower()
                 if isinstance(data, bytearray):
-                    return bytes(data)
-        return b""
+                    return bytes(data), mime_type.lower()
+        return b"", ""
 
     def synthesize(self, text: str) -> bytes:
         """Synthesize speech; empty input is a no-op and provider failures are explicit."""
@@ -113,9 +115,24 @@ class GeminiVoiceOutput(VoiceOutput):
                 contents=text.strip(),
                 config=config,
             )
-            audio = self._extract_audio(response)
+            audio, mime_type = self._extract_audio(response)
             if not audio:
                 raise VoiceError("Gemini returned no audio payload for speech synthesis.")
+            # One-shot Generate Content TTS responses default to a WAV container.
+            # SpeakerStream consumes headerless PCM, so validate and unwrap WAV data.
+            if mime_type in {"audio/wav", "audio/x-wav"} or audio.startswith(b"RIFF"):
+                try:
+                    with wave.open(io.BytesIO(audio), "rb") as wav_file:
+                        if wav_file.getnchannels() != 1 or wav_file.getsampwidth() != 2:
+                            raise VoiceError("Gemini TTS audio must be mono 16-bit PCM.")
+                        if wav_file.getframerate() != self.sample_rate:
+                            raise VoiceError(
+                                f"Gemini TTS sample rate {wav_file.getframerate()}Hz does not match "
+                                f"speaker rate {self.sample_rate}Hz."
+                            )
+                        audio = wav_file.readframes(wav_file.getnframes())
+                except (wave.Error, EOFError) as exc:
+                    raise VoiceError("Gemini returned an invalid WAV audio payload.") from exc
             return audio
         except VoiceError:
             raise
