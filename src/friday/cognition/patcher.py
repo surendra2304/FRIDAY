@@ -157,7 +157,7 @@ def parse_pytest_output(output: str, repo_root: str | Path = ".") -> list[Failur
         if location and current is not None:
             candidate_path = location.group("file")
             if candidate_path.endswith(".py") and "test" not in Path(candidate_path).name:
-                current.source_file = candidate_path
+                current.source_file = candidate_path.replace("\\", "/")
                 current.source_line = int(location.group("line"))
             continue
 
