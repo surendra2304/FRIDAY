@@ -519,7 +519,7 @@ class Settings(BaseSettings):
         description="Prebuilt voice name for Gemini speech synthesis: the single female voice Kore",
     )
     voice_tts_model: str = Field(
-        default="gemini-2.5-flash-preview-tts",
+        default="gemini-3.8-flash-tts",
         description="Gemini model used for one-shot text-to-speech synthesis",
     )
     voice_playback_buffer_ms: int = Field(default=100, description="Playback buffer size in milliseconds for non‑blocking audio")
