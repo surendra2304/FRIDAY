@@ -108,3 +108,14 @@ def test_the_guard_would_catch_the_original_bugs():
     # And it must not fire on a zero default, which is a legitimate "nothing yet".
     zero_tree = ast.parse('x = payload.get("positions", [])')
     assert not any(isinstance(n, ast.Constant) and isinstance(n.value, float) for n in ast.walk(zero_tree))
+
+
+
+def test_consensus_confidence_normalization_never_invents_certainty():
+    from friday.agent.router import _normalize_confidence
+
+    assert _normalize_confidence(None) == 0.0
+    assert _normalize_confidence("not-a-number") == 0.0
+    assert _normalize_confidence(-0.2) == 0.0
+    assert _normalize_confidence(1.4) == 0.0
+    assert _normalize_confidence(0.8) == 0.8

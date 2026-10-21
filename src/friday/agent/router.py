@@ -175,6 +175,17 @@ class SafetyGateViolationError(SecurityError):
 
 
 @dataclass(frozen=True)
+def _normalize_confidence(value: Any) -> float:
+    """Normalize provider confidence without treating missing or invalid data as certainty."""
+    try:
+        confidence = float(value) if value is not None else 0.0
+    except (TypeError, ValueError):
+        return 0.0
+    if not 0.0 <= confidence <= 1.0:
+        return 0.0
+    return confidence
+
+
 class ConsensusVote:
     """Individual vote and response telemetry from an agent during consensus routing."""
     agent: str
@@ -679,7 +690,7 @@ class SpecialistRouter:
                     or raw.get("status")
                     or res.summary
                 ).strip()
-                confidence = float(raw.get("confidence") or 0.0)
+                confidence = _normalize_confidence(raw.get("confidence"))
                 return ConsensusVote(
                     agent=agent_id,
                     decision=decision,

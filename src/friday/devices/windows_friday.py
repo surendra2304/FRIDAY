@@ -1575,6 +1575,9 @@ class WindowsFridayController:
             cmd,
         ):
             return True
+        # A bare "Name is 9876543210" form is an explicit contact-phone directive.
+        if re.fullmatch(r"[a-z][a-z .'-]*\\s+is\\s+[+\\d\\s-]{10,16}", cmd):
+            return True
         return False
 
     def is_gmail_directive(self, command: str) -> bool:
