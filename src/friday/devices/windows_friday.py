@@ -677,6 +677,37 @@ class WindowsFridayController:
         os.makedirs(base, exist_ok=True)
         return os.path.join(base, "contacts.json")
 
+    @classmethod
+    def _deleted_contacts_file_path(cls) -> str:
+        """Path for tombstones that prevent stale Memora copies from resurrecting contacts."""
+        return os.path.join(os.path.dirname(cls._contacts_file_path()), "deleted_contacts.json")
+
+    @classmethod
+    def _is_deleted_contact(cls, name: str) -> bool:
+        try:
+            with open(cls._deleted_contacts_file_path(), "r", encoding="utf-8") as source:
+                names = json.load(source)
+            return name.strip().casefold() in {str(item).casefold() for item in names}
+        except (OSError, ValueError, TypeError):
+            return False
+
+    @classmethod
+    def _set_contact_deleted(cls, name: str, deleted: bool) -> None:
+        path = cls._deleted_contacts_file_path()
+        try:
+            with open(path, "r", encoding="utf-8") as source:
+                names = json.load(source)
+            if not isinstance(names, list):
+                names = []
+        except (OSError, ValueError, TypeError):
+            names = []
+        key = name.strip().casefold()
+        names = [str(item) for item in names if str(item).casefold() != key]
+        if deleted:
+            names.append(name.strip())
+        with open(path, "w", encoding="utf-8") as target:
+            json.dump(sorted(set(names), key=str.casefold), target, indent=2)
+
     def save_contact(
         self,
         name: str,
@@ -689,6 +720,10 @@ class WindowsFridayController:
         clean_name = name.strip().title()
         if not clean_name:
             return False, "Contact name cannot be empty."
+        try:
+            self._set_contact_deleted(clean_name, False)
+        except OSError as exc:
+            logger.warning("Could not clear contact deletion marker (%s).", type(exc).__name__)
 
         formatted_phone = ""
         if phone and phone.strip():
@@ -776,10 +811,12 @@ class WindowsFridayController:
         return True, f"Saved contact '{clean_name}'{summary_text}."
 
     def lookup_contact(self, name: str) -> dict[str, Any] | None:
-        """Find contact by name (exact or substring) across local contacts and Memora."""
+        """Find a non-deleted contact by name across local contacts and Memora."""
         if not name:
             return None
         clean = name.strip().lower()
+        if self._is_deleted_contact(clean):
+            return None
         contacts = self.get_all_contacts()
 
         # 1. Exact match in contacts.json
@@ -821,28 +858,31 @@ class WindowsFridayController:
             return {}
 
     def delete_contact(self, name: str) -> Tuple[bool, str]:
-        """Delete a contact from local storage."""
+        """Delete a contact and prevent stale Memora copies from restoring it."""
         clean_name = name.strip().lower()
         filepath = self._contacts_file_path()
         if not os.path.exists(filepath):
             return False, f"Contact '{name}' not found."
         try:
-            with open(filepath, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if clean_name in data:
-                del data[clean_name]
-                with open(filepath, "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=2)
-                return True, f"Removed contact '{name}'."
-            return False, f"Contact '{name}' not found."
-        except Exception as e:
-            return False, f"Failed to delete contact: {e}"
+            with open(filepath, "r", encoding="utf-8") as source:
+                data = json.load(source)
+            if clean_name not in data:
+                return False, f"Contact '{name}' not found."
+            del data[clean_name]
+            with open(filepath, "w", encoding="utf-8") as target:
+                json.dump(data, target, indent=2)
+            self._set_contact_deleted(clean_name, True)
+            return True, f"Removed contact '{name}'."
+        except Exception as exc:
+            return False, f"Failed to delete contact: {type(exc).__name__}"
 
     def _lookup_contact_phone(self, name: str) -> str | None:
         """Attempt to resolve a contact name to a phone number from local contacts or Memora."""
         if not name:
             return None
         clean_name = name.lower().strip()
+        if self._is_deleted_contact(clean_name):
+            return None
 
         # 1. Local contacts.json lookup (exact or fuzzy)
         contacts = self.get_all_contacts()
@@ -899,6 +939,8 @@ class WindowsFridayController:
         if not name:
             return None
         clean_name = name.lower().strip()
+        if self._is_deleted_contact(clean_name):
+            return None
 
         # 1. Local contacts.json lookup (exact or fuzzy)
         contacts = self.get_all_contacts()
@@ -1093,16 +1135,16 @@ class WindowsFridayController:
         """Set exact master volume percentage (0 to 100)."""
         target = max(0, min(100, percent))
         try:
-            from pycaw.pycaw import AudioUtilities
-            dev = AudioUtilities.GetSpeakers()
-            if dev and hasattr(dev, "EndpointVolume"):
-                vol = dev.EndpointVolume
-                vol.SetMasterVolumeLevelScalar(target / 100.0, None)
-                if target > 0 and vol.GetMute():
-                    vol.SetMute(0, None)
-                return True, f"Volume set to {target}%."
+            # Use the shared endpoint adapter for consistent behavior and testability.
+            from friday.tools.builtin.os_control import _get_endpoint_volume
+
+            vol = _get_endpoint_volume()
+            vol.SetMasterVolumeLevelScalar(target / 100.0, None)
+            if target > 0 and hasattr(vol, "GetMute") and vol.GetMute() and hasattr(vol, "SetMute"):
+                vol.SetMute(0, None)
+            return True, f"Volume set to {target}%."
         except Exception as e:
-            logger.debug(f"pycaw volume set failed: {e}")
+            logger.debug("Shared volume endpoint unavailable (%s).", type(e).__name__)
 
         # Fallback via key events: mute then step up
         self._send_key_event(VK_VOLUME_MUTE)
@@ -1499,26 +1541,39 @@ class WindowsFridayController:
             return False, f"Execution failed: {e}"
 
     def is_contact_directive(self, command: str) -> bool:
-        """Check if command matches contact management directives (save, list, lookup, delete)."""
+        """Recognize explicit address-book commands without stealing normal language."""
         if not command or not command.strip():
             return False
         clean = re.sub(r"^(?:hey\s+)?friday[,\s:]*\s*", "", command, flags=re.IGNORECASE).strip()
         cmd = clean.lower().rstrip(".!? ")
-        if cmd in ["contacts", "list contacts", "show contacts", "my contacts", "view contacts", "all contacts", "address book"]:
+        if cmd in {
+            "contacts", "list contacts", "show contacts", "my contacts",
+            "view contacts", "all contacts", "address book",
+        }:
             return True
-        if re.search(r"^(?:delete|remove)\s+(?:contact\s+)?[a-zA-Z\s]+$", cmd):
+        if re.fullmatch(r"(?:delete|remove)\s+(?:contact\s+)?[a-z][a-z .'-]*", cmd):
             return True
-        if re.search(r"^(?:lookup|find|search|get|show)\s+(?:contact\s+)?[a-zA-Z\s]+$", cmd):
+        if re.fullmatch(r"(?:lookup|find|search|get|show)\s+contact\s+[a-z][a-z .'-]*", cmd):
             return True
-        if re.search(r"^who\s+is\s+[a-zA-Z\s]+$", cmd):
+        if re.fullmatch(r"contact\s+(?:details\s+(?:of|for)\s+)?[a-z][a-z .'-]*", cmd):
             return True
-        if re.search(r"^contact\s+(?:details\s+(?:of|for)\s+)?[a-zA-Z\s]+$", cmd):
+        # "Who is Priya?" is a contact lookup; "Who is my sister?" is memory/conversation.
+        if re.fullmatch(r"who\s+is\s+(?!(?:my|your|our|their|the|a|an)\s+)[a-z][a-z .'-]*", cmd):
             return True
-        if re.search(r"^(?:save|add|remember|set|update)\s+(?:contact\s+)?[a-zA-Z\s]+?", cmd):
+        # Generic save/remember language is not a contact command unless a contact
+        # or an explicit contact field is named.
+        if re.match(r"(?:save|add|remember|set|update)\s+contact\b", cmd):
             return True
-        if re.search(r"^[a-zA-Z\s]+?(?:'s)?\s+(?:phone|number|mobile|whatsapp|email)\s+(?:is|=|:)?\s*", cmd):
+        if re.fullmatch(
+            r"(?:save|add|remember|set|update)\s+[a-z][a-z .'-]*\s+"
+            r"(?:phone|number|mobile|email)\s+(?:is|=|:)?\s*[\w+@.\s-]+",
+            cmd,
+        ):
             return True
-        if re.search(r"^[a-zA-Z]+\s+is\s+[+\d\s-]{10,16}$", cmd):
+        if re.fullmatch(
+            r"[a-z][a-z .'-]*\s+(?:phone|number|mobile|email)\s+(?:is|=|:)\s*[\w+@.\s-]+",
+            cmd,
+        ):
             return True
         return False
 

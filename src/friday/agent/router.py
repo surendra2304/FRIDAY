@@ -679,7 +679,7 @@ class SpecialistRouter:
                     or raw.get("status")
                     or res.summary
                 ).strip()
-                confidence = float(raw.get("confidence", 1.0))
+                confidence = float(raw.get("confidence") or 0.0)
                 return ConsensusVote(
                     agent=agent_id,
                     decision=decision,
