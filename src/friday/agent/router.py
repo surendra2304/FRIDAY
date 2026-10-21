@@ -679,7 +679,14 @@ class SpecialistRouter:
                     or raw.get("status")
                     or res.summary
                 ).strip()
-                confidence = float(raw.get("confidence", 1.0))
+                # Missing or malformed provider confidence is unknown, not certainty.
+                reported_confidence = raw.get("confidence")
+                try:
+                    confidence = float(reported_confidence) if reported_confidence is not None else 0.0
+                except (TypeError, ValueError):
+                    confidence = 0.0
+                if not 0.0 <= confidence <= 1.0:
+                    confidence = 0.0
                 return ConsensusVote(
                     agent=agent_id,
                     decision=decision,
