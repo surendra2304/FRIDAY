@@ -2,7 +2,7 @@
   "task": 1,
   "repository": "FRIDAY",
   "updated_at": "2026-10-22",
-  "status": "pr22_suite_red_pr31_pytest_pending",
+  "status": "pr22_suite_red_pr31_pr32_ci_pending",
   "pr22": {
     "url": "https://github.com/surendra2304/FRIDAY/pull/22",
     "head": "da9140df0a89b2831a13e193c15866753f74d466",
@@ -15,7 +15,6 @@
   },
   "pr31": {
     "url": "https://github.com/surendra2304/FRIDAY/pull/31",
-    "branch": "fix/no-invented-consensus-confidence-20261022",
     "head": "56e400aaf1ed759f2053621a012a163c9d9653b8",
     "files": [
       "src/friday/agent/router.py",
@@ -25,29 +24,34 @@
     "ci": {
       "id": 39674934153,
       "url": "https://github.com/surendra2304/FRIDAY/actions/runs/39674934153",
-      "status": "in_progress_at_last_check",
+      "status": "pending_at_last_poll",
       "passed": [
-        "dependencies",
+        "dependency install",
         "Ruff",
-        "syntax",
-        "installer"
+        "syntax/installer"
+      ]
+    }
+  },
+  "pr32": {
+    "url": "https://github.com/surendra2304/FRIDAY/pull/32",
+    "branch": "fix/note-vs-contact-directive-20261022",
+    "head": "3f0a490ab27a3453cc2908becfd1dce467b17557",
+    "files": [
+      "src/friday/devices/windows_friday.py",
+      "tests/test_voice_instant_routing.py",
+      "pyproject.toml"
+    ],
+    "ci": {
+      "id": 39676247011,
+      "url": "https://github.com/surendra2304/FRIDAY/actions/runs/39676247011",
+      "status": "in_progress_at_last_poll",
+      "passed": [
+        "dependency install",
+        "Ruff",
+        "syntax/installer"
       ],
       "current_step": "pytest"
-    },
-    "older_failures": [
-      {
-        "id": 39674191089,
-        "reason": "Ruff import order"
-      },
-      {
-        "id": 39674371123,
-        "reason": "F811 duplicate test"
-      },
-      {
-        "id": 39674689441,
-        "reason": "missing respx"
-      }
-    ]
+    }
   },
   "local_tests_run": false,
   "merged": false,
@@ -55,5 +59,5 @@
     "Laptop MCP HTTP 404"
   ],
   "active_duration_seconds": "not measured",
-  "next": "Poll PR31 CI then fix one existing behavior failure in PR22."
+  "next": "Poll PR32 CI, then PR31; address one further failure from actual CI summary."
 }
