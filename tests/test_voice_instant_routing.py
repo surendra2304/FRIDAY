@@ -89,7 +89,7 @@ def test_explicit_contact_commands_remain_contact_directives():
     for phrase in (
         "save contact Priya",
         "add contact Meera",
-        "remember Rahul",
+        "remember contact Rahul",
     ):
         assert windows_friday.is_contact_directive(phrase)
 
