@@ -22,29 +22,30 @@
       "tests/test_no_invented_telemetry_defaults.py",
       "pyproject.toml"
     ],
-    "current_ci": {
+    "ci": {
       "id": 39674934153,
       "url": "https://github.com/surendra2304/FRIDAY/actions/runs/39674934153",
       "status": "in_progress_at_last_check",
-      "passed_steps": [
-        "dependency install",
+      "passed": [
+        "dependencies",
         "Ruff",
-        "syntax/installer"
+        "syntax",
+        "installer"
       ],
       "current_step": "pytest"
     },
-    "prior_failures": [
+    "older_failures": [
       {
         "id": 39674191089,
         "reason": "Ruff import order"
       },
       {
         "id": 39674371123,
-        "reason": "duplicate test F811"
+        "reason": "F811 duplicate test"
       },
       {
         "id": 39674689441,
-        "reason": "respx missing"
+        "reason": "missing respx"
       }
     ]
   },
@@ -54,5 +55,5 @@
     "Laptop MCP HTTP 404"
   ],
   "active_duration_seconds": "not measured",
-  "next": "Poll PR31; then fix one PR22 behavior regression."
+  "next": "Poll PR31 CI then fix one existing behavior failure in PR22."
 }
