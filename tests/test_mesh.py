@@ -64,6 +64,7 @@ def test_the_contract_table_is_read_from_the_live_fleet_client() -> None:
         "memora",
         "sentinel",
         "stratex",
+        "vyralx",
     ]
     # The endpoints must be the ones the production client posts to.
     assert contracts["inference"].task_path == "/v1/task/execute"
