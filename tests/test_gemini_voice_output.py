@@ -72,7 +72,15 @@ def test_synthesize_wraps_provider_errors_without_exposing_details():
     assert "secret-token-abc" not in str(exc.value)
 
 
-def test_synthesize_requires_credentials_only_for_nonempty_text():
+def test_synthesize_requires_credentials_only_for_nonempty_text(monkeypatch):
+    from types import SimpleNamespace
+    import friday.voice.gemini_provider as provider_module
+
+    monkeypatch.setattr(
+        provider_module,
+        "get_settings",
+        lambda: SimpleNamespace(gemini_api_key=None, llm_api_key=None, voice_tts_model="gemini-2.5-flash-preview-tts", voice_name="Kore"),
+    )
     output = GeminiVoiceOutput(api_key=None, client=None)
     with pytest.raises(VoiceError, match="API key is required"):
         output.synthesize("Speak")
