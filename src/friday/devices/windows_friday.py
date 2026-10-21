@@ -1514,7 +1514,15 @@ class WindowsFridayController:
             return True
         if re.search(r"^contact\s+(?:details\s+(?:of|for)\s+)?[a-zA-Z\s]+$", cmd):
             return True
-        if re.search(r"^(?:save|add|remember|set|update)\s+(?:contact\s+)?[a-zA-Z\s]+?", cmd):
+        # Match contact-management intents, not generic "save a note about ...".
+        # Keep the person/name portion explicit so prose that starts with "save"
+        # cannot be mistaken for a contact command.
+        if re.search(
+            r"^(?:save|add|remember|set|update)\s+(?:contact\s+)?"
+            r"[a-zA-Z][a-zA-Z.'-]*(?:\s+[a-zA-Z][a-zA-Z.'-]*){0,4}"
+            r"(?:\s+(?:phone|number|mobile|whatsapp|email)\b|$)",
+            cmd,
+        ):
             return True
         if re.search(r"^[a-zA-Z\s]+?(?:'s)?\s+(?:phone|number|mobile|whatsapp|email)\s+(?:is|=|:)?\s*", cmd):
             return True
