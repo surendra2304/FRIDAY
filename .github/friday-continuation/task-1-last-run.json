@@ -2,7 +2,7 @@
   "task": 1,
   "repository": "FRIDAY",
   "updated_at": "2026-10-22",
-  "status": "pr22_suite_failing_pr31_ci_pending",
+  "status": "pr22_suite_red_pr31_ci_running",
   "pr22": {
     "url": "https://github.com/surendra2304/FRIDAY/pull/22",
     "head": "da9140df0a89b2831a13e193c15866753f74d466",
@@ -16,24 +16,38 @@
   "pr31": {
     "url": "https://github.com/surendra2304/FRIDAY/pull/31",
     "branch": "fix/no-invented-consensus-confidence-20261022",
-    "head": "358960a1258fbca896452459487581f1239fa138",
+    "head": "56e400aaf1ed759f2053621a012a163c9d9653b8",
     "files": [
       "src/friday/agent/router.py",
-      "tests/test_no_invented_telemetry_defaults.py"
+      "tests/test_no_invented_telemetry_defaults.py",
+      "pyproject.toml"
     ],
-    "previous_ci": {
-      "id": 39674191089,
-      "status": "failure",
-      "reason": "Ruff import order"
-    },
+    "previous_failures": [
+      {
+        "run": 39674191089,
+        "reason": "Ruff import ordering"
+      },
+      {
+        "run": 39674371123,
+        "reason": "duplicate test function F811"
+      },
+      {
+        "run": 39674689441,
+        "reason": "respx missing at pytest collection"
+      }
+    ],
     "current_ci": {
-      "id": 39674371123,
-      "url": "https://github.com/surendra2304/FRIDAY/actions/runs/39674371123",
-      "status": "in_progress_at_last_check"
+      "id": 39674934153,
+      "url": "https://github.com/surendra2304/FRIDAY/actions/runs/39674934153",
+      "status": "in_progress_at_last_check",
+      "step": "dependency installation"
     }
   },
   "local_tests_run": false,
   "merged": false,
+  "blockers": [
+    "Laptop MCP HTTP 404"
+  ],
   "active_duration_seconds": "not measured",
-  "next": "Poll PR31 CI, then fix one focused behavior regression from PR22."
+  "next": "Poll 39674934153 then fix a single behavior regression from PR22."
 }
