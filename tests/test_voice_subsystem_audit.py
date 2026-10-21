@@ -196,7 +196,7 @@ def test_gemini_voice_provider_adapters_and_pool():
     mock_response = MagicMock()
     mock_response.candidates = [MagicMock()]
     mock_response.candidates[0].content.parts = [MagicMock()]
-    mock_response.candidates[0].content.parts[0].inline_data.data = b"\\x01\\x00" * 240
+    mock_response.candidates[0].content.parts[0].inline_data.data = b"\x01\x00" * 240
     mock_response.candidates[0].content.parts[0].inline_data.mime_type = "audio/pcm;rate=24000"
     with patch("friday.voice.gemini_provider.genai.Client") as mock_client_cls:
         mock_client_cls.return_value.models.generate_content.return_value = mock_response
