@@ -958,3 +958,52 @@ def test_ai_universe_tool_reports_schema_invalid_json_and_closes_client(
     assert "confidence" in result.content
     assert len(clients) == 1
     assert clients[0].is_closed
+
+
+
+@pytest.mark.parametrize("mode, path", [("ask", "/v1/friday/ask"), ("debate", "/v1/friday/debate")])
+@pytest.mark.parametrize("inside_active_loop", [False, True])
+def test_ai_universe_tool_reports_schema_invalid_list_field_and_closes_client(
+    mode, path, inside_active_loop
+):
+    """A schema-invalid list field cannot be returned as a successful response."""
+    clients: list[httpx.AsyncClient] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == path
+        return httpx.Response(
+            200,
+            json={
+                "answer": "This payload violates the response schema.",
+                "confidence": 0.91,
+                "unresolved_disagreements": [],
+                "key_evidence": "must-be-an-array",
+                "run_id": "run_invalid_evidence",
+            },
+        )
+
+    async_client_type = httpx.AsyncClient
+
+    def create_client(*args, **kwargs) -> httpx.AsyncClient:
+        client = async_client_type(transport=httpx.MockTransport(handler), **kwargs)
+        clients.append(client)
+        return client
+
+    tool = AIUniverseTool(client=AIUniverseClient(base_url="http://inference.test"))
+
+    def invoke():
+        return tool.execute(question="A question", mode=mode)
+
+    with mock.patch("httpx.AsyncClient", side_effect=create_client):
+        if inside_active_loop:
+            async def invoke_inside_loop():
+                return invoke()
+
+            result = asyncio.run(invoke_inside_loop())
+        else:
+            result = invoke()
+
+    assert result.is_error
+    assert "key_evidence" in result.content
+    assert len(clients) == 1
+    assert clients[0].is_closed
