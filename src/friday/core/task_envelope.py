@@ -46,10 +46,10 @@ class ActionReceipt(BaseModel):
 class TaskEnvelope(BaseModel):
     """Standard inter-agent task dispatch envelope across the FRIDAY Universe."""
 
-    task_id: str = Field(default_factory=lambda: f"task_{uuid.uuid4().hex[:12]}")
-    trace_id: str = Field(default_factory=lambda: f"trace_{uuid.uuid4().hex[:8]}")
-    parent_task_id: str | None = Field(default=None)
-    request_id: str | None = Field(default=None)
+    task_id: str = Field(default_factory=lambda: f"task_{uuid.uuid4().hex[:12]}", min_length=1, max_length=64)
+    trace_id: str = Field(default_factory=lambda: f"trace_{uuid.uuid4().hex[:8]}", min_length=1, max_length=128)
+    parent_task_id: str | None = Field(default=None, min_length=1, max_length=64)
+    request_id: str | None = Field(default=None, min_length=1, max_length=128)
     actor: str = Field(default="operator")
     capability: str = Field(default="general")
     objective: str = Field(default="")
@@ -57,7 +57,7 @@ class TaskEnvelope(BaseModel):
     trust_level: str = Field(default="operator_confirmed")  # "untrusted", "operator_confirmed", "system_internal"
     authorization_context: dict[str, Any] = Field(default_factory=dict)
     deadline: str | None = Field(default=None)
-    idempotency_key: str | None = Field(default=None)
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=128)
     requested_mode: str = Field(default="sync")  # "sync", "async", "background"
     progress: float = Field(default=0.0, ge=0.0, le=1.0)
     artifacts: list[dict[str, Any]] = Field(default_factory=list)
@@ -89,13 +89,18 @@ class TaskEnvelope(BaseModel):
             elif "objective" in data and not data.get("action"):
                 data["action"] = data["objective"]
 
+            # A before-validator runs before field default factories. Materialize the
+            # task ID first so the default idempotency key belongs to this exact task.
+            if "task_id" not in data or data.get("task_id") is None:
+                data["task_id"] = f"task_{uuid.uuid4().hex[:12]}"
+
             # Ensure request_id
             if not data.get("request_id"):
                 data["request_id"] = f"req_{uuid.uuid4().hex[:8]}"
 
             # Ensure idempotency_key
             if not data.get("idempotency_key"):
-                data["idempotency_key"] = f"idem_{data.get('task_id', uuid.uuid4().hex[:10])}"
+                data["idempotency_key"] = f"idem_{data['task_id']}"
 
         return data
 
