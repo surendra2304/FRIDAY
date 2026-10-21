@@ -34,9 +34,9 @@ Make FRIDAY a dependable, secure, maintainable agent—not merely a large codeba
 
 ### P2 — Make voice capabilities truthful and robust
 
-- [ ] Replace silent PCM generation in the Gemini output adapter with the official Gemini speech-generation API.
-- [ ] Keep text-to-speech deterministic in unit tests by injecting/mocking the SDK client; never make normal CI depend on live credentials.
-- [ ] Validate empty input, absent credentials, provider errors, empty/malformed audio responses, and successful PCM extraction.
+- [x] Replace silent PCM generation in the Gemini output adapter with the official Gemini speech-generation API.
+- [x] Keep text-to-speech deterministic in unit tests by injecting/mocking the SDK client; never make normal CI depend on live credentials.
+- [x] Validate empty input, absent credentials, provider errors, empty/malformed audio responses, and successful PCM extraction.
 - [ ] Verify sample rate/format assumptions between TTS output and the speaker stream; convert audio only if the format contract requires it.
 - [ ] Preserve Live full-duplex streaming as a separate feature from one-shot TTS synthesis.
 
@@ -78,7 +78,7 @@ Make FRIDAY a dependable, secure, maintainable agent—not merely a large codeba
 - **2026-10-21:** Merged CI regression fix PR #24 into main at ba9bf79; its preceding branch CI was green. This did not prove future main builds stayed green.
 - **2026-10-21:** Identified and opened PR #25 for portable, side-effect-safe verification scripts. Its branch CI later passed, but the PR is stale relative to newer main commits and requires reconciliation before merge.
 - **2026-10-21:** Latest inspected main CI failure was pytest collection due to missing respx.
-- **2026-10-22:** Added respx>=0.21.0 to the development extra on the current engineering branch. Awaiting branch CI before marking P0 complete.
+- **2026-10-22:** Added respx>=0.21.0 to the development extra and implemented real one-shot Gemini TTS with mocked offline regression tests. Branch CI is the acceptance gate; P0 remains open until the full workflow passes.
 
 ## Explicit non-goals
 
