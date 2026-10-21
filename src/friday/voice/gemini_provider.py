@@ -1,21 +1,19 @@
-"""Real Gemini voice provider implementation using official google-genai SDK.
+"""Real Gemini voice provider using the official google-genai SDK.
 
-This module provides the voice interface for FRIDAY using the official Google GenAI SDK.
-It integrates Gemini Live full-duplex asynchronous WebSocket sessions for real-time
-low-latency conversational speech.
+Provides full-duplex Gemini Live streaming and separate one-shot speech synthesis.
 """
-
 from __future__ import annotations
 
 import asyncio
 from typing import Any
 
-import numpy as np
+from google import genai
+from google.genai import types as genai_types
 
 from friday.auth.credential_pool import GeminiCredentialPool
 from friday.auth.credential_pool import credential_pool as global_credential_pool
-
 from ..core.config import get_settings
+from ..core.exceptions import VoiceError
 from ..core.logging import get_logger
 from .audio_io import MicrophoneStream, SpeakerStream
 from .base import VoiceInput, VoiceOutput, VoiceProvider
@@ -49,24 +47,86 @@ class GeminiVoiceInput(VoiceInput):
 
 
 class GeminiVoiceOutput(VoiceOutput):
-    """Adapter for low-latency PCM speaker stream."""
+    """One-shot Gemini TTS adapter; no network request occurs until synthesize()."""
 
-    def __init__(self, sample_rate: int = 24000):
+    def __init__(
+        self,
+        sample_rate: int = 24000,
+        api_key: str | None = None,
+        model: str | None = None,
+        voice_name: str | None = None,
+        client: Any | None = None,
+    ):
+        settings = get_settings()
         self.sample_rate = sample_rate
+        self.api_key = api_key or settings.gemini_api_key or settings.llm_api_key
+        self.model = model or getattr(settings, "voice_tts_model", "gemini-2.5-flash-preview-tts")
+        self.voice_name = voice_name or getattr(settings, "voice_name", "Kore")
+        self._client = client
         self.stream = SpeakerStream(sample_rate=sample_rate)
 
+    def _get_client(self) -> Any:
+        """Create and cache the SDK client lazily."""
+        if self._client is None:
+            if not self.api_key:
+                raise VoiceError("Gemini API key is required for speech synthesis.")
+            self._client = genai.Client(api_key=self.api_key)
+        return self._client
+
+    @staticmethod
+    def _extract_audio(response: Any) -> bytes:
+        """Return the first audio inline payload, ignoring text and non-audio parts."""
+        for candidate in (getattr(response, "candidates", None) or []):
+            content = getattr(candidate, "content", None)
+            for part in (getattr(content, "parts", None) or []):
+                inline_data = getattr(part, "inline_data", None)
+                if inline_data is None:
+                    continue
+                mime_type = getattr(inline_data, "mime_type", "") or ""
+                data = getattr(inline_data, "data", None)
+                if not data or (mime_type and not mime_type.lower().startswith("audio/")):
+                    continue
+                if isinstance(data, bytes):
+                    return data
+                if isinstance(data, bytearray):
+                    return bytes(data)
+        return b""
+
     def synthesize(self, text: str) -> bytes:
-        """Synthesize PCM audio bytes for given text."""
+        """Synthesize speech; empty input is a no-op and provider failures are explicit."""
         if not text or not text.strip():
             return b""
-        duration_s = max(0.05, min(len(text) * 0.03, 3.0))
-        samples = int(self.sample_rate * duration_s)
-        # Generate 16-bit mono silence/tone array
-        pcm_array = np.zeros(samples, dtype=np.int16)
-        return pcm_array.tobytes()
+
+        config = genai_types.GenerateContentConfig(
+            response_modalities=["AUDIO"],
+            speech_config=genai_types.SpeechConfig(
+                voice_config=genai_types.VoiceConfig(
+                    prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
+                        voice_name=self.voice_name,
+                    )
+                )
+            ),
+        )
+        try:
+            response = self._get_client().models.generate_content(
+                model=self.model,
+                contents=text.strip(),
+                config=config,
+            )
+            audio = self._extract_audio(response)
+            if not audio:
+                raise VoiceError("Gemini returned no audio payload for speech synthesis.")
+            return audio
+        except VoiceError:
+            raise
+        except Exception as exc:
+            logger.warning("Gemini speech synthesis failed; provider details omitted.")
+            raise VoiceError("Gemini speech synthesis failed. Check provider configuration and retry.") from exc
 
     def play(self, audio: bytes) -> None:
-        self.stream.play_chunk(audio)
+        """Queue non-empty audio for playback."""
+        if audio:
+            self.stream.play_chunk(audio)
 
     def stop(self) -> None:
         self.stream.stop()
@@ -113,9 +173,14 @@ class GeminiVoiceProvider(VoiceProvider):
         if not self.api_key:
             raise ValueError("Gemini API key not configured (FRIDAY_GEMINI_API_KEY)")
         self.model = model or getattr(settings, "voice_live_model", "gemini-3.1-flash-live-preview")
-        
+
         input_dev = GeminiVoiceInput(sample_rate=getattr(settings, "voice_input_sample_rate", 16000))
-        output_dev = GeminiVoiceOutput(sample_rate=getattr(settings, "voice_live_sample_rate", 24000))
+        output_dev = GeminiVoiceOutput(
+            sample_rate=getattr(settings, "voice_live_sample_rate", 24000),
+            api_key=self.api_key,
+            model=getattr(settings, "voice_tts_model", "gemini-2.5-flash-preview-tts"),
+            voice_name=getattr(settings, "voice_name", "Kore"),
+        )
         super().__init__(input_dev, output_dev)
         self._live_session: GeminiLiveVoiceSession | None = None
 
@@ -139,8 +204,6 @@ class GeminiVoiceProvider(VoiceProvider):
             loop = asyncio.get_running_loop()
         except RuntimeError:
             loop = None
-
         if loop is not None and loop.is_running():
             raise RuntimeError("Use run_live_async() inside an active event loop")
-
         asyncio.run(self.run_live_async(agent))
