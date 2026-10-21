@@ -8,35 +8,42 @@
     "branch": "fix/verification-runner-safety-20261021",
     "commit": "9fe96c1d486d3e48cecdbd6715e2b6dd62259f71",
     "ci_run": 39556916093,
-    "ci_status": "in_progress"
+    "ci_url": "https://github.com/surendra2304/FRIDAY/actions/runs/39556916093",
+    "ci_status": "success",
+    "pytest": "2611 passed, 6 skipped, 23 deselected",
+    "lint": "passed",
+    "docker_build": "passed"
   },
   "Inference": {
     "branch": "fix/bound-forced-agent-selection-20261021",
     "commit": "4cd82fdb575edc7451076f7f11a85dbdcfe2035e",
     "ci_run": 39557358134,
+    "ci_url": "https://github.com/surendra2304/Inference/actions/runs/39557358134",
     "ci_status": "success",
     "checks": [
       "ruff",
       "pytest",
-      "docker"
+      "docker build"
     ]
   },
   "Memora": {
     "branch": "automation/friday-universe-task-1",
     "commit": "da7ef4fe514e8a0f511572dc917bfa59fdcd1250",
-    "previous_failed_run": 39548261200,
-    "current_ci": "not_visible"
+    "previous_ci_run": 39548261200,
+    "previous_ci_status": "failure",
+    "new_head_ci": "not_visible"
   },
   "Memora_idempotency": {
     "branch": "fix/task1-idempotent-task-write-20261021",
     "commit": "4f0fac92082eac989b3f8e2f6eee02077a1d2372",
     "test": "tests/test_task_idempotency.py",
-    "pr_created": false
+    "pr_created": false,
+    "tests_verified": false
   },
   "blockers": [
     "Laptop MCP HTTP 404",
     "Remote command execution unavailable",
     "Memora PR creation blocked"
   ],
-  "next": "Verify FRIDAY CI, obtain Memora CI evidence, and review idempotency test."
+  "next": "Obtain Memora CI evidence and review idempotency branch."
 }
