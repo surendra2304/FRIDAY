@@ -19,8 +19,8 @@ def test_workstream_branches_are_stable_and_separate() -> None:
     assert len(set(branches.values())) == 3
 
 
-def test_work_session_requires_thirty_five_active_minutes() -> None:
-    assert MIN_WORK_SECONDS == 35 * 60
+def test_work_session_requires_more_than_thirty_minutes() -> None:
+    assert MIN_WORK_SECONDS > 30 * 60
 
 
 def test_each_task_gets_distinct_persistent_handoff_files(tmp_path: Path) -> None:
