@@ -401,6 +401,8 @@ class CapabilityResolver:
     # -- planning ----------------------------------------------------------
 
     def _get_llm(self) -> Any | None:
+        if self._llm is False:
+            return None
         if self._llm is not None:
             return self._llm
         try:

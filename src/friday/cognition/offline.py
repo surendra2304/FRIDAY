@@ -283,9 +283,11 @@ def answer_without_a_model(
         return None
 
     try:
-        resolution = CapabilityResolver(registry=registry, repository_root=repo_root).resolve(
-            goal, allow_synthesis=allow_build
-        )
+        resolution = CapabilityResolver(
+            registry=registry,
+            repository_root=repo_root,
+            llm=False,
+        ).resolve(goal, allow_synthesis=allow_build)
     except Exception as exc:
         logger.warning("offline planning failed: %s", exc)
         return OfflineAnswer(

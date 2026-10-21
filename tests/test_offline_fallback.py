@@ -45,12 +45,13 @@ class _EchoTool(BaseTool):
     description = "Count the words in the note."
     safety_level = SafetyLevel.SENSITIVE
 
-    def execute(self, input: str = "", **_: object) -> ToolResult:
+    def execute(self, input: str = "", **kwargs: object) -> ToolResult:
         import re
 
+        text = input or str(kwargs.get("note", "")) or str(kwargs.get("text", ""))
         return ToolResult(
             name=self.name,
-            content=str(len(re.findall(r"\S+", input))),
+            content=str(len(re.findall(r"\S+", text))),
             is_error=False,
             safety_level=self.safety_level,
         )

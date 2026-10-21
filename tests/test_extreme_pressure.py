@@ -129,6 +129,7 @@ def test_two_hundred_concurrent_dispatches_all_come_back(contracts: dict[str, An
         HarnessBehaviour(receipt=False),  # unverified
         HarnessBehaviour(body={"status": "ok", "response": "legacy"}),  # no receipt
         HarnessBehaviour(status_code=500),  # degraded again
+        HarnessBehaviour(),  # vyralx healthy
     ]
     for peer, behaviour in zip(peers, behaviours, strict=True):
         harness.behave(peer, behaviour)

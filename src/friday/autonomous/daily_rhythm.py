@@ -60,7 +60,10 @@ def get_postgres_dsn() -> str | None:
             return raw_url.replace("postgres://", "postgresql+asyncpg://", 1)
         return raw_url
 
-    host = os.getenv("POSTGRES_HOST") or os.getenv("FRIDAY_POSTGRES_HOST") or "localhost"
+    host = os.getenv("POSTGRES_HOST") or os.getenv("FRIDAY_POSTGRES_HOST")
+    if not host:
+        return None
+
     port = os.getenv("POSTGRES_PORT") or os.getenv("FRIDAY_POSTGRES_PORT") or "5432"
     db = os.getenv("POSTGRES_DB") or os.getenv("FRIDAY_POSTGRES_DB") or "friday_db"
     user = os.getenv("POSTGRES_USER") or os.getenv("FRIDAY_POSTGRES_USER") or "friday_user"
@@ -151,6 +154,7 @@ class DailyRhythmManager:
                     self.postgres_dsn,
                     echo=False,
                     pool_pre_ping=True,
+                    connect_args={"timeout": 2.0},
                 )
             except Exception as e:
                 logger.warning("Failed to create async engine for postgres: %s", e)
@@ -458,25 +462,19 @@ class DailyRhythmManager:
         target_date: Optional[str] = None,
     ) -> dict[str, Any]:
         """Synchronous wrapper for periodic task sweep."""
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        if loop is not None and loop.is_running():
-            dt = target_date or self._today()
-            goal = self.get_active_goal(dt)
-            return {
-                "sweep_timestamp": datetime.now(timezone.utc).isoformat(),
-                "target_date": dt,
-                "has_active_goal": goal is not None,
-                "goal_title": goal.title if goal else None,
-                "goal_progress": goal.progress if goal else 0.0,
-                "goal_status": goal.status if goal else "none",
-                "swept_items": 1 if goal else 0,
-            }
-
-        return asyncio.run(self.periodic_task_sweep_async(target_date))
+        dt = target_date or self._today()
+        goal = self.get_active_goal(dt)
+        sweep_result = {
+            "sweep_timestamp": datetime.now(timezone.utc).isoformat(),
+            "target_date": dt,
+            "has_active_goal": goal is not None,
+            "goal_title": goal.title if goal else None,
+            "goal_progress": goal.progress if goal else 0.0,
+            "goal_status": goal.status if goal else "none",
+            "swept_items": 1 if goal else 0,
+        }
+        logger.info("Completed daily rhythm periodic task sweep: %s", sweep_result)
+        return sweep_result
 
     def get_morning_briefing(self) -> str:
         """Generate morning focus prompt."""
