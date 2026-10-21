@@ -108,3 +108,15 @@ def test_the_guard_would_catch_the_original_bugs():
     # And it must not fire on a zero default, which is a legitimate "nothing yet".
     zero_tree = ast.parse('x = payload.get("positions", [])')
     assert not any(isinstance(n, ast.Constant) and isinstance(n.value, float) for n in ast.walk(zero_tree))
+
+
+
+def test_consensus_confidence_defaults_to_unknown_not_certainty():
+    """Missing provider confidence must not be converted to an invented 1.0."""
+    from friday.agent.router import SpecialistRouter
+    import inspect
+
+    source = inspect.getsource(SpecialistRouter.dispatch_consensus)
+    assert 'raw.get("confidence", 1.0)' not in source
+    assert "reported_confidence = raw.get(\"confidence\")" in source
+    assert "confidence = 0.0" in source
