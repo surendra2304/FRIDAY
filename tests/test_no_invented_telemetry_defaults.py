@@ -88,8 +88,9 @@ def test_no_telemetry_reading_is_filled_with_a_plausible_literal():
 
 def test_consensus_confidence_defaults_to_unknown_not_certainty():
     """Provider responses without confidence must not be treated as fully confident."""
-    from friday.agent.router import SpecialistRouter
     import inspect
+
+    from friday.agent.router import SpecialistRouter
 
     source = inspect.getsource(SpecialistRouter.dispatch_consensus)
     assert 'raw.get("confidence", 1.0)' not in source
