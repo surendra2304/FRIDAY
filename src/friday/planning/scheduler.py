@@ -15,6 +15,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
+from friday.autonomous.daily_rhythm import daily_rhythm
 from friday.core.auth import BaseAuthorizer, DefaultSecureAuthorizer
 
 import asyncio
@@ -83,7 +84,6 @@ class TaskGraphScheduler:
         # Synchronize initial goal and periodic sweep into friday_db.daily_goals
         if graph.goal:
             try:
-                from friday.autonomous.daily_rhythm import daily_rhythm
                 daily_rhythm.set_daily_goal(
                     title=graph.goal,
                     description=f"TaskGraph {graph.graph_id} with {len(graph.list_tasks())} tasks",
@@ -145,7 +145,6 @@ class TaskGraphScheduler:
 
         # Persist final progress and trigger periodic task sweep into friday_db.daily_goals
         try:
-            from friday.autonomous.daily_rhythm import daily_rhythm
             completed = len(graph.get_completed_ids())
             total = len(graph.list_tasks())
             progress = (completed / total) if total > 0 else 1.0

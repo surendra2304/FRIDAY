@@ -41,13 +41,13 @@ def test_status_with_registry_only_never_treats_unverified_as_healthy():
 
 
 def test_fleet_client_uses_settings_and_never_invents_peer_keys(monkeypatch):
-    for name in (
-        "INFERENCE_API_KEY", "MEMORA_API_KEY", "STRATEX_API_KEY", "INTELX_API_KEY",
-        "FUTURIS_API_KEY", "CORTEX_API_KEY", "FORGE_API_KEY", "SENTINEL_API_KEY",
-        "INFERENCE_URL", "MEMORA_URL", "STRATEX_URL", "INTELX_URL", "FUTURIS_URL",
-        "CORTEX_URL", "FORGE_URL", "SENTINEL_URL",
+    for peer in (
+        "INFERENCE", "MEMORA", "STRATEX", "INTELX",
+        "FUTURIS", "CORTEX", "FORGE", "SENTINEL", "VYRALX",
     ):
-        monkeypatch.delenv(name, raising=False)
+        for suffix in ("_API_KEY", "_URL"):
+            monkeypatch.delenv(f"{peer}{suffix}", raising=False)
+            monkeypatch.delenv(f"FRIDAY_{peer}{suffix}", raising=False)
     settings = SimpleNamespace(
         inference_url="https://inference.example", inference_api_key=None,
         memora_url="https://memora.example", memora_api_key=None,
@@ -57,11 +57,12 @@ def test_fleet_client_uses_settings_and_never_invents_peer_keys(monkeypatch):
         cortex_url="https://cortex.example", cortex_api_key=None,
         forge_url="https://forge.example", forge_api_key=None,
         sentinel_url="https://sentinel.example", sentinel_api_key=None,
+        vyralx_url="https://vyralx.example", vyralx_api_key=None,
     )
     client = FleetClient(settings=settings)
     assert client.memora_url == "https://memora.example"
     assert all(not getattr(client, f"{name}_key") for name in (
-        "inference", "memora", "stratex", "intelx", "futuris", "cortex", "forge", "sentinel",
+        "inference", "memora", "stratex", "intelx", "futuris", "cortex", "forge", "sentinel", "vyralx",
     ))
 
 

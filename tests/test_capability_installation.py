@@ -72,6 +72,7 @@ def repo(tmp_path: Path) -> Path:
     _git(path, "init", "-q", "-b", "main")
     _git(path, "config", "user.email", "o@example.invalid")
     _git(path, "config", "user.name", "Owner")
+    _git(path, "config", "core.autocrlf", "false")
     _git(path, "add", "-A")
     _git(path, "commit", "-qm", "base")
     return path

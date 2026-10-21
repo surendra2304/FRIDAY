@@ -177,6 +177,10 @@ class WindowsFridayController:
 
         from friday.core.effects import browser_available, launch_process_verified, open_url_verified
 
+        if not browser_available():
+            logger.warning(f"Cannot open {url}: no browser is available on this machine.")
+            return False
+
         chrome = get_chrome_path()
         if chrome and not sys.platform.startswith("linux"):
             # Windows resolves Chrome through the registry/App Paths, so the
@@ -186,10 +190,6 @@ class WindowsFridayController:
                 logger.info(f"Opened URL in Chrome: {url}")
                 return True
             logger.warning(f"Chrome did not start for {url}: {outcome.detail}")
-
-        if not browser_available():
-            logger.warning(f"Cannot open {url}: no browser is available on this machine.")
-            return False
 
         outcome = open_url_verified(url)
         if outcome.ok:
