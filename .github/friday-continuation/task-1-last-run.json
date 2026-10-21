@@ -2,7 +2,7 @@
   "task": 1,
   "repository": "FRIDAY",
   "updated_at": "2026-10-22",
-  "status": "pr22_suite_red_pr31_ci_running",
+  "status": "pr22_suite_red_pr31_pytest_pending",
   "pr22": {
     "url": "https://github.com/surendra2304/FRIDAY/pull/22",
     "head": "da9140df0a89b2831a13e193c15866753f74d466",
@@ -22,26 +22,31 @@
       "tests/test_no_invented_telemetry_defaults.py",
       "pyproject.toml"
     ],
-    "previous_failures": [
-      {
-        "run": 39674191089,
-        "reason": "Ruff import ordering"
-      },
-      {
-        "run": 39674371123,
-        "reason": "duplicate test function F811"
-      },
-      {
-        "run": 39674689441,
-        "reason": "respx missing at pytest collection"
-      }
-    ],
     "current_ci": {
       "id": 39674934153,
       "url": "https://github.com/surendra2304/FRIDAY/actions/runs/39674934153",
       "status": "in_progress_at_last_check",
-      "step": "dependency installation"
-    }
+      "passed_steps": [
+        "dependency install",
+        "Ruff",
+        "syntax/installer"
+      ],
+      "current_step": "pytest"
+    },
+    "prior_failures": [
+      {
+        "id": 39674191089,
+        "reason": "Ruff import order"
+      },
+      {
+        "id": 39674371123,
+        "reason": "duplicate test F811"
+      },
+      {
+        "id": 39674689441,
+        "reason": "respx missing"
+      }
+    ]
   },
   "local_tests_run": false,
   "merged": false,
@@ -49,5 +54,5 @@
     "Laptop MCP HTTP 404"
   ],
   "active_duration_seconds": "not measured",
-  "next": "Poll 39674934153 then fix a single behavior regression from PR22."
+  "next": "Poll PR31; then fix one PR22 behavior regression."
 }
