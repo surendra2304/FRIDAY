@@ -28,7 +28,8 @@ def test_run_pytest_uses_the_current_repository_and_not_a_windows_path(monkeypat
     assert command[-1] == str(verification.ROOT / "tests")
     assert kwargs["cwd"] == verification.ROOT
     assert "d:/FRIDAY/tests" not in command
-    assert "-m" not in command
+    assert command[1:3] == ["-m", "pytest"]
+    assert command.count("-m") == 1
 
 
 def test_live_tests_are_selected_only_by_the_explicit_live_runner(monkeypatch):
@@ -43,7 +44,7 @@ def test_live_tests_are_selected_only_by_the_explicit_live_runner(monkeypatch):
     verification.run_real_gemini_tests()
 
     command, kwargs = calls[0]
-    assert command[command.index("-m") + 1] == "live"
+    assert command[-3:-1] == ["-m", "live"]
     assert command[-1] == str(verification.ROOT / "tests")
     assert kwargs["cwd"] == verification.ROOT
 
