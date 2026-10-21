@@ -55,6 +55,7 @@ def test_mesh_status_names_the_peers_and_the_verification_state(client: TestClie
         "cortex",
         "forge",
         "sentinel",
+        "vyralx",
     }
     # It must not imply that a live peer has been verified from this host.
     assert "UNVERIFIED" in body["live_verification"] or "harness" in body["live_verification"]
