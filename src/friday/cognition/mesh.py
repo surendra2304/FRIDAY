@@ -1,6 +1,6 @@
 """The mesh: typed, receipt-verified work sent between FRIDAY and her peers.
 
-`fleet_client.FleetClient` already speaks to all eight specialist agents. What it
+`fleet_client.FleetClient` already speaks to all nine specialist agents. What it
 cannot do is tell the truth about *why* a call failed, and it cannot be tested
 without a network. Two consequences the truth audit recorded:
 

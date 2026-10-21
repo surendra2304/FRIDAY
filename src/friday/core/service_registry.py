@@ -56,7 +56,7 @@ class ServiceConfig:
 
 
 class ServiceRegistry:
-    """Canonical registry and lifecycle validator for all 8 peer agents in the FRIDAY Universe."""
+    """Canonical registry and lifecycle validator for all 9 peer agents in the FRIDAY Universe."""
 
     def __init__(self, env: str | None = None) -> None:
         self.env = env or os.getenv("FRIDAY_ENV", "development").lower()
