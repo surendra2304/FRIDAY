@@ -130,6 +130,10 @@ def test_two_hundred_concurrent_dispatches_all_come_back(contracts: dict[str, An
         HarnessBehaviour(body={"status": "ok", "response": "legacy"}),  # no receipt
         HarnessBehaviour(status_code=500),  # degraded again
     ]
+    # Every registered peer needs a configured behavior; include a default behavior
+    # when the fleet grows beyond the original eight-peer test fixture.
+    if len(peers) > len(behaviours):
+        behaviours.extend(HarnessBehaviour() for _ in range(len(peers) - len(behaviours)))
     for peer, behaviour in zip(peers, behaviours, strict=True):
         harness.behave(peer, behaviour)
 
