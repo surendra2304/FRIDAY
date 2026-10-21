@@ -174,6 +174,57 @@ class TestWindowsFridayController:
         assert ok is True
         assert meta["action"] == "delete_contact"
 
+    def test_rich_contact_lifecycle_lookup_and_merge(self, approve_directives) -> None:
+        """Verify multi-attribute contact saving (phone, email, role, notes), lookup, and non-destructive updates."""
+        # Initial cleanup
+        windows_friday.delete_contact("Priya")
+        windows_friday.delete_contact("Priya Phone")
+
+        # 1. Save multi-attribute contact
+        ok, reply, meta = windows_friday.handle_directive(
+            "save contact Priya phone 9876543210 email priya@tech.org role Lead Architect"
+        )
+        assert ok is True
+        assert meta["action"] == "save_contact"
+        assert meta["name"] == "Priya"
+        assert meta["email"] == "priya@tech.org"
+
+        # 2. Lookup contact details
+        ok, reply, meta = windows_friday.handle_directive("lookup contact Priya")
+        assert ok is True
+        assert meta["action"] == "lookup_contact"
+        assert meta["success"] is True
+        assert "Contact Details for Priya" in reply
+        assert "+919876543210" in reply
+        assert "priya@tech.org" in reply
+        assert "Lead Architect" in reply
+
+        # 3. 'who is' phrasing lookup
+        ok, reply, meta = windows_friday.handle_directive("who is Priya")
+        assert ok is True
+        assert meta["action"] == "lookup_contact"
+        assert "Priya" in reply
+
+        # 4. Partial update (updating email preserves phone and role)
+        ok, reply, meta = windows_friday.handle_directive("save contact Priya email priya@newlab.ai")
+        assert ok is True
+        contact = windows_friday.lookup_contact("Priya")
+        assert contact is not None
+        assert contact["email"] == "priya@newlab.ai"
+        assert contact["phone"] == "+919876543210"
+        assert contact["role"] == "Lead Architect"
+
+        # 5. List contacts
+        ok, reply, meta = windows_friday.handle_directive("contacts")
+        assert ok is True
+        assert "Priya" in reply
+        assert "priya@newlab.ai" in reply
+
+        # 6. Delete and verify cleanup
+        ok, reply, meta = windows_friday.handle_directive("delete contact Priya")
+        assert ok is True
+        assert windows_friday.lookup_contact("Priya") is None
+
     def test_phone_number_whatsapp_directives(self, approve_directives) -> None:
         """Verify direct phone number commands (send <msg> to <phone>, text <phone> <msg>) route to WhatsApp."""
         from unittest import mock
