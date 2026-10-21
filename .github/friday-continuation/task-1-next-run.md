@@ -1,7 +1,7 @@
 # Task 1 next-run — FRIDAY — 2026-10-22
 
-1. Poll https://github.com/surendra2304/FRIDAY/actions/runs/39674371123 for PR #31 head `358960a1258fbca896452459487581f1239fa138`. Run `39674191089` failed Ruff due import order; follow-up rearranged imports.
-2. PR #31 changes `src/friday/agent/router.py` so absent/malformed/out-of-range consensus confidence uses neutral 0.0 instead of fabricated 1.0; regression is in `tests/test_no_invented_telemetry_defaults.py`. Exact head CI pending.
-3. PR #22 run `39673561389` completed 2,672 passed, 8 failed, 6 skipped, 23 deselected. Eight failures are listed in checkpoint. The dependency fix added `respx>=0.21.0` in `pyproject.toml`; the AIUniverse schema regressions are on existing PR #22.
-4. After PR #31 CI, choose one specific failure from PR #22 (suggested: conversational note incorrectly classified as local Windows directive in `tests/test_voice_instant_routing.py`). Read implementation/test, open a clean branch from current main, add focused fix and verify current-head CI.
-5. Laptop execution returns HTTP 404. No local tests. Keep `ui/package-lock.json` unchanged, no auto-merge/force-push, no unmeasured-duration claims.
+1. Poll https://github.com/surendra2304/FRIDAY/actions/runs/39674934153 for PR #31 head `56e400aaf1ed759f2053621a012a163c9d9653b8`. Previous run `39674689441` failed test collection due missing `respx`; current head's `pyproject.toml` now declares it.
+2. PR #31 source change in `src/friday/agent/router.py` changes omitted, malformed, or out-of-range provider confidence from a fabricated 1.0 to a neutral 0.0. Regression is in `tests/test_no_invented_telemetry_defaults.py`; duplicate test and Ruff import errors fixed in commits up to current head.
+3. Existing PR #22 CI `39673561389` ended with 2,672 passed, 8 failed, 6 skipped, 23 deselected. Exact failed tests and behavior are in the checkpoint. Do not describe suite as green.
+4. Once PR #31 CI settles, fix one root cause from PR #22. Recommended: inspect `tests/test_voice_instant_routing.py::TestClassifyInstantCommand::test_conversation_does_not_route_locally` and the related instant-command classifier; ordinary “save a note about deployment” must not be treated as a local Windows directive. Use focused tests, new branch from current main, no duplicate PR.
+5. Preserve unrelated `ui/package-lock.json`. Local runner is unavailable (HTTP 404); no local test command was run. No merge/force-push or unmeasured active-time claims.
