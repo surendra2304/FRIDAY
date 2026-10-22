@@ -1,0 +1,56 @@
+name: Oracle Ampere Capacity Sniper (Worker 2)
+
+on:
+  schedule:
+    # Autonomous hourly heartbeat trigger to guarantee non-stop 24/7 presence
+    - cron: '30 * * * *'
+  workflow_dispatch: # Allows manual trigger anytime
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+
+concurrency:
+  group: oracle-sniper-worker2
+  cancel-in-progress: true
+
+jobs:
+  snipe-capacity-worker2:
+    name: Claim Oracle Ampere A1 (Worker 2)
+    runs-on: ubuntu-latest
+    timeout-minutes: 360 # Run up to 6 hours per job
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install oci
+
+      - name: Staggered Delay (20s Offset)
+        run: |
+          echo "Staggering Worker 2 execution by 20s to perfectly interleave with Worker 1..."
+          sleep 20
+
+      - name: Run Infinite 24/7 Sniper (Worker 2)
+        env:
+          OCI_USER_OCID: ${{ secrets.OCI_USER_OCID_2 }}
+          OCI_KEY_CONTENT: ${{ secrets.OCI_KEY_CONTENT_2 }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT_2 }}
+          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+          OCI_REGION: ${{ secrets.OCI_REGION || 'ap-hyderabad-1' }}
+          BOOT_VOLUME_GB: 50
+          RUN_DURATION_MINUTES: 320
+          CYCLE_DELAY: 40
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WORKFLOW_NAME: "oracle-capacity-sniper-worker2.yml"
+        run: |
+          python scripts/oracle_retry.py

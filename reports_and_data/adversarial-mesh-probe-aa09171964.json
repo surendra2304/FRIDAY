@@ -1,0 +1,335 @@
+{
+  "checks": [
+    {
+      "check": "memora: rejects no credential",
+      "clean": true,
+      "detail": "HTTP 201"
+    },
+    {
+      "check": "memora: rejects unrelated key",
+      "clean": true,
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "memora: key with trailing space",
+      "clean": true,
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "futuris: rejects no credential",
+      "clean": true,
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "futuris: rejects unrelated key",
+      "clean": true,
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "futuris: key with trailing space",
+      "clean": true,
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "intelx: rejects no credential",
+      "clean": true,
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "intelx: rejects unrelated key",
+      "clean": true,
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "intelx: key with trailing space",
+      "clean": false,
+      "detail": "HTTP 200 <- ACCEPTED"
+    },
+    {
+      "check": "cortex: rejects no credential",
+      "clean": true,
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "cortex: rejects unrelated key",
+      "clean": true,
+      "detail": "HTTP 403"
+    },
+    {
+      "check": "cortex: key with trailing space",
+      "clean": true,
+      "detail": "HTTP 403"
+    },
+    {
+      "check": "forge: rejects no credential",
+      "clean": true,
+      "detail": "HTTP 401"
+    },
+    {
+      "check": "forge: rejects unrelated key",
+      "clean": true,
+      "detail": "HTTP 403"
+    },
+    {
+      "check": "forge: key with trailing space",
+      "clean": true,
+      "detail": "HTTP 403"
+    },
+    {
+      "check": "memora: empty_body",
+      "clean": true,
+      "detail": "HTTP 422 5ms"
+    },
+    {
+      "check": "memora: null_fields",
+      "clean": true,
+      "detail": "HTTP 422 3ms"
+    },
+    {
+      "check": "memora: wrong_type",
+      "clean": true,
+      "detail": "HTTP 422 26ms"
+    },
+    {
+      "check": "memora: sql_fragment",
+      "clean": true,
+      "detail": "HTTP 422 9ms"
+    },
+    {
+      "check": "memora: path_traversal",
+      "clean": true,
+      "detail": "HTTP 201 253ms"
+    },
+    {
+      "check": "memora: control_chars",
+      "clean": true,
+      "detail": "HTTP 201 166ms"
+    },
+    {
+      "check": "memora: unicode_bomb",
+      "clean": true,
+      "detail": "HTTP 201 342ms"
+    },
+    {
+      "check": "memora: huge_string",
+      "clean": true,
+      "detail": "HTTP 201 23020ms"
+    },
+    {
+      "check": "futuris: empty_body",
+      "clean": true,
+      "detail": "HTTP 422 0ms"
+    },
+    {
+      "check": "futuris: null_fields",
+      "clean": true,
+      "detail": "HTTP 422 0ms"
+    },
+    {
+      "check": "futuris: wrong_type",
+      "clean": true,
+      "detail": "HTTP 422 0ms"
+    },
+    {
+      "check": "futuris: sql_fragment",
+      "clean": true,
+      "detail": "HTTP 422 0ms"
+    },
+    {
+      "check": "futuris: path_traversal",
+      "clean": true,
+      "detail": "HTTP 422 0ms"
+    },
+    {
+      "check": "futuris: control_chars",
+      "clean": true,
+      "detail": "HTTP 422 14ms"
+    },
+    {
+      "check": "futuris: unicode_bomb",
+      "clean": true,
+      "detail": "HTTP 422 1ms"
+    },
+    {
+      "check": "futuris: huge_string",
+      "clean": true,
+      "detail": "HTTP 422 38ms"
+    },
+    {
+      "check": "intelx: empty_body",
+      "clean": true,
+      "detail": "HTTP 422 10ms"
+    },
+    {
+      "check": "intelx: null_fields",
+      "clean": true,
+      "detail": "HTTP 422 0ms"
+    },
+    {
+      "check": "intelx: wrong_type",
+      "clean": true,
+      "detail": "HTTP 422 16ms"
+    },
+    {
+      "check": "intelx: sql_fragment",
+      "clean": true,
+      "detail": "HTTP 422 0ms"
+    },
+    {
+      "check": "intelx: path_traversal",
+      "clean": true,
+      "detail": "HTTP 422 7ms"
+    },
+    {
+      "check": "intelx: control_chars",
+      "clean": true,
+      "detail": "HTTP 422 26ms"
+    },
+    {
+      "check": "intelx: unicode_bomb",
+      "clean": true,
+      "detail": "HTTP 422 18ms"
+    },
+    {
+      "check": "intelx: huge_string",
+      "clean": true,
+      "detail": "HTTP 422 45ms"
+    },
+    {
+      "check": "cortex: empty_body",
+      "clean": true,
+      "detail": "HTTP 422 3ms"
+    },
+    {
+      "check": "cortex: null_fields",
+      "clean": true,
+      "detail": "HTTP 422 3ms"
+    },
+    {
+      "check": "cortex: wrong_type",
+      "clean": true,
+      "detail": "HTTP 422 2ms"
+    },
+    {
+      "check": "cortex: sql_fragment",
+      "clean": true,
+      "detail": "HTTP 422 3ms"
+    },
+    {
+      "check": "cortex: path_traversal",
+      "clean": true,
+      "detail": "HTTP 422 2ms"
+    },
+    {
+      "check": "cortex: control_chars",
+      "clean": true,
+      "detail": "HTTP 422 5ms"
+    },
+    {
+      "check": "cortex: unicode_bomb",
+      "clean": true,
+      "detail": "HTTP 422 28ms"
+    },
+    {
+      "check": "cortex: huge_string",
+      "clean": true,
+      "detail": "HTTP 422 48ms"
+    },
+    {
+      "check": "forge: empty_body",
+      "clean": true,
+      "detail": "HTTP 405 0ms"
+    },
+    {
+      "check": "forge: null_fields",
+      "clean": true,
+      "detail": "HTTP 405 10ms"
+    },
+    {
+      "check": "forge: wrong_type",
+      "clean": true,
+      "detail": "HTTP 405 17ms"
+    },
+    {
+      "check": "forge: sql_fragment",
+      "clean": true,
+      "detail": "HTTP 405 3ms"
+    },
+    {
+      "check": "forge: path_traversal",
+      "clean": true,
+      "detail": "HTTP 405 0ms"
+    },
+    {
+      "check": "forge: control_chars",
+      "clean": true,
+      "detail": "HTTP 405 2ms"
+    },
+    {
+      "check": "forge: unicode_bomb",
+      "clean": true,
+      "detail": "HTTP 405 0ms"
+    },
+    {
+      "check": "forge: huge_string",
+      "clean": false,
+      "detail": "transport failure [WinError 10054] An existing connection was forcibly closed by the remote host"
+    },
+    {
+      "check": "memora write accepted",
+      "clean": true,
+      "detail": "HTTP 201"
+    },
+    {
+      "check": "memora immediate read-after-write",
+      "clean": true,
+      "detail": "HTTP 200 visible=True 17ms"
+    },
+    {
+      "check": "memora duplicate submit is handled",
+      "clean": true,
+      "detail": "HTTP 201"
+    },
+    {
+      "check": "memora 8 concurrent writes",
+      "clean": true,
+      "detail": "all handled"
+    },
+    {
+      "check": "memora: /health",
+      "clean": true,
+      "detail": "HTTP 200 {\"status\": \"healthy\", \"evidence_class\": \"server_live_probe\", \"observed_at\": \"2026-10-03T17:43:01.128283+00:00\", \"service\": \"memora-api\"}"
+    },
+    {
+      "check": "inference: /health/ready",
+      "clean": true,
+      "detail": "HTTP 200 {\"status\": \"registry_configured\", \"evidence_class\": \"agent_registry_configuration\", \"evidence_scope\": \"Checks only the configured specialist registry "
+    },
+    {
+      "check": "forge: /health/ready",
+      "clean": true,
+      "detail": "HTTP 200 {\"status\": \"ready\", \"database_connected\": true, \"workspaces_writable\": true, \"evidence_class\": \"dependency_readiness\"}"
+    },
+    {
+      "check": "cortex: /health/ready",
+      "clean": true,
+      "detail": "HTTP 503 {\"status\": \"NOT_READY\", \"evidence_class\": \"dependency_readiness\", \"observed_at\": \"2026-10-03T17:43:05.239772+00:00\", \"dependencies\": {\"postgres\": \"UP\""
+    },
+    {
+      "check": "sentinel: /health",
+      "clean": true,
+      "detail": "HTTP 200 {\"status\": \"ok\", \"evidence_class\": \"process_liveness\", \"service\": \"SENTINEL\", \"version\": \"1.0.0\"}"
+    },
+    {
+      "check": "intelx: /api/v1/health",
+      "clean": true,
+      "detail": "HTTP 200 {\"status\": \"ok\", \"evidence_class\": \"process_liveness\", \"observed_at\": \"2026-10-03T17:43:05.246029+00:00\", \"service\": \"INTELX\"}"
+    }
+  ],
+  "findings": [
+    {
+      "finding": "forge: huge_string",
+      "detail": "transport failure [WinError 10054] An existing connection was forcibly closed by the remote host"
+    }
+  ]
+}

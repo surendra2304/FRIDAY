@@ -1,0 +1,92 @@
+[
+  {
+    "check": "friday /api/health",
+    "passed": true,
+    "detail": "HTTP 200 7ms ['overall', 'evidence_class', 'observed_at', 'checks']"
+  },
+  {
+    "check": "inference /health",
+    "passed": true,
+    "detail": "HTTP 200 2ms {'status': 'responding'}"
+  },
+  {
+    "check": "memora /health",
+    "passed": true,
+    "detail": "HTTP 200 14ms {'status': 'healthy'}"
+  },
+  {
+    "check": "intelx /api/v1/healthz",
+    "passed": true,
+    "detail": "HTTP 200 15ms {'status': 'ok'}"
+  },
+  {
+    "check": "futuris /health",
+    "passed": true,
+    "detail": "HTTP 200 1ms {'status': 'ok'}"
+  },
+  {
+    "check": "cortex /health",
+    "passed": true,
+    "detail": "HTTP 200 1ms {'status': 'UP'}"
+  },
+  {
+    "check": "forge /health",
+    "passed": true,
+    "detail": "HTTP 200 145ms {'status': 'ok'}"
+  },
+  {
+    "check": "sentinel /health",
+    "passed": true,
+    "detail": "HTTP 200 21ms {'status': 'ok'}"
+  },
+  {
+    "check": "stratex /api/status",
+    "passed": true,
+    "detail": "HTTP 200 10203ms ['alerts', 'available_risk', 'bot_start_time', 'capability_reasons', 'cash', 'components', 'crypto_holdings_value', 'engine_data', 'engine_healthy', 'engine_status', 'engine_tradin"
+  },
+  {
+    "check": "memora record memory",
+    "passed": false,
+    "detail": "HTTP 422 21ms {'detail': \"[{'type': 'missing', 'loc': ['body', 'content_text'], 'msg': 'Field required', 'input': {'agent_name': 'friday\"}"
+  },
+  {
+    "check": "memora search finds the write",
+    "passed": false,
+    "detail": "HTTP 405 11ms recall_matched=False"
+  },
+  {
+    "check": "inference /ask",
+    "passed": false,
+    "detail": "HTTP 422 5ms {'detail': \"[{'type': 'missing', 'loc': ['body', 'question'], 'msg': 'Field required', 'input': {'prompt': 'Reply with exa\"}"
+  },
+  {
+    "check": "intelx trigger research",
+    "passed": false,
+    "detail": "HTTP 422 8ms {'detail': \"[{'type': 'missing', 'loc': ['body', 'friday_request_id'], 'msg': 'Field required', 'input': {'objective': 'Ve\"}"
+  },
+  {
+    "check": "futuris forecast",
+    "passed": false,
+    "detail": "HTTP 503 7ms {'error': \"{'code': 'http_error', 'message': 'FRIDAY service authentication is not configured.', 'details': {}}\"}"
+  },
+  {
+    "check": "forge capabilities",
+    "passed": false,
+    "detail": "HTTP 403 25ms {'error': 'forbidden'}"
+  },
+  {
+    "check": "cortex agents list",
+    "passed": false,
+    "detail": "HTTP 401 4ms {'detail': 'Could not validate JWT credentials: Not enough segments'}"
+  },
+  {
+    "check": "stratex closed trades visible",
+    "passed": true,
+    "detail": "HTTP 200 4ms count=5"
+  },
+  {
+    "check": "friday agent roster",
+    "passed": true,
+    "detail": "HTTP 200 3888ms entries=8"
+  }
+]

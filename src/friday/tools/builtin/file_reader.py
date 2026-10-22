@@ -1,0 +1,127 @@
+"""Built-in tool for reading file contents safely."""
+
+from pathlib import Path, PureWindowsPath
+from typing import Any
+
+from friday.core.types import SafetyLevel, ToolResult
+from friday.tools.base import BaseTool
+from friday_deep.security.filesystem import FileAccessDenied, SecureWorkspace
+
+
+class FileReaderTool(BaseTool):
+    """Safe, read-only file reading tool restricted to the workspace directory."""
+
+    name = "read_file"
+    description = "Read the contents of a text file within the workspace safely. Path must be relative to the workspace root."
+    safety_level = SafetyLevel.SAFE
+    parameters: dict[str, Any] = {
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "Path to the file to read (relative to the workspace root, e.g. 'README.md' or 'src/friday/main.py')",
+            },
+            "max_bytes": {
+                "type": "integer",
+                "description": "Maximum number of bytes to read (default is 102400, maximum is 524288 to prevent context flooding)",
+            },
+        },
+        "required": ["path"],
+    }
+
+    def execute(self, path: str, max_bytes: int = 102400, **kwargs: Any) -> ToolResult:
+        # Guard max bytes
+        max_bytes = min(max(1, max_bytes), 524288)
+
+        # One policy for every file tool. Absolute paths are accepted when they
+        # land inside an allowed root - refusing them outright made reading a
+        # file the write tools had just created depend on which spelling the
+        # model happened to use.
+        from friday.security.workspace_policy import PathPolicyError, shared_policy
+
+        try:
+            target_path = shared_policy().resolve_for_read(path, must_exist=False, label="file path")
+        except PathPolicyError as exc:
+            return ToolResult(
+                name=self.name,
+                content=f"Security Error: {exc}",
+                is_error=True,
+                refused=True,
+                safety_level=self.safety_level,
+            )
+        except Exception as exc:
+            return ToolResult(
+                name=self.name,
+                content=f"Security Error: {exc}",
+                is_error=True,
+                safety_level=self.safety_level,
+            )
+
+        try:
+            if not target_path.is_file():
+                return ToolResult(
+                    name=self.name,
+                    content=f"Error: Path '{path}' is not a file or does not exist.",
+                    is_error=True,
+                    refused=True,
+                    safety_level=self.safety_level,
+                )
+
+            # Check file size before reading to avoid memory blowout
+            file_size = target_path.stat().st_size
+            if file_size == 0:
+                return ToolResult(
+                    name=self.name,
+                    content="File is empty.",
+                    is_error=False,
+                    safety_level=self.safety_level,
+                )
+
+            # Binary file check
+            # Read first 1024 bytes and check for null bytes
+            with open(target_path, "rb") as f:
+                chunk = f.read(1024)
+                if b"\x00" in chunk:
+                    return ToolResult(
+                        name=self.name,
+                        content=f"Error: File '{path}' appears to be a binary file. Reading binary files is not supported to protect context sanity.",
+                        is_error=True,
+                        safety_level=self.safety_level,
+                    )
+
+            # Read text with proper encoding handling
+            # Try UTF-8 first, fallback to latin-1
+            try:
+                with open(target_path, "r", encoding="utf-8") as f:
+                    content = f.read(max_bytes + 1)
+            except UnicodeDecodeError:
+                with open(target_path, "r", encoding="latin-1") as f:
+                    content = f.read(max_bytes + 1)
+
+            truncated = len(content) > max_bytes
+            display_content = content[:max_bytes]
+
+            summary = f"### File Content: {path}\n"
+            if truncated:
+                summary += f"*(Showing first {max_bytes} bytes of {file_size} total bytes)*\n\n"
+            else:
+                summary += f"*(Read complete: {len(display_content)} bytes)*\n\n"
+
+            summary += f"```\n{display_content}\n```"
+            if truncated:
+                summary += "\n\n*(Truncated due to size limit)*"
+
+            return ToolResult(
+                name=self.name,
+                content=summary,
+                is_error=False,
+                safety_level=self.safety_level,
+            )
+
+        except Exception as e:
+            return ToolResult(
+                name=self.name,
+                content=f"Error: Unable to read file. Details: {e!s}",
+                is_error=True,
+                safety_level=self.safety_level,
+            )

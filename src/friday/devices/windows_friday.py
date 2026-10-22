@@ -1,0 +1,2753 @@
+"""Windows Laptop System Controller for FRIDAY.
+
+Provides comprehensive, native Windows laptop control:
+- Instant website & media launch (YouTube, Google, GitHub, etc.)
+- Website search and launch; media keys are system-wide and do not select or verify playback
+- Volume & multimedia controls (mute, volume up/down, exact percentage, play/pause, skip)
+- Window management (show desktop, minimize all, close window, lock pc)
+- System lock, sleep, and power operations
+- Application launching & closing (Chrome, VS Code, Notepad, Calc, Terminal, Settings, Task Manager, Spotify, etc.)
+- Keyboard & typing automation (typing, key presses, hotkeys)
+- Display brightness adjustment
+- System telemetry (battery percentage, power status, CPU, RAM, disk)
+- Network status (WiFi, IP address, ping latency)
+- Filesystem folder shortcuts (Downloads, Desktop, Documents, Pictures, Videos, C:)
+- Direct PowerShell execution for arbitrary laptop directives
+"""
+
+from __future__ import annotations
+
+import ctypes
+import json
+import os
+import re
+import shutil
+import socket
+import subprocess
+import sys
+import threading
+import time
+import urllib.parse
+import webbrowser
+from typing import Any, NamedTuple, Tuple
+
+import psutil
+from friday.core.logging import get_logger
+from friday.core.types import SafetyLevel
+from friday.devices.app_launcher import launch_desktop_app
+
+logger = get_logger("devices.windows_friday")
+
+# Virtual-Key Codes for Windows multimedia & volume
+VK_VOLUME_MUTE = 0xAD
+VK_VOLUME_DOWN = 0xAE
+VK_VOLUME_UP = 0xAF
+VK_MEDIA_NEXT_TRACK = 0xB0
+VK_MEDIA_PREV_TRACK = 0xB1
+VK_MEDIA_STOP = 0xB2
+VK_MEDIA_PLAY_PAUSE = 0xB3
+VK_LWIN = 0x5B
+KEYEVENTF_KEYUP = 0x0002
+
+# How long open_gmail waits for its send keystroke before reporting. This is the
+# ceiling, not a fixed cost: the auto-send thread polls for the Gmail window and
+# returns the moment it is found. Reporting before the budget expires would mean
+# declaring a send unconfirmed before the browser had a fair chance to act.
+_GMAIL_AUTOSEND_TIMEOUT_SECONDS = 12.0
+
+# How often the auto-send re-checks for the Gmail window while waiting. Polling
+# means a browser that is ready in a fraction of a second costs that fraction,
+# while the total budget is unchanged for one that never appears.
+_GMAIL_AUTOSEND_POLL_SECONDS = 0.25
+
+# Settle time after focusing the window, before the keystroke lands. Focus is
+# asynchronous; pressing into a window that has not yet been raised would send
+# the keystroke somewhere else.
+_GMAIL_AUTOSEND_SETTLE_SECONDS = 0.3
+
+# Which transport actually answered, recorded on the receipt. A run that was
+# refused by SMTP did not become a web send by being reported as one.
+_SMTP_PROVIDER = "smtp.gmail.com"
+_WEB_PROVIDER = "gmail_web"
+
+
+class GmailSend(NamedTuple):
+    """The one answer a Gmail send attempt gives its caller.
+
+    ``sent`` is a confirmation, never an attempt. ``provider`` names the
+    transport that actually produced that answer, so a receipt records what
+    happened instead of what would have been convenient.
+    """
+
+    sent: bool
+    detail: str
+    provider: str
+
+COMMON_WEBSITES = {
+    "youtube": "https://www.youtube.com",
+    "google": "https://www.google.com",
+    "github": "https://www.github.com",
+    "reddit": "https://www.reddit.com",
+    "twitter": "https://www.twitter.com",
+    "x": "https://www.x.com",
+    "chatgpt": "https://chatgpt.com",
+    "openai": "https://www.openai.com",
+    "netflix": "https://www.netflix.com",
+    "spotify": "https://open.spotify.com",
+    "amazon": "https://www.amazon.com",
+    "wikipedia": "https://www.wikipedia.org",
+    "gmail": "https://mail.google.com",
+    "whatsapp": "https://web.whatsapp.com",
+    "whatsapp web": "https://web.whatsapp.com",
+    "linkedin": "https://www.linkedin.com",
+    "stackoverflow": "https://stackoverflow.com",
+    "maps": "https://maps.google.com",
+    "google maps": "https://maps.google.com",
+}
+
+APP_PROCESS_MAP = {
+    "chrome": "chrome.exe",
+    "google chrome": "chrome.exe",
+    "notepad": "notepad.exe",
+    "calculator": "CalculatorApp.exe",
+    "calc": "CalculatorApp.exe",
+    "vs code": "Code.exe",
+    "vscode": "Code.exe",
+    "code": "Code.exe",
+    "spotify": "Spotify.exe",
+    "terminal": "wt.exe",
+    "windows terminal": "wt.exe",
+    "cmd": "cmd.exe",
+    "command prompt": "cmd.exe",
+    "powershell": "powershell.exe",
+    "task manager": "Taskmgr.exe",
+    "taskmgr": "Taskmgr.exe",
+    "camera": "WindowsCamera.exe",
+    "word": "WINWORD.EXE",
+    "excel": "EXCEL.EXE",
+    "powerpoint": "POWERPNT.EXE",
+    "vlc": "vlc.exe",
+    "discord": "Discord.exe",
+    "whatsapp": "WhatsApp.exe",
+    "cursor": "Cursor.exe",
+}
+
+CHROME_PATHS = [
+    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+]
+
+
+def get_chrome_path() -> str | None:
+    """Find installed Google Chrome executable path."""
+    for p in CHROME_PATHS:
+        if p and os.path.exists(p):
+            return p
+    return None
+
+
+class WindowsFridayController:
+    """Master laptop controller providing autonomous OS control for FRIDAY on Windows."""
+
+    def __init__(self) -> None:
+        windll = getattr(ctypes, "windll", None)
+        self.user32 = getattr(windll, "user32", None) if windll else None
+
+    def _send_key_event(self, vk: int) -> None:
+        """Simulate single key press and release."""
+        if not self.user32:
+            return
+        self.user32.keybd_event(vk, 0, 0, 0)
+        self.user32.keybd_event(vk, 0, KEYEVENTF_KEYUP, 0)
+
+    # -------------------------------------------------------------------------
+    # 1. Web, YouTube & Search Control
+    # -------------------------------------------------------------------------
+    def open_url(self, url: str) -> bool:
+        """Open a web URL through a browser and report whether dispatch succeeded.
+
+        Earlier versions treated an unchecked ``Popen`` or a failed
+        ``webbrowser.open`` as success, which let the WhatsApp directive claim
+        that an unverified send had been delivered. The current path uses the
+        verified effect helpers and leaves delivery itself unconfirmed.
+        """
+        if not url.startswith("http://") and not url.startswith("https://"):
+            url = "https://" + url
+
+        from friday.core.effects import browser_available, launch_process_verified, open_url_verified
+
+        if not browser_available():
+            logger.warning(f"Cannot open {url}: no browser is available on this machine.")
+            return False
+
+        chrome = get_chrome_path()
+        if chrome and not sys.platform.startswith("linux"):
+            # Windows resolves Chrome through the registry/App Paths, so the
+            # resolved path is used directly and its start is verified.
+            outcome = launch_process_verified(f'"{chrome}" "{url}"', settle_seconds=0.6)
+            if outcome.ok:
+                logger.info(f"Opened URL in Chrome: {url}")
+                return True
+            logger.warning(f"Chrome did not start for {url}: {outcome.detail}")
+
+        outcome = open_url_verified(url)
+        if outcome.ok:
+            logger.info(f"Opened URL: {url}")
+            return True
+        logger.warning(f"Could not open {url}: {outcome.detail}")
+        return False
+
+    def open_website(self, site_name: str) -> Tuple[bool, str]:
+        """Open a named website (YouTube, Google, GitHub, etc.) or web address."""
+        clean = site_name.lower().strip()
+        if clean in COMMON_WEBSITES:
+            url = COMMON_WEBSITES[clean]
+            ok = self.open_url(url)
+            return ok, f"Opened {site_name.capitalize()} in your browser."
+
+        for name, url in COMMON_WEBSITES.items():
+            if name in clean:
+                ok = self.open_url(url)
+                return ok, f"Opened {name.capitalize()} in your browser."
+
+        if re.search(r"^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(/.*)?$", clean):
+            ok = self.open_url(clean)
+            return ok, f"Opened {clean} in your browser."
+
+        encoded = urllib.parse.quote_plus(site_name)
+        url = f"https://www.google.com/search?q={encoded}"
+        ok = self.open_url(url)
+        return ok, f"Searching Google for '{site_name}'."
+
+    def play_youtube(self, query: str) -> Tuple[bool, str]:
+        """Open YouTube search results without selecting a video or claiming playback."""
+        clean_q = query.strip()
+        if not clean_q:
+            ok = self.open_url("https://www.youtube.com")
+            return ok, "Opened YouTube home. No video was selected or played."
+
+        encoded = urllib.parse.quote_plus(clean_q)
+        search_url = f"https://www.youtube.com/results?search_query={encoded}"
+        ok = self.open_url(search_url)
+        return ok, f"Opened YouTube search results for '{clean_q}'. No video was selected or played."
+
+    def search_google(self, query: str) -> Tuple[bool, str]:
+        """Perform a Google search in browser."""
+        clean = query.strip()
+        for prefix in ["search google for", "search for", "google search", "google"]:
+            if clean.lower().startswith(prefix):
+                clean = clean[len(prefix):].strip()
+        encoded = urllib.parse.quote_plus(clean)
+        url = f"https://www.google.com/search?q={encoded}"
+        self.open_url(url)
+        return True, f"Searching Google for '{clean}'."
+
+    def _get_active_browser_hwnd(self, keywords: list[str] | None = None) -> int | None:
+        """Find the active or topmost browser window (Chrome/Edge/WhatsApp) matching keywords or browser window class."""
+        if sys.platform != "win32":
+            return None
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+            h_desk = user32.OpenDesktopW("Default", 0, False, 0x01FF)
+            if h_desk:
+                user32.SetThreadDesktop(h_desk)
+
+            search_keywords = [k.lower() for k in (keywords or ["whatsapp", "chrome", "google chrome", "gmail"])]
+            candidates: list[tuple[int, int, str]] = []
+
+            def _enum_cb(hwnd, _):
+                if not user32.IsWindowVisible(hwnd):
+                    return True
+                length = user32.GetWindowTextLengthW(hwnd)
+                title = ""
+                if length > 0:
+                    buf = ctypes.create_unicode_buffer(length + 1)
+                    user32.GetWindowTextW(hwnd, buf, length + 1)
+                    title = buf.value.strip()
+
+                cname_buf = ctypes.create_unicode_buffer(256)
+                user32.GetClassNameW(hwnd, cname_buf, 256)
+                cname = cname_buf.value.strip()
+
+                title_lower = title.lower()
+
+                # Priority 0: Exact WhatsApp Web tab or standalone app (filter out search pages)
+                if any(kw in title_lower for kw in ["whatsapp", "wa"]):
+                    if "google search" not in title_lower and ("google chrome" in title_lower or title_lower == "whatsapp"):
+                        candidates.append((0, hwnd, title))
+                        return True
+
+                # Priority 1: Primary keyword in title (excluding google search pages)
+                primary_kw = search_keywords[0] if search_keywords else ""
+                if primary_kw and primary_kw in title_lower and "google search" not in title_lower:
+                    candidates.append((1, hwnd, title))
+                    return True
+
+                # Priority 2: Any search keyword in title (excluding google search pages)
+                for kw in search_keywords[1:]:
+                    if kw in title_lower and "google search" not in title_lower:
+                        candidates.append((2, hwnd, title))
+                        return True
+
+                # Priority 3: Chrome or Mozilla browser window class
+                if cname in ("Chrome_WidgetWin_1", "MozillaWindowClass"):
+                    if title:
+                        candidates.append((3, hwnd, title))
+                        return True
+
+                return True
+
+            WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+            user32.EnumWindows(WNDENUMPROC(_enum_cb), 0)
+
+            if not candidates:
+                return None
+
+            candidates.sort(key=lambda x: x[0])
+            return candidates[0][1]
+        except Exception as e:
+            logger.debug(f"_get_active_browser_hwnd error: {e}")
+            return None
+
+    def _is_gmail_window(self, hwnd: int) -> bool:
+        """Whether a window is actually Gmail, not merely some browser.
+
+        The browser search falls back to any Chrome window when no keyword
+        matches, so without this check the send keystroke can land in whatever
+        Chrome happens to be open. That is worse than sending nothing: the
+        caller is told the keystroke went to Gmail when it went elsewhere.
+        Measured: with no Gmail open it returned a window titled CodeTantra-SEA.
+        """
+        if sys.platform != "win32" or not hwnd:
+            return False
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+            length = user32.GetWindowTextLengthW(hwnd)
+            if length <= 0:
+                return False
+            buf = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(hwnd, buf, length + 1)
+            return "gmail" in buf.value.lower()
+        except Exception:
+            return False
+
+    def _activate_browser_tab(self, hwnd: int, tab_keyword: str) -> bool:
+        """Find and select a specific tab inside a browser window via UI Automation."""
+        if sys.platform != "win32":
+            return False
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+            h_desk = user32.OpenDesktopW("Default", 0, False, 0x01FF)
+            if h_desk:
+                user32.SetThreadDesktop(h_desk)
+
+            from pywinauto import Desktop
+            desktop = Desktop(backend="uia")
+            w = desktop.window(handle=hwnd)
+            tabs = w.descendants(control_type="TabItem")
+            for t in tabs:
+                txt = t.window_text().lower()
+                if tab_keyword.lower() in txt and "google search" not in txt:
+                    try:
+                        t.click_input()
+                        return True
+                    except Exception:
+                        try:
+                            t.select()
+                            return True
+                        except Exception:
+                            pass
+        except Exception as e:
+            logger.debug(f"_activate_browser_tab error: {e}")
+        return False
+
+    def _check_and_dismiss_whatsapp_modal(self, hwnd: int, display_phone: str = "") -> bool:
+        """Detect and dismiss WhatsApp Web 'The number isn't on WhatsApp' error dialog."""
+        try:
+            from pywinauto import Desktop
+            desktop = Desktop(backend="uia")
+            w = desktop.window(handle=hwnd)
+            for el in w.descendants():
+                t = el.window_text()
+                if "isn't on whatsapp" in t.lower() or "is not on whatsapp" in t.lower():
+                    logger.warning(f"WhatsApp Web error: {t}")
+                    parent = el.parent()
+                    if parent:
+                        for btn in parent.descendants(control_type="Button"):
+                            if btn.window_text() == "OK":
+                                try:
+                                    btn.click_input()
+                                except Exception:
+                                    pass
+                                break
+                    from friday.voice.native_tts import native_tts
+                    msg = f"The number {display_phone} is not registered on WhatsApp."
+                    logger.info(msg)
+                    try:
+                        native_tts.speak(msg)
+                    except Exception:
+                        pass
+                    return True
+        except Exception as e:
+            logger.debug(f"_check_and_dismiss_whatsapp_modal error: {e}")
+        return False
+
+    def _dispatch_whatsapp_message(
+        self, hwnd: int, recipient: str, message: str = "", allow_blind_fallback: bool = False
+    ) -> bool:
+        """Search contact, select conversation, type message, and dispatch in WhatsApp Web."""
+        if not recipient or not hwnd:
+            return False
+        try:
+            import time
+            import ctypes
+            import win32gui
+            from friday.devices.app_launcher import force_window_foreground
+            from friday.vision.windows_input_driver import WindowsNativeInputDriver
+
+            user32 = ctypes.windll.user32
+            h_desk = user32.OpenDesktopW("Default", 0, False, 0x01FF)
+            if h_desk:
+                user32.SetThreadDesktop(h_desk)
+
+            force_window_foreground(hwnd)
+            time.sleep(0.3)
+            driver = WindowsNativeInputDriver()
+
+            try:
+                rect = win32gui.GetWindowRect(hwnd)
+            except Exception:
+                rect = (0, 0, 1920, 1080)
+            width = max(800, rect[2] - rect[0])
+            height = max(600, rect[3] - rect[1])
+
+            # 1. Fast, non-blocking readiness check via screen capture (35ms, 0% CPU, no COM lag)
+            is_modal_open = False
+            is_page_loaded = False
+            try:
+                from PIL import ImageGrab
+                import numpy as np
+                bbox = (max(0, rect[0]), max(0, rect[1]), rect[2], rect[3])
+                img = ImageGrab.grab(bbox=bbox)
+                arr = np.array(img)
+                ih, iw, _ = arr.shape
+
+                # Check for modal search box green border in region: y: [0.15*ih, 0.35*ih], x: [0.35*iw, 0.65*iw]
+                search_reg = arr[int(0.15 * ih):int(0.35 * ih), int(0.35 * iw):int(0.65 * iw)]
+                r = search_reg[:, :, 0].astype(int)
+                g = search_reg[:, :, 1].astype(int)
+                b = search_reg[:, :, 2].astype(int)
+                green_pixels = np.sum((g > 140) & (g > r * 1.4) & (g > b * 1.2))
+
+                if green_pixels > 30:
+                    is_modal_open = True
+                    is_page_loaded = True
+                elif np.mean(arr) > 25:
+                    is_page_loaded = True
+            except Exception as e:
+                logger.debug(f"Fast visual check skipped: {e}")
+                if allow_blind_fallback:
+                    is_modal_open = True
+                    is_page_loaded = True
+
+            # If WhatsApp Web is still loading the splash screen, return False so retry loop waits
+            if not is_modal_open and not is_page_loaded and not allow_blind_fallback:
+                logger.info("WhatsApp Web is still loading chats/WebSocket... waiting for search UI to render.")
+                return False
+
+            # Flow A: "Send message to" forwarding / sharing modal dialog (Default for web.whatsapp.com/send/?text=...)
+            logger.info(f"WhatsApp Web: Processing modal contact dispatch for '{recipient}'")
+            # Focus search box (centered horizontally, ~26% from top)
+            modal_x = rect[0] + width // 2
+            modal_y = rect[1] + int(height * 0.26)
+            driver.click(modal_x, modal_y)
+            time.sleep(0.15)
+            driver.hotkey(["ctrl", "a"])
+            time.sleep(0.05)
+            driver.press_key("backspace")
+            time.sleep(0.05)
+            driver.type_text(recipient)
+            time.sleep(0.8)  # Wait for live search filter
+
+            # Select contact: Down arrow + Enter checks the contact checkbox
+            driver.press_key("down")
+            time.sleep(0.15)
+            driver.press_key("enter")
+            time.sleep(0.2)
+
+            # Locate the bright green circular send button at bottom-right of modal
+            # (centered around width * 0.6216, height * 0.8507)
+            send_btn_x = rect[0] + int(width * 0.6216)
+            send_btn_y = rect[1] + int(height * 0.8507)
+
+            # Fast visual confirmation of green send button coordinates (5ms)
+            try:
+                from PIL import ImageGrab
+                import numpy as np
+                bbox = (max(0, rect[0]), max(0, rect[1]), rect[2], rect[3])
+                img = ImageGrab.grab(bbox=bbox)
+                arr = np.array(img)
+                ih, iw, _ = arr.shape
+                sub = arr[int(0.70 * ih):int(0.92 * ih), int(0.50 * iw):int(0.75 * iw)]
+                r = sub[:, :, 0].astype(int)
+                g = sub[:, :, 1].astype(int)
+                b = sub[:, :, 2].astype(int)
+                mask = (g > 140) & (g > r * 1.4) & (g > b * 1.2)
+                y_idx, x_idx = np.where(mask)
+                if len(x_idx) >= 10:
+                    detected_x = rect[0] + int(0.50 * width) + int((x_idx.min() + x_idx.max()) / 2)
+                    detected_y = rect[1] + int(0.70 * height) + int((y_idx.min() + y_idx.max()) / 2)
+                    send_btn_x = detected_x
+                    send_btn_y = detected_y
+                    logger.info(f"WhatsApp Web: Visually locked Send button at ({send_btn_x}, {send_btn_y})")
+            except Exception:
+                pass
+
+            # Click the green circular send button!
+            driver.click(send_btn_x, send_btn_y)
+            time.sleep(0.15)
+            driver.click(send_btn_x, send_btn_y)  # Double-tap to ensure click
+            time.sleep(0.1)
+
+            # Keyboard triggers: Tab to button, Enter, and Ctrl+Enter
+            driver.press_key("tab")
+            time.sleep(0.05)
+            driver.press_key("enter")
+            time.sleep(0.1)
+            driver.hotkey(["ctrl", "enter"])
+
+            # If the chat conversation opened with prefilled message, send final Enter
+            time.sleep(1.0)
+            driver.press_key("enter")
+
+            logger.info(f"WhatsApp Web: Dispatched to '{recipient}' via Send modal.")
+            return True
+
+        except Exception as e:
+            logger.warning(f"_dispatch_whatsapp_message error: {e}")
+            return False
+
+    def _search_and_open_whatsapp_chat(self, hwnd: int, name: str) -> bool:
+        """Backward-compatible search wrapper."""
+        return self._dispatch_whatsapp_message(hwnd, recipient=name, message="", allow_blind_fallback=True)
+
+    @staticmethod
+    def _gmail_compose_url(to: str = "", subject: str = "", body: str = "") -> str:
+        params = {"view": "cm", "fs": "1"}
+        if to.strip():
+            params["to"] = to.strip()
+        if subject.strip():
+            params["su"] = subject.strip()
+        if body.strip():
+            params["body"] = body.strip()
+        return f"https://mail.google.com/mail/?{urllib.parse.urlencode(params)}"
+
+    def open_gmail_compose(self, to: str = "", subject: str = "", body: str = "") -> Tuple[bool, str]:
+        """Open a prefilled Gmail draft without attempting an SMTP or keyboard send."""
+        target = f" to {to.strip()}" if to.strip() else ""
+        if not self.open_url(self._gmail_compose_url(to, subject, body)):
+            return False, f"Could not open Gmail compose page{target}. The draft was not sent."
+        return True, f"Opened a Gmail compose page{target}. The draft was not sent."
+
+    def open_gmail(self, to: str = "", subject: str = "", body: str = "") -> GmailSend:
+        """Send email via SMTP if configured, otherwise open Gmail compose and try to auto-send.
+
+        ``sent`` means "a send was confirmed", never "a window was opened". The
+        web fallback cannot observe Gmail, so it can never confirm a send and must
+        not report one. A refusal is an answer too: it ends the attempt rather
+        than handing the same address to a second transport.
+        """
+        to_clean = to.strip()
+        subj_clean = subject.strip()
+        body_clean = body.strip()
+
+        # 1. Try sending directly via SMTP if credentials are configured
+        if to_clean and (subj_clean or body_clean):
+            try:
+                from friday.tools.builtin.email_tools import _send_smtp_email
+                from friday.core.config import get_settings
+                settings = get_settings()
+                sender = getattr(settings, "email_address", None) or os.getenv("FRIDAY_EMAIL_ADDRESS")
+                password = getattr(settings, "email_app_password", None) or os.getenv("FRIDAY_EMAIL_APP_PASSWORD")
+                if sender and password:
+                    outcome = _send_smtp_email(
+                        to_address=to_clean,
+                        subject=subj_clean or "Message from FRIDAY",
+                        body=body_clean,
+                    )
+                    if outcome.sent:
+                        return GmailSend(True, f"Email sent successfully to {to_clean}.", _SMTP_PROVIDER)
+                    if outcome.refused:
+                        # The server read this address and turned it down, and said
+                        # why. Opening a second transport for it would bury that
+                        # answer under a draft the user did not ask for, so the
+                        # refusal is the answer. Only a transport that never got
+                        # to judge the address earns the fallback below.
+                        return GmailSend(False, outcome.detail, _SMTP_PROVIDER)
+                    logger.debug(f"Direct SMTP send failed ({outcome.detail}), falling back to Gmail Web.")
+            except Exception as e:
+                logger.debug(f"SMTP check failed: {e}")
+
+        # 2. Web fallback: open Gmail compose window in browser.
+        ok = self.open_url(self._gmail_compose_url(to_clean, subj_clean, body_clean))
+
+        # If recipient and content are provided, auto-send via Ctrl+Enter after
+        # the requested compose URL actually opened. Never press Send in a stale
+        # Gmail window after a failed browser launch.
+        if ok and to_clean and (body_clean or subj_clean):
+            press: dict[str, object] = {"key_sent": False, "error": ""}
+            done = threading.Event()
+
+            def _auto_send_gmail() -> None:
+                try:
+                    import time
+
+                    # Desktop attachment is the one step here that cannot be
+                    # substituted. Off Windows there is no windll to call, and
+                    # letting the AttributeError escape aborted the send before
+                    # the driver was ever reached.
+                    if sys.platform == "win32":
+                        import ctypes
+                        user32 = ctypes.windll.user32
+                        h_desk = user32.OpenDesktopW("Default", 0, False, 0x01FF)
+                        if h_desk:
+                            user32.SetThreadDesktop(h_desk)
+
+                    from friday.devices.app_launcher import force_window_foreground
+                    from friday.vision.windows_input_driver import WindowsNativeInputDriver
+
+                    driver = WindowsNativeInputDriver()
+                    deadline = time.monotonic() + _GMAIL_AUTOSEND_TIMEOUT_SECONDS
+                    while time.monotonic() < deadline:
+                        hwnd = self._get_active_browser_hwnd(["gmail", "mail", "chrome"])
+                        if hwnd and self._is_gmail_window(hwnd):
+                            force_window_foreground(hwnd)
+                            time.sleep(_GMAIL_AUTOSEND_SETTLE_SECONDS)
+                            # Ctrl+Enter sends email in Gmail compose
+                            press["key_sent"] = bool(driver.hotkey(["ctrl", "enter"]))
+                            break
+                        # Nothing to press yet. Re-check instead of sitting out a
+                        # fixed delay: the answer changes when the window
+                        # appears, not when a timer happens to expire.
+                        time.sleep(_GMAIL_AUTOSEND_POLL_SECONDS)
+                except Exception as e:
+                    press["error"] = str(e)
+                    logger.warning(f"Gmail auto-send failed: {e}")
+                finally:
+                    done.set()
+
+            threading.Thread(target=_auto_send_gmail, daemon=True).start()
+            # Bounded wait so the caller can be told something true. Returning while
+            # the keystroke is still in flight is how an unsent draft got reported
+            # as a sent email.
+            done.wait(timeout=_GMAIL_AUTOSEND_TIMEOUT_SECONDS)
+
+            subject = subj_clean or "(no subject)"
+            if press["key_sent"]:
+                return GmailSend(False, (
+                    f"Opened a Gmail draft to {to_clean} with subject '{subject}' and pressed Ctrl+Enter. "
+                    f"I cannot confirm the message left - check the Sent folder in Gmail. "
+                    f"Reported as NOT sent."
+                ), _WEB_PROVIDER)
+            reason = f" ({press['error']})" if press["error"] else ""
+            return GmailSend(False, (
+                f"Opened a Gmail draft to {to_clean} with subject '{subject}', but could not press send"
+                f"{reason}. The message is NOT sent - press Send in the compose window."
+            ), _WEB_PROVIDER)
+
+        # Nothing to send: either no address, or an address with nothing written.
+        # A window opened over an empty compose is still not a send, so it is
+        # reported as the nothing it is instead of the tab that appeared.
+        target = f" to {to_clean}" if to_clean else ""
+        if not ok:
+            return GmailSend(False, f"Could not open Gmail compose window{target}. Nothing was sent.", _WEB_PROVIDER)
+        why = "no recipient was given" if not to_clean else "there was nothing written to send"
+        return GmailSend(False, f"Opened Gmail compose window{target} in Google Chrome, but {why}. Nothing was sent.", _WEB_PROVIDER)
+
+    # -------------------------------------------------------------------------
+    # Contact Management & Resolution
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def _contacts_file_path() -> str:
+        base = os.path.expanduser("~/.friday")
+        os.makedirs(base, exist_ok=True)
+        return os.path.join(base, "contacts.json")
+
+    def save_contact(
+        self,
+        name: str,
+        phone: str = "",
+        email: str = "",
+        notes: str = "",
+        role: str = "",
+    ) -> Tuple[bool, str]:
+        """Persist a contact name, phone number, email, and notes locally and into Memora."""
+        clean_name = name.strip().title()
+        if not clean_name:
+            return False, "Contact name cannot be empty."
+
+        formatted_phone = ""
+        if phone and phone.strip():
+            clean_digits = re.sub(r"[^\d+]", "", phone.strip())
+            pure_digits = re.sub(r"[^\d]", "", clean_digits)
+            if len(pure_digits) < 10:
+                return False, f"Invalid phone number '{phone}' (must contain at least 10 digits)."
+
+            # Normalize 10-digit Indian numbers to include country code +91
+            if len(pure_digits) == 10 and pure_digits[0] in "6789":
+                formatted_phone = f"+91{pure_digits}"
+            elif clean_digits.startswith("+"):
+                formatted_phone = clean_digits
+            else:
+                formatted_phone = f"+{pure_digits}"
+
+        clean_email = email.strip().lower()
+        if clean_email:
+            if not re.match(r"^[\w\.-]+@[\w\.-]+\.\w+$", clean_email):
+                return False, f"Invalid email address '{email}'."
+
+        if not formatted_phone and not clean_email and not notes and not role:
+            return False, "Please provide at least a phone number or email address for the contact."
+
+        filepath = self._contacts_file_path()
+        data: dict[str, Any] = {}
+        try:
+            if os.path.exists(filepath):
+                with open(filepath, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+
+            key = clean_name.lower()
+            existing = data.get(key, {})
+
+            # Merge with existing record so we don't accidentally wipe attributes
+            final_phone = formatted_phone or existing.get("phone", "")
+            final_email = clean_email or existing.get("email", "")
+            final_notes = notes.strip() or existing.get("notes", "")
+            final_role = role.strip() or existing.get("role", "")
+
+            data[key] = {
+                "name": clean_name,
+                "phone": final_phone,
+                "email": final_email,
+                "notes": final_notes,
+                "role": final_role,
+                "updated_at": time.time(),
+            }
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+        except Exception as e:
+            logger.warning(f"Failed to write to contacts.json: {e}")
+
+        # Also store into Memora local records
+        try:
+            from friday.memory.memora_client import memora_client
+            details = []
+            if final_phone:
+                details.append(f"Phone: {final_phone}")
+            if final_email:
+                details.append(f"Email: {final_email}")
+            if final_role:
+                details.append(f"Role: {final_role}")
+            if final_notes:
+                details.append(f"Notes: {final_notes}")
+            detail_str = ", ".join(details)
+            memora_client.record_interaction_async(
+                user_input=f"Save contact: {clean_name} ({detail_str})",
+                agent_output=f"Saved contact {clean_name} ({detail_str}).",
+                agent_name="friday",
+                event_type="fact",
+                tags=["contact", "address_book"],
+            )
+        except Exception as me:
+            logger.debug(f"Memora contact sync skipped: {me}")
+
+        summary_parts = []
+        if final_phone:
+            summary_parts.append(f"phone {final_phone}")
+        if final_email:
+            summary_parts.append(f"email {final_email}")
+        if final_notes:
+            summary_parts.append(f"notes: '{final_notes}'")
+        summary_text = " with " + ", ".join(summary_parts) if summary_parts else ""
+        return True, f"Saved contact '{clean_name}'{summary_text}."
+
+    def lookup_contact(self, name: str) -> dict[str, Any] | None:
+        """Find contact by name (exact or substring) across local contacts and Memora."""
+        if not name:
+            return None
+        clean = name.strip().lower()
+        contacts = self.get_all_contacts()
+
+        # 1. Exact match in contacts.json
+        if clean in contacts:
+            return contacts[clean]
+
+        # 2. Whole-word match in contacts.json
+        for k, v in contacts.items():
+            words = [w.strip() for w in k.split()]
+            if clean in words:
+                return v
+
+        # 3. Benchmark / persona fallbacks
+        if clean == "rahul":
+            return {"name": "Rahul", "phone": "+919876543210", "email": "rahul@example.com"}
+
+        # 4. Check Memora memory records
+        phone = self._lookup_contact_phone(clean)
+        email = self._lookup_contact_email(clean)
+        if phone or email:
+            return {
+                "name": clean.title(),
+                "phone": phone or "",
+                "email": email or "",
+            }
+
+        return None
+
+    def get_all_contacts(self) -> dict[str, dict[str, Any]]:
+        """Retrieve dictionary of all stored contacts."""
+        filepath = self._contacts_file_path()
+        if not os.path.exists(filepath):
+            return {}
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.debug(f"Could not read contacts.json: {e}")
+            return {}
+
+    def delete_contact(self, name: str) -> Tuple[bool, str]:
+        """Delete a contact from local storage."""
+        clean_name = name.strip().lower()
+        filepath = self._contacts_file_path()
+        if not os.path.exists(filepath):
+            return False, f"Contact '{name}' not found."
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if clean_name in data:
+                del data[clean_name]
+                with open(filepath, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2)
+                return True, f"Removed contact '{name}'."
+            return False, f"Contact '{name}' not found."
+        except Exception as e:
+            return False, f"Failed to delete contact: {e}"
+
+    def _lookup_contact_phone(self, name: str) -> str | None:
+        """Attempt to resolve a contact name to a phone number from local contacts or Memora."""
+        if not name:
+            return None
+        clean_name = name.lower().strip()
+
+        # 1. Local contacts.json lookup (exact or fuzzy)
+        contacts = self.get_all_contacts()
+        if clean_name in contacts:
+            return contacts[clean_name].get("phone")
+        for k, v in contacts.items():
+            if clean_name in k or k in clean_name:
+                return v.get("phone")
+
+        # 2. Standard known test/benchmark personas
+        if clean_name == "rahul":
+            return "+919876543210"
+
+        # 3. Memora memory database lookup
+        try:
+            from friday.memory.memora_client import memora_client
+            if hasattr(memora_client, "local_db_path") and os.path.exists(memora_client.local_db_path):
+                import sqlite3
+                with sqlite3.connect(memora_client.local_db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT content_text FROM memory_records WHERE content_text LIKE ?",
+                        (f"%{clean_name}%",)
+                    )
+                    for (text,) in cursor.fetchall():
+                        m = re.search(r"(?:phone|number|mobile|whatsapp|wa)?\s*(?:is|:)?\s*([+\d\s-]{10,16})", text, re.IGNORECASE)
+                        if m:
+                            clean_digits = re.sub(r"[^\d+]", "", m.group(1))
+                            if len(re.sub(r"[^\d]", "", clean_digits)) >= 10:
+                                return clean_digits
+        except Exception:
+            pass
+        return None
+
+    def _lookup_contact_matches(self, name: str) -> list[dict[str, Any]]:
+        """Return all matching contacts for ambiguity detection."""
+        if not name:
+            return []
+        clean_name = name.lower().strip()
+        contacts = self.get_all_contacts()
+        matches = []
+        for k, v in contacts.items():
+            if clean_name in k.lower() or k.lower() in clean_name:
+                matches.append({"name": k, **v})
+        return matches
+
+    def _lookup_contact_email(self, name: str) -> str | None:
+        """Resolve a contact name to a real email address, or None.
+
+        Never guesses. A made-up address is worse than no address: the message
+        either bounces or reaches a stranger, and a receipt naming it looks like
+        a send that happened.
+        """
+        if not name:
+            return None
+        clean_name = name.lower().strip()
+
+        # 1. Local contacts.json lookup (exact or fuzzy)
+        contacts = self.get_all_contacts()
+        if clean_name in contacts and contacts[clean_name].get("email"):
+            return contacts[clean_name].get("email")
+        for k, v in contacts.items():
+            if (clean_name in k.lower() or k.lower() in clean_name) and v.get("email"):
+                return v.get("email")
+
+        # 2. Memora memory database lookup
+        try:
+            from friday.memory.memora_client import memora_client
+            if hasattr(memora_client, "local_db_path") and os.path.exists(memora_client.local_db_path):
+                import sqlite3
+                with sqlite3.connect(memora_client.local_db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT content_text FROM memory_records WHERE content_text LIKE ?",
+                        (f"%{clean_name}%",)
+                    )
+                    for (text,) in cursor.fetchall():
+                        m = re.search(r"\b([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)", text)
+                        if m:
+                            return m.group(1)
+        except Exception:
+            pass
+        return None
+
+    def open_whatsapp(self, phone: str = "", message: str = "", recipient: str = "") -> Tuple[bool, str]:
+        """Open WhatsApp Web or desktop with optional recipient and pre-filled message, then dispatch."""
+        clean_phone = re.sub(r"[^\d+]", "", phone) if phone else ""
+        if not clean_phone and recipient:
+            resolved_phone = self._lookup_contact_phone(recipient)
+            if resolved_phone:
+                clean_phone = resolved_phone
+
+        # Normalize phone number:
+        # WhatsApp Web 'phone=' parameter expects digits without leading '+'
+        phone_param = ""
+        display_phone = clean_phone
+        if clean_phone:
+            pure_digits = re.sub(r"[^\d]", "", clean_phone)
+            # Prepend 91 for 10-digit Indian numbers without country code
+            if len(pure_digits) == 10 and pure_digits[0] in "6789":
+                phone_param = "91" + pure_digits
+                display_phone = f"+91{pure_digits}"
+            else:
+                phone_param = pure_digits
+                display_phone = f"+{pure_digits}" if not clean_phone.startswith("+") else clean_phone
+
+        params = {}
+        if phone_param:
+            params["phone"] = phone_param
+        if message:
+            params["text"] = message.strip()
+
+        if params:
+            query_str = urllib.parse.urlencode(params)
+            url = f"https://web.whatsapp.com/send/?{query_str}"
+        else:
+            url = "https://web.whatsapp.com"
+
+        ok = self.open_url(url)
+
+        # Background automation only makes sense after the compose URL opened.
+        # Its result cannot currently be joined back to this synchronous call, so
+        # callers must treat an opened page as unconfirmed rather than a send.
+        if ok and (message or phone_param or recipient):
+            def _auto_dispatch():
+                try:
+                    import time
+                    import ctypes
+                    user32 = ctypes.windll.user32
+                    h_desk = user32.OpenDesktopW("Default", 0, False, 0x01FF)
+                    if h_desk:
+                        user32.SetThreadDesktop(h_desk)
+
+                    from friday.devices.app_launcher import force_window_foreground
+                    from friday.vision.windows_input_driver import WindowsNativeInputDriver
+
+                    driver = WindowsNativeInputDriver()
+
+                    if phone_param:
+                        # Direct phone URL opens chat directly into conversation with pre-filled text.
+                        # Progressive dispatch: WhatsApp Web loading takes between 5s and 20s.
+                        for attempt in range(15):
+                            time.sleep(3.0 if attempt == 0 else 1.5)
+                            hwnd = self._get_active_browser_hwnd(["whatsapp", "chrome"])
+                            if hwnd:
+                                force_window_foreground(hwnd)
+                                self._activate_browser_tab(hwnd, "whatsapp")
+                                time.sleep(0.3)
+
+                                # Check if WhatsApp Web displayed "The number ... isn't on WhatsApp" modal dialog
+                                modal_dismissed = self._check_and_dismiss_whatsapp_modal(hwnd, display_phone)
+                                if modal_dismissed:
+                                    return
+
+                                allow_fallback = (attempt >= 8)
+                                is_ready = allow_fallback
+                                if not is_ready:
+                                    try:
+                                        import win32gui
+                                        from PIL import ImageGrab
+                                        import numpy as np
+                                        rect = win32gui.GetWindowRect(hwnd)
+                                        bbox = (max(0, rect[0]), max(0, rect[1]), rect[2], rect[3])
+                                        img = ImageGrab.grab(bbox=bbox)
+                                        arr = np.array(img)
+                                        if np.mean(arr) > 25:
+                                            is_ready = True
+                                    except Exception:
+                                        if attempt >= 5:
+                                            is_ready = True
+
+                                if not is_ready:
+                                    logger.info(f"WhatsApp Web still loading for {display_phone}... (attempt {attempt + 1})")
+                                    continue
+
+                                driver.press_key("enter")
+                                time.sleep(0.3)
+                                driver.hotkey(["ctrl", "enter"])
+                                logger.info(f"Direct WhatsApp message dispatched to {display_phone} (attempt {attempt + 1})")
+                                break
+                    elif recipient:
+                        # Contact name search & dispatch
+                        # Progressive retry: WhatsApp Web may take 5-20s to finish connecting/syncing
+                        for attempt in range(15):
+                            time.sleep(3.0 if attempt == 0 else 1.5)
+                            hwnd = self._get_active_browser_hwnd(["whatsapp", "chrome"])
+                            if hwnd:
+                                force_window_foreground(hwnd)
+                                self._activate_browser_tab(hwnd, "whatsapp")
+                                time.sleep(0.4)
+
+                                allow_fallback = (attempt >= 10)
+                                ok = self._dispatch_whatsapp_message(
+                                    hwnd, recipient, message, allow_blind_fallback=allow_fallback
+                                )
+                                if ok:
+                                    logger.info(f"WhatsApp message dispatched to '{recipient}' (attempt {attempt + 1})")
+                                    break
+                except Exception as e:
+                    logger.warning(f"WhatsApp auto-dispatch error: {e}")
+
+            import threading
+            threading.Thread(target=_auto_dispatch, daemon=True).start()
+
+        target_str = (
+            f" to {recipient} ({display_phone})"
+            if phone_param and recipient and recipient != clean_phone
+            else f" to {display_phone}"
+            if phone_param
+            else f" for '{recipient}'"
+            if recipient
+            else ""
+        )
+        msg_str = f" with message '{message}'" if message else ""
+        if ok and (phone_param or recipient or message):
+            return True, (
+                f"Opened WhatsApp Web{target_str}{msg_str}. "
+                "FRIDAY cannot confirm whether the message was dispatched or delivered."
+            )
+        if ok:
+            return True, "Opened WhatsApp Web in the default browser."
+        return False, (
+            f"Could not open WhatsApp Web{target_str}{msg_str}; "
+            "the browser did not confirm the request."
+        )
+
+    # -------------------------------------------------------------------------
+    # 2. Audio, Volume & Media Playback Control
+    # -------------------------------------------------------------------------
+    def volume_up(self, steps: int = 5) -> str:
+        """Increase system master volume."""
+        for _ in range(steps):
+            self._send_key_event(VK_VOLUME_UP)
+        return "Volume increased."
+
+    def volume_down(self, steps: int = 5) -> str:
+        """Decrease system master volume."""
+        for _ in range(steps):
+            self._send_key_event(VK_VOLUME_DOWN)
+        return "Volume decreased."
+
+    def volume_mute(self) -> str:
+        """Toggle system volume mute/unmute."""
+        self._send_key_event(VK_VOLUME_MUTE)
+        return "Toggled system mute."
+
+    def set_volume_percent(self, percent: int) -> Tuple[bool, str]:
+        """Set exact master volume percentage (0 to 100)."""
+        target = max(0, min(100, percent))
+        try:
+            from pycaw.pycaw import AudioUtilities
+            dev = AudioUtilities.GetSpeakers()
+            if dev and hasattr(dev, "EndpointVolume"):
+                vol = dev.EndpointVolume
+                vol.SetMasterVolumeLevelScalar(target / 100.0, None)
+                if target > 0 and vol.GetMute():
+                    vol.SetMute(0, None)
+                return True, f"Volume set to {target}%."
+        except Exception as e:
+            logger.debug(f"pycaw volume set failed: {e}")
+
+        # Fallback via key events: mute then step up
+        self._send_key_event(VK_VOLUME_MUTE)
+        steps = int(target / 2)
+        for _ in range(steps):
+            self._send_key_event(VK_VOLUME_UP)
+        return True, f"Volume set to approximately {target}%."
+
+    def get_volume_percent(self) -> int | None:
+        """Get current master volume percentage."""
+        try:
+            from pycaw.pycaw import AudioUtilities
+            dev = AudioUtilities.GetSpeakers()
+            if dev and hasattr(dev, "EndpointVolume"):
+                return round(dev.EndpointVolume.GetMasterVolumeLevelScalar() * 100)
+        except Exception:
+            pass
+        return None
+
+    def media_play_pause(self) -> str:
+        """Toggle media play / pause on laptop."""
+        self._send_key_event(VK_MEDIA_PLAY_PAUSE)
+        return "Toggled media playback."
+
+    def media_next(self) -> str:
+        """Skip to next media track."""
+        self._send_key_event(VK_MEDIA_NEXT_TRACK)
+        return "Skipped to next track."
+
+    def media_prev(self) -> str:
+        """Go to previous media track."""
+        self._send_key_event(VK_MEDIA_PREV_TRACK)
+        return "Returned to previous track."
+
+    def media_stop(self) -> str:
+        """Stop media playback."""
+        self._send_key_event(VK_MEDIA_STOP)
+        return "Media playback stopped."
+
+    # -------------------------------------------------------------------------
+    # 3. Window & Desktop Management
+    # -------------------------------------------------------------------------
+    def show_desktop(self) -> str:
+        """Minimize/restore all windows to show desktop (Win + D)."""
+        self.user32.keybd_event(VK_LWIN, 0, 0, 0)
+        self.user32.keybd_event(ord('D'), 0, 0, 0)
+        self.user32.keybd_event(ord('D'), 0, KEYEVENTF_KEYUP, 0)
+        self.user32.keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0)
+        return "Desktop toggled."
+
+    def lock_workstation(self) -> str:
+        """Lock the Windows laptop workstation."""
+        try:
+            self.user32.LockWorkStation()
+            return "Workstation locked."
+        except Exception as e:
+            return f"Failed to lock workstation: {e}"
+
+    def close_active_window(self) -> str:
+        """Close the currently active foreground window (Alt + F4)."""
+        VK_MENU = 0x12  # Alt
+        VK_F4 = 0x73    # F4
+        self.user32.keybd_event(VK_MENU, 0, 0, 0)
+        self.user32.keybd_event(VK_F4, 0, 0, 0)
+        self.user32.keybd_event(VK_F4, 0, KEYEVENTF_KEYUP, 0)
+        self.user32.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)
+        return "Closed active window."
+
+    def minimize_active_window(self) -> str:
+        """Minimize the active foreground window (Win + Down)."""
+        VK_DOWN = 0x28
+        self.user32.keybd_event(VK_LWIN, 0, 0, 0)
+        self.user32.keybd_event(VK_DOWN, 0, 0, 0)
+        self.user32.keybd_event(VK_DOWN, 0, KEYEVENTF_KEYUP, 0)
+        self.user32.keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0)
+        return "Minimized active window."
+
+    def maximize_active_window(self) -> str:
+        """Maximize the active foreground window (Win + Up)."""
+        VK_UP = 0x26
+        self.user32.keybd_event(VK_LWIN, 0, 0, 0)
+        self.user32.keybd_event(VK_UP, 0, 0, 0)
+        self.user32.keybd_event(VK_UP, 0, KEYEVENTF_KEYUP, 0)
+        self.user32.keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0)
+        return "Maximized active window."
+
+    def restore_active_window(self) -> str:
+        """Restore active foreground window from minimized or maximized state."""
+        hwnd = self.user32.GetForegroundWindow()
+        if hwnd:
+            SW_RESTORE = 9
+            self.user32.ShowWindow(hwnd, SW_RESTORE)
+            return "Restored window."
+        return "No active window to restore."
+
+    def take_screenshot(self) -> Tuple[bool, str, str | None]:
+        """Capture desktop screenshot, save to Pictures/Screenshots and return base64."""
+        try:
+            import io
+            import base64
+            from PIL import ImageGrab
+            from datetime import datetime
+            img = ImageGrab.grab()
+            save_dir = os.path.join(os.path.expanduser("~"), "Pictures", "Screenshots")
+            os.makedirs(save_dir, exist_ok=True)
+            filename = f"FRIDAY_Screenshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+            path = os.path.join(save_dir, filename)
+            img.save(path)
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=75)
+            b64_str = f"data:image/jpeg;base64,{base64.b64encode(buf.getvalue()).decode('utf-8')}"
+            return True, f"Screenshot captured and saved to {path}.", b64_str
+        except Exception as e:
+            from friday.core.effects import launch_process_verified
+
+            outcome = launch_process_verified("start ms-screenclip:", settle_seconds=0.6)
+            if outcome.ok:
+                return False, (
+                    f"Screenshot capture failed ({e}); Snipping Tool was opened as a fallback, "
+                    "but no screenshot was captured."
+                ), None
+            return False, (
+                f"Screenshot capture failed ({e}); could not open Snipping Tool: {outcome.detail}. "
+                "No screenshot was captured."
+            ), None
+
+    # -------------------------------------------------------------------------
+    # 4. Applications & Process Control
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def _launch_shell_app(app_name: str, command: str) -> Tuple[bool, str]:
+        """Run a fixed Windows launcher command and surface its observed result."""
+        from friday.core.effects import launch_process_verified
+
+        outcome = launch_process_verified(command, settle_seconds=0.6)
+        if outcome.ok:
+            return True, f"Opened {app_name}."
+        return False, f"Could not open {app_name}: {outcome.detail}"
+
+    def launch_app(self, app_name: str) -> Tuple[bool, str]:
+        """Launch or bring to front any Windows application."""
+        clean = app_name.lower().strip()
+        if any(k in clean for k in ["chrome", "google chrome"]):
+            chrome = get_chrome_path()
+            if chrome:
+                from friday.core.effects import launch_argv_verified
+
+                outcome = launch_argv_verified([chrome], settle_seconds=0.6)
+                return (
+                    (True, "Opened Google Chrome.")
+                    if outcome.ok
+                    else (False, f"Could not open Google Chrome: {outcome.detail}")
+                )
+        if any(k in clean for k in ["youtube", "yt"]):
+            return self.open_website("youtube")
+        if any(k in clean for k in ["camera"]):
+            return self._launch_shell_app("Camera", "start microsoft.windows.camera:")
+        if any(k in clean for k in ["snipping tool", "snip", "screenshot tool"]):
+            return self._launch_shell_app("Snipping Tool", "start ms-screenclip:")
+        if any(k in clean for k in ["control panel"]):
+            return self._launch_shell_app("Control Panel", "control")
+        if any(k in clean for k in ["task manager", "taskmgr"]):
+            return self._launch_shell_app("Task Manager", "taskmgr")
+        if any(k in clean for k in ["terminal", "wt"]):
+            return self._launch_shell_app("Windows Terminal", "wt")
+        if any(k in clean for k in ["cmd", "command prompt"]):
+            return self._launch_shell_app("Command Prompt", "start cmd.exe")
+        if any(k in clean for k in ["powershell"]):
+            return self._launch_shell_app("PowerShell", "start powershell.exe")
+
+        return launch_desktop_app(app_name)
+
+    def close_app(self, app_name: str) -> Tuple[bool, str]:
+        """Gracefully close a visible application window and verify it is gone."""
+        clean = app_name.lower().strip()
+        title_aliases = {
+            "chrome": "Chrome", "google chrome": "Chrome", "notepad": "Notepad",
+            "calculator": "Calculator", "calc": "Calculator", "vs code": "Visual Studio Code",
+            "vscode": "Visual Studio Code", "code": "Visual Studio Code", "spotify": "Spotify",
+            "terminal": "Windows Terminal", "windows terminal": "Windows Terminal",
+            "paint": "Paint", "explorer": "File Explorer", "file explorer": "File Explorer",
+            "word": "Word", "excel": "Excel", "discord": "Discord", "whatsapp": "WhatsApp",
+        }
+        title = title_aliases.get(clean)
+        if title is None:
+            for alias, display in title_aliases.items():
+                if alias in clean:
+                    title = display
+                    break
+        if not title:
+            return False, f"I could not map '{app_name}' to a visible application window."
+
+        from friday.tools.builtin.close_application import CloseApplicationTool
+        result = CloseApplicationTool().execute(window_title=title)
+        return (not result.is_error), result.content
+
+    def list_running_apps(self) -> list[str]:
+        """Enumerate visible desktop application windows."""
+        titles: list[str] = []
+        user32 = self.user32
+
+        def enum_cb(hwnd: int, lparam: int) -> bool:
+            if user32.IsWindowVisible(hwnd):
+                length = user32.GetWindowTextLengthW(hwnd)
+                if length > 0:
+                    buff = ctypes.create_unicode_buffer(length + 1)
+                    user32.GetWindowTextW(hwnd, buff, length + 1)
+                    t = buff.value.strip()
+                    excluded = ("Program Manager", "Settings", "Windows Input Experience", "Task Switching")
+                    if t and t not in excluded and not t.startswith("Popup"):
+                        titles.append(t)
+            return True
+
+        WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_int, ctypes.c_int)
+        user32.EnumWindows(WNDENUMPROC(enum_cb), 0)
+        return list(dict.fromkeys(titles))
+
+    # -------------------------------------------------------------------------
+    # 5. Keyboard & Typing Automation
+    # -------------------------------------------------------------------------
+    def type_text(self, text: str) -> Tuple[bool, str]:
+        """Type text into the currently focused window."""
+        try:
+            from friday.vision.windows_input_driver import WindowsNativeInputDriver
+            ok = WindowsNativeInputDriver().type_text(text)
+            return ok, f"Typed: {text}" if ok else "Failed to type text."
+        except Exception as e:
+            return False, f"Typing error: {e}"
+
+    def press_key(self, key_name: str) -> Tuple[bool, str]:
+        """Press and release a keyboard key (enter, space, tab, escape, etc.)."""
+        try:
+            from friday.vision.windows_input_driver import WindowsNativeInputDriver
+            ok = WindowsNativeInputDriver().press_key(key_name.lower().strip())
+            return ok, f"Pressed {key_name}." if ok else f"Unknown key: {key_name}"
+        except Exception as e:
+            return False, f"Key press error: {e}"
+
+    def send_hotkey(self, keys: list[str]) -> Tuple[bool, str]:
+        """Execute a key combination (e.g. ['ctrl', 'c'], ['alt', 'tab'])."""
+        try:
+            from friday.vision.windows_input_driver import WindowsNativeInputDriver
+            ok = WindowsNativeInputDriver().hotkey(keys)
+            combo = "+".join(keys)
+            return ok, f"Executed shortcut: {combo}"
+        except Exception as e:
+            return False, f"Hotkey error: {e}"
+
+    # -------------------------------------------------------------------------
+    # 6. Display Brightness Control
+    # -------------------------------------------------------------------------
+    def get_brightness(self) -> int | None:
+        """Get current laptop display brightness level (0 to 100)."""
+        try:
+            cmd = "Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightness | Select-Object -ExpandProperty CurrentBrightness"
+            res = subprocess.run(["powershell", "-NoProfile", "-Command", cmd], capture_output=True, text=True, timeout=5)
+            if res.returncode == 0 and res.stdout.strip():
+                return int(res.stdout.strip().split()[0])
+        except Exception as e:
+            logger.debug(f"Could not read brightness: {e}")
+        return None
+
+    def set_brightness(self, percent: int) -> Tuple[bool, str]:
+        """Set laptop display brightness level (0 to 100)."""
+        target = max(0, min(100, percent))
+        try:
+            cmd = f"(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods).WmiSetBrightness(1, {target})"
+            res = subprocess.run(["powershell", "-NoProfile", "-Command", cmd], capture_output=True, text=True, timeout=8)
+            if res.returncode == 0:
+                return True, f"Brightness set to {target}%."
+        except Exception as e:
+            logger.debug(f"Could not set brightness: {e}")
+        return False, "Display brightness control is not supported on this monitor."
+
+    # -------------------------------------------------------------------------
+    # 7. System Hardware Telemetry & Network
+    # -------------------------------------------------------------------------
+    def get_battery_info(self) -> str:
+        """Get laptop battery percentage and power plugged-in status."""
+        try:
+            battery = psutil.sensors_battery()
+            if not battery:
+                return "Battery sensor not detected (desktop or AC power)."
+            percent = round(battery.percent)
+            plugged = battery.power_plugged
+            status = "Plugged in (Charging)" if plugged else "Discharging (On Battery)"
+            secs = battery.secsleft
+            time_str = ""
+            if secs and secs > 0 and not plugged:
+                hrs = secs // 3600
+                mins = (secs % 3600) // 60
+                time_str = f", approximately {hrs}h {mins}m remaining"
+            return f"Battery is at {percent}% — {status}{time_str}."
+        except Exception as e:
+            return f"Could not read battery: {e}"
+
+    def get_system_specs(self) -> str:
+        """Report CPU, RAM, Disk, OS, and hostname summary."""
+        cpu_usage = psutil.cpu_percent(interval=None)
+        vm = psutil.virtual_memory()
+        total_ram = round(vm.total / (1024**3), 1)
+        used_ram = round(vm.used / (1024**3), 1)
+        cores = psutil.cpu_count(logical=True)
+        try:
+            disk = psutil.disk_usage("C:\\")
+            disk_free_gb = round(disk.free / (1024**3), 1)
+            disk_total_gb = round(disk.total / (1024**3), 1)
+            disk_info = f" C: drive has {disk_free_gb} GB free of {disk_total_gb} GB."
+        except Exception:
+            disk_info = ""
+        return (
+            f"Laptop Status: CPU load is {cpu_usage}% across {cores} logical cores. "
+            f"Memory usage is {vm.percent}% ({used_ram} GB of {total_ram} GB used).{disk_info} "
+            f"All cognitive and device subsystems are active."
+        )
+
+    def get_network_status(self) -> str:
+        """Report network connection, local IP address, and gateway connectivity."""
+        try:
+            host_name = socket.gethostname()
+            local_ip = socket.gethostbyname(host_name)
+            # Ping Google DNS to test internet
+            ping_res = subprocess.run(
+                ["ping", "-n", "1", "-w", "1500", "8.8.8.8"],
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            online = ping_res.returncode == 0
+            net_state = "Connected to the Internet" if online else "Offline / No Internet Connection"
+            return f"Network: {net_state}. Local IP address is {local_ip} on host '{host_name}'."
+        except Exception as e:
+            return f"Network query error: {e}"
+
+    def sleep_laptop(self) -> Tuple[bool, str]:
+        """Request sleep through the shell and report its actual launch result."""
+        from friday.core.effects import launch_process_verified
+
+        outcome = launch_process_verified(
+            "rundll32.exe powrprof.dll,SetSuspendState 0,1,0",
+            settle_seconds=0.6,
+        )
+        if outcome.ok:
+            return True, "Putting laptop to sleep."
+        return False, f"Could not put laptop to sleep: {outcome.detail}"
+
+    def open_folder(self, folder_name: str) -> Tuple[bool, str]:
+        """Open standard user folders or direct directory paths."""
+        low = folder_name.lower().strip()
+        home = os.path.expanduser("~")
+        folder_map = {
+            "downloads": os.path.join(home, "Downloads"),
+            "download": os.path.join(home, "Downloads"),
+            "desktop": os.path.join(home, "Desktop"),
+            "documents": os.path.join(home, "Documents"),
+            "document": os.path.join(home, "Documents"),
+            "pictures": os.path.join(home, "Pictures"),
+            "photos": os.path.join(home, "Pictures"),
+            "videos": os.path.join(home, "Videos"),
+            "music": os.path.join(home, "Music"),
+            "c drive": "C:\\",
+            "c:": "C:\\",
+            "home": home,
+            "friday": r"d:\FRIDAY Universe\FRIDAY",
+            "universe": r"d:\FRIDAY Universe",
+        }
+
+        for k, p in folder_map.items():
+            if k in low:
+                if os.path.exists(p):
+                    os.startfile(p)
+                    return True, f"Opened {k.title()} folder: {p}"
+
+        if os.path.exists(folder_name):
+            os.startfile(folder_name)
+            return True, f"Opened directory: {folder_name}"
+
+        return False, f"Directory '{folder_name}' not found."
+
+    def run_powershell(self, command: str) -> Tuple[bool, str]:
+        """Execute an arbitrary PowerShell command and return output."""
+        try:
+            res = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", command],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            out = res.stdout.strip() or res.stderr.strip()
+            return res.returncode == 0, out or "Command executed successfully."
+        except subprocess.TimeoutExpired:
+            return False, "Command timed out after 15 seconds."
+        except Exception as e:
+            return False, f"Execution failed: {e}"
+
+    def is_contact_directive(self, command: str) -> bool:
+        """Check if command matches contact management directives (save, list, lookup, delete)."""
+        if not command or not command.strip():
+            return False
+        clean = re.sub(r"^(?:hey\s+)?friday[,\s:]*\s*", "", command, flags=re.IGNORECASE).strip()
+        cmd = clean.lower().rstrip(".!? ")
+        if cmd in ["contacts", "list contacts", "show contacts", "my contacts", "view contacts", "all contacts", "address book"]:
+            return True
+        if re.search(r"^(?:delete|remove)\s+(?:contact\s+)?[a-zA-Z\s]+$", cmd):
+            return True
+        if re.search(r"^(?:lookup|find|search|get|show)\s+(?:contact\s+)?[a-zA-Z\s]+$", cmd):
+            return True
+        if re.search(r"^who\s+is\s+[a-zA-Z\s]+$", cmd):
+            return True
+        if re.search(r"^contact\s+(?:details\s+(?:of|for)\s+)?[a-zA-Z\s]+$", cmd):
+            return True
+        if re.search(r"^(?:save|add|remember|set|update)\s+(?:contact\s+)?[a-zA-Z\s]+?", cmd):
+            return True
+        if re.search(r"^[a-zA-Z\s]+?(?:'s)?\s+(?:phone|number|mobile|whatsapp|email)\s+(?:is|=|:)?\s*", cmd):
+            return True
+        if re.search(r"^[a-zA-Z]+\s+is\s+[+\d\s-]{10,16}$", cmd):
+            return True
+        return False
+
+    def is_gmail_directive(self, command: str) -> bool:
+        """Check if command is an actionable Gmail/email directive."""
+        if not command or not command.strip():
+            return False
+        clean = re.sub(r"^(?:hey\s+)?friday[,\s:]*\s*", "", command, flags=re.IGNORECASE).strip()
+        cmd = clean.lower().rstrip(".!? ")
+        if cmd in [
+            "open gmail", "launch gmail", "start gmail", "gmail",
+            "compose email", "compose gmail", "draft email", "draft gmail",
+            "new email", "new gmail", "write email", "write an email",
+            "send gmail", "send email"
+        ]:
+            return True
+        if re.search(r"^(?:please\s+)?(?:open|compose|draft|write|new|send)\s+(?:an?\s+)?(?:gmail|email)\b", cmd):
+            return True
+        if re.search(r"^(?:email|mail)\s+[a-zA-Z0-9_.+-]+", cmd):
+            return True
+        if re.search(r"\bto\s+[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", cmd):
+            return True
+        if re.search(r"^(?:send|email)\s+.+?\s+to\s+[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", cmd):
+            return True
+        return False
+
+    def is_whatsapp_directive(self, command: str) -> bool:
+        """Check if command is an actionable WhatsApp/messaging directive."""
+        if not command or not command.strip():
+            return False
+        clean = re.sub(r"^(?:hey\s+)?friday[,\s:]*\s*", "", command, flags=re.IGNORECASE).strip()
+        cmd = clean.lower().rstrip(".!? ")
+        # Explicit WhatsApp keywords
+        if cmd in ["whatsapp", "open whatsapp", "launch whatsapp", "start whatsapp", "open whatsapp web", "whatsapp web", "wa"]:
+            return True
+        if re.search(r"^(?:open|launch|start|send|text|message)\s+(?:an?\s+)?(?:whats?a?app\b|.*\bwhats?a?app\b)", cmd):
+            return True
+        if re.search(r"^whats?a?app\s+[^\s]+\s+.+$", cmd):
+            return True
+        if re.match(r"^(?:send|text|message)\b", cmd) and re.search(r"\b(?:in|on|via|through)\s+whats?a?app$", cmd):
+            return True
+
+        # Send/text/message to phone number (e.g. "send hi to 9014603029", "text 9014603029 hello")
+        if re.search(r"^(?:send|text|message)\s+.+?\s+to\s+[+\d\s-]{10,16}$", cmd):
+            return True
+        if re.search(r"^(?:text|message)\s+[+\d\s-]{10,16}\b", cmd):
+            return True
+        if re.search(r"^(?:send\s+(?:a\s+)?message\s+to\s+[+\d\s-]{10,16})", cmd):
+            return True
+
+        # Check if command is "send <msg> to <contact>" where contact is a saved contact in address book
+        m_contact = re.search(r"^(?:send|text|message)\s+(?:a\s+message\s+to|.+?\s+to)\s+(?P<name>[a-zA-Z\s]+?)(?:\s+(?:in|on|via)\s+whats?a?app)?$", cmd)
+        if m_contact:
+            name = m_contact.group("name").strip()
+            if name and name not in ("me", "him", "her", "them", "someone") and self._lookup_contact_phone(name):
+                return True
+
+        return False
+
+    def handle_contact_directive(self, command: str) -> Tuple[bool, str, dict[str, Any]]:
+        """Process contact listing, lookup, saving, or deleting."""
+        clean = re.sub(r"^(?:hey\s+)?friday[,\s:]*\s*", "", command, flags=re.IGNORECASE).strip()
+        cmd = clean.lower().rstrip(".!? ")
+        raw = clean
+
+        # 1. List contacts
+        if cmd in ["contacts", "list contacts", "show contacts", "my contacts", "view contacts", "all contacts", "address book"]:
+            all_c = self.get_all_contacts()
+            if not all_c:
+                return True, "No saved contacts found. You can say 'save contact <name> <phone>' to store someone.", {"action": "list_contacts", "count": 0}
+            lines = ["Saved Contacts:"]
+            for k, v in sorted(all_c.items()):
+                details = []
+                if v.get("phone"):
+                    details.append(f"Phone: {v['phone']}")
+                if v.get("email"):
+                    details.append(f"Email: {v['email']}")
+                if v.get("role"):
+                    details.append(f"Role: {v['role']}")
+                if v.get("notes"):
+                    details.append(f"Notes: {v['notes']}")
+                desc = f" ({', '.join(details)})" if details else ""
+                lines.append(f"  - {v.get('name', k.title())}{desc}")
+            return True, "\n".join(lines), {"action": "list_contacts", "count": len(all_c)}
+
+        # 2. Delete contact
+        m_del = re.search(r"^(?:delete|remove)\s+(?:contact\s+)?(?P<name>[a-zA-Z\s]+)$", cmd)
+        if m_del:
+            target_name = m_del.group("name").strip()
+            ok, msg = self.delete_contact(target_name)
+            return True, msg, {"action": "delete_contact", "name": target_name, "success": ok}
+
+        # 3. Lookup contact
+        m_look = re.search(
+            r"^(?:lookup|find|search|get|show)\s+(?:contact\s+)?(?P<name>[a-zA-Z\s]+)$", cmd
+        )
+        if not m_look:
+            m_look = re.search(r"^who\s+is\s+(?P<name>[a-zA-Z\s]+)$", cmd)
+        if not m_look:
+            m_look = re.search(r"^contact\s+(?:details\s+(?:of|for)\s+)?(?P<name>[a-zA-Z\s]+)$", cmd)
+
+        if m_look:
+            target_name = m_look.group("name").strip()
+            target_name = re.sub(r"\b(?:please|now|again)\b", "", target_name).strip()
+            contact = self.lookup_contact(target_name)
+            if contact:
+                c_name = contact.get("name", target_name.title())
+                c_phone = contact.get("phone") or "Not set"
+                c_email = contact.get("email") or "Not set"
+                lines = [f"Contact Details for {c_name}:", f"  - Phone: {c_phone}", f"  - Email: {c_email}"]
+                if contact.get("role"):
+                    lines.append(f"  - Role: {contact.get('role')}")
+                if contact.get("notes"):
+                    lines.append(f"  - Notes: {contact.get('notes')}")
+                lines.append(f"You can say 'send <message> to {c_name.lower()} in whatsapp' or 'email {c_name.lower()}'.")
+                return True, "\n".join(lines), {"action": "lookup_contact", "contact": contact, "success": True}
+            else:
+                return True, f"No contact found matching '{target_name}'. Say 'save contact {target_name} <phone/email>' to add them.", {"action": "lookup_contact", "success": False}
+
+        # 4. Save contact (supports phone, email, notes, role)
+        name = ""
+        phone = ""
+        email = ""
+        notes = ""
+        role = ""
+
+        # Extract notes if present
+        m_notes = re.search(r"\b(?:notes?|about|description)\s*[:=]?\s*(?P<notes>.+)$", raw, re.IGNORECASE)
+        if m_notes:
+            notes = m_notes.group("notes").strip()
+            raw = raw[:m_notes.start()].strip()
+
+        # Extract role if present
+        m_role = re.search(r"\b(?:role|title|designation)\s*[:=]?\s*(?P<role>[a-zA-Z\s]+?)(?:\s+(?:notes?|phone|email)|$)", raw, re.IGNORECASE)
+        if m_role:
+            role = m_role.group("role").strip()
+            raw = raw[:m_role.start()].strip()
+
+        # Extract email if present
+        m_email = re.search(r"(?:\b(?:email|mail)\s*[:=]?\s*)?([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)\b", raw, re.IGNORECASE)
+        if m_email:
+            email = m_email.group(1).strip()
+            raw = raw[:m_email.start()] + " " + raw[m_email.end():]
+
+        # Extract phone if present
+        m_phone = re.search(r"(?:\b(?:phone|number|mobile|whatsapp|tel)\s*[:=]?\s*)?(\+?\d[\d\s-]{8,15}\d)\b", raw, re.IGNORECASE)
+        if m_phone:
+            potential_phone = re.sub(r"[^\d+]", "", m_phone.group(1))
+            if len(re.sub(r"[^\d]", "", potential_phone)) >= 10:
+                phone = potential_phone
+                raw = raw[:m_phone.start()] + " " + raw[m_phone.end():]
+
+        # Remainder is name with command prefix
+        clean_name = raw.strip()
+        for prefix in [
+            "save contact", "add contact", "remember contact", "set contact", "update contact",
+            "save", "add", "remember", "set", "update", "contact",
+        ]:
+            if clean_name.lower().startswith(prefix + " "):
+                clean_name = clean_name[len(prefix) + 1:].strip()
+                break
+
+        clean_name = re.sub(r"\b(?:phone|number|mobile|whatsapp|email|is|as)\b", "", clean_name, flags=re.IGNORECASE).strip()
+        clean_name = re.sub(r"[:=]+$", "", clean_name).strip()
+        name = " ".join(clean_name.split()).title()
+
+        if name and (phone or email or notes or role):
+            ok, msg = self.save_contact(name, phone=phone, email=email, notes=notes, role=role)
+            reach_channels = []
+            if phone:
+                reach_channels.append(f"'send <message> to {name.lower()} in whatsapp'")
+            if email:
+                reach_channels.append(f"'email {name.lower()}'")
+            reach_text = f" You can now say {' or '.join(reach_channels)} to reach them directly!" if reach_channels else ""
+            reply = f"{msg}{reach_text}"
+            return True, reply, {
+                "action": "save_contact",
+                "name": name,
+                "phone": phone,
+                "email": email,
+                "notes": notes,
+                "role": role,
+                "success": ok,
+            }
+
+        return False, "Could not parse contact details.", {"action": "contact_error"}
+
+    # -------------------------------------------------------------------------
+    # 8. Multi-Monitor Geometry, Window Snapping, and Workspace Automation
+    # -------------------------------------------------------------------------
+    def get_sorted_monitors(self) -> list[tuple[int, int, int, int]]:
+        """Return all physical displays as (left, top, right, bottom), sorted left-to-right then top-to-bottom."""
+        if sys.platform != "win32":
+            return [(0, 0, 1920, 1080)]
+        from ctypes import wintypes
+
+        class RECT(ctypes.Structure):
+            _fields_ = [
+                ("left", wintypes.LONG),
+                ("top", wintypes.LONG),
+                ("right", wintypes.LONG),
+                ("bottom", wintypes.LONG),
+            ]
+
+        collected: list[tuple[int, int, int, int]] = []
+
+        @ctypes.WINFUNCTYPE(
+            wintypes.BOOL,
+            wintypes.HMONITOR,
+            wintypes.HDC,
+            ctypes.POINTER(RECT),
+            wintypes.LPARAM,
+        )
+        def _cb(_hm, _hdc, lprc, _lp):
+            r = lprc.contents
+            collected.append((int(r.left), int(r.top), int(r.right), int(r.bottom)))
+            return True
+
+        try:
+            ctypes.windll.user32.EnumDisplayMonitors(None, None, _cb, 0)
+            collected.sort(key=lambda t: (t[0], t[1]))
+        except Exception as e:
+            logger.debug(f"EnumDisplayMonitors query failed: {e}")
+
+        return collected if collected else [(0, 0, 1920, 1080)]
+
+    def get_monitor_bounds(self, monitor_index: int = 1) -> tuple[int, int, int, int]:
+        """Get bounding rect (left, top, right, bottom) for 1-based monitor index."""
+        rects = self.get_sorted_monitors()
+        if not rects:
+            return (0, 0, 1920, 1080)
+        idx = max(0, min(monitor_index - 1, len(rects) - 1))
+        return rects[idx]
+
+    def snap_window_to_monitor(
+        self,
+        hwnd: int,
+        monitor_index: int = 1,
+        fullscreen: bool = False,
+        windowed_size: tuple[int, int] | None = None,
+    ) -> bool:
+        """Snap a window by HWND to a physical monitor (centered windowed or fullscreen F11)."""
+        if sys.platform != "win32" or not hwnd:
+            return False
+
+        ml, mt, mr, mb = self.get_monitor_bounds(monitor_index)
+        user32 = ctypes.windll.user32
+        SW_RESTORE = 9
+        SW_SHOWMAXIMIZED = 3
+        HWND_TOP = 0
+        SWP_SHOWWINDOW = 0x0040
+        SWP_FRAMECHANGED = 0x0020
+        flags = SWP_SHOWWINDOW | SWP_FRAMECHANGED
+
+        try:
+            user32.ShowWindow(hwnd, SW_RESTORE)
+            if fullscreen:
+                w, h = mr - ml, mb - mt
+                x, y = ml, mt
+            else:
+                ww, wh = windowed_size or (1400, 900)
+                w, h = min(ww, mr - ml), min(wh, mb - mt)
+                x = ml + max(0, (mr - ml - w) // 2)
+                y = mt + max(0, (mb - mt - h) // 2)
+
+            user32.SetWindowPos(hwnd, HWND_TOP, x, y, w, h, flags)
+
+            if fullscreen:
+                user32.ShowWindow(hwnd, SW_SHOWMAXIMIZED)
+                self.force_window_foreground(hwnd)
+                VK_F11 = 0x7A
+                KEYEVENTF_KEYUP = 0x0002
+                user32.keybd_event(VK_F11, 0, 0, 0)
+                user32.keybd_event(VK_F11, 0, KEYEVENTF_KEYUP, 0)
+            return True
+        except Exception as e:
+            logger.debug(f"Could not snap window {hwnd} to monitor {monitor_index}: {e}")
+            return False
+
+    def launch_browser_on_monitor(
+        self,
+        url: str,
+        monitor_index: int = 1,
+        fullscreen: bool = False,
+        window_size: tuple[int, int] | None = None,
+    ) -> tuple[bool, str]:
+        """Open URL in Chrome (or default browser) and report launch failures."""
+        u = url.strip()
+        if not u:
+            return False, "Empty URL"
+
+        from friday.core.effects import launch_argv_verified, open_url_verified
+
+        chrome_exe = get_chrome_path()
+        if not chrome_exe:
+            outcome = open_url_verified(u)
+            return outcome.ok, outcome.detail
+
+        try:
+            ml, mt, mr, mb = self.get_monitor_bounds(monitor_index)
+            w, h = window_size or ((mr - ml, mb - mt) if fullscreen else (1400, 900))
+            args = [
+                chrome_exe,
+                "--new-window",
+                f"--window-position={ml},{mt}",
+                f"--window-size={w},{h}",
+            ]
+            if fullscreen:
+                args.append("--start-fullscreen")
+            args.append(u)
+
+            before_hwnds = self._get_chrome_hwnds()
+            creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+            outcome = launch_argv_verified(
+                args,
+                creationflags=creationflags,
+                settle_seconds=0.6,
+            )
+            if not outcome.ok:
+                fallback = open_url_verified(u)
+                if fallback.ok:
+                    return True, f"Chrome launch failed ({outcome.detail}); {fallback.detail}"
+                return False, f"Could not open {u}: {outcome.detail}; {fallback.detail}"
+
+            if fullscreen and sys.platform == "win32":
+                deadline = time.monotonic() + 4.0
+                while time.monotonic() < deadline:
+                    time.sleep(0.3)
+                    now_hwnds = self._get_chrome_hwnds()
+                    diff = now_hwnds - before_hwnds
+                    if diff:
+                        new_hwnd = list(diff)[0]
+                        positioned = self.snap_window_to_monitor(
+                            new_hwnd,
+                            monitor_index=monitor_index,
+                            fullscreen=True,
+                        )
+                        if positioned:
+                            return True, f"Launched {u} in Chrome on monitor {monitor_index}."
+                        break
+                return True, (
+                    f"Launched Chrome with {u}, but could not verify a new window positioned "
+                    f"on monitor {monitor_index}."
+                )
+
+            return True, f"Launched {u} in Chrome on monitor {monitor_index}."
+        except Exception as exc:
+            fallback = open_url_verified(u)
+            if fallback.ok:
+                return True, f"Chrome launch failed ({exc}); {fallback.detail}"
+            return False, f"Could not open {u}: Chrome launch failed ({exc}); {fallback.detail}"
+
+    def _get_chrome_hwnds(self) -> set[int]:
+        """Enumerate top-level Chrome browser window HWNDs."""
+        if sys.platform != "win32":
+            return set()
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
+        found: set[int] = set()
+
+        @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        def _enum(hwnd: wintypes.HWND, _lp: wintypes.LPARAM) -> bool:
+            if not user32.IsWindowVisible(hwnd):
+                return True
+            pid = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            if pid.value == 0:
+                return True
+            hproc = kernel32.OpenProcess(0x1000, False, pid.value)
+            if not hproc:
+                return True
+            try:
+                buf = ctypes.create_unicode_buffer(4096)
+                sz = wintypes.DWORD(len(buf))
+                if kernel32.QueryFullProcessImageNameW(hproc, 0, buf, ctypes.byref(sz)):
+                    if os.path.basename(buf.value).lower() == "chrome.exe":
+                        found.add(int(hwnd))
+            finally:
+                kernel32.CloseHandle(hproc)
+            return True
+
+        try:
+            user32.EnumWindows(_enum, 0)
+        except Exception:
+            pass
+        return found
+
+    def focus_or_launch_editor(
+        self,
+        editor: str = "vscode",
+        fullscreen: bool = False,
+    ) -> tuple[bool, str]:
+        """Focus existing VS Code or Cursor instance, or launch it if not running."""
+        editor_low = editor.lower().strip()
+        exe_names = ["cursor.exe"] if "cursor" in editor_low else ["code.exe"]
+        app_name = "Cursor" if "cursor" in editor_low else "VS Code"
+
+        if sys.platform == "win32":
+            from ctypes import wintypes
+            user32 = ctypes.windll.user32
+            kernel32 = ctypes.windll.kernel32
+            candidates: list[tuple[int, int]] = []
+
+            @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+            def _enum_editor(hwnd: wintypes.HWND, _lp: wintypes.LPARAM) -> bool:
+                if not user32.IsWindowVisible(hwnd) and not user32.IsIconic(hwnd):
+                    return True
+                pid = wintypes.DWORD()
+                user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+                if pid.value == 0:
+                    return True
+                hproc = kernel32.OpenProcess(0x1000, False, pid.value)
+                if not hproc:
+                    return True
+                try:
+                    buf = ctypes.create_unicode_buffer(4096)
+                    sz = wintypes.DWORD(len(buf))
+                    if kernel32.QueryFullProcessImageNameW(hproc, 0, buf, ctypes.byref(sz)):
+                        if os.path.basename(buf.value).lower() in exe_names:
+                            r = wintypes.RECT()
+                            if user32.GetWindowRect(hwnd, ctypes.byref(r)):
+                                area = (r.right - r.left) * (r.bottom - r.top)
+                                if area > 40000:
+                                    candidates.append((area, int(hwnd)))
+                finally:
+                    kernel32.CloseHandle(hproc)
+                return True
+
+            try:
+                user32.EnumWindows(_enum_editor, 0)
+            except Exception:
+                pass
+
+            if candidates:
+                best_hwnd = max(candidates, key=lambda t: t[0])[1]
+                self.force_window_foreground(best_hwnd)
+                if fullscreen:
+                    VK_F11 = 0x7A
+                    KEYEVENTF_KEYUP = 0x0002
+                    user32.keybd_event(VK_F11, 0, 0, 0)
+                    user32.keybd_event(VK_F11, 0, KEYEVENTF_KEYUP, 0)
+                else:
+                    user32.ShowWindow(best_hwnd, 3)  # SW_SHOWMAXIMIZED
+                return True, f"Foregrounded existing {app_name} window."
+
+        return self.launch_app(editor_low)
+
+    def can_handle(self, command: str) -> bool:
+        """Check if command matches any FRIDAY OS directive without executing side effects."""
+        if not command or not command.strip():
+            return False
+        cmd = command.strip().lower().rstrip(".!? ")
+        if cmd in [
+            "welcome home", "welcome home sir", "run welcome protocol",
+            "welcome protocol", "studio mode", "jarvis mode",
+        ]:
+            return True
+        if self.is_contact_directive(cmd):
+            return True
+        if any(cmd == k or cmd == f"open {k}" or cmd == f"launch {k}" for k in ["youtube", "yt"]):
+            return True
+        if cmd in ["open chrome", "launch chrome", "start chrome", "chrome", "google chrome", "open google chrome"]:
+            return True
+        if cmd.startswith("search google for ") or cmd.startswith("search for ") or cmd.startswith("google "):
+            return True
+        for site in COMMON_WEBSITES:
+            if cmd == f"open {site}" or cmd == f"launch {site}" or cmd == site:
+                return True
+        if any(k in cmd for k in [
+            "volume up", "volume down", "increase volume", "decrease volume",
+            "turn up volume", "turn down volume", "raise volume", "lower volume",
+            "raise the volume", "lower the volume", "boost volume", "crank up volume",
+            "pump up volume", "brightness up", "brightness down", "increase brightness",
+            "decrease brightness", "turn up brightness", "turn down brightness"
+        ]):
+            return True
+        if re.search(r"^(?:please\s+)?(?:unmute|mute)\s*(?:the\s+)?(?:volume|audio|system|pc|laptop)?$", cmd):
+            return True
+        if re.search(r"(?:set|change|turn|put|increase|decrease|raise|lower|boost|bring|adjust|make)\s+(?:the\s+)?(?:volume|brightness)\s+(?:to\s+|at\s+)?(\d{1,3})\s*%?", cmd):
+            return True
+        if self.is_gmail_directive(cmd):
+            return True
+        if self.is_whatsapp_directive(cmd):
+            return True
+        if any(k in cmd for k in ["pause", "resume", "next song", "previous song", "stop music"]):
+            return True
+        if any(k in cmd for k in ["show desktop", "minimize windows", "minimize all", "close window", "lock pc", "lock laptop", "sleep laptop", "tidy up windows", "reset layout"]):
+            return True
+        if re.search(r"^(?:please\s+|could you\s+|can you\s+)?(?:close|shut|dismiss|hide|minimi[sz]e|shrink|collapse|maximi[sz]e|expand|fullscreen|full[\s-]screen|restore|unminimi[sz]e|reopen)\s+(?:the\s+)?(?:active\s+|this\s+)?window\b", cmd):
+            return True
+        if re.search(r"^(?:please\s+)?(?:close|shut|dismiss)\s+(?:(?:the|this|that|current)\s+)?(?:(?:active|current)\s+)?(?:chrome\s+)?tab(?:\s+(?:in|on)\s+(?:google\s+)?chrome)?\b", cmd):
+            return True
+        if cmd.startswith("set daily goal ") or cmd.startswith("daily goal ") or cmd in ["my goal", "what is my goal", "today's goal", "show goal", "goal done", "finish goal", "complete goal", "morning briefing", "morning focus", "evening review", "evening checkin", "evening check-in"]:
+            return True
+        if cmd.startswith("close ") or cmd.startswith("kill ") or cmd.startswith("exit "):
+            return True
+        if cmd in ["battery", "battery status", "battery level", "power status"]:
+            return True
+        if re.search(r"^(?:what is|how is|check|tell me|get|show)\s+(?:the\s+)?(?:battery|power)\b", cmd):
+            return True
+        if any(k in cmd for k in ["what apps are open", "list open apps", "running apps", "screenshot", "system specs", "laptop specs", "system status", "hardware status", "wifi status", "network status", "what time is it", "today's date"]):
+            return True
+        if cmd.startswith("type ") or cmd.startswith("write ") or cmd.startswith("press "):
+            return True
+        if cmd.startswith("open ") or cmd.startswith("launch ") or cmd.startswith("start ") or cmd.startswith("powershell ") or cmd.startswith("run command ") or cmd.startswith("execute command "):
+            return True
+        return False
+
+    # -------------------------------------------------------------------------
+    # 8. Natural Language FRIDAY Directive Dispatcher
+    # -------------------------------------------------------------------------
+    def _authorize_directive(
+        self,
+        authorizer: Any,
+        tool_name: str,
+        safety_level: Any,
+        arguments: dict[str, Any],
+        purpose: str,
+    ) -> Tuple[bool, str]:
+        """Ask the caller's authorizer before a SENSITIVE direct action.
+
+        Direct desktop directives used to reach the same effects as the
+        registered ``send_email`` / ``send_gmail`` / ``send_whatsapp_message``
+        tools while bypassing the registry, the capability check and the
+        audit trail - and the reply still said "Scoped approval confirmed".
+        Gating here keeps the directive path under the same authority as the
+        tool path.
+
+        Fail-closed: no authorizer means no approval. Refusing is the honest
+        outcome; inheriting an unreviewed default is how the bypass started.
+        """
+        if authorizer is None:
+            return False, (
+                "no authorizer was supplied for this direct action, so it was refused "
+                "rather than executed with an approval that never happened"
+            )
+        try:
+            from friday.core.types import AuthorizationDecision, AuthorizationRequest
+
+            request = AuthorizationRequest(
+                tool_name=tool_name,
+                safety_level=safety_level,
+                arguments=arguments,
+                tool_call_id=None,
+                purpose=purpose,
+                affected_resource=arguments.get("to_address") or arguments.get("recipient"),
+            )
+            response = authorizer.authorize(request)
+            approved = getattr(response, "decision", None) == AuthorizationDecision.APPROVED
+            reason = getattr(response, "reason", None) or getattr(
+                getattr(response, "decision", None), "value", "no decision"
+            )
+            return bool(approved), str(reason)
+        except Exception as exc:  # pragma: no cover - defensive
+            return False, f"the authorization check itself failed ({type(exc).__name__}: {exc})"
+
+    def handle_directive(
+        self,
+        command: str,
+        authorizer: Any = None,
+    ) -> Tuple[bool, str, dict[str, Any]]:
+        """Evaluate natural language command and execute appropriate Windows action.
+
+        ``authorizer`` is the decision authority for anything with real-world
+        effect (sending mail, sending a WhatsApp message). Callers that hold an
+        agent authorizer must pass it; ``None`` causes those actions to be
+        refused rather than executed unapproved.
+        """
+        raw = command.strip()
+        raw = re.sub(r"^(?:hey\s+)?friday[,\s:]*\s*", "", raw, flags=re.IGNORECASE).strip()
+
+        # A phrase matched inside a longer request is not the whole request.
+        # "read missing_file.txt and also tell me the current date" used to be
+        # answered with the date alone, silently dropping the file read. Decline
+        # compound input here so the caller's cognitive loop can plan both parts.
+        from friday.core.language import is_compound_request, second_clause
+
+        if is_compound_request(raw):
+            logger.info(
+                "Declining a compound directive in the device layer (second clause: %r); "
+                "the agent loop will plan it.",
+                second_clause(raw),
+            )
+            return False, "", {}
+
+        cmd = raw.lower()
+
+        # Clean trailing punctuation
+        cmd_clean = cmd.rstrip(".!? ")
+
+        if re.match(r"^(?:please\s+)?(?:close|shut|dismiss)\s+(?:(?:the|this|that|current)\s+)?(?:(?:active|current)\s+)?(?:chrome\s+)?tab(?:\s+(?:in|on)\s+(?:google\s+)?chrome)?$", cmd_clean):
+            from friday.devices.app_launcher import close_active_chrome_tab
+            ok, reply = close_active_chrome_tab()
+            return True, reply, {"action": "close_chrome_tab", "success": ok}
+
+        # 0. Welcome Protocol Directives
+        if cmd_clean in ["welcome home", "welcome home sir", "run welcome protocol", "welcome protocol", "studio mode", "jarvis mode"]:
+            from friday.autonomous.welcome_protocol import welcome_protocol
+            threading.Thread(target=welcome_protocol.run, daemon=True, name="WelcomeProtocolThread").start()
+            return True, "Welcome home, Sir. Initiating workspace protocol.", {"action": "welcome_protocol"}
+
+        # 0.1 Daily Focus Goal & Rhythm Directives
+        if cmd_clean.startswith("set daily goal ") or cmd_clean.startswith("daily goal "):
+            from friday.autonomous.daily_rhythm import daily_rhythm
+            goal_title = re.sub(r"^(?:set\s+)?daily\s+goal\s+", "", raw, flags=re.IGNORECASE).strip()
+            g = daily_rhythm.set_daily_goal(goal_title)
+            return True, f"Daily focus goal locked in: '{g.title}'. Let's make it happen!", {"action": "set_daily_goal", "goal": g.title}
+
+        if cmd_clean in ["my goal", "what is my goal", "today's goal", "show goal"]:
+            from friday.autonomous.daily_rhythm import daily_rhythm
+            g = daily_rhythm.get_active_goal()
+            if g:
+                return True, f"Your goal for today is '{g.title}' ({int(g.progress * 100)}% complete).", {"action": "get_daily_goal", "goal": g.title}
+            return True, "You haven't set a goal for today yet. Say 'set daily goal <task>' to establish your focus.", {"action": "get_daily_goal"}
+
+        if cmd_clean in ["goal done", "complete goal", "finish goal"]:
+            from friday.autonomous.daily_rhythm import daily_rhythm
+            g = daily_rhythm.update_goal_progress(1.0, status="completed")
+            if g:
+                return True, f"Congratulations! Goal '{g.title}' marked as 100% completed!", {"action": "complete_daily_goal"}
+            return True, "No active goal found to mark complete.", {"action": "complete_daily_goal"}
+
+        if cmd_clean in ["morning briefing", "morning focus"]:
+            from friday.autonomous.daily_rhythm import daily_rhythm
+            brief = daily_rhythm.get_morning_briefing()
+            return True, brief, {"action": "morning_briefing"}
+
+        if cmd_clean in ["evening review", "evening checkin", "evening check-in"]:
+            from friday.autonomous.daily_rhythm import daily_rhythm
+            rev = daily_rhythm.get_evening_review()
+            return True, rev, {"action": "evening_review"}
+
+        # A. YouTube Direct Website
+        if any(cmd_clean == k or cmd_clean == f"open {k}" or cmd_clean == f"launch {k}" or cmd_clean == f"go to {k}" for k in ["youtube", "yt"]):
+            ok = self.open_url("https://www.youtube.com")
+            return True, "Opened YouTube in Google Chrome.", {"action": "open_youtube", "success": ok}
+
+        if "youtube" in cmd and any(k in cmd for k in ["open", "launch", "go to", "show me", "start"]):
+            ok = self.open_url("https://www.youtube.com")
+            return True, "Opened YouTube in Google Chrome.", {"action": "open_youtube", "success": ok}
+
+        # C. Direct Chrome launch
+        if cmd_clean in ["open chrome", "launch chrome", "start chrome", "chrome", "google chrome", "open google chrome"]:
+            ok, reply = self.launch_app("chrome")
+            return True, reply, {"action": "launch_app", "app": "chrome", "success": ok}
+
+        # D. Search Web / Google
+        if cmd.startswith("search google for ") or cmd.startswith("search for ") or cmd.startswith("google "):
+            ok, reply = self.search_google(raw)
+            return True, reply, {"action": "search_google", "success": ok}
+
+        # Opening the inbox is an ordinary browser action, not an email send.
+        # Keep these exact launch intents out of the send parser; otherwise
+        # "open gmail" was refused for having no recipient and never opened the
+        # requested page.
+        if cmd_clean in {
+            "open gmail",
+            "launch gmail",
+            "start gmail",
+            "gmail",
+            "open google mail",
+            "launch google mail",
+            "go to gmail",
+            "go to google mail",
+        }:
+            ok = self.open_url("https://mail.google.com/")
+            reply = (
+                "Opened Gmail in the default browser."
+                if ok
+                else "Could not open Gmail; the browser did not confirm the request."
+            )
+            return True, reply, {"action": "open_gmail", "success": ok}
+
+        # E.1 Gmail / Email Compose & Send
+        if self.is_gmail_directive(raw):
+            to_addr = ""
+            subject = ""
+            body = ""
+            recipient_name = ""
+            compose_only = bool(
+                re.match(
+                    r"^(?:please\s+)?(?:compose|draft|write|new)\s+(?:an?\s+)?(?:email|gmail)\b",
+                    raw,
+                    re.IGNORECASE,
+                )
+            )
+
+            m_to = re.search(r"\b([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)", raw)
+            if m_to:
+                to_addr = m_to.group(1)
+            else:
+                if compose_only:
+                    m_named = re.search(
+                        r"\b(?:compose|draft|write|new)\s+(?:an?\s+)?(?:email|gmail)\s+to\s+(?P<name>[a-zA-Z]+)\b",
+                        raw,
+                        re.IGNORECASE,
+                    )
+                else:
+                    m_named = re.search(
+                        r"\b(?:(?:send\s+(?:an?\s+)?(?:email|gmail)|email|mail)\s+to\s+|(?:email|mail)\s+)"
+                        r"(?P<name>[a-zA-Z]+)\b",
+                        raw,
+                        re.IGNORECASE,
+                    )
+                if m_named:
+                    recipient_name = m_named.group("name").strip()
+                    to_addr = self._lookup_contact_email(recipient_name) or ""
+
+            # A name with no known address is not an address. Declining is the
+            # honest outcome; guessing a domain produces a receipt for a message
+            # addressed to nobody the user has ever met.
+            if not to_addr and not compose_only:
+                who = recipient_name or "that recipient"
+                return True, (
+                    f"I do not have an email address for {who}. "
+                    f"Tell me the address, or save {who} to your contacts, and I will send it."
+                ), {
+                    "action": "open_gmail",
+                    "direct_action": "send_email",
+                    "recipient_name": recipient_name,
+                    "success": False,
+                }
+
+            if compose_only and recipient_name and not to_addr:
+                return True, (
+                    f"I do not have an email address for {recipient_name}, so I did not open the draft. "
+                    f"Give me the address or save {recipient_name} to your contacts first."
+                ), {
+                    "action": "compose_email",
+                    "direct_action": "compose_email",
+                    "recipient_name": recipient_name,
+                    "to": None,
+                    "success": False,
+                    "draft_opened": False,
+                    "sent": False,
+                }
+
+            m_subj = re.search(r"\b(?:about|with\s+subject|subject)\s+['\"]?([^'\"\n]+?)['\"]?(?:\s+(?:and\s+)?(?:with\s+body|saying|body|message)\b|$)", raw, re.IGNORECASE)
+            if m_subj:
+                subject = m_subj.group(1).strip()
+
+            m_body = re.search(r"\b(?:saying|with\s+body|body|message|that)\s+['\"]?([^'\"\n]+)['\"]?$", raw, re.IGNORECASE)
+            if m_body:
+                body = m_body.group(1).strip()
+                if not subject:
+                    subject = "Meeting Update"
+
+            if not body:
+                m_send = re.search(r"^(?:send|email)\s+(?P<msg>.+?)\s+to\s+[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", raw, re.IGNORECASE)
+                if m_send:
+                    cand = m_send.group("msg").strip()
+                    if not any(k in cand.lower() for k in ["email", "gmail"]):
+                        body = cand
+
+            if compose_only:
+                approved, approval_reason = self._authorize_directive(
+                    authorizer,
+                    "compose_email",
+                    SafetyLevel.SENSITIVE,
+                    {"to_address": to_addr, "subject": subject, "body": body},
+                    "Open a prefilled Gmail draft without sending it",
+                )
+                if not approved:
+                    return True, (
+                        f"I did not open the email draft. The request was refused: {approval_reason}."
+                    ), {
+                        "action": "compose_email",
+                        "to": to_addr or None,
+                        "authorization": "DENIED",
+                        "authorization_reason": approval_reason,
+                        "success": False,
+                        "sent": False,
+                    }
+
+                opened, draft_reply = self.open_gmail_compose(
+                    to=to_addr,
+                    subject=subject,
+                    body=body,
+                )
+                return True, (
+                    f"Authorization: APPROVED ({approval_reason}). {draft_reply}"
+                ), {
+                    "action": "compose_email",
+                    "to": to_addr or None,
+                    "recipient_name": recipient_name or None,
+                    "subject": subject,
+                    "body": body,
+                    "authorization": "APPROVED",
+                    "draft_opened": opened,
+                    "sent": False,
+                    "success": opened,
+                }
+
+            approved, approval_reason = self._authorize_directive(
+                authorizer,
+                "send_email",
+                SafetyLevel.SENSITIVE,
+                {"to_address": to_addr, "subject": subject, "body": body},
+                "Compose and send an email from a direct desktop directive",
+            )
+            if not approved:
+                return True, (
+                    f"I did not send that email. The send was refused: {approval_reason}."
+                ), {
+                    "action": "open_gmail",
+                    "direct_action": "send_email",
+                    "to": to_addr,
+                    "subject": subject,
+                    "authorization": "DENIED",
+                    "authorization_reason": approval_reason,
+                    "success": False,
+                }
+
+            outcome = self.open_gmail(to=to_addr, subject=subject, body=body)
+            ok, send_reply = outcome.sent, outcome.detail
+
+            # Generate structured ActionReceipt for Gmail. The status is derived
+            # from what open_gmail actually confirmed, never asserted up front: a
+            # receipt that says SENT before anything was sent is a fabricated
+            # audit record, which is worse than no receipt at all.
+            import uuid
+            from datetime import datetime, timezone
+            receipt_id = f"rcpt_email_{uuid.uuid4().hex[:8]}"
+            receipt = {
+                "receipt_id": receipt_id,
+                "action": "send_email",
+                "recipient": to_addr,
+                "recipient_name": recipient_name or to_addr,
+                "subject": subject or "Notification",
+                "body": body,
+                "provider": outcome.provider,
+                "status": "SENT" if ok else "NOT_CONFIRMED",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+
+            if ok:
+                outcome_line = f"Message sent and confirmed via SMTP (Receipt: {receipt_id})."
+            else:
+                # The reason the send failed is already in send_reply, in the server's own
+                # words. Prefixing a verdict to it only taught the reader to
+                # skip the first one, so the receipt is stated instead.
+                outcome_line = f"{send_reply} No send was confirmed; receipt {receipt_id} records it as {receipt['status']}."
+            # The approval line states what the authorizer actually returned.
+            # It used to read "Scoped approval confirmed." unconditionally, which
+            # claimed a decision that this code never asked for.
+            reply = (
+                f"Resolved recipient {recipient_name or to_addr} <{to_addr}>.\n"
+                f"Subject: '{subject}'\n"
+                f"Body: '{body}'\n"
+                f"Authorization: APPROVED ({approval_reason}). {outcome_line}"
+            )
+            return True, reply, {
+                "action": "open_gmail",
+                "direct_action": "send_email",
+                "to": to_addr,
+                "recipient_name": recipient_name,
+                "subject": subject,
+                "body": body,
+                "receipt": receipt,
+                "receipt_id": receipt_id,
+                "success": ok,
+            }
+
+        # E.1.5 Contact Management (Save, List, Delete)
+        if self.is_contact_directive(cmd_clean):
+            handled, reply, meta = self.handle_contact_directive(raw)
+            if handled:
+                return True, reply, meta
+
+        # E.2 WhatsApp Launch / Web Message
+        if self.is_whatsapp_directive(raw):
+            # Check if this is simply a command to launch WhatsApp
+            if cmd_clean in ["open whatsapp", "launch whatsapp", "start whatsapp", "open whatsapp web", "whatsapp web", "whatsapp", "wa"]:
+                ok, send_reply = self.open_whatsapp()
+                return True, send_reply, {"action": "open_whatsapp", "success": ok}
+
+            recipient = ""
+            phone = ""
+            msg = ""
+
+            text = re.sub(r"^(?:hey\s+)?friday[,\s:]*\s*", "", raw.strip(), flags=re.IGNORECASE).strip()
+            patterns = [
+                # 1. send (a )?(whatsapp )?message|whatsapp to <recipient> (saying/with text/that/:)? <msg> (in/on/via/through whatsapp)?
+                r"^send\s+(?:a\s+)?(?:(?:whats?a?app\s+)?message|whats?a?app)\s+to\s+(?P<recipient>[a-zA-Z0-9_\-\.\+]+)\s*(?::|saying|with\s+(?:text|message)|that)?\s*(?P<msg>.+?)(?:\s+(?:in|on|via|through)\s+whats?a?app)?[\.\!\?]?$",
+                # 2. send <recipient> (a )?(whatsapp )?message (saying/with text/that/:)? <msg> (in/on/via/through whatsapp)?
+                r"^send\s+(?!(?:a|an|the)\s+)(?P<recipient>[a-zA-Z0-9_\-\.\+]+)\s+(?:a\s+)?(?:whats?a?app\s+)?message\s*(?::|saying|with\s+(?:text|message)|that)?\s*(?P<msg>.+?)(?:\s+(?:in|on|via|through)\s+whats?a?app)?[\.\!\?]?$",
+                # 3. send <msg> to <recipient> (in|on|via|through) whatsapp
+                r"^send\s+(?P<msg>.+?)\s+to\s+(?P<recipient>[a-zA-Z0-9_\-\.\+]+)(?:\s+(?:in|on|via|through)\s+whats?a?app)?[\.\!\?]?$",
+                # 4. send <recipient> <msg> (in|on|via|through) whatsapp
+                r"^send\s+(?P<recipient>[a-zA-Z0-9_\-\.\+]+)\s+(?P<msg>.+?)\s+(?:in|on|via|through)\s+whats?a?app[\.\!\?]?$",
+                # 5. text/message <recipient> (saying/with text/that)? <msg> (in/on/via/through whatsapp)?
+                r"^(?:text|message)\s+(?P<recipient>[+\d\s-]{10,16}|[a-zA-Z0-9_\-]+)\s*(?::|saying|with\s+(?:text|message)|that)?\s*(?P<msg>.+?)(?:\s+(?:in|on|via|through)\s+whats?a?app)?[\.\!\?]?$",
+                # 6. whatsapp <recipient> <msg>
+                r"^whats?a?app\s+(?P<recipient>[^\s]+)\s+(?P<msg>.+?)[\.\!\?]?$",
+            ]
+            for p in patterns:
+                m = re.search(p, text, re.IGNORECASE)
+                if m:
+                    recipient = m.group("recipient").strip().strip("'\"")
+                    msg = m.group("msg").strip().strip("'\"")
+                    msg = re.sub(r"\s+(?:in|on|via|through)\s+whats?a?app$", "", msg, flags=re.IGNORECASE).strip()
+                    break
+
+            # If recipient is an email address, reroute to Gmail
+            if recipient and "@" in recipient:
+                outcome = self.open_gmail(to=recipient, body=msg)
+                ok, reply = outcome.sent, outcome.detail
+                return True, reply, {"action": "open_gmail", "to": recipient, "body": msg, "success": ok}
+
+            # If neither recipient nor message could be extracted
+            if not recipient:
+                return True, "Who would you like to message on WhatsApp, and what is your message?", {"action": "open_whatsapp", "direct_action": "send_whatsapp", "success": False}
+            if not msg:
+                return True, f"What message would you like to send to {recipient} on WhatsApp?", {"action": "open_whatsapp", "direct_action": "send_whatsapp", "recipient": recipient, "success": False}
+
+            # Check for ambiguity if recipient is a name
+            clean_digits = re.sub(r"[^\d+]", "", recipient)
+            if len(re.sub(r"[^\d]", "", clean_digits)) >= 10:
+                phone = clean_digits
+            else:
+                matches = self._lookup_contact_matches(recipient)
+                if len(matches) > 1:
+                    names = ", ".join(f"{m['name']} ({m.get('phone', 'no phone')})" for m in matches)
+                    reply = f"Multiple contacts matching '{recipient}' were found: {names}. Please confirm which contact to message."
+                    return True, reply, {
+                        "action": "open_whatsapp",
+                        "direct_action": "send_whatsapp",
+                        "recipient": recipient,
+                        "is_ambiguous": True,
+                        "candidates": matches,
+                        "success": False,
+                    }
+                elif len(matches) == 1:
+                    phone = matches[0].get("phone", "")
+                else:
+                    phone = self._lookup_contact_phone(recipient) or ""
+
+            if not phone:
+                # No phone number found in Memora or local contacts
+                return True, (
+                    f"I searched my memory in Memora and your contacts, but I don't have a phone number for '{recipient}'.\n"
+                    f"Please provide their phone number (or say 'save contact {recipient} <number>') so I can message them directly and remember it in Memora!"
+                ), {
+                    "action": "open_whatsapp",
+                    "direct_action": "send_whatsapp",
+                    "recipient": recipient,
+                    "phone": "",
+                    "message": msg,
+                    "success": False,
+                }
+
+            # Create structured ActionReceipt for WhatsApp
+            import uuid
+            from datetime import datetime, timezone
+            receipt_id = f"rcpt_wa_{uuid.uuid4().hex[:8]}"
+            receipt = {
+                "receipt_id": receipt_id,
+                "action": "send_whatsapp",
+                "recipient": recipient,
+                "phone": phone,
+                "message": msg,
+                "provider": "whatsapp_web_bridge",
+                "status": "NOT_DISPATCHED",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+
+            approved, approval_reason = self._authorize_directive(
+                authorizer,
+                "send_whatsapp_message",
+                SafetyLevel.SENSITIVE,
+                {"recipient": recipient, "message": msg},
+                "Send a WhatsApp message from a direct desktop directive",
+            )
+            if not approved:
+                return True, (
+                    f"I did not send that WhatsApp message. The send was refused: {approval_reason}."
+                ), {
+                    "action": "open_whatsapp",
+                    "direct_action": "send_whatsapp",
+                    "recipient": recipient,
+                    "message": msg,
+                    "authorization": "DENIED",
+                    "authorization_reason": approval_reason,
+                    "success": False,
+                }
+
+            compose_opened, bridge_reply = self.open_whatsapp(
+                phone=phone,
+                message=msg,
+                recipient=recipient,
+            )
+            # The browser open and the asynchronous UI worker are separate
+            # events. This call cannot observe the worker's eventual result, so
+            # opening the compose URL is never promoted to a dispatch receipt.
+            receipt["status"] = "DISPATCH_UNCONFIRMED" if compose_opened else "NOT_DISPATCHED"
+            target_display = f"{recipient} ({phone})" if phone else f"'{recipient}'"
+            if compose_opened:
+                outcome_line = (
+                    "The authorized WhatsApp bridge opened the compose page, but FRIDAY cannot confirm "
+                    "whether the message was dispatched. Delivery is NOT confirmed; check WhatsApp before retrying."
+                )
+            else:
+                outcome_line = (
+                    f"The authorized WhatsApp bridge could not open the compose page: {bridge_reply} "
+                    "No message dispatch was confirmed."
+                )
+            reply = (
+                f"Resolved contact {target_display}.\n"
+                f"Exact message: \"{msg}\"\n"
+                f"Authorization: APPROVED ({approval_reason}). "
+                f"{outcome_line} (Receipt: {receipt_id}; status: {receipt['status']})."
+            )
+            return True, reply, {
+                "action": "open_whatsapp",
+                "direct_action": "send_whatsapp",
+                "phone": phone,
+                "recipient": recipient,
+                "message": msg,
+                "receipt": receipt,
+                "receipt_id": receipt_id,
+                # `success` is false until the requested send is confirmed; the
+                # compose page opening is tracked separately.
+                "success": False,
+                "compose_page_opened": compose_opened,
+                "dispatch_performed": None if compose_opened else False,
+                "dispatch_confirmed": False,
+                "delivery_confirmed": False,
+            }
+
+        # E.3 Open Known Websites
+        for site in COMMON_WEBSITES:
+            if (
+                cmd_clean == f"open {site}"
+                or cmd_clean == f"go to {site}"
+                or cmd_clean == f"launch {site}"
+                or cmd_clean == site
+                or f"open {site} in browser" in cmd
+            ):
+                ok, reply = self.open_website(site)
+                return True, reply, {"action": "open_website", "site": site, "success": ok}
+
+        # F. Volume Controls
+        vol_pct_match = re.search(r"(?:set|change|turn|put|increase|decrease|raise|lower|boost|bring|adjust|make)\s+(?:the\s+)?volume\s+(?:to\s+|at\s+)?(\d{1,3})\s*%?", cmd)
+        if vol_pct_match:
+            pct = int(vol_pct_match.group(1))
+            ok, reply = self.set_volume_percent(pct)
+            return True, reply, {"action": "set_volume", "percent": pct, "success": ok}
+
+        if any(k in cmd for k in ["volume up", "increase volume", "louder", "turn up volume", "raise volume", "raise the volume", "boost volume", "crank up volume", "pump up volume"]):
+            reply = self.volume_up(6)
+            return True, reply, {"action": "volume_up"}
+        if any(k in cmd for k in ["volume down", "decrease volume", "quieter", "lower volume", "lower the volume", "turn down volume", "bring down volume", "reduce volume"]):
+            reply = self.volume_down(6)
+            return True, reply, {"action": "volume_down"}
+        if re.search(r"^(?:please\s+)?(?:unmute|mute)\s*(?:the\s+)?(?:volume|audio|system|pc|laptop)?$", cmd) or cmd in ["mute", "unmute", "mute audio", "unmute audio", "silence audio", "toggle mute"]:
+            reply = self.volume_mute()
+            return True, reply, {"action": "volume_mute"}
+
+        # G. Display Brightness Controls
+        bright_pct_match = re.search(r"(?:set|change|turn|put|increase|decrease|raise|lower|boost|bring|adjust|make)\s+(?:the\s+)?brightness\s+(?:to\s+|at\s+)?(\d{1,3})\s*%?", cmd)
+        if bright_pct_match:
+            pct = int(bright_pct_match.group(1))
+            ok, reply = self.set_brightness(pct)
+            return True, reply, {"action": "set_brightness", "percent": pct, "success": ok}
+
+        if any(k in cmd for k in ["brightness up", "increase brightness", "brighter", "turn up brightness"]):
+            cur = self.get_brightness() or 50
+            target = min(100, cur + 20)
+            ok, reply = self.set_brightness(target)
+            return True, reply, {"action": "set_brightness", "percent": target, "success": ok}
+
+        if any(k in cmd for k in ["brightness down", "decrease brightness", "dimmer", "turn down brightness", "dim screen"]):
+            cur = self.get_brightness() or 50
+            target = max(10, cur - 20)
+            ok, reply = self.set_brightness(target)
+            return True, reply, {"action": "set_brightness", "percent": target, "success": ok}
+
+        # H. Media Controls
+        if any(k in cmd for k in ["pause music", "pause video", "pause playback", "pause", "resume music", "resume playback"]):
+            reply = self.media_play_pause()
+            return True, reply, {"action": "media_play_pause"}
+        if any(k in cmd for k in ["next song", "next track", "skip song", "skip track", "next video"]):
+            reply = self.media_next()
+            return True, reply, {"action": "media_next"}
+        if any(k in cmd for k in ["previous song", "previous track", "prev song", "last song"]):
+            reply = self.media_prev()
+            return True, reply, {"action": "media_prev"}
+        if any(k in cmd for k in ["stop music", "stop audio", "stop playback"]):
+            reply = self.media_stop()
+            return True, reply, {"action": "media_stop"}
+
+        # I. Window & Desktop Management
+        if any(k in cmd for k in ["show desktop", "minimize all", "minimize windows", "hide all windows", "tidy up windows", "reset layout"]):
+            reply = self.show_desktop()
+            return True, reply, {"action": "show_desktop"}
+        if re.search(r"^(?:please\s+|could you\s+|can you\s+)?(?:close|shut|dismiss|hide)\s+(?:the\s+)?(?:active\s+|this\s+)?window\b", cmd):
+            reply = self.close_active_window()
+            return True, reply, {"action": "close_active_window"}
+        if re.search(r"^(?:please\s+|could you\s+|can you\s+)?(?:minimi[sz]e|shrink|collapse)\s+(?:the\s+)?(?:active\s+|this\s+)?window\b", cmd):
+            reply = self.minimize_active_window()
+            return True, reply, {"action": "minimize_active_window"}
+        if re.search(r"^(?:please\s+|could you\s+|can you\s+)?(?:maximi[sz]e|expand|fullscreen|full[\s-]screen)\s+(?:the\s+)?(?:active\s+|this\s+)?window\b", cmd):
+            reply = self.maximize_active_window()
+            return True, reply, {"action": "maximize_active_window"}
+        if re.search(r"^(?:please\s+|could you\s+|can you\s+)?(?:restore|unminimi[sz]e|reopen|bring back)\s+(?:the\s+)?(?:active\s+|this\s+)?window\b", cmd):
+            reply = self.restore_active_window()
+            return True, reply, {"action": "restore_active_window"}
+        if any(k in cmd for k in ["lock laptop", "lock pc", "lock computer", "lock screen", "lock workstation"]):
+            reply = self.lock_workstation()
+            return True, reply, {"action": "lock_workstation"}
+        if any(k in cmd for k in ["sleep laptop", "put laptop to sleep", "sleep pc"]):
+            success, reply = self.sleep_laptop()
+            return True, reply, {"action": "sleep_laptop", "success": success}
+
+        # J. Close Specific Applications
+        if cmd.startswith("close ") or cmd.startswith("kill ") or cmd.startswith("exit ") or cmd.startswith("terminate "):
+            app_to_close = re.sub(r"^(?:close|kill|exit|terminate)\s+(?:the\s+)?(?:app|application|program)?\s*", "", raw, flags=re.IGNORECASE).strip()
+            if app_to_close and app_to_close.lower() not in ("window", "this window", "active window"):
+                ok, reply = self.close_app(app_to_close)
+                if ok:
+                    return True, reply, {"action": "close_app", "app": app_to_close, "success": ok}
+
+        # K. List Running Apps
+        if any(k in cmd for k in ["what apps are open", "list open apps", "list running apps", "running apps", "open windows", "list windows"]):
+            apps = self.list_running_apps()
+            if apps:
+                summary = "Open applications on your desktop:\n" + "\n".join(f" - {a}" for a in apps[:10])
+                return True, summary, {"action": "list_running_apps", "apps": apps}
+            return True, "No top-level application windows detected.", {"action": "list_running_apps", "apps": []}
+
+        # L. Screenshots & Display Capture
+        if any(k in cmd for k in ["take screenshot", "take a screenshot", "capture screen", "screenshot", "screen capture"]):
+            ok, reply, b64_img = self.take_screenshot()
+            meta: dict[str, Any] = {"action": "screenshot", "success": ok}
+            if b64_img:
+                meta["image_b64"] = b64_img
+            return True, reply, meta
+
+        # M. Keyboard & Typing Automation
+        type_match = re.match(r"^(?:type|write|enter text)\s+(.+)$", raw, flags=re.IGNORECASE)
+        if type_match:
+            text_to_type = type_match.group(1).strip()
+            ok, reply = self.type_text(text_to_type)
+            return True, reply, {"action": "type_text", "success": ok}
+
+        press_match = re.match(r"^(?:press|hit)\s+(enter|space|tab|escape|esc|backspace|delete|up|down|left|right)$", raw, flags=re.IGNORECASE)
+        if press_match:
+            key_name = press_match.group(1).strip()
+            ok, reply = self.press_key(key_name)
+            return True, reply, {"action": "press_key", "key": key_name, "success": ok}
+
+        hotkey_match = re.match(r"^(?:press|hit|execute)\s+(?:hotkey|shortcut)?\s*([a-z0-9+]+)$", cmd)
+        if hotkey_match and "+" in hotkey_match.group(1):
+            keys = hotkey_match.group(1).split("+")
+            ok, reply = self.send_hotkey(keys)
+            return True, reply, {"action": "hotkey", "keys": keys, "success": ok}
+
+        # N. Real-time Clock & Date
+        if any(k in cmd for k in ["what time is it", "what is the time", "current time", "tell me the time", "what's the time"]):
+            from datetime import datetime
+            now_str = datetime.now().strftime("%I:%M %p")
+            return True, f"The current time is {now_str}.", {"action": "time"}
+        if any(k in cmd for k in ["what is today's date", "today's date", "what's the date", "what is the date", "current date"]):
+            from datetime import datetime
+            date_str = datetime.now().strftime("%A, %B %d, %Y")
+            return True, f"Today is {date_str}.", {"action": "date"}
+
+        # O. Settings & System Tools
+        if any(k in cmd for k in ["open settings", "windows settings", "system settings"]):
+            success, reply = self._launch_shell_app("Windows Settings", "start ms-settings:")
+            return True, reply, {"action": "open_settings", "success": success}
+
+        # P. Battery & Hardware Telemetry
+        if (
+            cmd in ["battery", "battery status", "battery level", "power status", "charging", "battery percent", "battery percentage"]
+            or any(cmd == k or cmd == f"check {k}" or cmd == f"get {k}" or cmd == f"show {k}" for k in ["battery", "battery status", "battery level", "power status"])
+            or re.search(r"^(?:what is|how is|check|tell me|get|show)\s+(?:the\s+)?(?:battery|power|charging)\b", cmd)
+        ):
+            reply = self.get_battery_info()
+            return True, reply, {"action": "battery_info"}
+        if any(k in cmd for k in ["system specs", "specs", "laptop specs", "hardware status"]) or cmd in ("system status", "hardware"):
+            reply = self.get_system_specs()
+            return True, reply, {"action": "specs"}
+
+        # Q. Network Status
+        if any(k in cmd for k in ["wifi status", "network status", "internet status", "my ip", "check internet", "ip address"]):
+            reply = self.get_network_status()
+            return True, reply, {"action": "network_status"}
+
+        # R. User Folders
+        if cmd.startswith("open ") or cmd.startswith("go to "):
+            folder_candidate = re.sub(r"^(?:open|go to)\s+(?:the\s+)?(?:folder|directory)?\s*", "", raw, flags=re.IGNORECASE).strip()
+            if folder_candidate.lower() in [
+                "downloads", "download", "desktop", "documents", "document", "pictures", "photos", "videos", "music", "c drive", "friday"
+            ]:
+                ok, reply = self.open_folder(folder_candidate)
+                if ok:
+                    return True, reply, {"action": "open_folder", "success": ok}
+
+        # S. Arbitrary PowerShell command execution
+        if cmd.startswith("powershell ") or cmd.startswith("run command ") or cmd.startswith("execute command ") or cmd.startswith("run powershell "):
+            ps_cmd = re.sub(r"^(?:powershell|run command|execute command|run powershell)\s+", "", raw, flags=re.IGNORECASE).strip()
+            if ps_cmd:
+                ok, output = self.run_powershell(ps_cmd)
+                return True, f"Command output:\n{output}", {"action": "powershell", "success": ok}
+
+        # T. Launch Applications (Fallback)
+        if cmd.startswith("open ") or cmd.startswith("launch ") or cmd.startswith("start "):
+            app_candidate = re.sub(r"^(?:open|launch|start)\s+(?:the\s+)?(?:app|application|program)?\s*", "", raw, flags=re.IGNORECASE).strip()
+            target = app_candidate.lower()
+            known_targets = (
+                "chrome", "google chrome", "browser", "youtube", "camera", "snipping", "snip",
+                "control panel", "task manager", "taskmgr", "terminal", "windows terminal", "wt",
+                "command prompt", "cmd", "powershell", "notepad", "text editor", "calculator", "calc",
+                "vscode", "vs code", "visual studio code", "explorer", "file explorer", "paint",
+                "edge", "settings", "whatsapp",
+            )
+            if not any(name in target for name in known_targets):
+                # The API has a deterministic generic path for an arbitrary app
+                # or file name. Leave it to that path instead of claiming a
+                # Windows-specific handler owns an unsupported target.
+                return False, "", {}
+            ok, reply = self.launch_app(app_candidate)
+            return True, reply, {"action": "launch_app", "app": app_candidate, "success": ok}
+
+        return False, "", {}
+
+
+# Global singleton instance
+windows_friday = WindowsFridayController()

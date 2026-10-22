@@ -1,0 +1,758 @@
+"""Mocked asynchronous tests for Gemini Live real-time voice session."""
+
+import asyncio
+from types import SimpleNamespace
+from unittest import mock
+
+import pytest
+from google.genai import types as genai_types
+
+from friday.core.types import SafetyLevel, ToolResult
+from friday.tools.base import BaseTool
+from friday.tools.registry import ToolRegistry
+from friday.voice.audio_io import MicrophoneStream, SpeakerStream
+from friday.voice.gemini_live_session import GeminiLiveVoiceSession, LiveSessionState
+from friday.voice.gemini_provider import GeminiVoiceProvider
+
+
+class DummyTimeTool(BaseTool):
+    name = "get_time"
+    description = "Get current time"
+    safety_level = SafetyLevel.SAFE
+    parameters = {"type": "object", "properties": {}}
+
+    def execute(self, **kwargs):
+        return ToolResult(name=self.name, content="11:30 AM", is_error=False)
+
+
+class MockGenAIPart:
+    def __init__(self, data=None, text=None):
+        self.inline_data = mock.MagicMock(data=data) if data else None
+        self.text = text
+
+
+class MockGenAIServerContent:
+    def __init__(self, parts=None, interrupted=False, turn_complete=False, input_tx=None, output_tx=None):
+        self.model_turn = SimpleNamespace(parts=parts or [], tool_call=None)
+        self.interrupted = interrupted
+        self.turn_complete = turn_complete
+        self.input_transcription = mock.MagicMock(text=input_tx) if input_tx else None
+        self.output_transcription = mock.MagicMock(text=output_tx) if output_tx else None
+
+
+class MockGenAIServerMessage:
+    def __init__(
+        self,
+        server_content=None,
+        tool_call=None,
+        tool_call_cancellation=None,
+        session_resumption_update=None,
+        go_away=None,
+    ):
+        self.server_content = server_content
+        self.tool_call = tool_call
+        self.tool_call_cancellation = tool_call_cancellation
+        self.session_resumption_update = session_resumption_update
+        self.go_away = go_away
+
+
+class MockAsyncSession:
+    def __init__(self, receive_messages=None):
+        self.sent_realtime_chunks = []
+        self.sent_tool_responses = []
+        self._receive_messages = receive_messages or []
+        self.closed = False
+
+    async def send_realtime_input(self, audio=None, media=None, media_chunks=None):
+        if audio:
+            self.sent_realtime_chunks.append(audio)
+        elif media:
+            self.sent_realtime_chunks.append(media)
+        elif media_chunks:
+            self.sent_realtime_chunks.extend(media_chunks)
+
+    async def send_tool_response(self, function_responses):
+        self.sent_tool_responses.extend(function_responses)
+
+    async def receive(self):
+        for msg in self._receive_messages:
+            yield msg
+
+    async def close(self):
+        self.closed = True
+
+
+@pytest.fixture
+def mock_agent():
+    agent = mock.MagicMock()
+    registry = ToolRegistry()
+    registry.register(DummyTimeTool())
+    agent.tools = registry
+    agent.tool_registry = registry
+    agent.memory = mock.MagicMock()
+    agent.authorizer = mock.MagicMock()
+    return agent
+
+
+@pytest.mark.anyio
+async def test_live_session_initialization():
+    """Verify GeminiLiveVoiceSession initializes with proper defaults."""
+    session = GeminiLiveVoiceSession(
+        api_key="TEST_GEMINI_API_KEY",
+        model="gemini-3.1-flash-live-preview",
+        voice_name="Puck",
+    )
+    assert session.model == "gemini-3.1-flash-live-preview"
+    assert session.voice_name == "Puck"
+    assert session.sample_rate_in == 16000
+    assert session.sample_rate_out == 24000
+    assert session.is_active is False
+    assert session.resumption_handle is None
+    assert session.thinking_level == "MINIMAL"
+
+
+@pytest.mark.anyio
+async def test_live_session_thinking_config():
+    """Verify LiveConnectConfig builds ThinkingConfig with thinking_level."""
+    session = GeminiLiveVoiceSession(
+        api_key="TEST_GEMINI_API_KEY",
+        model="gemini-3.1-flash-live-preview",
+        thinking_level="LOW",
+    )
+    config = session._build_live_config()
+    assert config.thinking_config is not None
+    assert getattr(config.thinking_config, "thinking_level", None) in ("LOW", genai_types.ThinkingLevel.LOW)
+
+
+@pytest.mark.anyio
+async def test_live_model_without_thinking_support_omits_thinking_config():
+    """Gemini 3.8 Live rejects the Gemini 3.1-only thinking_level field."""
+    session = GeminiLiveVoiceSession(
+        api_key="TEST_GEMINI_API_KEY",
+        model="gemini-3.8-live",
+    )
+
+    assert session._build_live_config().thinking_config is None
+
+
+@pytest.mark.anyio
+async def test_live_system_prompt_allows_one_opening_greeting():
+    session = GeminiLiveVoiceSession(
+        api_key="TEST_GEMINI_API_KEY",
+        model="gemini-3.8-live",
+    )
+
+    prompt = str(session._build_system_instruction())
+    assert "one brief opening greeting" in prompt
+    assert "NEVER greet the user again after the session has started" not in prompt
+    assert "soo-REN-dhra" in prompt
+    assert "acknowledge briefly without repeating the mispronounced name" in prompt
+    assert "call that function once and wait for its result" in prompt
+    assert "Report success only when the result confirms it" in prompt
+
+
+@pytest.mark.anyio
+async def test_live_session_tool_config_building(mock_agent):
+    """Voice Live exposes the registry's safe tools for local execution."""
+    session = GeminiLiveVoiceSession(
+        api_key="TEST_GEMINI_API_KEY",
+        agent=mock_agent,
+    )
+    live_tools = session._build_tools_config()
+    assert live_tools
+    assert {declaration.name for declaration in live_tools[0].function_declarations} == {"get_time"}
+
+
+def test_new_voice_turn_resets_agent_duplicate_tool_guard():
+    from friday.agent.agent import FridayAgent
+    from friday.core.config import Settings
+
+    agent = FridayAgent(settings=Settings(env="testing", llm_provider="mock"))
+    agent._processed_tool_ids.add("old-call")
+    agent._processed_tool_signatures.add('["media_control",{"action":"play_pause"}]')
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY", agent=agent)
+
+    session._reset_agent_tool_request_state()
+
+    assert not agent._processed_tool_ids
+    assert not agent._processed_tool_signatures
+
+
+@pytest.mark.anyio
+async def test_audio_sender_and_receiver_loop(mock_agent):
+    """Test full-duplex send and receive loops with audio streaming, transcriptions, and barge-in."""
+    sample_pcm_24k = b"\x01\x02\x03\x04" * 100
+    msg1 = MockGenAIServerMessage(
+        server_content=MockGenAIServerContent(
+            parts=[MockGenAIPart(data=sample_pcm_24k, text="Hello")],
+            turn_complete=False,
+        )
+    )
+    msg2 = MockGenAIServerMessage(
+        server_content=MockGenAIServerContent(
+            interrupted=True,
+            turn_complete=False,
+        )
+    )
+    msg3 = MockGenAIServerMessage(
+        server_content=MockGenAIServerContent(
+            parts=[MockGenAIPart(text=" world!")],
+            turn_complete=True,
+            input_tx="Hi Friday",
+            output_tx="Hello world!",
+        )
+    )
+
+    mock_ws_session = MockAsyncSession(receive_messages=[msg1, msg2, msg3])
+
+    live_session = GeminiLiveVoiceSession(
+        api_key="TEST_GEMINI_API_KEY",
+        agent=mock_agent,
+    )
+    live_session._active = True
+
+    # Setup mock audio devices
+    mic = mock.MagicMock(spec=MicrophoneStream)
+    mic.read_chunk = mock.AsyncMock(side_effect=[b"pcm_chunk_1", b"pcm_chunk_2", b""])
+
+    spk = mock.MagicMock(spec=SpeakerStream)
+    stop_event = asyncio.Event()
+
+    on_turn_called = []
+    def turn_callback(u, a):
+        on_turn_called.append((u, a))
+
+    await live_session._audio_receiver_loop(mock_ws_session, spk, turn_callback, stop_event)
+
+    # Assertions
+    spk.play_chunk.assert_called_with(sample_pcm_24k)
+    spk.stop.assert_called()
+    assert len(on_turn_called) == 1
+    assert on_turn_called[0] == ("Hi Friday", "Hello world! [interrupted]")
+    assert mock_agent.memory.add_message.call_count == 2
+
+
+@pytest.mark.anyio
+async def test_live_session_audio_sender_loop():
+    """Verify audio sender captures mic chunks and sends realtime blobs."""
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY")
+    session._active = True
+
+    mic = mock.MagicMock(spec=MicrophoneStream)
+    mic.read_chunk = mock.AsyncMock(side_effect=[b"chunk_1", b"chunk_2", b""])
+
+    spk = mock.MagicMock(spec=SpeakerStream)
+    spk.is_playing = False
+    spk.queue_size = 0
+
+    mock_ws = MockAsyncSession()
+    stop_event = asyncio.Event()
+
+    # Run sender task briefly
+    task = asyncio.create_task(session._audio_sender_loop(mock_ws, mic, spk, stop_event))
+    await asyncio.sleep(0.05)
+    stop_event.set()
+    await task
+
+    assert len(mock_ws.sent_realtime_chunks) >= 2
+    assert mock_ws.sent_realtime_chunks[0].data == b"chunk_1"
+    assert "audio/pcm;rate=16000" in mock_ws.sent_realtime_chunks[0].mime_type
+
+
+@pytest.mark.anyio
+async def test_local_barge_in_stops_speaker_after_debounced_speech():
+    """Loud sustained user speech during FRIDAY playback purges speaker audio."""
+    session = GeminiLiveVoiceSession(
+        api_key="TEST_GEMINI_API_KEY",
+        barge_in_rms_threshold=100.0,
+        local_barge_in_during_playback=True,
+        headphones_mode=True,
+    )
+    session._active = True
+    session.barge_in_consecutive_frames = 2
+    speaker = mock.MagicMock(spec=SpeakerStream)
+    speaker.is_playing = True
+    speaker.queue_size = 1
+    mic = mock.MagicMock(spec=MicrophoneStream)
+    # 0.04 seconds at 16 kHz; voiced samples exceed the speech threshold.
+    voiced = (2500).to_bytes(2, "little", signed=True) * 640
+    frames = [voiced, voiced, b""]
+
+    async def read_frame():
+        frame = frames.pop(0)
+        if not frame:
+            session._active = False
+        return frame
+
+    mic.read_chunk = read_frame
+    ws = MockAsyncSession()
+    await session._audio_sender_loop(ws, mic, speaker, asyncio.Event())
+    speaker.stop.assert_called_once()
+    assert session.speaker_playback_interruptions == 1
+    assert session.user_interruptions == 1
+    assert session._local_interruption_active is True
+
+
+@pytest.mark.anyio
+async def test_live_session_resumption_update():
+    """Verify session resumption update messages store the new handle."""
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY")
+    session._active = True
+
+    resumption_msg = MockGenAIServerMessage(
+        session_resumption_update=mock.MagicMock(new_handle="handle_xyz_123")
+    )
+    mock_ws = MockAsyncSession(receive_messages=[resumption_msg])
+    spk = mock.MagicMock(spec=SpeakerStream)
+    stop_event = asyncio.Event()
+
+    await session._audio_receiver_loop(mock_ws, spk, None, stop_event)
+
+    assert session.resumption_handle == "handle_xyz_123"
+
+
+@pytest.mark.anyio
+async def test_live_session_go_away_handling():
+    """Verify GoAway signal triggers clean exit from receive loop for reconnection."""
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY")
+    session._active = True
+
+    go_away_msg = MockGenAIServerMessage(go_away=mock.MagicMock())
+    mock_ws = MockAsyncSession(receive_messages=[go_away_msg])
+    spk = mock.MagicMock(spec=SpeakerStream)
+    stop_event = asyncio.Event()
+
+    # Receiver loop should break cleanly on GoAway
+    await session._audio_receiver_loop(mock_ws, spk, None, stop_event)
+
+
+@pytest.mark.anyio
+async def test_live_session_tool_cancellation():
+    """Verify tool call cancellation messages are logged and handled without raising."""
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY")
+    session._active = True
+
+    cancel_msg = MockGenAIServerMessage(
+        tool_call_cancellation=mock.MagicMock(ids=["call_abc_123"])
+    )
+    mock_ws = MockAsyncSession(receive_messages=[cancel_msg])
+    spk = mock.MagicMock(spec=SpeakerStream)
+    stop_event = asyncio.Event()
+
+    await session._audio_receiver_loop(mock_ws, spk, None, stop_event)
+
+
+@pytest.mark.anyio
+async def test_live_session_tool_execution(mock_agent):
+    """Test tool execution requested by Gemini Live WebSocket server."""
+    fc_mock = mock.MagicMock()
+    fc_mock.name = "get_time"
+    fc_mock.id = "call_time_123"
+    fc_mock.args = {}
+
+    tool_call_msg = MockGenAIServerMessage(
+        tool_call=mock.MagicMock(function_calls=[fc_mock])
+    )
+
+    mock_ws_session = MockAsyncSession(receive_messages=[tool_call_msg])
+
+    mock_agent._execute_single_tool_call.return_value = mock.MagicMock(
+        is_error=False,
+        content="11:30 AM"
+    )
+
+    live_session = GeminiLiveVoiceSession(
+        api_key="TEST_GEMINI_API_KEY",
+        agent=mock_agent,
+    )
+    live_session._active = True
+
+    spk = mock.MagicMock(spec=SpeakerStream)
+    stop_event = asyncio.Event()
+
+    await live_session._audio_receiver_loop(mock_ws_session, spk, None, stop_event)
+
+    assert len(mock_ws_session.sent_tool_responses) == 1
+    response = mock_ws_session.sent_tool_responses[0]
+    assert response.name == "get_time"
+    assert response.id == "call_time_123"
+    assert response.response == {"output": "11:30 AM"}
+
+
+def test_provider_adapter_instantiation():
+    """Verify GeminiVoiceProvider instantiates cleanly without hardware dependencies."""
+    provider = GeminiVoiceProvider(api_key="TEST_GEMINI_API_KEY", model="gemini-3.1-flash-live-preview")
+    assert provider.model == "gemini-3.1-flash-live-preview"
+    assert provider.api_key == "TEST_GEMINI_API_KEY"
+
+
+@pytest.mark.anyio
+async def test_live_session_state_transitions(mock_agent):
+    """Verify LiveSessionState transitions through complete conversational lifecycle."""
+    from friday.voice.gemini_live_session import LiveSessionState
+
+    session = GeminiLiveVoiceSession(
+        api_key="TEST_GEMINI_API_KEY",
+        agent=mock_agent,
+        model="gemini-3.1-flash-live-preview",
+    )
+    assert session.state == LiveSessionState.IDLE
+
+    session._active = True
+    spk = mock.MagicMock(spec=SpeakerStream)
+    stop_event = asyncio.Event()
+
+    # 1. Server speaking transition
+    audio_msg = MockGenAIServerMessage(
+        server_content=MockGenAIServerContent(
+            parts=[MockGenAIPart(data=b"\x01\x02" * 100, text="Hello")],
+            turn_complete=False,
+        )
+    )
+    mock_ws = MockAsyncSession(receive_messages=[audio_msg])
+    await session._audio_receiver_loop(mock_ws, spk, None, stop_event)
+    assert session.state == LiveSessionState.FRIDAY_SPEAKING
+
+    # 2. Interruption transition
+    int_msg = MockGenAIServerMessage(
+        server_content=MockGenAIServerContent(
+            interrupted=True,
+            turn_complete=False,
+        )
+    )
+    mock_ws2 = MockAsyncSession(receive_messages=[int_msg])
+    await session._audio_receiver_loop(mock_ws2, spk, None, stop_event)
+    assert session.state == LiveSessionState.INTERRUPTED
+
+    # 3. Turn complete resets to CONNECTED
+    complete_msg = MockGenAIServerMessage(
+        server_content=MockGenAIServerContent(
+            turn_complete=True,
+            input_tx="Hi",
+            output_tx="Hello!",
+        )
+    )
+    mock_ws3 = MockAsyncSession(receive_messages=[complete_msg])
+    await session._audio_receiver_loop(mock_ws3, spk, None, stop_event)
+    assert session.state == LiveSessionState.CONNECTED
+
+
+def test_speaker_stream_remainder_buffering():
+    """Verify SpeakerStream handles partial chunk boundaries without dropping or reordering bytes."""
+    stream = SpeakerStream(sample_rate=24000, prebuffer_ms=0)
+    # Simulate start without actual hardware driver
+    stream._active = True
+
+    # Play two chunks of unequal sizes
+    chunk1 = b"\x01\x02\x03\x04\x05\x06"
+    chunk2 = b"\x07\x08\x09\x10"
+    stream.play_chunk(chunk1)
+    stream.play_chunk(chunk2)
+
+    # Queue size should reflect active chunks
+    assert stream.is_playing is True
+    assert stream.queue_size == 2
+
+    # Stop should purge queue and remainder completely
+    stream.stop()
+    assert stream.queue_size == 0
+    assert stream.is_playing is False
+
+
+def test_reconnect_session_resumption_no_transparent_param(mock_agent):
+    """Regression test: Developer API SessionResumptionConfig must NOT contain transparent=True."""
+    session = GeminiLiveVoiceSession(
+        api_key="TEST_GEMINI_API_KEY",
+        agent=mock_agent,
+        enable_session_resumption=True,
+    )
+    session._resumption_handle = "test_handle_12345"
+    config = session._build_live_config()
+
+    assert config.session_resumption is not None
+    assert config.session_resumption.handle == "test_handle_12345"
+    # Ensure transparent is not set or is None / False (not True)
+    assert getattr(config.session_resumption, "transparent", None) is not True
+
+
+@pytest.mark.anyio
+async def test_goaway_reconnection_loop_lifecycle(mock_agent):
+    """Verify that GoAway message terminates receiver loop gracefully without leaking tasks or erroring."""
+
+    session = GeminiLiveVoiceSession(
+        api_key="TEST_GEMINI_API_KEY",
+        agent=mock_agent,
+        model="gemini-3.1-flash-live-preview",
+    )
+    session._active = True
+    spk = mock.MagicMock(spec=SpeakerStream)
+    stop_event = asyncio.Event()
+
+    # Create a message with go_away set
+    goaway_msg = MockGenAIServerMessage(go_away=mock.MagicMock())
+    mock_ws = MockAsyncSession(receive_messages=[goaway_msg])
+
+    # Receiver loop should exit cleanly upon seeing go_away
+    await session._audio_receiver_loop(mock_ws, spk, None, stop_event)
+    # Reconnection config should have model set properly
+    assert session.model == "gemini-3.1-flash-live-preview"
+
+
+@pytest.mark.anyio
+async def test_server_interrupted_event_mapping_strict(mock_agent):
+    """Regression test: verify serverContent.interrupted is only treated as interruption when True."""
+    session = GeminiLiveVoiceSession(
+        api_key="TEST_GEMINI_API_KEY",
+        agent=mock_agent,
+    )
+    session._active = True
+    spk = mock.MagicMock(spec=SpeakerStream)
+    stop_event = asyncio.Event()
+
+    # Message with interrupted=False or None should NOT trigger interruption
+    msg1 = MockGenAIServerMessage(
+        server_content=MockGenAIServerContent(
+            parts=[MockGenAIPart(text="Hello ")],
+            interrupted=False,
+            turn_complete=False,
+        )
+    )
+    msg2 = MockGenAIServerMessage(
+        server_content=MockGenAIServerContent(
+            parts=[MockGenAIPart(text="world.")],
+            interrupted=None,
+            turn_complete=True,
+            output_tx="Hello world.",
+        )
+    )
+
+    mock_ws = MockAsyncSession(receive_messages=[msg1, msg2])
+    turns = []
+    await session._audio_receiver_loop(mock_ws, spk, lambda u, a: turns.append((u, a)), stop_event)
+
+    assert session.server_interruptions == 0
+    assert session.user_interruptions == 0
+    assert len(turns) == 1
+    assert turns[0][1] == "Hello world."
+    assert "[interrupted]" not in turns[0][1]
+
+
+@pytest.mark.anyio
+async def test_no_reconnect_on_normal_barge_in(mock_agent):
+    """Regression test: verify a normal user barge-in stays within the same session without reconnecting."""
+    session = GeminiLiveVoiceSession(
+        api_key="TEST_GEMINI_API_KEY",
+        agent=mock_agent,
+    )
+    session._active = True
+    spk = mock.MagicMock(spec=SpeakerStream)
+    stop_event = asyncio.Event()
+
+    # Interrupted turn followed by a new full turn in the SAME WebSocket session
+    turn1_part = MockGenAIServerMessage(
+        server_content=MockGenAIServerContent(
+            parts=[MockGenAIPart(text="I am explaining something long...")],
+            turn_complete=False,
+        )
+    )
+    turn1_interrupt = MockGenAIServerMessage(
+        server_content=MockGenAIServerContent(
+            interrupted=True,
+            turn_complete=True,
+        )
+    )
+    turn2_part = MockGenAIServerMessage(
+        server_content=MockGenAIServerContent(
+            parts=[MockGenAIPart(text="Sure, here is the new answer.")],
+            turn_complete=True,
+            input_tx="Stop and tell me this instead",
+            output_tx="Sure, here is the new answer.",
+        )
+    )
+
+    mock_ws = MockAsyncSession(receive_messages=[turn1_part, turn1_interrupt, turn2_part])
+    turns = []
+    await session._audio_receiver_loop(mock_ws, spk, lambda u, a: turns.append((u, a)), stop_event)
+
+    assert session.server_interruptions == 1
+    assert len(turns) == 2
+    assert turns[1] == ("Stop and tell me this instead", "Sure, here is the new answer.")
+    # State returns to CONNECTED without triggering session reconnect
+    assert session.state == LiveSessionState.CONNECTED
+
+
+@pytest.mark.anyio
+async def test_silent_listening_completes_response(mock_agent):
+    """Regression test: verify that when microphone remains silent, FRIDAY finishes full response with zero interruptions."""
+    session = GeminiLiveVoiceSession(
+        api_key="TEST_GEMINI_API_KEY",
+        agent=mock_agent,
+    )
+    session._active = True
+    spk = mock.MagicMock(spec=SpeakerStream)
+    stop_event = asyncio.Event()
+
+    msg1 = MockGenAIServerMessage(
+        server_content=MockGenAIServerContent(
+            parts=[MockGenAIPart(text="Hello, Surendra. What can I do for you?")],
+            turn_complete=True,
+            input_tx="Hi",
+            output_tx="Hello, Surendra. What can I do for you?",
+        )
+    )
+
+    mock_ws = MockAsyncSession(receive_messages=[msg1])
+    turns = []
+    await session._audio_receiver_loop(mock_ws, spk, lambda u, a: turns.append((u, a)), stop_event)
+
+    assert session.server_interruptions == 0
+    assert session.user_interruptions == 0
+    assert len(turns) == 1
+    assert turns[0] == ("Hi", "Hello, Surendra. What can I do for you?")
+    assert session.state == LiveSessionState.CONNECTED
+
+
+@pytest.mark.anyio
+async def test_instant_voice_command_speaks_only_verified_local_result(mock_agent):
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY", agent=mock_agent)
+    session._active = True
+    mock_agent.__class__.__name__ = "FridayAgent"
+    mock_agent.classify_instant_command.return_value = "open_chrome"
+    mock_agent.process_message.return_value = mock.MagicMock(content="Chrome could not be focused.")
+    mock_agent.notifications = []
+    content = MockGenAIServerContent(
+        parts=[MockGenAIPart(text="Opening Chrome now.")],
+        turn_complete=True,
+        input_tx="Open Chrome.",
+        output_tx="Opening Chrome now.",
+    )
+    ws = MockAsyncSession(receive_messages=[MockGenAIServerMessage(server_content=content)])
+    session._session = ws
+    speaker = mock.MagicMock(spec=SpeakerStream)
+    turns = []
+
+    async def capture_result(message):
+        turns.append(message)
+
+    session.send_text = capture_result
+    reported = []
+    from friday.cli.main import native_tts
+    with mock.patch.object(native_tts, "speak") as speak:
+        await session._audio_receiver_loop(ws, speaker, lambda u, a: reported.append((u, a)), asyncio.Event())
+    assert turns == []  # Local action completion does not depend on another Live turn.
+    assert mock_agent.process_message.call_count == 1
+    speaker.play_chunk.assert_not_called()  # speculative model audio is suppressed
+    speak.assert_called_once_with("Chrome could not be focused.")
+    assert reported == [("Open Chrome.", "Chrome could not be focused.")]
+
+
+@pytest.mark.anyio
+async def test_receiver_prints_local_action_receipt_even_without_followup_live_turn(mock_agent):
+    """An action receipt is finalized immediately instead of awaiting a second Live response."""
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY", agent=mock_agent)
+    session._active = True
+    mock_agent.__class__.__name__ = "FridayAgent"
+    mock_agent.classify_instant_command.return_value = "open_chrome"
+    mock_agent.process_message.return_value = mock.MagicMock(content="Chrome did not take foreground focus.")
+    mock_agent.notifications = []
+    ws = MockAsyncSession(receive_messages=[MockGenAIServerMessage(server_content=MockGenAIServerContent(
+        parts=[MockGenAIPart(text="Opening Chrome now.")], turn_complete=True,
+        input_tx="Open Chrome.", output_tx="Opening Chrome now.",
+    ))])
+    session._session = ws
+    turns = []
+    from friday.cli.main import native_tts
+    with mock.patch.object(native_tts, "speak") as speak:
+        await session._audio_receiver_loop(ws, mock.MagicMock(spec=SpeakerStream), lambda u, a: turns.append((u, a)), asyncio.Event())
+    assert turns == [("Open Chrome.", "Chrome did not take foreground focus.")]
+    speak.assert_called_once_with("Chrome did not take foreground focus.")
+
+
+
+
+
+@pytest.mark.anyio
+async def test_receiver_loop_on_server_content_after_audio_enqueue():
+    """on_server_content observers receive every serverContent, strictly AFTER audio enqueue."""
+    sample_pcm = b"\x01\x02\x03\x04"
+
+    audio_part = mock.MagicMock()
+    audio_part.text = None
+    audio_part.inline_data = mock.MagicMock(data=sample_pcm)
+
+    content = MockGenAIServerContent(parts=[audio_part], turn_complete=True, output_tx="done")
+    msg = MockGenAIServerMessage(server_content=content)
+    mock_ws = MockAsyncSession(receive_messages=[msg])
+
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY")
+    session._active = True
+
+    events = []
+    spk = mock.MagicMock(spec=SpeakerStream)
+    spk.play_chunk = mock.MagicMock(side_effect=lambda chunk: events.append(("audio", chunk)))
+
+    observed = []
+
+    def on_server_content(sc):
+        events.append(("callback", sc))
+        observed.append(sc)
+
+    stop_event = asyncio.Event()
+    await session._audio_receiver_loop(mock_ws, spk, None, stop_event, on_server_content)
+
+    # Callback saw the serverContent object
+    assert observed == [content]
+    # Audio was enqueued BEFORE the callback ran (audio-first ordering)
+    assert events[0] == ("audio", sample_pcm)
+    assert events[1][0] == "callback"
+
+
+@pytest.mark.anyio
+async def test_receiver_loop_on_server_content_callback_error_isolated():
+    """A crashing on_server_content observer must not break the receive loop."""
+    audio_part = mock.MagicMock()
+    audio_part.text = None
+    audio_part.inline_data = mock.MagicMock(data=b"\x00\x00")
+
+    content = MockGenAIServerContent(parts=[audio_part], turn_complete=True)
+    msg = MockGenAIServerMessage(server_content=content)
+    mock_ws = MockAsyncSession(receive_messages=[msg])
+
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY")
+    session._active = True
+    spk = mock.MagicMock(spec=SpeakerStream)
+    turns = []
+    stop_event = asyncio.Event()
+
+    def broken_callback(sc):
+        raise RuntimeError("observer crashed")
+
+    await session._audio_receiver_loop(mock_ws, spk, lambda u, a: turns.append((u, a)), stop_event, broken_callback)
+    spk.play_chunk.assert_called_once()  # audio still played
+    assert len(turns) == 1  # turn completion still fired
+
+
+@pytest.mark.anyio
+async def test_send_text_realtime_and_fallback():
+    """send_text uses send_realtime_input(text=...) and falls back to client_content."""
+    session = GeminiLiveVoiceSession(api_key="TEST_GEMINI_API_KEY")
+
+    # No active session -> safe no-op
+    await session.send_text("hi")
+
+    mock_ws = mock.MagicMock()
+    mock_ws.send_realtime_input = mock.AsyncMock()
+    session._session = mock_ws
+    await session.send_text("greet me")
+    mock_ws.send_realtime_input.assert_awaited_once_with(text="greet me")
+
+    # Older SDK without realtime text -> client_content fallback
+    mock_ws2 = mock.MagicMock()
+    mock_ws2.send_realtime_input = mock.AsyncMock(side_effect=TypeError("no text kwarg"))
+    mock_ws2.send_client_content = mock.AsyncMock()
+    session._session = mock_ws2
+    await session.send_text("greet me again")
+    mock_ws2.send_client_content.assert_awaited_once()
+    kwargs = mock_ws2.send_client_content.await_args.kwargs
+    assert kwargs["turn_complete"] is True
+    assert "greet me again" in str(kwargs["turns"])

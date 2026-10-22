@@ -1,0 +1,676 @@
+"""Gemini LLM Provider using the official google-genai SDK.
+
+This modern implementation uses Google's current official `google-genai` Python SDK
+(`from google import genai`). It preserves FRIDAY's `BaseLLMProvider` contract,
+enforces strict tool safety and authorization boundaries, and guarantees zero
+local inference compute.
+
+Security considerations:
+- The API key is never logged; any accidental inclusion in error messages is
+  masked with "***".
+- No secrets are written to disk or exposed in `__repr__`.
+- All retries are bounded and exponential back-off controlled.
+"""
+
+import json
+import threading
+import time
+import uuid
+import warnings
+from typing import Any
+
+# Suppress noisy upstream Google GenAI SDK AFC warnings during generate_content
+warnings.filterwarnings("ignore", message=".*automatic function calling.*")
+warnings.filterwarnings("ignore", message=".*Direct use of automatic function calling.*")
+warnings.filterwarnings("ignore", message=".*AFC.*")
+
+from google import genai
+from google.genai import errors as genai_errors
+from google.genai import types as genai_types
+
+from friday.auth.credential_pool import (
+    FailureCategory,
+    GeminiCredentialPool,
+    credential_pool,
+)
+from friday.auth.request_accounting import request_accountant
+from friday.core.config import get_settings
+from friday.core.exceptions import LLMProviderError
+from friday.core.logging import get_logger
+from friday.core.types import Message, Role, ToolCall
+from friday.llm.base import BaseLLMProvider
+
+logger = get_logger("llm.gemini")
+
+
+def is_gemini_37_model(model_name: str) -> bool:
+    """Determine whether the specified model is a Gemini 3.7 series model."""
+    m = (model_name or "").lower().strip()
+    return "3.7" in m or "gemini-3-7" in m
+
+
+class GeminiLLMProvider(BaseLLMProvider):
+    """LLM Provider for Google Gemini using the official google-genai SDK."""
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        credential_pool: GeminiCredentialPool | None = credential_pool,
+        base_url: str = "https://generativelanguage.googleapis.com/v1beta",
+        model: str = "gemini-3.6-flash",
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
+        timeout: float = 60.0,
+        max_retries: int = 3,
+        backoff_factor: float = 2.0,
+        cost_mode: str = "free_first",
+        thinking_level: str | None = None,
+    ) -> None:
+        super().__init__(model=model, temperature=temperature, max_tokens=max_tokens)
+        # Preserve an explicitly supplied blank value so callers that provided
+        # an empty key receive the clear missing-key error. The provider
+        # factory normalizes absent environment values before construction.
+        self._explicit_api_key: str | None = api_key
+        self.api_key: str | None = api_key
+        self.credential_pool: GeminiCredentialPool | None = credential_pool
+        self.base_url: str = base_url.rstrip("/")
+        self.timeout: float = timeout
+        self.max_retries: int = max_retries
+        self.backoff_factor: float = backoff_factor
+        self.cost_mode: str = cost_mode
+        self.thinking_level: str = thinking_level or "medium"
+        
+        # Explicit thread-safe client cache
+        self._client: genai.Client | None = None
+        self._current_key: str | None = None
+        self._lock: threading.Lock = threading.Lock()
+
+        # Validate thinking level
+        if self.thinking_level not in ("low", "medium", "high"):
+            logger.warning(f"Invalid thinking level '{self.thinking_level}' provided; defaulting to 'medium'.")
+            self.thinking_level = "medium"
+
+    @property
+    def client(self) -> genai.Client:
+        """Retrieve or create the cached GenAI Client instance using the credential pool."""
+        active_key = self._get_active_api_key()
+        return self._get_client(active_key)
+
+    @property
+    def provider_name(self) -> str:
+        return "gemini"
+
+    def _should_use_pool(self) -> bool:
+        """Determine whether to use multi-credential pool rotation."""
+        if not self.credential_pool or not getattr(self.credential_pool, "credentials", None):
+            return False
+        if not self._explicit_api_key:
+            return True
+        if not self._explicit_api_key.strip():
+            return False
+        return any(c.api_key == self._explicit_api_key for c in self.credential_pool.credentials)
+
+    def _get_active_api_key(self) -> str:
+        """Retrieve the currently active API key from the pool or explicit setting."""
+        if self._explicit_api_key is not None and not self._explicit_api_key.strip():
+            raise LLMProviderError("Gemini API key is required")
+
+        if self._should_use_pool():
+            try:
+                assert self.credential_pool is not None
+                key = self.credential_pool.get_active_key()
+                if key and key.strip():
+                    return key.strip()
+            except Exception as e:
+                # A populated but exhausted pool is an explicit credential
+                # policy. Do not silently fall back to an unrelated ambient
+                # key from local settings or the process environment.
+                raise LLMProviderError(
+                    "CREDENTIAL_EXHAUSTED: No healthy Gemini API key is available in the configured credential pool."
+                ) from e
+
+        if self._explicit_api_key is not None and self._explicit_api_key.strip():
+            return self._explicit_api_key.strip()
+
+        if self.api_key and self.api_key.strip():
+            return self.api_key.strip()
+
+        settings = get_settings()
+        key = settings.gemini_api_key or settings.llm_api_key
+        if key and key.strip():
+            return key.strip()
+
+        raise LLMProviderError("Gemini API key is required")
+
+    def _get_client(self, api_key: str) -> genai.Client:
+        """Instantiate or reuse genai.Client for the given API key in a thread-safe manner."""
+        with self._lock:
+            if self._client is None or self._current_key != api_key:
+                self._client = genai.Client(api_key=api_key)
+                self._current_key = api_key
+            return self._client
+
+    def _classify_error(self, error: Exception) -> FailureCategory:
+        """Classify exceptions into failure categories for pool cooldown tracking."""
+        if self.credential_pool:
+            return self.credential_pool.classify_error(error)
+        msg = str(error).lower()
+        if "429" in msg or "resource_exhausted" in msg or "quota" in msg:
+            return FailureCategory.QUOTA_EXHAUSTED
+        if "401" in msg or "403" in msg or "invalid_argument" in msg or "api_key" in msg:
+            return FailureCategory.AUTH_FAILED
+        if "404" in msg or "not_found" in msg or ("model" in msg and "no longer available" in msg):
+            return FailureCategory.MODEL_NOT_FOUND
+        if (
+            "connect" in msg
+            or "timeout" in msg
+            or "network" in msg
+            or "getaddrinfo" in msg
+            or "11001" in msg
+            or "dns" in msg
+            or "connection error" in msg
+            or "socket" in msg
+        ):
+            return FailureCategory.NETWORK_ERROR
+        if "400" in msg or "invalid_argument" in msg:
+            return FailureCategory.INVALID_REQUEST
+        if "sdk" in msg or "clienterror" in msg:
+            return FailureCategory.SDK_ERROR
+        if "budget exceeded" in msg or "circuit breaker active" in msg:
+            return FailureCategory.CIRCUIT_BLOCK
+        return FailureCategory.UNKNOWN
+
+    def _mask_key(self, text: str) -> str:
+        """Mask API keys in any error or diagnostic string."""
+        keys_to_mask = set()
+        if self.api_key:
+            keys_to_mask.add(self.api_key)
+        if self._explicit_api_key:
+            keys_to_mask.add(self._explicit_api_key)
+        if self._current_key:
+            keys_to_mask.add(self._current_key)
+        if self.credential_pool:
+            for cred in getattr(self.credential_pool, "credentials", []):
+                if getattr(cred, "api_key", None):
+                    keys_to_mask.add(cred.api_key)
+
+        masked = text
+        for key in keys_to_mask:
+            if key and len(key) >= 4:
+                masked = masked.replace(key, "***")
+                try:
+                    import re
+                    pattern = re.compile(re.escape(key), re.IGNORECASE)
+                    masked = pattern.sub("***", masked)
+                except Exception:
+                    pass
+        return masked
+
+    # ---------------------------------------------------------------------
+    # Schema and Message Conversion Helpers
+    # ---------------------------------------------------------------------
+    @staticmethod
+    def _sanitize_parameters_for_gemini(params: dict[str, Any]) -> dict[str, Any]:
+        """Recursively sanitize JSON schema parameters for Google GenAI SDK compatibility."""
+        if not isinstance(params, dict):
+            return {}
+        import copy
+        sanitized = copy.deepcopy(params)
+        props = sanitized.get("properties")
+        if isinstance(props, dict):
+            for prop_name, prop_def in props.items():
+                if isinstance(prop_def, dict):
+                    p_type = prop_def.get("type")
+                    if isinstance(p_type, list):
+                        non_null = [t for t in p_type if str(t).lower() != "null"]
+                        base_type = non_null[0] if non_null else "string"
+                        prop_def["type"] = str(base_type).lower()
+                        prop_def["nullable"] = True
+                    elif isinstance(p_type, str):
+                        prop_def["type"] = p_type.lower()
+                    if "properties" in prop_def:
+                        prop_def["properties"] = GeminiLLMProvider._sanitize_parameters_for_gemini(prop_def).get("properties", {})
+                    elif "items" in prop_def and isinstance(prop_def["items"], dict):
+                        prop_def["items"] = GeminiLLMProvider._sanitize_parameters_for_gemini(prop_def["items"])
+        if "type" in sanitized and isinstance(sanitized["type"], str):
+            sanitized["type"] = sanitized["type"].lower()
+        return sanitized
+
+    def _convert_schema_to_gemini(self, tool_def: dict[str, Any]) -> dict[str, Any]:
+        """Convert an OpenAI-compatible tool JSON schema to a Gemini function declaration dict."""
+        if tool_def.get("type") == "function" and "function" in tool_def:
+            func = tool_def["function"]
+            return {
+                "name": func.get("name", ""),
+                "description": func.get("description", ""),
+                "parameters": self._sanitize_parameters_for_gemini(func.get("parameters", {})),
+            }
+        return {
+            "name": tool_def.get("name", ""),
+            "description": tool_def.get("description", ""),
+            "parameters": self._sanitize_parameters_for_gemini(tool_def.get("parameters", {})),
+        }
+
+    def _build_contents_and_config(
+        self,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None = None,
+    ) -> tuple[list[genai_types.Content], genai_types.GenerateContentConfig]:
+        """Translate FRIDAY Messages and Tool definitions to GenAI SDK types."""
+        system_instruction_text = ""
+        contents: list[genai_types.Content] = []
+
+        for msg in messages:
+            if msg.role == Role.SYSTEM:
+                if msg.content:
+                    system_instruction_text = (
+                        f"{system_instruction_text}\n\n{msg.content}".strip()
+                        if system_instruction_text
+                        else msg.content
+                    )
+            elif msg.role == Role.USER:
+                contents.append(
+                    genai_types.Content(
+                        role="user",
+                        parts=[genai_types.Part.from_text(text=msg.content or "")],
+                    )
+                )
+            elif msg.role == Role.ASSISTANT:
+                parts: list[genai_types.Part] = []
+                if msg.content:
+                    parts.append(genai_types.Part.from_text(text=msg.content))
+                if msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        args = tc.arguments if isinstance(tc.arguments, dict) else {}
+                        sig = getattr(tc, "thought_signature", None)
+                        if sig:
+                            parts.append(
+                                genai_types.Part(
+                                    function_call=genai_types.FunctionCall(name=tc.name, args=args),
+                                    thought_signature=sig,
+                                )
+                            )
+                        else:
+                            parts.append(
+                                genai_types.Part.from_function_call(name=tc.name, args=args)
+                            )
+                if not parts:
+                    parts.append(genai_types.Part.from_text(text=""))
+                contents.append(genai_types.Content(role="model", parts=parts))
+            elif msg.role == Role.TOOL:
+                tool_name = msg.name or "tool"
+                try:
+                    parsed = json.loads(msg.content) if isinstance(msg.content, str) else msg.content
+                    if not isinstance(parsed, dict):
+                        parsed = {"output": parsed}
+                except Exception:
+                    parsed = {"output": msg.content}
+                contents.append(
+                    genai_types.Content(
+                        role="user",
+                        parts=[genai_types.Part.from_function_response(name=tool_name, response=parsed)],
+                    )
+                )
+
+        # Build tools if provided
+        genai_tools: list[genai_types.Tool] | None = None
+        if tools:
+            func_decls = []
+            for t in tools:
+                converted = self._convert_schema_to_gemini(t)
+                func_decls.append(
+                    genai_types.FunctionDeclaration(
+                        name=converted.get("name", ""),
+                        description=converted.get("description", ""),
+                        parameters=converted.get("parameters", {}),
+                    )
+                )
+            genai_tools = [genai_types.Tool(function_declarations=func_decls)]
+
+        # Build config: For Gemini 3.7 models, temperature, top_p, and top_k are unsupported / deprecated.
+        # Ensure they cannot accidentally reach the SDK.
+        config_kwargs: dict[str, Any] = {
+            "max_output_tokens": self.max_tokens,
+            "system_instruction": system_instruction_text if system_instruction_text else None,
+            "tools": genai_tools,
+            "automatic_function_calling": genai_types.AutomaticFunctionCallingConfig(disable=True),
+        }
+
+        if not is_gemini_37_model(self.model):
+            # Only include temperature for legacy non-3.7 models
+            config_kwargs["temperature"] = self.temperature
+        else:
+            if getattr(self, "temperature", None) is not None and self.temperature != 0.7:
+                logger.info(
+                    f"Temperature parameter ({self.temperature}) is unsupported for {self.model} "
+                    "and has been omitted from SDK GenerateContentConfig."
+                )
+
+        # Add thinking_config only if explicitly supported by model (e.g. thinking models)
+        is_thinking_model = "thinking" in (self.model or "").lower()
+        if is_thinking_model and hasattr(genai_types, "ThinkingConfig") and hasattr(genai_types, "ThinkingLevel"):
+            try:
+                level_enum = genai_types.ThinkingLevel
+                # Map string to enum (case-insensitive)
+                level_val = getattr(level_enum, self.thinking_level.upper())
+            except Exception:
+                # Fallback to MEDIUM if mapping fails
+                level_val = genai_types.ThinkingLevel.MEDIUM
+            config_kwargs["thinking_config"] = genai_types.ThinkingConfig(thinking_level=level_val)
+
+        config = genai_types.GenerateContentConfig(**config_kwargs)
+
+        return contents, config
+
+    def _build_gemini_payload(
+        self,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Backwards-compatible dictionary serialization of Gemini payload for testing."""
+        system_instruction_parts = []
+        contents: list[dict[str, Any]] = []
+
+        for msg in messages:
+            if msg.role == Role.SYSTEM:
+                if msg.content:
+                    system_instruction_parts.append({"text": msg.content})
+            elif msg.role == Role.USER:
+                contents.append({
+                    "role": "user",
+                    "parts": [{"text": msg.content}],
+                })
+            elif msg.role == Role.ASSISTANT:
+                parts: list[dict[str, Any]] = []
+                if msg.content:
+                    parts.append({"text": msg.content})
+                if msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        args = tc.arguments if isinstance(tc.arguments, dict) else {}
+                        parts.append({
+                            "functionCall": {"name": tc.name, "args": args}
+                        })
+                if not parts:
+                    parts.append({"text": ""})
+                contents.append({"role": "model", "parts": parts})
+            elif msg.role == Role.TOOL:
+                tool_name = msg.name or "tool"
+                try:
+                    parsed = json.loads(msg.content) if isinstance(msg.content, str) else msg.content
+                    if not isinstance(parsed, dict):
+                        parsed = {"output": parsed}
+                except Exception:
+                    parsed = {"output": msg.content}
+                contents.append({
+                    "role": "function",
+                    "parts": [{"functionResponse": {"name": tool_name, "response": parsed}}],
+                })
+
+        generation_config: dict[str, Any] = {
+            "max_output_tokens": self.max_tokens,
+        }
+        if not is_gemini_37_model(self.model):
+            generation_config["temperature"] = self.temperature
+        else:
+            generation_config["thinking_config"] = {"thinking_level": self.thinking_level.upper()}
+
+        payload: dict[str, Any] = {
+            "contents": contents,
+            "generationConfig": generation_config,
+        }
+        if system_instruction_parts:
+            payload["systemInstruction"] = {"parts": system_instruction_parts}
+        if tools:
+            func_decls = [self._convert_schema_to_gemini(t) for t in tools]
+            payload["tools"] = [{"functionDeclarations": func_decls}]
+        return payload
+
+    # ---------------------------------------------------------------------
+    # Public generate method
+    # ---------------------------------------------------------------------
+    def generate(
+        self,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None = None,
+    ) -> Message:
+        """Generate an assistant response using the Google GenAI SDK.
+
+        Translates FRIDAY messages, enforces function-calling trust boundaries,
+        and wraps exceptions in LLMProviderError with secret masking.
+        """
+        # 0. Check Request Accounting and Budget Enforcement
+        allowed, budget_reason = request_accountant.can_make_request(purpose="reasoning")
+        if not allowed:
+            logger.warning(f"GeminiLLMProvider: Request blocked by budget limits: {budget_reason}")
+            raise LLMProviderError(f"Budget exceeded: {budget_reason}")
+
+        attempt = 0
+        use_pool = self._should_use_pool()
+        pool_creds = getattr(self.credential_pool, "credentials", None) if use_pool else None
+        pool_size = len(pool_creds) if (pool_creds is not None and len(pool_creds) > 0) else None
+        max_attempts = pool_size if (use_pool and pool_size is not None) else (self.max_retries + 1)
+
+        last_error = None
+        call_start = time.perf_counter()
+
+        attempted_models: set[str] = {self.model}
+        while attempt < max_attempts:
+            active_key = self._get_active_api_key()
+
+            label = "PRIMARY"
+            if self.credential_pool:
+                try:
+                    c = self.credential_pool._find_by_key(active_key)
+                    if c:
+                        label = c.project_label
+                except Exception:
+                    pass
+
+            try:
+                self._current_key = active_key
+                client = self._get_client(active_key)
+
+                contents, config = self._build_contents_and_config(messages, tools)
+
+                logger.debug(
+                    f"Calling GenAI generate_content (model: {self.model}, attempt {attempt + 1}/{max_attempts})"
+                )
+                response = client.models.generate_content(
+                    model=self.model,
+                    contents=contents,
+                    config=config,
+                )
+
+                # Check candidates and safety blocks
+                if not response.candidates:
+                    if hasattr(response, "prompt_feedback") and response.prompt_feedback:
+                        block_reason = getattr(response.prompt_feedback, "block_reason", None)
+                        if block_reason:
+                            raise LLMProviderError(f"blocked by safety filters: {block_reason}")
+                    raise LLMProviderError("Gemini returned no candidates")
+
+                # Reset credential health on success
+                if self.credential_pool and active_key:
+                    self.credential_pool.reset_key(active_key)
+
+                # Extract token metrics if available
+                usage = getattr(response, "usage_metadata", None)
+                in_tokens = getattr(usage, "prompt_token_count", 0) or 0
+                out_tokens = getattr(usage, "candidates_token_count", 0) or 0
+                elapsed_ms = (time.perf_counter() - call_start) * 1000.0
+
+                request_accountant.record_request(
+                    credential_label=label,
+                    model=self.model,
+                    purpose="reasoning",
+                    retries_count=attempt,
+                    fallbacks_count=attempt if label != "PRIMARY" else 0,
+                    estimated_input_tokens=in_tokens,
+                    estimated_output_tokens=out_tokens,
+                    latency_ms=elapsed_ms,
+                )
+
+                candidate = response.candidates[0]
+                content = candidate.content
+                parts = getattr(content, "parts", []) or []
+
+                text_parts: list[str] = []
+                tool_calls: list[ToolCall] | None = None
+
+                for part in parts:
+                    if getattr(part, "text", None):
+                        text_parts.append(part.text.strip())
+                    elif getattr(part, "function_call", None):
+                        fc = part.function_call
+                        if tool_calls is None:
+                            tool_calls = []
+                        fc_name = getattr(fc, "name", "")
+                        fc_args = getattr(fc, "args", {})
+                        if isinstance(fc_args, str):
+                            try:
+                                fc_args = json.loads(fc_args)
+                            except json.JSONDecodeError:
+                                fc_args = {"raw_arguments": fc_args}
+                        elif not isinstance(fc_args, dict):
+                            try:
+                                fc_args = dict(fc_args)
+                            except Exception:
+                                fc_args = {"raw": str(fc_args)}
+                        call_id = getattr(fc, "id", None) or f"call_{fc_name}_{uuid.uuid4().hex[:8]}"
+                        thought_sig = getattr(part, "thought_signature", None) or getattr(fc, "thought_signature", None)
+                        tool_calls.append(
+                            ToolCall(
+                                id=call_id,
+                                name=fc_name,
+                                arguments=fc_args or {},
+                                thought_signature=thought_sig,
+                            )
+                        )
+
+                final_text = "".join(text_parts).strip()
+                return Message(role=Role.ASSISTANT, content=final_text, tool_calls=tool_calls)
+
+            except (genai_errors.APIError, Exception) as e:
+                last_error = e
+                attempt += 1
+                err_msg = self._mask_key(str(e))
+                
+                # Classify error
+                category = self._classify_error(e)
+
+                # Intra-provider key rotation should not trip the circuit breaker prematurely
+                is_fatal_call = (attempt >= max_attempts)
+                request_accountant.record_request(
+                    credential_label=label,
+                    model=self.model,
+                    purpose="reasoning",
+                    retries_count=attempt,
+                    failure_category=category.value,
+                    latency_ms=(time.perf_counter() - call_start) * 1000.0,
+                    is_fatal=is_fatal_call,
+                )
+
+                # Report failure to credential pool if using pool
+                failed_key = active_key or self._current_key
+                if (
+                    use_pool
+                    and self.credential_pool
+                    and failed_key
+                    and category not in (FailureCategory.MODEL_NOT_FOUND, FailureCategory.INVALID_REQUEST)
+                ):
+                    self.credential_pool.report_failure(failed_key, error=e)
+
+                # 1. Model Fallback Handling:
+                # If model is not found (404) or quota exhausted on older/deprecated model (e.g. gemini-2.5-flash),
+                # automatically fallback to gemini-flash-latest / other working models
+                if use_pool and (
+                    category == FailureCategory.MODEL_NOT_FOUND or (
+                        category == FailureCategory.QUOTA_EXHAUSTED and ("2.5" in (self.model or "") or "not_found" in err_msg.lower())
+                    )
+                ):
+                    fallback_models = ["gemini-3.6-flash", "gemini-flash-latest", "gemini-2.0-flash", "gemini-1.5-flash"]
+                    next_model = next((m for m in fallback_models if m not in attempted_models), None)
+                    if next_model:
+                        logger.warning(
+                            f"Gemini model '{self.model}' unavailable ({category.value}: {err_msg}). "
+                            f"Automatically falling back to working model '{next_model}'..."
+                        )
+                        self.model = next_model
+                        attempted_models.add(next_model)
+                        if self.credential_pool:
+                            try:
+                                self.credential_pool.reset_all()
+                            except Exception:
+                                pass
+                        attempt = 0
+                        continue
+                    else:
+                        logger.error(f"Gemini model not found ({self.model}): {err_msg}")
+                        raise LLMProviderError(f"Gemini model not found ({self.model}): {err_msg}") from e
+
+                # 2. Authentication failure / Permission denied handling (401 / 403)
+                if category == FailureCategory.AUTH_FAILED:
+                    if use_pool and self.credential_pool:
+                        try:
+                            next_key = self.credential_pool.get_active_key()
+                            logger.warning(
+                                f"Gemini credential failed auth/permission ({self._mask_key(failed_key)}); "
+                                f"switching to next healthy credential ({self._mask_key(next_key)})."
+                            )
+                            continue
+                        except (RuntimeError, Exception):
+                            logger.error("All Gemini credentials in pool are exhausted or authentication failed.")
+                            raise LLMProviderError("CREDENTIAL_EXHAUSTED: All Gemini credentials in pool are exhausted or in cooldown.") from e
+                    else:
+                        logger.error(f"Gemini authentication failed for explicit key: {err_msg}")
+                        raise LLMProviderError(f"Gemini authentication failed: {err_msg}") from e
+
+                # 3. Quota Exhaustion / Rate limit handling (429)
+                if category in (FailureCategory.QUOTA_EXHAUSTED, FailureCategory.RATE_LIMIT):
+                    if use_pool and self.credential_pool:
+                        try:
+                            next_key = self.credential_pool.get_active_key()
+                            logger.warning(
+                                f"Gemini quota exhausted for credential ({self._mask_key(failed_key)}); "
+                                f"switching to next available credential ({self._mask_key(next_key)})."
+                            )
+                            continue
+                        except (RuntimeError, Exception):
+                            logger.error("All Gemini credentials in pool are exhausted or in cooldown.")
+                            raise LLMProviderError("CREDENTIAL_EXHAUSTED: All Gemini credentials in pool are exhausted or in cooldown.") from e
+                    else:
+                        if attempt < max_attempts:
+                            wait = 1.0 * (self.backoff_factor ** (attempt - 1))
+                            logger.warning(f"Gemini transient rate limit ({category.value}): {err_msg}. Retrying in {wait:.2f}s...")
+                            time.sleep(wait)
+                            continue
+                        logger.error(f"Gemini quota/rate limit exhausted for explicit key: {err_msg}")
+                        raise LLMProviderError(f"Gemini quota exhausted: {err_msg}") from e
+
+                # 4. Host-level DNS / Network resolution error (fast-fail, avoid rotating all pool keys uselessly)
+                if category == FailureCategory.NETWORK_ERROR and ("getaddrinfo" in err_msg.lower() or "11001" in err_msg.lower()):
+                    logger.error(f"Gemini DNS/Network resolution failure: {err_msg}")
+                    raise LLMProviderError(f"Gemini network resolution failure (DNS lookup failed): {err_msg}") from e
+
+                # 5. Transient errors (SERVICE_ERROR 503, NETWORK_ERROR, UNKNOWN)
+                if use_pool and self.credential_pool and attempt < max_attempts:
+                    try:
+                        next_key = self.credential_pool.get_active_key()
+                        if next_key != failed_key:
+                            logger.warning(
+                                f"Gemini transient error ({category.value}): {err_msg}. Switching to next key in pool..."
+                            )
+                            continue
+                    except Exception:
+                        pass
+
+                if attempt < max_attempts:
+                    wait = 1.0 * (self.backoff_factor ** (attempt - 1))
+                    logger.warning(f"GenAI transient error ({category.value}): {err_msg}. Retrying in {wait:.2f}s...")
+                    time.sleep(wait)
+                    continue
+
+                logger.error(f"Gemini provider error ({category.value}): {err_msg}")
+                raise LLMProviderError(f"Gemini provider error: {err_msg}") from e
+
+        raise LLMProviderError(f"Failed to obtain response from Gemini Provider: {last_error}")

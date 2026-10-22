@@ -1,0 +1,190 @@
+from abc import ABC, abstractmethod
+from typing import Any
+
+from friday.core.exceptions import SecurityError
+from friday.core.types import (
+    AuthorizationDecision,
+    AuthorizationRequest,
+    AuthorizationResponse,
+    SafetyLevel,
+)
+from friday.security.authorization import (
+    ToolAuthorizationCapability,
+    ToolAuthorizer,
+    tool_authorizer,
+)
+
+
+class BaseAuthorizer(ABC):
+    """Abstract Base Class for validating and authorizing tool execution requests."""
+
+    def __init__(self, authorizer: ToolAuthorizer | None = None) -> None:
+        self.tool_authorizer: ToolAuthorizer = authorizer or tool_authorizer
+
+    def issue_capability_for_request(self, request: AuthorizationRequest) -> ToolAuthorizationCapability:
+        """Generate a signed, single-use, time-bounded authorization capability for an approved request."""
+        return self.tool_authorizer.issue_capability(
+            tool_name=request.tool_name,
+            arguments=request.arguments,
+            safety_level=request.safety_level,
+            tool_call_id=request.tool_call_id or "",
+            purpose=request.purpose or "",
+            affected_resource=request.affected_resource or "",
+        )
+
+    def authorize_skill(
+        self,
+        skill: Any,
+        environment: str | None = None,
+        blocked_capabilities: Any | None = None,
+        allowed_capabilities: Any | None = None,
+    ) -> tuple[bool, str]:
+        """Validate if a Skill is permitted to execute under capability gating policies."""
+        skill_name = getattr(skill, "name", "unknown_skill")
+        required_caps = getattr(skill, "required_capabilities", [])
+        return self.tool_authorizer.check_skill_capabilities(
+            skill_name=skill_name,
+            required_capabilities=required_caps,
+            environment=environment,
+            blocked_capabilities=blocked_capabilities,
+            allowed_capabilities=allowed_capabilities,
+        )
+
+    @abstractmethod
+    def authorize(self, request: AuthorizationRequest) -> AuthorizationResponse:
+        """Evaluate if the requested tool execution is authorized.
+
+        Args:
+            request: The tool execution authorization details.
+
+        Returns:
+            AuthorizationResponse containing the decision, optional reason, and capability.
+        """
+
+
+class DefaultSecureAuthorizer(BaseAuthorizer):
+    """Auto-approve SAFE work and configured SENSITIVE work, never DANGEROUS work."""
+
+    def authorize(self, request: AuthorizationRequest) -> AuthorizationResponse:
+        from friday.core.config import get_settings
+
+        settings = get_settings()
+        is_autonomous = getattr(settings, "autonomous_mode", False) or getattr(settings, "full_access_mode", False)
+        may_auto_approve = request.safety_level == SafetyLevel.SAFE or (
+            request.safety_level == SafetyLevel.SENSITIVE and is_autonomous
+        )
+        if may_auto_approve:
+            cap = self.issue_capability_for_request(request)
+            reason = (
+                "Automatic execution approved for SAFE tools."
+                if request.safety_level == SafetyLevel.SAFE
+                else "Autonomous laptop controller execution approved for this SENSITIVE action."
+            )
+            return AuthorizationResponse(
+                decision=AuthorizationDecision.APPROVED,
+                reason=reason,
+                capability=cap,
+            )
+
+        if request.safety_level == SafetyLevel.DANGEROUS:
+            reason = (
+                f"Safety Block: DANGEROUS tool '{request.tool_name}' requires explicit user confirmation; "
+                "the headless authorizer cannot provide it."
+            )
+        else:
+            reason = (
+                f"Safety Block: Tool '{request.tool_name}' requires explicit user confirmation. "
+                "No interactive authorizer was configured."
+            )
+        return AuthorizationResponse(decision=AuthorizationDecision.DENIED, reason=reason)
+
+
+class AutoApproveAuthorizer(BaseAuthorizer):
+    """TEST-ONLY authorizer implementation for isolated automated unit/integration tests.
+
+    CRITICAL SECURITY INVARIANT:
+    This authorizer is strictly prohibited in production mode.
+    Attempting to instantiate this authorizer in production or without explicit test acknowledgment
+    raises a SecurityError.
+    """
+
+    def __init__(
+        self,
+        test_only_explicit_ack: bool = False,
+        allow_dangerous_for_testing: bool = False,
+        allowed_tools: Any | None = None,
+        authorizer: ToolAuthorizer | None = None,
+    ) -> None:
+        import os
+        # 1. Reject in production environments
+        env = os.getenv("FRIDAY_ENV", "").strip().lower()
+        if env in ("prod", "production"):
+            raise SecurityError("AutoApproveAuthorizer is strictly prohibited in production environment!")
+
+        # 2. Require explicit test acknowledgment
+        if not test_only_explicit_ack:
+            raise SecurityError(
+                "AutoApproveAuthorizer is strictly test-only and requires explicit parameter: "
+                "test_only_explicit_ack=True or use AutoApproveAuthorizer.create_for_testing()."
+            )
+
+        super().__init__(authorizer=authorizer)
+        self.allow_dangerous_for_testing: bool = allow_dangerous_for_testing
+        self.allowed_tools: set | None = set(allowed_tools) if allowed_tools is not None else None
+
+    @classmethod
+    def create_for_testing(
+        cls,
+        allow_dangerous: bool = False,
+        allowed_tools: Any | None = None,
+        authorizer: ToolAuthorizer | None = None,
+    ) -> "AutoApproveAuthorizer":
+        """Explicit test-only factory constructor for isolated testing harnesses."""
+        return cls(
+            test_only_explicit_ack=True,
+            allow_dangerous_for_testing=allow_dangerous,
+            allowed_tools=allowed_tools,
+            authorizer=authorizer,
+        )
+
+    def authorize(self, request: AuthorizationRequest) -> AuthorizationResponse:
+        # Check tool allowlist if configured
+        if self.allowed_tools is not None and request.tool_name not in self.allowed_tools:
+            return AuthorizationResponse(
+                decision=AuthorizationDecision.DENIED,
+                reason=f"Test-only AutoApproveAuthorizer rejected tool '{request.tool_name}' (not in allowed test tools).",
+            )
+
+        # Protect dangerous operations unless explicitly enabled for testing
+        if request.safety_level == SafetyLevel.DANGEROUS and not self.allow_dangerous_for_testing:
+            return AuthorizationResponse(
+                decision=AuthorizationDecision.DENIED,
+                reason=(
+                    f"Test-only AutoApproveAuthorizer safety guard: DANGEROUS tool '{request.tool_name}' "
+                    "cannot be auto-approved without allow_dangerous_for_testing=True."
+                ),
+            )
+
+        cap = self.issue_capability_for_request(request)
+        return AuthorizationResponse(
+            decision=AuthorizationDecision.APPROVED,
+            reason=f"Test-only auto-approved execution of '{request.tool_name}'.",
+            capability=cap,
+        )
+
+
+class AutoDenyAuthorizer(BaseAuthorizer):
+    """Authorizer implementation that denies all SENSITIVE and DANGEROUS execution requests."""
+
+    def authorize(self, request: AuthorizationRequest) -> AuthorizationResponse:
+        if request.safety_level == SafetyLevel.SAFE:
+            cap = self.issue_capability_for_request(request)
+            return AuthorizationResponse(
+                decision=AuthorizationDecision.APPROVED,
+                reason="Automatic execution approved for SAFE tools.",
+                capability=cap,
+            )
+        return AuthorizationResponse(
+            decision=AuthorizationDecision.DENIED,
+            reason=f"Safety Block: AutoDeny policy rejected execution of '{request.tool_name}'.",
+        )

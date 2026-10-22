@@ -1,0 +1,274 @@
+"""Gemini Multimodal Vision Provider using official google-genai SDK.
+
+Integrates with FRIDAY's GeminiCredentialPool for primary and fallback API key failover,
+performs safe image format validation, and enforces zero secret exposure.
+"""
+
+import time
+import warnings
+from typing import Any
+
+# Suppress noisy upstream Google GenAI SDK AFC warnings during vision generate_content
+warnings.filterwarnings("ignore", message=".*automatic function calling.*")
+warnings.filterwarnings("ignore", message=".*Direct use of automatic function calling.*")
+warnings.filterwarnings("ignore", message=".*AFC.*")
+
+from google import genai
+from google.genai import types as genai_types
+
+from friday.auth.credential_pool import (
+    FailureCategory,
+    GeminiCredentialPool,
+    credential_pool,
+)
+from friday.auth.request_accounting import request_accountant
+from friday.core.config import get_settings
+from friday.core.exceptions import LLMProviderError
+from friday.core.logging import get_logger
+from friday.vision.base import BaseVisionProvider, VisionAnalysisResult
+
+logger = get_logger("vision.gemini")
+
+SUPPORTED_MIME_TYPES = {
+    "image/png": b"\x89PNG\r\n\x1a\n",
+    "image/jpeg": b"\xff\xd8\xff",
+    "image/webp": b"RIFF",
+}
+
+
+def validate_image_data(image_data: bytes, mime_type: str, max_bytes: int = 20971520) -> None:
+    """Validate image payload format, magic bytes, and size boundaries."""
+    if not image_data or len(image_data) == 0:
+        raise ValueError("Image data is empty")
+
+    if len(image_data) > max_bytes:
+        raise ValueError(
+            f"Image payload exceeds maximum allowed size ({len(image_data)} bytes > {max_bytes} bytes)"
+        )
+
+    norm_mime = mime_type.lower().strip()
+    if norm_mime not in SUPPORTED_MIME_TYPES:
+        raise ValueError(
+            f"Unsupported image MIME type '{mime_type}'. Supported: {list(SUPPORTED_MIME_TYPES.keys())}"
+        )
+
+    # Magic byte header validation
+    expected_magic = SUPPORTED_MIME_TYPES[norm_mime]
+    if not image_data.startswith(expected_magic):
+        raise ValueError(f"Corrupted or invalid image data for declared MIME type '{mime_type}'")
+
+
+class GeminiVisionProvider(BaseVisionProvider):
+    """Google Gemini multimodal vision provider with credential pool failover."""
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: str | None = None,
+        credential_pool: GeminiCredentialPool | None = credential_pool,
+        timeout: float = 60.0,
+        max_retries: int = 3,
+        backoff_factor: float = 2.0,
+        max_image_bytes: int | None = None,
+    ) -> None:
+        settings = get_settings()
+        self.credential_pool = credential_pool
+        self._explicit_api_key = api_key
+        self.model = model or getattr(settings, "vision_model", "gemini-3.6-flash")
+        self.timeout = timeout
+        self.max_retries = max_retries
+        self.backoff_factor = backoff_factor
+        self.max_image_bytes = max_image_bytes or getattr(settings, "vision_max_image_bytes", 20971520)
+        self._client: genai.Client | None = None
+        self._current_key: str | None = None
+
+    def _get_active_api_key(self) -> str:
+        """Resolve active API key respecting credential pool state."""
+        if self._explicit_api_key:
+            return self._explicit_api_key
+
+        if self.credential_pool:
+            try:
+                key = self.credential_pool.get_active_key()
+                if key:
+                    return key
+            except RuntimeError as e:
+                raise LLMProviderError(str(e)) from e
+
+        settings = get_settings()
+        key = settings.gemini_api_key or settings.llm_api_key
+        if key:
+            return key
+
+        raise LLMProviderError("No healthy Gemini API key available in credential pool for vision")
+
+    def _get_client(self, api_key: str) -> genai.Client:
+        """Instantiate or reuse genai.Client for the given API key."""
+        if self._client is None or getattr(self, "_current_key", None) != api_key:
+            self._client = genai.Client(api_key=api_key)
+            self._current_key = api_key
+        return self._client
+
+    def _classify_error(self, error: Exception) -> FailureCategory:
+        """Classify exceptions into failure categories for pool cooldown tracking."""
+        if self.credential_pool:
+            return self.credential_pool.classify_error(error)
+        msg = str(error).lower()
+        if "429" in msg or "resource_exhausted" in msg or "quota" in msg:
+            return FailureCategory.QUOTA_EXHAUSTED
+        if "401" in msg or "403" in msg or "invalid_argument" in msg or "api_key" in msg:
+            return FailureCategory.AUTH_FAILED
+        if "404" in msg or "not_found" in msg:
+            return FailureCategory.MODEL_NOT_FOUND
+        if "500" in msg or "503" in msg or "internal" in msg:
+            return FailureCategory.SERVICE_ERROR
+        if "timeout" in msg or "connection" in msg:
+            return FailureCategory.NETWORK_ERROR
+        return FailureCategory.UNKNOWN
+
+    def analyze_image(
+        self,
+        image_data: bytes,
+        mime_type: str = "image/png",
+        prompt: str = "Describe what is visible in this image in detail.",
+        **kwargs: Any,
+    ) -> VisionAnalysisResult:
+        """Analyze image bytes with Google Gemini multimodal API and credential failover."""
+        # 0. Check Request Accounting and Budget Limits
+        task_id = kwargs.get("task_id")
+        allowed, budget_reason = request_accountant.can_make_request(task_id=task_id, purpose="vision_perception")
+        if not allowed:
+            logger.warning(f"GeminiVisionProvider: Request blocked by budget limits: {budget_reason}")
+            return VisionAnalysisResult(
+                text="",
+                is_error=True,
+                error_message=f"Budget exceeded: {budget_reason}",
+                model=self.model,
+            )
+
+        # 1. Validate input payload
+        validate_image_data(image_data=image_data, mime_type=mime_type, max_bytes=self.max_image_bytes)
+
+        # 2. Build multimodal contents part
+        image_part = genai_types.Part.from_bytes(data=image_data, mime_type=mime_type)
+        contents = [image_part, prompt]
+
+        # 3. Configure generation options
+        max_output_tokens = kwargs.get("max_tokens", 2048)
+        config_kwargs: dict[str, Any] = {
+            "max_output_tokens": max_output_tokens,
+        }
+        # Only pass temperature for legacy non-3.7 models
+        if "3.7" not in (self.model or "").lower():
+            temp = kwargs.get("temperature", 0.4)
+            config_kwargs["temperature"] = temp
+
+        gen_config = genai_types.GenerateContentConfig(**config_kwargs)
+
+        last_error = None
+        attempt = 0
+        call_start = time.perf_counter()
+
+        pool_creds = getattr(self.credential_pool, "credentials", None) if self.credential_pool else None
+        pool_size = len(pool_creds) if (pool_creds is not None and isinstance(pool_creds, list) and len(pool_creds) > 0) else None
+        max_attempts = pool_size if (pool_size is not None and not self._explicit_api_key) else (self.max_retries + 1)
+
+        while attempt < max_attempts:
+            active_key = None
+            try:
+                active_key = self._get_active_api_key()
+            except (LLMProviderError, RuntimeError, Exception) as e:
+                last_error = e
+                break
+
+            label = "PRIMARY"
+            if self.credential_pool:
+                try:
+                    c = self.credential_pool._find_by_key(active_key)
+                    if c:
+                        label = c.project_label
+                except Exception:
+                    pass
+
+            try:
+                self._current_key = active_key
+                client = self._get_client(active_key)
+
+                response = client.models.generate_content(
+                    model=self.model,
+                    contents=contents,
+                    config=gen_config,
+                )
+
+                if self.credential_pool and not self._explicit_api_key:
+                    self.credential_pool.reset_key(active_key)
+
+                response_text = getattr(response, "text", "") or ""
+                elapsed_ms = (time.perf_counter() - call_start) * 1000.0
+
+                request_accountant.record_request(
+                    credential_label=label,
+                    model=self.model,
+                    purpose="vision_perception",
+                    task_id=task_id,
+                    retries_count=attempt,
+                    fallbacks_count=attempt if label != "PRIMARY" else 0,
+                    latency_ms=elapsed_ms,
+                )
+
+                return VisionAnalysisResult(
+                    text=response_text,
+                    description=response_text,
+                    model=self.model,
+                    is_error=False,
+                )
+
+            except Exception as e:
+                last_error = e
+                attempt += 1
+
+                cat = self._classify_error(e)
+                if cat == FailureCategory.MODEL_NOT_FOUND:
+                    logger.error(f"Gemini Vision model not found ({self.model}): {e}")
+                    break
+
+                if self.credential_pool and not self._explicit_api_key and (active_key or self._current_key):
+                    failed_key = active_key or self._current_key
+                    self.credential_pool.report_failure(failed_key, e)
+
+                request_accountant.record_request(
+                    credential_label=label,
+                    model=self.model,
+                    purpose="vision_perception",
+                    task_id=task_id,
+                    retries_count=attempt,
+                    failure_category=cat.value,
+                    latency_ms=(time.perf_counter() - call_start) * 1000.0,
+                )
+
+                logger.warning(
+                    f"Gemini Vision call failed (attempt {attempt}/{max_attempts}): {type(e).__name__} ({cat.value})"
+                )
+
+                # If quota exhausted or auth failed and pool is active, immediately fail over to next credential with 0 delay
+                if self.credential_pool and not self._explicit_api_key and cat in (
+                    FailureCategory.QUOTA_EXHAUSTED,
+                    FailureCategory.AUTH_FAILED,
+                ):
+                    continue
+
+                if attempt < max_attempts:
+                    delay = self.backoff_factor ** (attempt - 1)
+                    time.sleep(delay)
+
+        if last_error and "No healthy Gemini API key" in str(last_error):
+            error_msg = f"CREDENTIAL_EXHAUSTED: Gemini Vision analysis failed: {last_error}"
+        else:
+            error_msg = f"Gemini Vision analysis failed after {attempt} attempts: {last_error}"
+        logger.error(error_msg)
+        return VisionAnalysisResult(
+            text="",
+            is_error=True,
+            error_message=error_msg,
+            model=self.model,
+        )

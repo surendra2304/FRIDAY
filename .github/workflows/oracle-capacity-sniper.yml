@@ -1,0 +1,51 @@
+name: Oracle Ampere Capacity Sniper
+
+on:
+  schedule:
+    # Autonomous hourly heartbeat trigger to guarantee non-stop 24/7 presence
+    - cron: '0 * * * *'
+  workflow_dispatch: # Allows manual trigger anytime
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+
+concurrency:
+  group: oracle-sniper-worker1
+  cancel-in-progress: true
+
+jobs:
+  snipe-capacity:
+    name: Claim Oracle Ampere A1 Instance
+    runs-on: ubuntu-latest
+    timeout-minutes: 360 # Run up to 6 hours per job
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install oci
+
+      - name: Run Infinite 24/7 Sniper
+        env:
+          OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
+          OCI_KEY_CONTENT: ${{ secrets.OCI_KEY_CONTENT }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+          OCI_REGION: ${{ secrets.OCI_REGION || 'ap-hyderabad-1' }}
+          BOOT_VOLUME_GB: 50
+          RUN_DURATION_MINUTES: 320
+          CYCLE_DELAY: 40
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WORKFLOW_NAME: "oracle-capacity-sniper.yml"
+        run: |
+          python scripts/oracle_retry.py

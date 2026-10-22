@@ -1,0 +1,313 @@
+"""Groq LLM Provider using the OpenAI-compatible SDK.
+
+Uses the `openai` Python package pointed at Groq's OpenAI-compatible endpoint.
+Implements an internal model fallback: on a 429 rate limit with the default
+model (`llama-3.3-70b-versatile`), the exact same prompt is retried once with
+`llama-3.1-8b-instant`.
+"""
+
+import json
+from typing import Any
+
+from friday.core.exceptions import LLMProviderError
+from friday.core.logging import get_logger
+from friday.core.types import Message, Role, ToolCall
+from friday.llm.base import BaseLLMProvider
+
+try:  # Soft dependency: SDK only required for live calls, not for import/tests
+    import openai as _openai_sdk
+except ImportError:  # pragma: no cover - exercised only when SDK absent
+    _openai_sdk = None
+
+logger = get_logger("llm.groq")
+
+GROQ_DEFAULT_BASE_URL = "https://api.groq.com/openai/v1"
+GROQ_DEFAULT_MODEL = "openai/gpt-oss-120b"
+GROQ_FALLBACK_MODEL = "openai/gpt-oss-20b"
+GROQ_UNIVERSAL_FALLBACK_MODEL = "openai/gpt-oss-120b"
+
+
+class _RateLimitedError(Exception):
+    """Internal signal that the current model hit a 429 and a fallback may help."""
+
+
+class _ModelNotFoundError(Exception):
+    """Internal signal that the current model returned 404 model_not_found."""
+
+
+def _is_rate_limit(error: Exception) -> bool:
+    """Detect rate limits (429 or 413 TPM limits) across SDK exceptions."""
+    if _openai_sdk is not None and isinstance(error, _openai_sdk.RateLimitError):
+        return True
+    if getattr(error, "status_code", None) in (413, 429):
+        return True
+    err = str(error).lower()
+    return (
+        "429" in err
+        or "413" in err
+        or "rate limit" in err
+        or "rate_limit_exceeded" in err
+        or "tpm" in err
+        or "tokens per minute" in err
+    )
+
+
+def _is_model_not_found(error: Exception) -> bool:
+    """Detect a 404 model_not_found (including decommissioned models)."""
+    if _openai_sdk is not None and isinstance(error, _openai_sdk.NotFoundError):
+        return True
+    if getattr(error, "status_code", None) == 404:
+        return True
+    err = str(error).lower()
+    return "404" in err or "model_not_found" in err or "model not found" in err or "decommissioned" in err
+
+
+def compact_messages_and_tools(
+    messages: list[Message],
+    tools: list[dict[str, Any]] | None = None,
+    include_tools: bool = True,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]] | None]:
+    """Compact messages and tools to comfortably fit within free-tier provider TPM limits (e.g. Groq 8k TPM)."""
+    if not messages:
+        return [], None
+
+    system_msgs = [m for m in messages if m.role == Role.SYSTEM]
+    other_msgs = [m for m in messages if m.role != Role.SYSTEM]
+
+    recent_msgs = other_msgs[-4:] if len(other_msgs) > 4 else other_msgs
+
+    compacted_dicts: list[dict[str, Any]] = []
+    for sm in system_msgs:
+        d = sm.to_provider_dict()
+        if isinstance(d.get("content"), str) and len(d["content"]) > 3000:
+            d["content"] = d["content"][:3000] + "\n...[truncated for token limit]"
+        compacted_dicts.append(d)
+
+    for om in recent_msgs:
+        d = om.to_provider_dict()
+        if isinstance(d.get("content"), str) and len(d["content"]) > 1000:
+            d["content"] = d["content"][:1000] + "\n...[truncated]"
+        compacted_dicts.append(d)
+
+    compacted_tools = tools if include_tools else None
+    return compacted_dicts, compacted_tools
+
+
+class GroqLLMProvider(BaseLLMProvider):
+    """LLM Provider for Groq via the OpenAI SDK with automatic model fallback on 429."""
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        base_url: str = GROQ_DEFAULT_BASE_URL,
+        model: str = GROQ_DEFAULT_MODEL,
+        fallback_model: str = GROQ_FALLBACK_MODEL,
+        universal_fallback_model: str = GROQ_UNIVERSAL_FALLBACK_MODEL,
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
+        timeout: float = 60.0,
+        credential_pool: Any | None = None,
+        client: Any | None = None,
+    ):
+        super().__init__(model=model, temperature=temperature, max_tokens=max_tokens)
+        self.credential_pool = credential_pool
+        if not api_key and credential_pool is not None:
+            try:
+                api_key = credential_pool.get_active_key()
+            except Exception:
+                api_key = None
+        self.api_key = api_key or ""
+        self.base_url = base_url.rstrip("/")
+        self.fallback_model = fallback_model
+        self.universal_fallback_model = universal_fallback_model
+        self.timeout = timeout
+        self._clients: dict[str, Any] = {}
+        # An explicitly supplied SDK-compatible client is useful for custom
+        # transports and tests. Keep it separate from keyed production clients
+        # so an injected mock can never silently fall through to the network.
+        self._client = client
+
+    @property
+    def provider_name(self) -> str:
+        return "groq"
+
+    def _get_active_api_key(self) -> str:
+        if self.credential_pool:
+            try:
+                key = self.credential_pool.get_active_key()
+                if key and key.strip():
+                    return key.strip()
+            except Exception:
+                pass
+        return self.api_key
+
+    def _get_client_for_key(self, api_key: str) -> Any:
+        if self._client is not None:
+            return self._client
+        if _openai_sdk is None:
+            raise LLMProviderError(
+                "The 'openai' Python package is required for the Groq provider. "
+                "Install it with: pip install openai"
+            )
+        if not api_key:
+            raise LLMProviderError("Groq API key is not configured (FRIDAY_GROQ_API_KEY)")
+        if api_key not in self._clients:
+            self._clients[api_key] = _openai_sdk.OpenAI(
+                api_key=api_key,
+                base_url=self.base_url,
+                timeout=self.timeout,
+            )
+        return self._clients[api_key]
+
+    def generate(
+        self,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None = None,
+    ) -> Message:
+        """Call Groq chat completions with automatic multi-key pool rotation and in-provider model fallbacks."""
+        pool_creds = getattr(self.credential_pool, "credentials", []) if self.credential_pool else []
+        max_attempts = max(1, len(pool_creds))
+        last_error = None
+
+        for attempt in range(max_attempts):
+            active_key = self._get_active_api_key()
+            if not active_key:
+                raise LLMProviderError("Groq API key is not configured (FRIDAY_GROQ_API_KEY)")
+
+            try:
+                return self._generate_with_key_and_model(active_key, self.model, messages, tools)
+            except _RateLimitedError as primary_error:
+                last_error = primary_error
+                if self.credential_pool and len(pool_creds) > 1:
+                    self.credential_pool.report_failure(active_key, error=primary_error)
+                    logger.warning(
+                        f"Groq key rate limited (429/413). Rotating to next key in pool ({attempt + 1}/{max_attempts})..."
+                    )
+                    continue
+
+                if self.fallback_model and self.fallback_model != self.model:
+                    logger.warning(
+                        f"Groq rate limit (429) on model '{self.model}'. "
+                        f"Retrying same prompt with fallback model '{self.fallback_model}'..."
+                    )
+                    try:
+                        return self._generate_with_key_and_model(active_key, self.fallback_model, messages, tools)
+                    except _ModelNotFoundError:
+                        logger.warning(
+                            f"Groq fallback model '{self.fallback_model}' not found (404). "
+                            f"Retrying with universally available model '{self.universal_fallback_model}'..."
+                        )
+                        return self._generate_with_key_and_model(active_key, self.universal_fallback_model, messages, tools)
+                    except _RateLimitedError as fallback_error:
+                        raise LLMProviderError(
+                            f"Groq rate limited on both '{self.model}' and '{self.fallback_model}': {fallback_error}"
+                        ) from fallback_error
+                raise LLMProviderError(f"Groq rate limited on '{self.model}': {primary_error}") from primary_error
+            except _ModelNotFoundError:
+                logger.warning(
+                    f"Groq model '{self.model}' not found (404). Retrying same prompt with "
+                    f"universally available model '{self.universal_fallback_model}'..."
+                )
+                try:
+                    return self._generate_with_key_and_model(active_key, self.universal_fallback_model, messages, tools)
+                except (_RateLimitedError, _ModelNotFoundError) as universal_error:
+                    raise LLMProviderError(
+                        f"Groq failed on '{self.model}' (model_not_found) and on "
+                        f"'{self.universal_fallback_model}': {universal_error}"
+                    ) from universal_error
+
+        raise LLMProviderError(f"All {max_attempts} Groq credentials exhausted: {last_error}")
+
+    def _generate_with_key_and_model(
+        self,
+        api_key: str,
+        model: str,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None,
+    ) -> Message:
+        client = self._get_client_for_key(api_key)
+        
+        # Check if messages + tools are excessively large
+        total_est_chars = sum(len(m.content or "") for m in messages)
+        should_compact = total_est_chars > 8000
+        
+        msg_dicts, active_tools = compact_messages_and_tools(
+            messages,
+            tools,
+            include_tools=True
+        ) if should_compact else ([m.to_provider_dict() for m in messages], tools)
+
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": msg_dicts,
+            "temperature": self.temperature,
+            "max_tokens": min(self.max_tokens, 2048),
+        }
+        if active_tools:
+            kwargs["tools"] = active_tools
+            kwargs["tool_choice"] = "auto"
+
+        try:
+            response = client.chat.completions.create(**kwargs)
+        except Exception as e:
+            err_text = str(e).lower()
+            # If rate limit is due to TPM / Request too large, retry immediately with compacted text-only prompt
+            if ("tpm" in err_text or "too large" in err_text or "token" in err_text or "413" in err_text) and active_tools:
+                logger.warning("Groq TPM limit reached with tools. Retrying with compact messages and tools stripped...")
+                compact_msg_dicts, _ = compact_messages_and_tools(messages, None, include_tools=False)
+                kwargs["messages"] = compact_msg_dicts
+                kwargs.pop("tools", None)
+                kwargs.pop("tool_choice", None)
+                kwargs["max_tokens"] = min(self.max_tokens, 1024)
+                try:
+                    response = client.chat.completions.create(**kwargs)
+                    return self._parse_response(response)
+                except Exception as inner_e:
+                    e = inner_e
+
+            if _is_rate_limit(e):
+                raise _RateLimitedError(str(e)) from e
+            if _is_model_not_found(e):
+                raise _ModelNotFoundError(str(e)) from e
+            err_msg = str(e)
+            if self.api_key and self.api_key in err_msg:
+                err_msg = err_msg.replace(self.api_key, "***")
+            logger.error(f"Groq API request failed: {err_msg}")
+            raise LLMProviderError(f"Groq API request failed: {err_msg}") from e
+
+        return self._parse_response(response)
+
+    @staticmethod
+    def _parse_response(response: Any) -> Message:
+        """Convert an OpenAI-SDK ChatCompletion into a FRIDAY Message."""
+        try:
+            choice = response.choices[0]
+            choice_msg = choice.message
+        except (AttributeError, IndexError) as e:
+            raise LLMProviderError("Malformed response from Groq API: no choices") from e
+
+        content = getattr(choice_msg, "content", None) or ""
+        tool_calls_raw = getattr(choice_msg, "tool_calls", None)
+        tool_calls: list[ToolCall] | None = None
+
+        if tool_calls_raw:
+            tool_calls = []
+            for tc in tool_calls_raw:
+                func = getattr(tc, "function", None)
+                args_raw = getattr(func, "arguments", "{}") if func else "{}"
+                if isinstance(args_raw, str):
+                    try:
+                        args_dict = json.loads(args_raw)
+                    except json.JSONDecodeError:
+                        args_dict = {"raw_arguments": args_raw}
+                else:
+                    args_dict = args_raw or {}
+                tool_calls.append(
+                    ToolCall(
+                        id=getattr(tc, "id", "") or "",
+                        name=getattr(func, "name", "") if func else "",
+                        arguments=args_dict,
+                    )
+                )
+
+        return Message(role=Role.ASSISTANT, content=content, tool_calls=tool_calls)
