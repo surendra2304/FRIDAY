@@ -1802,6 +1802,20 @@ def start_proactive_monitoring() -> None:
 start_proactive_monitoring()
 
 
+@app.post("/v1/events")
+@app.post("/api/events")
+async def receive_peer_event(request: Request) -> dict[str, Any]:
+    """Ingest peer specialist agent telemetry, strategic decisions, and events."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    source = body.get("source", "unknown")
+    event_type = body.get("event_type", "unknown")
+    logger.info(f"Peer event received from {source}: {event_type}")
+    return {"status": "ok", "received": True, "source": source, "event_type": event_type}
+
+
 @app.post("/messages")
 async def mcp_messages_endpoint(request: Request, _: None = Depends(_require_control_access)) -> JSONResponse:
     """
