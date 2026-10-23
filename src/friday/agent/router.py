@@ -53,54 +53,63 @@ TIMEOUT_CEILING_SECONDS = 30.0
 SPECIALIST_CONFIGS: dict[str, dict[str, Any]] = {
     "cortex": {
         "default_url": "http://cortex:8000",
+        "canonical_mesh_url": "http://10.0.0.120:8009",
         "env_var": "CORTEX_URL",
         "role": "Cognitive Reasoning & Web Operations",
         "keywords": ["browse", "scrape", "scraping", "crawl", "crawler", "extract", "traffic", "leads"],
     },
     "forge": {
         "default_url": "http://forge:8000",
+        "canonical_mesh_url": "http://10.0.0.121:8006",
         "env_var": "FORGE_URL",
         "role": "Code Synthesis & Execution Sandbox",
         "keywords": ["code", "build", "compile", "sandbox", "git", "patch", "software", "devops", "test"],
     },
     "futuris": {
         "default_url": "http://futuris:8000",
+        "canonical_mesh_url": "http://10.0.0.121:8004",
         "env_var": "FUTURIS_URL",
         "role": "Predictive Modeling & Forecasting",
         "keywords": ["forecast", "predict", "probability", "brier", "likelihood", "future_trend", "odds"],
     },
     "inference": {
         "default_url": "http://inference:8000",
+        "canonical_mesh_url": "http://10.0.0.121:8001",
         "env_var": "INFERENCE_URL",
         "role": "LLM Routing & Consensus Gateway",
         "keywords": ["llm", "reason", "think", "model", "prompt", "consensus", "generate", "chat"],
     },
     "intelx": {
         "default_url": "http://intelx:8000",
+        "canonical_mesh_url": "http://10.0.0.121:8005",
         "env_var": "INTELX_URL",
         "role": "Search & Live OSINT Intelligence",
         "keywords": ["search", "research", "intel", "news", "osint", "investigate", "macro", "sources"],
     },
     "memora": {
         "default_url": "http://memora:8000",
+        "canonical_mesh_url": "http://10.0.0.121:8002",
         "env_var": "MEMORA_URL",
         "role": "Universal Episodic Memory & Vector Recall",
         "keywords": ["memory", "recall", "remember", "vector", "episodic", "store_memory", "checkpoint"],
     },
     "sentinel": {
         "default_url": "http://sentinel:8000",
+        "canonical_mesh_url": "http://10.0.0.120:8008",
         "env_var": "SENTINEL_URL",
         "role": "Security Audit & Cryptographic Watchdog",
         "keywords": ["security", "audit", "veto", "firewall", "vulnerability", "auth", "threat", "protect"],
     },
     "stratex": {
         "default_url": "http://stratex:8000",
+        "canonical_mesh_url": "http://10.0.0.121:8003",
         "env_var": "STRATEX_URL",
         "role": "24/7 Algorithmic Trading Platform",
         "keywords": ["trade", "trading", "crypto", "futures", "position", "pnl", "order", "market", "risk"],
     },
     "vyralx": {
         "default_url": "http://vyralx:8000",
+        "canonical_mesh_url": "http://10.0.0.120:8010",
         "env_var": "VYRALX_URL",
         "role": "Autonomous Video Production & Governed Distribution",
         "keywords": [
@@ -238,7 +247,15 @@ class SpecialistRouter:
             return f"http://{norm_id}:8000"
 
         env_var = cfg["env_var"]
-        raw_url = os.getenv(env_var) or os.getenv(f"FRIDAY_{env_var}") or cfg["default_url"]
+        env_val = (os.getenv(env_var) or os.getenv(f"FRIDAY_{env_var}") or "").strip()
+        is_prod = (os.getenv("ENVIRONMENT") or os.getenv("FRIDAY_ENV") or "").lower() == "production"
+
+        if env_val:
+            raw_url = env_val
+        elif is_prod and "canonical_mesh_url" in cfg:
+            raw_url = cfg["canonical_mesh_url"]
+        else:
+            raw_url = cfg["default_url"]
 
         # Eradicate dead Render URLs
         if "onrender.com" in raw_url:

@@ -73,6 +73,18 @@ class AgentStatus:
     last_checked: str
 
 
+CANONICAL_INTERNAL_MESH_URLS: dict[str, str] = {
+    "inference": "http://10.0.0.121:8001",
+    "memora": "http://10.0.0.121:8002",
+    "stratex": "http://10.0.0.121:8003",
+    "futuris": "http://10.0.0.121:8004",
+    "intelx": "http://10.0.0.121:8005",
+    "forge": "http://10.0.0.121:8006",
+    "sentinel": "http://10.0.0.120:8008",
+    "cortex": "http://10.0.0.120:8009",
+    "vyralx": "http://10.0.0.120:8010",
+}
+
 class FleetClient:
     """Unified client for live communication with all FRIDAY Universe specialist agents."""
 
@@ -91,7 +103,17 @@ class FleetClient:
         def configured_url(setting_name: str, fallback: str) -> str:
             env_name = f"FRIDAY_{setting_name.upper()}"
             legacy_name = setting_name.upper()
-            return (os.getenv(env_name) or os.getenv(legacy_name) or getattr(settings, setting_name, None) or fallback).rstrip("/")
+            env_val = (os.getenv(env_name) or os.getenv(legacy_name) or "").strip()
+            is_prod = (os.getenv("ENVIRONMENT") or os.getenv("FRIDAY_ENV") or "").lower() == "production"
+            agent_key = setting_name.replace("_url", "").lower()
+
+            if env_val:
+                val = env_val
+            elif is_prod and agent_key in CANONICAL_INTERNAL_MESH_URLS:
+                val = CANONICAL_INTERNAL_MESH_URLS[agent_key]
+            else:
+                val = getattr(settings, setting_name, None) or fallback
+            return (val or fallback).rstrip("/")
 
         def configured_key(setting_name: str) -> str:
             return getattr(settings, setting_name, None) or ""

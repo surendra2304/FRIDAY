@@ -172,9 +172,10 @@ class MemoraClient:
 
         # Primary local memora database file (defaults to user home directory or local repo)
         try:
-            default_local = str(Path.home() / ".friday" / "data" / "memora.db")
+            from friday.core.database import get_ephemeral_db_path
+            default_local = get_ephemeral_db_path("memora.db")
         except Exception:
-            default_local = os.path.abspath("data/memora.db")
+            default_local = str(Path.home() / ".friday" / "data" / "memora.db")
 
         if local_db_path:
             self.local_db_path = local_db_path

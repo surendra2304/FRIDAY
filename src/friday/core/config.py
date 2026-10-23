@@ -757,7 +757,10 @@ class Settings(BaseSettings):
 
     @property
     def sqlite_db_path(self) -> str:
-        """Compatibility accessor for memory_db_path."""
+        """Compatibility accessor for memory_db_path enforcing Invariant 2 tmpfs."""
+        from friday.core.database import get_ephemeral_db_path
+        if self.memory_db_path in ("data/friday.db", "friday.db"):
+            return get_ephemeral_db_path("friday.db")
         return self.memory_db_path
 
     def __repr__(self) -> str:

@@ -200,9 +200,12 @@ class AutonomousRepairLoop:
         # under repair it writes sentinel.db into the caller's working tree, which
         # is both noise in their diff and a way for untracked files to accumulate
         # in a tree that is supposed to be untouched.
-        state_dir = self._config.reviewer_state_dir or str(
-            Path(self._config.universe_root) / ".friday" / "repair-reviewer"
-        )
+        if not self._config.reviewer_state_dir and Path("/dev/shm").exists():
+            state_dir = "/dev/shm/friday_repair_reviewer"
+        else:
+            state_dir = self._config.reviewer_state_dir or str(
+                Path(self._config.universe_root) / ".friday" / "repair-reviewer"
+            )
         Path(state_dir).mkdir(parents=True, exist_ok=True)
         store = SentinelPersistence(db_path=str(Path(state_dir) / "sentinel.db"))
 
