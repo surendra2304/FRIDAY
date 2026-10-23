@@ -1,7 +1,11 @@
 # -*- coding: utf-8 -*-
 """Unit tests for security_check.py secret patterns and detection logic."""
+from pathlib import Path
+from unittest.mock import patch
 
 import pytest
+
+import security_check as security_audit
 from security_check import SECRET_PATTERNS
 
 
@@ -56,3 +60,34 @@ def test_github_token_detection():
     token = "ghp_" + "C" * 36
     assert gh_pattern.search(token) is not None
     assert gh_pattern.search("ghp_short") is None
+
+
+def test_run_security_check_writes_report_inside_requested_repository(tmp_path: Path, monkeypatch, capsys):
+    monkeypatch.setattr(security_audit, "git_ls_env", lambda root: [])
+    monkeypatch.setattr(security_audit, "scan_for_real_secrets", lambda root: [])
+
+    assert security_audit.run_security_check(root=tmp_path) is True
+    report = tmp_path / "security_report.txt"
+    assert report.is_file()
+    assert "PASSED" in report.read_text(encoding="utf-8")
+    assert "PASS" in capsys.readouterr().out
+
+
+def test_run_security_check_fails_closed_for_tracked_env_files(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(security_audit, "git_ls_env", lambda root: [".env.production"])
+    monkeypatch.setattr(security_audit, "scan_for_real_secrets", lambda root: [])
+
+    assert security_audit.run_security_check(root=tmp_path) is False
+    assert not (tmp_path / "security_report.txt").exists()
+
+
+def test_run_security_check_fails_closed_for_secret_findings(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(security_audit, "git_ls_env", lambda root: [])
+    monkeypatch.setattr(
+        security_audit,
+        "scan_for_real_secrets",
+        lambda root: [("config/example.py", 9, "OpenAI Secret Key")],
+    )
+
+    assert security_audit.run_security_check(root=tmp_path) is False
+    assert not (tmp_path / "security_report.txt").exists()
