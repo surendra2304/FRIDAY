@@ -52,12 +52,16 @@ daily_goals_table = Table(
 
 def get_postgres_dsn() -> str | None:
     """Resolve PostgreSQL asyncpg DSN with fallback to friday_db defaults."""
-    raw_url = os.getenv("DATABASE_URL") or os.getenv("FRIDAY_DATABASE_URL")
+    raw_url = os.getenv("ORACLE_CORE_ASYNC_URL") or os.getenv("DATABASE_URL") or os.getenv("FRIDAY_DATABASE_URL")
     if raw_url:
         if raw_url.startswith("postgresql://"):
             return raw_url.replace("postgresql://", "postgresql+asyncpg://", 1)
         elif raw_url.startswith("postgres://"):
             return raw_url.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif raw_url.startswith("oracle+oracledb://"):
+            return raw_url.replace("oracle+oracledb://", "oracle+oracledb_async://", 1)
+        elif raw_url.startswith("oracle://"):
+            return raw_url.replace("oracle://", "oracle+oracledb_async://", 1)
         return raw_url
 
     host = os.getenv("POSTGRES_HOST") or os.getenv("FRIDAY_POSTGRES_HOST")
@@ -98,9 +102,8 @@ class DailyRhythmManager:
         enable_postgres: bool = True,
     ) -> None:
         if not db_path:
-            base_dir = Path.home() / ".friday"
-            base_dir.mkdir(parents=True, exist_ok=True)
-            db_path = str(base_dir / "goals.db")
+            from friday.core.database import get_ephemeral_db_path
+            db_path = get_ephemeral_db_path("goals.db")
         self.db_path = db_path
         self._init_sqlite()
 
