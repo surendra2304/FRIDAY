@@ -34,7 +34,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from friday.core.startup_validator import validate_runtime_environment
-from friday.core.database import connect_sqlite
+from friday.core.database import connect_sqlite, get_ephemeral_db_path
 from friday.core.cache import TTLCache, ttl_cached
 from friday.core.resilience import safe_peer_call
 
@@ -446,6 +446,8 @@ async def health_check() -> dict[str, Any]:
     data = rep.as_dict()
     data["status"] = "healthy"
     data["service"] = "friday_core"
+    data["agent"] = "FRIDAY"
+    data["canonical_name"] = "FRIDAY"
     data["version"] = "2.0.0"
     data["peers_mesh"] = "connected"
     return data
@@ -459,6 +461,8 @@ async def readiness_check() -> JSONResponse:
         "status": "ready",
         "ready": True,
         "service": "friday_core",
+        "agent": "FRIDAY",
+        "canonical_name": "FRIDAY",
         "version": "2.0.0",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "database": "healthy",
@@ -467,7 +471,8 @@ async def readiness_check() -> JSONResponse:
     try:
         data_dir = Path("data")
         data_dir.mkdir(parents=True, exist_ok=True)
-        conn = connect_sqlite(data_dir / "readiness_probe.db", timeout=2.0)
+        probe_path = get_ephemeral_db_path("readiness_probe.db")
+        conn = connect_sqlite(probe_path, timeout=2.0)
         conn.execute("CREATE TABLE IF NOT EXISTS _probe (id INTEGER PRIMARY KEY);")
         conn.execute("INSERT OR REPLACE INTO _probe VALUES (1);")
         conn.commit()
