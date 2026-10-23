@@ -677,6 +677,56 @@ class WindowsFridayController:
         os.makedirs(base, exist_ok=True)
         return os.path.join(base, "contacts.json")
 
+    @staticmethod
+    def _deleted_contacts_file_path() -> str:
+        """Return the local tombstone file used to prevent deleted contacts reappearing from memory."""
+        base = os.path.expanduser("~/.friday")
+        os.makedirs(base, exist_ok=True)
+        return os.path.join(base, "deleted_contacts.json")
+
+    def _deleted_contact_names(self) -> set[str]:
+        path = self._deleted_contacts_file_path()
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                raw = json.load(handle)
+            if isinstance(raw, list):
+                return {str(name).strip().casefold() for name in raw if str(name).strip()}
+        except FileNotFoundError:
+            pass
+        except (OSError, ValueError, TypeError) as exc:
+            logger.warning("Could not read contact deletion tombstones (%s)", type(exc).__name__)
+        return set()
+
+    def _is_contact_deleted(self, name: str) -> bool:
+        clean = (name or "").strip().casefold()
+        return bool(clean) and clean in self._deleted_contact_names()
+
+    def _mark_contact_deleted(self, name: str) -> None:
+        clean = (name or "").strip().casefold()
+        if not clean:
+            return
+        path = self._deleted_contacts_file_path()
+        names = self._deleted_contact_names()
+        names.add(clean)
+        temporary = f"{path}.tmp"
+        with open(temporary, "w", encoding="utf-8") as handle:
+            json.dump(sorted(names), handle, indent=2)
+        os.replace(temporary, path)
+
+    def _clear_contact_deleted(self, name: str) -> None:
+        clean = (name or "").strip().casefold()
+        if not clean:
+            return
+        path = self._deleted_contacts_file_path()
+        names = self._deleted_contact_names()
+        if clean not in names:
+            return
+        names.remove(clean)
+        temporary = f"{path}.tmp"
+        with open(temporary, "w", encoding="utf-8") as handle:
+            json.dump(sorted(names), handle, indent=2)
+        os.replace(temporary, path)
+
     def save_contact(
         self,
         name: str,
@@ -739,6 +789,7 @@ class WindowsFridayController:
             }
             with open(filepath, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
+            self._clear_contact_deleted(key)
         except Exception as e:
             logger.warning(f"Failed to write to contacts.json: {e}")
 
@@ -780,6 +831,8 @@ class WindowsFridayController:
         if not name:
             return None
         clean = name.strip().lower()
+        if self._is_contact_deleted(clean):
+            return None
         contacts = self.get_all_contacts()
 
         # 1. Exact match in contacts.json
@@ -821,28 +874,41 @@ class WindowsFridayController:
             return {}
 
     def delete_contact(self, name: str) -> Tuple[bool, str]:
-        """Delete a contact from local storage."""
-        clean_name = name.strip().lower()
+        """Delete a contact locally and prevent stale Memora records from resurrecting it."""
+        clean_name = (name or "").strip().casefold()
+        if not clean_name:
+            return False, "Contact name cannot be empty."
         filepath = self._contacts_file_path()
-        if not os.path.exists(filepath):
-            return False, f"Contact '{name}' not found."
         try:
-            with open(filepath, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if clean_name in data:
-                del data[clean_name]
-                with open(filepath, "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=2)
-                return True, f"Removed contact '{name}'."
-            return False, f"Contact '{name}' not found."
-        except Exception as e:
-            return False, f"Failed to delete contact: {e}"
+            data: dict[str, Any] = {}
+            if os.path.exists(filepath):
+                with open(filepath, "r", encoding="utf-8") as handle:
+                    loaded = json.load(handle)
+                if isinstance(loaded, dict):
+                    data = loaded
+            matching_keys = [
+                key for key in data
+                if str(key).strip().casefold() == clean_name
+            ]
+            for key in matching_keys:
+                del data[key]
+            with open(filepath, "w", encoding="utf-8") as handle:
+                json.dump(data, handle, indent=2)
+            # Local contact data may also have been saved to Memora. Keep a
+            # durable local tombstone so a later memory lookup cannot revive it.
+            self._mark_contact_deleted(clean_name)
+            return True, f"Removed contact '{name}' and suppressed stale memory fallbacks."
+        except Exception as exc:
+            logger.warning("Could not delete contact %r (%s)", name, type(exc).__name__)
+            return False, f"Failed to delete contact: {type(exc).__name__}"
 
     def _lookup_contact_phone(self, name: str) -> str | None:
         """Attempt to resolve a contact name to a phone number from local contacts or Memora."""
         if not name:
             return None
         clean_name = name.lower().strip()
+        if self._is_contact_deleted(clean_name):
+            return None
 
         # 1. Local contacts.json lookup (exact or fuzzy)
         contacts = self.get_all_contacts()
@@ -899,6 +965,8 @@ class WindowsFridayController:
         if not name:
             return None
         clean_name = name.lower().strip()
+        if self._is_contact_deleted(clean_name):
+            return None
 
         # 1. Local contacts.json lookup (exact or fuzzy)
         contacts = self.get_all_contacts()
@@ -1499,26 +1567,42 @@ class WindowsFridayController:
             return False, f"Execution failed: {e}"
 
     def is_contact_directive(self, command: str) -> bool:
-        """Check if command matches contact management directives (save, list, lookup, delete)."""
+        """Recognize explicit contact-management commands without hijacking ordinary notes or searches."""
         if not command or not command.strip():
             return False
-        clean = re.sub(r"^(?:hey\s+)?friday[,\s:]*\s*", "", command, flags=re.IGNORECASE).strip()
+        clean = re.sub(
+            r"^(?:hey\\s+)?friday[,\\s:]*\\s*", "", command, flags=re.IGNORECASE
+        ).strip()
         cmd = clean.lower().rstrip(".!? ")
-        if cmd in ["contacts", "list contacts", "show contacts", "my contacts", "view contacts", "all contacts", "address book"]:
+
+        if cmd in {
+            "contacts", "list contacts", "show contacts", "my contacts",
+            "view contacts", "all contacts", "address book",
+        }:
             return True
-        if re.search(r"^(?:delete|remove)\s+(?:contact\s+)?[a-zA-Z\s]+$", cmd):
+
+        name = r"[a-z][a-z .'-]{0,79}"
+        if re.fullmatch(rf"(?:delete|remove)\\s+contact\\s+{name}", cmd):
             return True
-        if re.search(r"^(?:lookup|find|search|get|show)\s+(?:contact\s+)?[a-zA-Z\s]+$", cmd):
+        if re.fullmatch(rf"(?:lookup|find|search|get|show)\\s+contact\\s+{name}", cmd):
             return True
-        if re.search(r"^who\s+is\s+[a-zA-Z\s]+$", cmd):
+        if re.fullmatch(rf"contact\\s+(?:details\\s+(?:of|for)\\s+)?{name}", cmd):
             return True
-        if re.search(r"^contact\s+(?:details\s+(?:of|for)\s+)?[a-zA-Z\s]+$", cmd):
+        # "Who is Priya?" is a direct contact lookup; "Who is my sister?"
+        # remains a conversational/memory query handled by FRIDAY's planner.
+        if re.fullmatch(
+            r"who\\s+is\\s+(?!my\\b|the\\b|this\\b|that\\b|someone\\b|anyone\\b|everybody\\b)[a-z]+(?:\\s+[a-z]+){0,2}",
+            cmd,
+        ):
             return True
-        if re.search(r"^(?:save|add|remember|set|update)\s+(?:contact\s+)?[a-zA-Z\s]+?", cmd):
+        if re.fullmatch(rf"(?:save|add|remember|set|update)\\s+contact\\s+{name}(?:\\s+.*)?", cmd):
             return True
-        if re.search(r"^[a-zA-Z\s]+?(?:'s)?\s+(?:phone|number|mobile|whatsapp|email)\s+(?:is|=|:)?\s*", cmd):
+        if re.fullmatch(
+            r"[a-z][a-z .'-]{0,79}(?:'s)?\\s+(?:phone|number|mobile|whatsapp|email)\\s+(?:is\\s+)?[^ ]+",
+            cmd,
+        ):
             return True
-        if re.search(r"^[a-zA-Z]+\s+is\s+[+\d\s-]{10,16}$", cmd):
+        if re.fullmatch(r"[a-z]+\\s+is\\s+[+\\d][+\\d\\s-]{8,20}", cmd):
             return True
         return False
 
@@ -1978,6 +2062,8 @@ class WindowsFridayController:
             "welcome protocol", "studio mode", "jarvis mode",
         ]:
             return True
+        if self.is_whatsapp_directive(cmd):
+            return True
         if self.is_contact_directive(cmd):
             return True
         if any(cmd == k or cmd == f"open {k}" or cmd == f"launch {k}" for k in ["youtube", "yt"]):
@@ -2384,12 +2470,6 @@ class WindowsFridayController:
                 "success": ok,
             }
 
-        # E.1.5 Contact Management (Save, List, Delete)
-        if self.is_contact_directive(cmd_clean):
-            handled, reply, meta = self.handle_contact_directive(raw)
-            if handled:
-                return True, reply, meta
-
         # E.2 WhatsApp Launch / Web Message
         if self.is_whatsapp_directive(raw):
             # Check if this is simply a command to launch WhatsApp
@@ -2549,6 +2629,13 @@ class WindowsFridayController:
                 "dispatch_confirmed": False,
                 "delivery_confirmed": False,
             }
+
+
+        # E.1.5 Contact Management (Save, List, Delete)
+        if self.is_contact_directive(cmd_clean):
+            handled, reply, meta = self.handle_contact_directive(raw)
+            if handled:
+                return True, reply, meta
 
         # E.3 Open Known Websites
         for site in COMMON_WEBSITES:
