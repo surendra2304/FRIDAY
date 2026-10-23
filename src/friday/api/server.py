@@ -34,7 +34,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from friday.core.startup_validator import validate_runtime_environment
-from friday.core.database import connect_sqlite
+from friday.core.database import connect_sqlite, get_ephemeral_db_path
 from friday.core.cache import TTLCache, ttl_cached
 from friday.core.resilience import safe_peer_call
 
@@ -446,6 +446,8 @@ async def health_check() -> dict[str, Any]:
     data = rep.as_dict()
     data["status"] = "healthy"
     data["service"] = "friday_core"
+    data["agent"] = "FRIDAY"
+    data["canonical_name"] = "FRIDAY"
     data["version"] = "2.0.0"
     data["peers_mesh"] = "connected"
     return data
