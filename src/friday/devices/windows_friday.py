@@ -1571,7 +1571,7 @@ class WindowsFridayController:
         if not command or not command.strip():
             return False
         clean = re.sub(
-            r"^(?:hey\\s+)?friday[,\\s:]*\\s*", "", command, flags=re.IGNORECASE
+            r"^(?:hey\s+)?friday[,\s:]*\s*", "", command, flags=re.IGNORECASE
         ).strip()
         cmd = clean.lower().rstrip(".!? ")
 
@@ -1582,27 +1582,27 @@ class WindowsFridayController:
             return True
 
         name = r"[a-z][a-z .'-]{0,79}"
-        if re.fullmatch(rf"(?:delete|remove)\\s+contact\\s+{name}", cmd):
+        if re.fullmatch(rf"(?:delete|remove)\s+contact\s+{name}", cmd):
             return True
-        if re.fullmatch(rf"(?:lookup|find|search|get|show)\\s+contact\\s+{name}", cmd):
+        if re.fullmatch(rf"(?:lookup|find|search|get|show)\s+contact\s+{name}", cmd):
             return True
-        if re.fullmatch(rf"contact\\s+(?:details\\s+(?:of|for)\\s+)?{name}", cmd):
+        if re.fullmatch(rf"contact\s+(?:details\s+(?:of|for)\s+)?{name}", cmd):
             return True
         # "Who is Priya?" is a direct contact lookup; "Who is my sister?"
         # remains a conversational/memory query handled by FRIDAY's planner.
         if re.fullmatch(
-            r"who\\s+is\\s+(?!my\\b|the\\b|this\\b|that\\b|someone\\b|anyone\\b|everybody\\b)[a-z]+(?:\\s+[a-z]+){0,2}",
+            r"who\s+is\s+(?!my\b|the\b|this\b|that\b|someone\b|anyone\b|everybody\b)[a-z]+(?:\s+[a-z]+){0,2}",
             cmd,
         ):
             return True
-        if re.fullmatch(rf"(?:save|add|remember|set|update)\\s+contact\\s+{name}(?:\\s+.*)?", cmd):
+        if re.fullmatch(rf"(?:save|add|remember|set|update)\s+contact\s+{name}(?:\s+.*)?", cmd):
             return True
         if re.fullmatch(
-            r"[a-z][a-z .'-]{0,79}(?:'s)?\\s+(?:phone|number|mobile|whatsapp|email)\\s+(?:is\\s+)?[^ ]+",
+            r"[a-z][a-z .'-]{0,79}(?:'s)?\s+(?:phone|number|mobile|whatsapp|email)\s+(?:is\s+)?[^ ]+",
             cmd,
         ):
             return True
-        if re.fullmatch(r"[a-z]+\\s+is\\s+[+\\d][+\\d\\s-]{8,20}", cmd):
+        if re.fullmatch(r"[a-z]+\s+is\s+[+\d][+\d\s-]{8,20}", cmd):
             return True
         return False
 
