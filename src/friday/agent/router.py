@@ -696,7 +696,17 @@ class SpecialistRouter:
                     or raw.get("status")
                     or res.summary
                 ).strip()
-                confidence = float(raw.get("confidence", 1.0))
+                confidence_raw = raw.get("confidence")
+                if (
+                    isinstance(confidence_raw, bool)
+                    or not isinstance(confidence_raw, (int, float))
+                    or not math.isfinite(float(confidence_raw))
+                    or not 0.0 <= float(confidence_raw) <= 1.0
+                ):
+                    # Missing or malformed confidence is unknown, not perfect.
+                    confidence = 0.0
+                else:
+                    confidence = float(confidence_raw)
                 return ConsensusVote(
                     agent=agent_id,
                     decision=decision,
