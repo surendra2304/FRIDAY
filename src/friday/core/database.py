@@ -11,6 +11,22 @@ from typing import Iterator
 DEFAULT_BUSY_TIMEOUT_MS = 5000
 
 
+def get_ephemeral_db_path(filename: str = "ephemeral.db") -> str:
+    """Return an ephemeral database path strictly adhering to Invariant 2 (Zero-Disk SQLite).
+
+    In production environments (e.g. Linux OCI instances with /dev/shm tmpfs),
+    all fallback or temporary databases MUST reside in RAM tmpfs (/dev/shm/<filename>).
+    Zero bytes are written to persistent VM disks.
+    For local development on Windows or systems without /dev/shm, it defaults to ~/.friday/<filename>.
+    """
+    if os.name != "nt" and os.path.isdir("/dev/shm") and os.access("/dev/shm", os.W_OK):
+        return f"/dev/shm/{filename}"
+    base_dir = Path.home() / ".friday"
+    base_dir.mkdir(parents=True, exist_ok=True)
+    return str(base_dir / filename)
+
+
+
 def configure_sqlite_pragmas(
     conn: sqlite3.Connection,
     enable_wal: bool = True,
