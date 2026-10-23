@@ -21,9 +21,11 @@ def get_ephemeral_db_path(filename: str = "ephemeral.db") -> str:
     """
     if os.name != "nt" and os.path.isdir("/dev/shm") and os.access("/dev/shm", os.W_OK):
         return f"/dev/shm/{filename}"
-    base_dir = Path.home() / ".friday"
-    base_dir.mkdir(parents=True, exist_ok=True)
-    return str(base_dir / filename)
+    # Use os.path instead of pathlib.Path.home(): tests and compatibility
+    # callers may emulate Windows by patching os.name on a non-Windows host.
+    base_dir = os.path.join(os.path.expanduser("~"), ".friday")
+    os.makedirs(base_dir, exist_ok=True)
+    return os.path.join(base_dir, filename)
 
 
 
