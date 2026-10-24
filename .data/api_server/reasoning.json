@@ -6,9 +6,12 @@
       "confidence": 0.3,
       "evidence": [
         "Backtest return: 0.0%, Sharpe: 0.0",
+        "Backtest return: 0.0%, Sharpe: 0.0",
+        "Backtest return: 0.0%, Sharpe: 0.0",
+        "Backtest return: 0.0%, Sharpe: 0.0",
         "Backtest return: 0.0%, Sharpe: 0.0"
       ],
-      "last_updated": 1792882965.506117
+      "last_updated": 1792884785.7627506
     }
   }
 }

@@ -16,6 +16,57 @@
         "holt",
         "arima"
       ]
+    },
+    "fc_bb5eaa32b9e0": {
+      "forecast_id": "fc_bb5eaa32b9e0",
+      "symbol": "CONTENT",
+      "prediction": 54040.8119,
+      "lower_bound": 53854.4827,
+      "upper_bound": 54227.1411,
+      "confidence": 0.966,
+      "timestamp": 1792884595.5369759,
+      "horizon_sec": 3600.0,
+      "model_name": "ensemble",
+      "features_used": [
+        "sma",
+        "ses",
+        "holt",
+        "arima"
+      ]
+    },
+    "fc_2466b9662a44": {
+      "forecast_id": "fc_2466b9662a44",
+      "symbol": "CONTENT",
+      "prediction": 54040.8119,
+      "lower_bound": 53854.4827,
+      "upper_bound": 54227.1411,
+      "confidence": 0.966,
+      "timestamp": 1792884604.4873152,
+      "horizon_sec": 3600.0,
+      "model_name": "ensemble",
+      "features_used": [
+        "sma",
+        "ses",
+        "holt",
+        "arima"
+      ]
+    },
+    "fc_af0098e7016f": {
+      "forecast_id": "fc_af0098e7016f",
+      "symbol": "CONTENT",
+      "prediction": 54040.8119,
+      "lower_bound": 53854.4827,
+      "upper_bound": 54227.1411,
+      "confidence": 0.966,
+      "timestamp": 1792884785.774405,
+      "horizon_sec": 3600.0,
+      "model_name": "ensemble",
+      "features_used": [
+        "sma",
+        "ses",
+        "holt",
+        "arima"
+      ]
     }
   },
   "actuals": {}

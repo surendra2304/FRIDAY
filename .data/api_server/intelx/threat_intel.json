@@ -83,6 +83,159 @@
       "related_indicators": [
         "ioc_52b8f19de0a5"
       ]
+    },
+    "ioc_ed8d887dd091": {
+      "indicator_id": "ioc_ed8d887dd091",
+      "value": "Detected sql_injection pattern: union select",
+      "type": "hash",
+      "tlp": "amber",
+      "confidence": 0.6,
+      "first_seen": 1792884595.5292437,
+      "last_seen": 1792884595.529244,
+      "tags": [
+        "sql_injection"
+      ],
+      "related_indicators": [
+        "ioc_03b111ef5452",
+        "ioc_f9f6d195abd9"
+      ]
+    },
+    "ioc_8474e48529d3": {
+      "indicator_id": "ioc_8474e48529d3",
+      "value": "Detected xss pattern: <script>",
+      "type": "hash",
+      "tlp": "amber",
+      "confidence": 0.6,
+      "first_seen": 1792884595.5295026,
+      "last_seen": 1792884595.5295029,
+      "tags": [
+        "xss"
+      ],
+      "related_indicators": [
+        "ioc_12ab94649a3a",
+        "ioc_440569726bba"
+      ]
+    },
+    "ioc_5fa2f1737c64": {
+      "indicator_id": "ioc_5fa2f1737c64",
+      "value": "Detected command_injection pattern: ",
+      "type": "hash",
+      "tlp": "amber",
+      "confidence": 0.95,
+      "first_seen": 1792884595.5300336,
+      "last_seen": 1792884595.530034,
+      "tags": [
+        "command_injection"
+      ],
+      "related_indicators": [
+        "ioc_52b8f19de0a5",
+        "ioc_8dc477cbb788"
+      ]
+    },
+    "ioc_08b09e0aaebe": {
+      "indicator_id": "ioc_08b09e0aaebe",
+      "value": "Detected sql_injection pattern: union select",
+      "type": "hash",
+      "tlp": "amber",
+      "confidence": 0.6,
+      "first_seen": 1792884604.477316,
+      "last_seen": 1792884604.4773161,
+      "tags": [
+        "sql_injection"
+      ],
+      "related_indicators": [
+        "ioc_03b111ef5452",
+        "ioc_f9f6d195abd9",
+        "ioc_ed8d887dd091"
+      ]
+    },
+    "ioc_23b16094774d": {
+      "indicator_id": "ioc_23b16094774d",
+      "value": "Detected xss pattern: <script>",
+      "type": "hash",
+      "tlp": "amber",
+      "confidence": 0.6,
+      "first_seen": 1792884604.4779563,
+      "last_seen": 1792884604.4779565,
+      "tags": [
+        "xss"
+      ],
+      "related_indicators": [
+        "ioc_12ab94649a3a",
+        "ioc_440569726bba",
+        "ioc_8474e48529d3"
+      ]
+    },
+    "ioc_8b33287f1434": {
+      "indicator_id": "ioc_8b33287f1434",
+      "value": "Detected command_injection pattern: ",
+      "type": "hash",
+      "tlp": "amber",
+      "confidence": 0.95,
+      "first_seen": 1792884604.4785852,
+      "last_seen": 1792884604.478586,
+      "tags": [
+        "command_injection"
+      ],
+      "related_indicators": [
+        "ioc_52b8f19de0a5",
+        "ioc_8dc477cbb788",
+        "ioc_5fa2f1737c64"
+      ]
+    },
+    "ioc_7dc268d25ecf": {
+      "indicator_id": "ioc_7dc268d25ecf",
+      "value": "Detected sql_injection pattern: union select",
+      "type": "hash",
+      "tlp": "amber",
+      "confidence": 0.6,
+      "first_seen": 1792884785.7666786,
+      "last_seen": 1792884785.7666788,
+      "tags": [
+        "sql_injection"
+      ],
+      "related_indicators": [
+        "ioc_03b111ef5452",
+        "ioc_f9f6d195abd9",
+        "ioc_ed8d887dd091",
+        "ioc_08b09e0aaebe"
+      ]
+    },
+    "ioc_dc5b99c21a42": {
+      "indicator_id": "ioc_dc5b99c21a42",
+      "value": "Detected xss pattern: <script>",
+      "type": "hash",
+      "tlp": "amber",
+      "confidence": 0.6,
+      "first_seen": 1792884785.7669818,
+      "last_seen": 1792884785.766982,
+      "tags": [
+        "xss"
+      ],
+      "related_indicators": [
+        "ioc_12ab94649a3a",
+        "ioc_440569726bba",
+        "ioc_8474e48529d3",
+        "ioc_23b16094774d"
+      ]
+    },
+    "ioc_620241dc4692": {
+      "indicator_id": "ioc_620241dc4692",
+      "value": "Detected command_injection pattern: ",
+      "type": "hash",
+      "tlp": "amber",
+      "confidence": 0.95,
+      "first_seen": 1792884785.767414,
+      "last_seen": 1792884785.7674143,
+      "tags": [
+        "command_injection"
+      ],
+      "related_indicators": [
+        "ioc_52b8f19de0a5",
+        "ioc_8dc477cbb788",
+        "ioc_5fa2f1737c64",
+        "ioc_8b33287f1434"
+      ]
     }
   },
   "campaigns": {},
