@@ -2082,3 +2082,7 @@ from friday_core.universe_rate_limiter import router as universe_rate_router
 
 app.include_router(universe_audit_router, prefix="/api/v1")
 app.include_router(universe_rate_router, prefix="/api/v1")
+
+# --- Wave 45: Task Router ---
+from friday_core.universe_task_router import router as universe_task_router
+app.include_router(universe_task_router, prefix="/api/v1")
