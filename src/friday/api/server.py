@@ -2068,3 +2068,10 @@ app.include_router(universe_cost_router, prefix="/api/v1")
 # --- Wave 41: Knowledge Graph ---
 from friday_core.universe_knowledge_graph import router as universe_kg_router
 app.include_router(universe_kg_router, prefix="/api/v1")
+
+# --- Wave 42: Event Bus & State Manager ---
+from friday_core.universe_event_bus import router as universe_event_bus_router
+from friday_core.universe_state_manager import router as universe_state_router
+
+app.include_router(universe_event_bus_router, prefix="/api/v1")
+app.include_router(universe_state_router, prefix="/api/v1")
