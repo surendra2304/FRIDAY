@@ -1979,3 +1979,70 @@ try:
     app.include_router(mesh_coordinator_router, prefix="/api/v1")
 except Exception as _e:
     logger.warning(f"Could not load agent_mesh_coordinator router: {_e}")
+
+
+# --- Mesh Module Integrations ---
+from mesh.universe_health import router as universe_health_router
+from mesh.universe_status import router as universe_status_router
+from mesh.cross_agent_context import router as cross_agent_context_router
+from mesh.adaptive_router import router as adaptive_router_router
+from mesh.unified_errors import router as unified_errors_router
+from mesh.self_improvement_loop import router as self_improvement_router
+from mesh.automated_consolidation import router as automated_consolidation_router
+
+app.include_router(universe_health_router, prefix="/api/v1")
+app.include_router(universe_status_router, prefix="/api/v1")
+app.include_router(cross_agent_context_router, prefix="/api/v1")
+app.include_router(adaptive_router_router, prefix="/api/v1")
+app.include_router(unified_errors_router, prefix="/api/v1")
+app.include_router(self_improvement_router, prefix="/api/v1")
+app.include_router(automated_consolidation_router, prefix="/api/v1")
+
+
+# --- Additional Mesh Module Integrations ---
+from mesh.performance_profiler import router as performance_profiler_router
+from mesh.universe_soak_test import router as universe_soak_test_router
+
+app.include_router(performance_profiler_router, prefix="/api/v1")
+app.include_router(universe_soak_test_router, prefix="/api/v1")
+
+
+# --- FRIDAY Core Module Integrations ---
+from friday_core.autonomous_laptop_operator import router as laptop_operator_router
+from friday_core.general_cognitive_coordinator import router as cognitive_coordinator_router
+
+from friday.services.autonomous_problem_solver import router as problem_solver_router
+from friday.services.multi_agent_coordinator import router as coordinator_router
+
+app.include_router(laptop_operator_router, prefix="/api/v1")
+app.include_router(cognitive_coordinator_router, prefix="/api/v1")
+app.include_router(problem_solver_router, prefix="/api/v1")
+app.include_router(coordinator_router, prefix="/api/v1")
+
+# --- New FRIDAY Deep Module Integrations ---
+from friday_core.task_decomposition_engine import router as task_decomp_router
+from friday_core.decision_synthesis_engine import router as decision_synth_router
+from friday_core.goal_planning_engine import router as goal_planning_router
+from friday_core.context_window_manager import router as context_window_router
+from friday_core.feedback_learning_engine import router as feedback_learning_router
+from friday_core.agent_mesh_router import router as agent_mesh_router
+from friday_core.universe_health_monitor import router as universe_health_mon_router
+
+app.include_router(task_decomp_router, prefix="/api/v1")
+app.include_router(decision_synth_router, prefix="/api/v1")
+app.include_router(goal_planning_router, prefix="/api/v1")
+app.include_router(context_window_router, prefix="/api/v1")
+app.include_router(feedback_learning_router, prefix="/api/v1")
+app.include_router(agent_mesh_router, prefix="/api/v1")
+app.include_router(universe_health_mon_router, prefix="/api/v1")
+
+# --- Cross-Cutting Infrastructure Integrations ---
+from friday_core.universe_gateway import router as universe_gateway_router
+from friday_core.universe_config import router as universe_config_router
+from friday_core.universe_metrics import router as universe_metrics_router
+from friday_core.error_envelope import router as error_envelope_router
+
+app.include_router(universe_gateway_router, prefix="/api/v1")
+app.include_router(universe_config_router, prefix="/api/v1")
+app.include_router(universe_metrics_router, prefix="/api/v1")
+app.include_router(error_envelope_router, prefix="/api/v1")
