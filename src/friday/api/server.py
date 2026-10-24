@@ -1892,3 +1892,83 @@ async def mcp_messages_endpoint(request: Request, _: None = Depends(_require_con
 _ui_directory = Path(os.getenv("FRIDAY_UI_DIR", "")).expanduser() if os.getenv("FRIDAY_UI_DIR") else None
 if _ui_directory and (_ui_directory / "index.html").is_file():
     app.mount("/", StaticFiles(directory=str(_ui_directory), html=True), name="friday-ui")
+
+
+# --- Enhanced Autonomous Controller Integration ---
+
+@app.post("/api/autonomous/decompose")
+async def decompose_goal_autonomous(goal: str):
+    """Decompose a complex goal into executable sub-tasks."""
+    from friday.autonomous.enhanced_controller import enhanced_controller
+    try:
+        plan = enhanced_controller.decompose_goal(goal)
+        return {
+            "plan_id": list(enhanced_controller.plans.keys())[-1] if enhanced_controller.plans else "",
+            "goal": plan.goal,
+            "subtasks": [
+                {
+                    "id": st.id,
+                    "description": st.description,
+                    "agent": st.agent,
+                    "dependencies": st.dependencies,
+                }
+                for st in plan.subtasks
+            ],
+            "total_subtasks": plan.total_subtasks,
+        }
+    except Exception as exc:
+        raise HTTPException(500, f"Goal decomposition failed: {exc}")
+
+
+@app.post("/api/autonomous/execute")
+async def execute_plan_autonomous(goal: str):
+    """Execute a complete autonomous plan with dependency resolution."""
+    from friday.autonomous.enhanced_controller import enhanced_controller
+    try:
+        plan = enhanced_controller.decompose_goal(goal)
+        result = await enhanced_controller.execute_plan(plan)
+        evaluation = enhanced_controller.evaluate_outcome(result)
+        return evaluation
+    except Exception as exc:
+        raise HTTPException(500, f"Plan execution failed: {exc}")
+
+
+@app.get("/api/autonomous/history")
+async def get_execution_history():
+    """Get recent autonomous execution history."""
+    from friday.autonomous.enhanced_controller import enhanced_controller
+    history = enhanced_controller.get_execution_history(limit=10)
+    return {"history": history, "total": len(history)}
+
+
+@app.get("/api/autonomous/fleet-status")
+async def get_fleet_status():
+    """Get overall fleet status from the mesh orchestrator."""
+    from mesh.fleet_orchestrator import fleet_orchestrator
+    try:
+        status = await fleet_orchestrator.get_fleet_status()
+        return status
+    except Exception as exc:
+        raise HTTPException(500, f"Fleet status failed: {exc}")
+
+
+@app.post("/api/autonomous/emergency-halt")
+async def emergency_halt_agent(agent: str):
+    """Emergency halt a specific agent."""
+    from mesh.fleet_orchestrator import fleet_orchestrator
+    try:
+        success = await fleet_orchestrator.emergency_halt(agent)
+        return {"status": "HALTED" if success else "FAILED", "agent": agent}
+    except Exception as exc:
+        raise HTTPException(500, f"Emergency halt failed: {exc}")
+
+
+# --- Autonomous Decision Making Integration ---
+from friday_core.autonomous_decision_making import router as autonomous_decision_router
+
+app.include_router(autonomous_decision_router, prefix="/api/v1")
+
+# --- Agent Mesh Coordinator Integration ---
+from friday_core.agent_mesh_coordinator import router as mesh_coordinator_router
+
+app.include_router(mesh_coordinator_router, prefix="/api/v1")

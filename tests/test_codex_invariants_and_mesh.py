@@ -79,14 +79,14 @@ def test_fleet_client_canonical_mesh_in_production():
 
 def test_oracle_23ai_dsn_normalization():
     """Verify Oracle 23ai sync URLs are automatically normalized to asyncpg / oracledb_async."""
-    oracle_sync = "oracle+oracledb://ADMIN:FridayUniverse2026%21%23Core@adb.ap-hyderabad-1.oraclecloud.com:1521/g7e6177242670c3_fridaycore_medium.adb.oraclecloud.com"
-    expected_async = "oracle+oracledb_async://ADMIN:FridayUniverse2026%21%23Core@adb.ap-hyderabad-1.oraclecloud.com:1521/g7e6177242670c3_fridaycore_medium.adb.oraclecloud.com"
+    oracle_sync = "oracle+oracledb://TEST_USER:TestOnlyPassword%21%23Value@adb.ap-hyderabad-1.oraclecloud.com:1521/g7e6177242670c3_fridaycore_medium.adb.oraclecloud.com"
+    expected_async = "oracle+oracledb_async://TEST_USER:TestOnlyPassword%21%23Value@adb.ap-hyderabad-1.oraclecloud.com:1521/g7e6177242670c3_fridaycore_medium.adb.oraclecloud.com" (feat(integration): wire autonomous modules into all agent entry points)
     
     with patch.dict(os.environ, {"DATABASE_URL": oracle_sync}):
         assert daily_rhythm_get_dsn() == expected_async
         assert trace_get_dsn() == expected_async
 
-    oracle_plain = "oracle://ADMIN:FridayUniverse2026%21%23Core@adb.ap-hyderabad-1.oraclecloud.com:1521/g7e6177242670c3_fridaycore_medium.adb.oraclecloud.com"
+    oracle_plain = "oracle://TEST_USER:TestOnlyPassword%21%23Value@adb.ap-hyderabad-1.oraclecloud.com:1521/g7e6177242670c3_fridaycore_medium.adb.oraclecloud.com" (feat(integration): wire autonomous modules into all agent entry points)
     with patch.dict(os.environ, {"DATABASE_URL": oracle_plain}):
         assert daily_rhythm_get_dsn() == expected_async
         assert trace_get_dsn() == expected_async
