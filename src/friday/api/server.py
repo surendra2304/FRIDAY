@@ -2057,3 +2057,10 @@ app.include_router(dispatch_bus_router, prefix="/api/v1")
 app.include_router(universe_auth_router, prefix="/api/v1")
 app.include_router(cross_agent_router, prefix="/api/v1")
 app.include_router(security_hardening_router, prefix="/api/v1")
+
+# --- Wave 39: Resilience & Cost Optimization ---
+from friday_core.universe_resilience import router as universe_resilience_router
+from friday_core.universe_cost_optimizer import router as universe_cost_router
+
+app.include_router(universe_resilience_router, prefix="/api/v1")
+app.include_router(universe_cost_router, prefix="/api/v1")
