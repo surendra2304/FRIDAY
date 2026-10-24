@@ -1979,3 +1979,42 @@ try:
     app.include_router(mesh_coordinator_router, prefix="/api/v1")
 except Exception as _e:
     logger.warning(f"Could not load agent_mesh_coordinator router: {_e}")
+
+
+# --- Mesh Module Integrations ---
+from mesh.universe_health import router as universe_health_router
+from mesh.universe_status import router as universe_status_router
+from mesh.cross_agent_context import router as cross_agent_context_router
+from mesh.adaptive_router import router as adaptive_router_router
+from mesh.unified_errors import router as unified_errors_router
+from mesh.self_improvement_loop import router as self_improvement_router
+from mesh.automated_consolidation import router as automated_consolidation_router
+
+app.include_router(universe_health_router, prefix="/api/v1")
+app.include_router(universe_status_router, prefix="/api/v1")
+app.include_router(cross_agent_context_router, prefix="/api/v1")
+app.include_router(adaptive_router_router, prefix="/api/v1")
+app.include_router(unified_errors_router, prefix="/api/v1")
+app.include_router(self_improvement_router, prefix="/api/v1")
+app.include_router(automated_consolidation_router, prefix="/api/v1")
+
+
+# --- Additional Mesh Module Integrations ---
+from mesh.performance_profiler import router as performance_profiler_router
+from mesh.universe_soak_test import router as universe_soak_test_router
+
+app.include_router(performance_profiler_router, prefix="/api/v1")
+app.include_router(universe_soak_test_router, prefix="/api/v1")
+
+
+# --- FRIDAY Core Module Integrations ---
+from friday_core.autonomous_laptop_operator import router as laptop_operator_router
+from friday_core.general_cognitive_coordinator import router as cognitive_coordinator_router
+
+from friday.services.autonomous_problem_solver import router as problem_solver_router
+from friday.services.multi_agent_coordinator import router as coordinator_router
+
+app.include_router(laptop_operator_router, prefix="/api/v1")
+app.include_router(cognitive_coordinator_router, prefix="/api/v1")
+app.include_router(problem_solver_router, prefix="/api/v1")
+app.include_router(coordinator_router, prefix="/api/v1")
