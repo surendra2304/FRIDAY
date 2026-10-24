@@ -56,6 +56,15 @@ _futuris = load_engine("Futuris/futuris/core/real_forecast_engine.py", "api_fore
 _vyralx = load_engine("VyralX/app/services/real_content_engine.py", "api_content")
 _cross = load_engine("FRIDAY/apps/core/src/friday_core/real_cross_agent_engine.py", "api_cross_agent")
 
+# Load deep layer-3 engines
+_cortex_deep = load_engine("Cortex/apps/api/src/cortex_api/real_deep_engines.py", "api_cortex_deep")
+_stratex_deep = load_engine("Stratex/real_deep_trading.py", "api_stratex_deep")
+_forge_deep = load_engine("Forge/app/services/real_deep_code.py", "api_forge_deep")
+_sentinel_deep = load_engine("Sentinel/app/services/real_deep_security.py", "api_sentinel_deep")
+_intelx_deep = load_engine("IntelX/intelx/services/real_deep_threat_intel.py", "api_intelx_deep")
+_futuris_deep = load_engine("Futuris/futuris/core/real_deep_forecast.py", "api_futuris_deep")
+_vyralx_deep = load_engine("VyralX/app/services/real_deep_content.py", "api_vyralx_deep")
+
 # Initialize engines with persistent state
 _state_dir = str(ROOT / "FRIDAY" / ".data" / "api_server")
 os.makedirs(_state_dir, exist_ok=True)
@@ -348,6 +357,309 @@ async def workflow_content(req: WorkflowRequest):
         "steps": len(result.steps),
         "final_output": result.final_output,
     }
+
+
+# ── Deep API ────────────────────────────────────────────────────────────
+
+class DeepRecommendRequest(BaseModel):
+    user_id: str
+    item_features: dict[str, dict[str, float]] = {}
+    item_interactions: dict[str, list[str]] = {}
+
+
+class DeepPredictRequest(BaseModel):
+    model_id: str
+    features: dict[str, float]
+    training_data: list[dict] = []
+    targets: list[float] = []
+
+
+class DeepForesightRequest(BaseModel):
+    topic: str
+    factors: list[str]
+
+
+class DeepSentimentRequest(BaseModel):
+    symbol: str
+    text: str
+
+
+class DeepOrderFlowRequest(BaseModel):
+    symbol: str
+    trades: list[dict]
+
+
+class DeepPatternRequest(BaseModel):
+    symbol: str
+    prices: list[float]
+
+
+class DeepCodeScanRequest(BaseModel):
+    code: str
+    filename: str = "unknown"
+
+
+class DeepDepsRequest(BaseModel):
+    requirements: dict[str, str]
+
+
+class DeepRefactorRequest(BaseModel):
+    code: str
+    filename: str = "unknown"
+
+
+class DeepVulnMgmtRequest(BaseModel):
+    cve_id: str
+    severity: str
+    name: str
+    description: str
+    score: float
+    component: str
+
+
+class DeepComplianceRequest(BaseModel):
+    framework: str
+
+
+class DeepIncidentRequest(BaseModel):
+    incident_type: str
+
+
+class DeepThreatForecastRequest(BaseModel):
+    threat_type: str
+    history: list[dict]
+
+
+class DeepIntelQualityRequest(BaseModel):
+    source_id: str
+    indicators: list[dict]
+    feedback: list[dict] = []
+
+
+class DeepDisinfoRequest(BaseModel):
+    text: str
+
+
+class DeepEnsembleRequest(BaseModel):
+    model_forecasts: dict[str, float]
+    weights: dict[str, float]
+
+
+class DeepForecastRequest(BaseModel):
+    series: list[float]
+    method: str = "auto"
+    horizon: int = 10
+
+
+class DeepStressRequest(BaseModel):
+    baseline: float
+    scenarios: list[dict] = []
+
+
+class DeepAudienceRequest(BaseModel):
+    viewers: list[dict]
+
+
+class DeepGrowthRequest(BaseModel):
+    channel_stats: dict
+
+
+class DeepModerationRequest(BaseModel):
+    content_id: str
+    text: str
+
+
+@app.post("/api/deep/recommend")
+async def deep_recommend(req: DeepRecommendRequest):
+    engine = _cortex_deep.RecommendationPersonalizer()
+    for item, features in req.item_features.items():
+        engine.add_item_features(item, features)
+    for user, items in req.item_interactions.items():
+        for item in items:
+            engine.record_interaction(user, item)
+    recs = engine.recommend_collaborative(req.user_id, top_k=5)
+    return {"user_id": req.user_id, "recommendations": [r.item_id for r in recs],
+            "scores": [r.score for r in recs]}
+
+
+@app.post("/api/deep/predict")
+async def deep_predict(req: DeepPredictRequest):
+    engine = _cortex_deep.PredictiveAnalyticsEngine()
+    if req.training_data and req.targets:
+        engine.train_linear_regression(req.model_id, req.training_data, req.targets)
+    prediction = engine.predict(req.model_id, req.features)
+    return {"model_id": req.model_id, "prediction": prediction.prediction,
+            "confidence": prediction.confidence, "method": prediction.method}
+
+
+@app.post("/api/deep/foresight")
+async def deep_foresight(req: DeepForesightRequest):
+    scenarios = _cortex_deep.foresight.generate_scenarios(req.topic, req.factors)
+    return {"topic": req.topic, "scenarios": [
+        {"name": s.name, "probabilities": s.probabilities,
+         "actions": s.preparation_actions} for s in scenarios
+    ]}
+
+
+@app.post("/api/deep/sentiment")
+async def deep_sentiment(req: DeepSentimentRequest):
+    result = _stratex_deep.sentiment_engine.analyze(req.symbol, req.text)
+    return {"symbol": req.symbol, "score": result.sentiment_score,
+            "sentiment": result.dominant_sentiment, "confidence": result.confidence,
+            "top_words": result.top_words}
+
+
+@app.post("/api/deep/orderflow")
+async def deep_orderflow(req: DeepOrderFlowRequest):
+    result = _stratex_deep.order_flow.analyze(req.symbol, req.trades)
+    return {"symbol": req.symbol, "imbalance": result.imbalance,
+            "signal": result.signal, "flow_ratio": result.flow_ratio}
+
+
+@app.post("/api/deep/patterns")
+async def deep_patterns(req: DeepPatternRequest):
+    patterns = _stratex_deep.pattern_engine.detect_patterns(req.symbol, req.prices)
+    return {"symbol": req.symbol, "patterns": [
+        {"name": p.pattern, "confidence": p.confidence,
+         "breakout": p.breakout_level, "target": p.target_price,
+         "stop_loss": p.stop_loss} for p in patterns
+    ]}
+
+
+@app.post("/api/deep/security-scan")
+async def deep_security_scan(req: DeepCodeScanRequest):
+    findings = _forge_deep.security_scanner.scan(req.code, req.filename)
+    return {"filename": req.filename, "findings": [
+        {"category": f.category, "line": f.line, "severity": f.severity,
+         "cwe": f.cwe_id, "description": f.description, "remediation": f.remediation}
+        for f in findings
+    ], "summary": _forge_deep.security_scanner.get_summary(findings)}
+
+
+@app.post("/api/deep/deps")
+async def deep_deps(req: DeepDepsRequest):
+    result = _forge_deep.dependency_analyzer.analyze(req.requirements)
+    return {"total": result.total_dependencies,
+            "vulnerable": result.vulnerable_dependencies,
+            "outdated": result.outdated_dependencies}
+
+
+@app.post("/api/deep/refactor")
+async def deep_refactor(req: DeepRefactorRequest):
+    suggestions = _forge_deep.refactoring_engine.analyze(req.code, req.filename)
+    return {"filename": req.filename, "suggestions": [
+        {"issue": s.issue, "line": s.line, "suggestion": s.suggestion,
+         "impact": s.impact, "pattern": s.pattern} for s in suggestions
+    ], "count": len(suggestions)}
+
+
+@app.post("/api/deep/vuln-mgmt")
+async def deep_vuln_mgmt(req: DeepVulnMgmtRequest):
+    engine = _sentinel_deep.VulnerabilityManagementSystem()
+    engine.add_vulnerability(req.cve_id, req.severity, req.name,
+                               req.description, req.score, req.component)
+    summary = engine.get_vulnerability_summary()
+    return {"summary": summary}
+
+
+@app.post("/api/deep/compliance")
+async def deep_compliance(req: DeepComplianceRequest):
+    checks = _sentinel_deep.compliance_audit.audit(req.framework)
+    score = _sentinel_deep.compliance_audit.compliance_score(checks)
+    return {"framework": req.framework, "score": score, "checks": [
+        {"name": c.description, "status": c.status,
+         "details": c.evidence, "remediation": c.remediation} for c in checks
+    ]}
+
+
+@app.post("/api/deep/incidents")
+async def deep_incidents(req: DeepIncidentRequest):
+    steps = _sentinel_deep.incident_playbook.execute_playbook(req.incident_type)
+    return {"incident_type": req.incident_type, "steps": [
+        {"name": s.name, "status": s.status, "details": s.description} for s in steps
+    ]}
+
+
+@app.post("/api/deep/threat-forecast")
+async def deep_threat_forecast(req: DeepThreatForecastRequest):
+    result = _intelx_deep.threat_forecast.forecast(req.threat_type, req.history)
+    return {"threat_type": req.threat_type, "probability": result.probability,
+            "trend": result.trend, "confidence": result.confidence,
+            "indicators": result.indicators}
+
+
+@app.post("/api/deep/intel-quality")
+async def deep_intel_quality(req: DeepIntelQualityRequest):
+    result = _intelx_deep.quality_evaluator.evaluate(req.source_id, req.indicators, req.feedback)
+    return {"source_id": req.source_id, "overall": result.overall,
+            "grade": result.grade, "scores": {
+                "completeness": result.completeness,
+                "accuracy": result.accuracy,
+                "timeliness": result.timeliness,
+                "relevance": result.relevance,
+            }}
+
+
+@app.post("/api/deep/disinfo")
+async def deep_disinfo(req: DeepDisinfoRequest):
+    result = _intelx_deep.disinfo_detector.detect(req.text)
+    return {"is_disinformation": result.is_disinformation,
+            "score": result.fact_check_score,
+            "indicators": result.indicators}
+
+
+@app.post("/api/deep/ensemble")
+async def deep_ensemble(req: DeepEnsembleRequest):
+    ensemble, confidence = _futuris_deep.ensemble_selector.create_ensemble_forecast(
+        req.model_forecasts, req.weights)
+    return {"ensemble_forecast": ensemble, "confidence": confidence}
+
+
+@app.post("/api/deep/forecast")
+async def deep_forecast(req: DeepForecastRequest):
+    result = _futuris_deep.forecasting_engine.forecast(req.series, req.method, req.horizon)
+    return {"method": result.method, "forecast": result.forecast_values,
+            "mape": result.mape, "intervals": result.confidence_intervals}
+
+
+@app.post("/api/deep/stress")
+async def deep_stress(req: DeepStressRequest):
+    if req.scenarios:
+        results = _futuris_deep.stress_tester.run_stress_test(req.baseline, req.scenarios)
+    else:
+        results = _futuris_deep.stress_tester.standard_scenarios(req.baseline)
+    return {"baseline": req.baseline, "scenarios": [
+        {"name": s.name, "description": s.description,
+         "shock_pct": s.shock_pct, "stressed": s.stressed, "impact": s.impact}
+        for s in results
+    ]}
+
+
+@app.post("/api/deep/audience")
+async def deep_audience(req: DeepAudienceRequest):
+    segments = _vyralx_deep.audience_intel.analyze_audience(req.viewers)
+    summary = _vyralx_deep.audience_intel.get_audience_summary(segments)
+    return {"summary": summary, "segments": [
+        {"name": s.name, "size": s.size, "interests": s.interests,
+         "engagement": s.engagement_rate} for s in segments
+    ]}
+
+
+@app.post("/api/deep/growth")
+async def deep_growth(req: DeepGrowthRequest):
+    strategies = _vyralx_deep.growth_strategy.generate_strategies(req.channel_stats)
+    recommended = _vyralx_deep.growth_strategy.get_recommended_strategy(req.channel_stats, strategies)
+    return {"strategies": [
+        {"name": s.name, "growth_pct": s.expected_growth_pct,
+         "effort": s.effort, "timeline": s.timeline_days} for s in strategies
+    ], "recommended": recommended.name}
+
+
+@app.post("/api/deep/moderation")
+async def deep_moderation(req: DeepModerationRequest):
+    result = _vyralx_deep.moderation_engine.moderate(req.content_id, req.text)
+    return {"action": result.action, "reason": result.reason,
+            "category": result.category, "confidence": result.confidence}
 
 
 # ── Status API ───────────────────────────────────────────────────────────
