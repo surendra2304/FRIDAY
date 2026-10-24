@@ -2064,3 +2064,7 @@ from friday_core.universe_cost_optimizer import router as universe_cost_router
 
 app.include_router(universe_resilience_router, prefix="/api/v1")
 app.include_router(universe_cost_router, prefix="/api/v1")
+
+# --- Wave 41: Knowledge Graph ---
+from friday_core.universe_knowledge_graph import router as universe_kg_router
+app.include_router(universe_kg_router, prefix="/api/v1")
