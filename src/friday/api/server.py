@@ -445,7 +445,7 @@ async def health_check() -> dict[str, Any]:
     rep = build_health_report(["friday", "friday_deep"])
     data = rep.as_dict()
     data["status"] = "healthy"
-    data["service"] = "friday_core"
+    data["service"] = "FRIDAY"
     data["agent"] = "FRIDAY"
     data["canonical_name"] = "FRIDAY"
     data["version"] = "2.0.0"
@@ -460,7 +460,7 @@ async def readiness_check() -> JSONResponse:
     status: dict[str, Any] = {
         "status": "ready",
         "ready": True,
-        "service": "friday_core",
+        "service": "FRIDAY",
         "agent": "FRIDAY",
         "canonical_name": "FRIDAY",
         "version": "2.0.0",

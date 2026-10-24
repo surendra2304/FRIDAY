@@ -179,15 +179,15 @@ Configure FRIDAY Core by creating a `.env` file (copied from `.env.example`):
 | `FRIDAY_GEMINI_API_KEY` | *(empty)* | Dedicated voice, screen vision, and embeddings API key |
 | `FRIDAY_GEMINI_FALLBACK_API_KEY_1..4` | *(empty)* | Rotating pool of Gemini fallback keys |
 | **Inter-Agent Mesh URLs** | | |
-| `FRIDAY_CORTEX_URL` | `http://cortex:8000` | Cognitive reasoning specialist URL |
-| `FRIDAY_FORGE_URL` | `http://forge:8000` | Software engineering & execution sandbox URL |
-| `FRIDAY_FUTURIS_URL` | `http://futuris:8000` | Predictive forecasting specialist URL |
-| `FRIDAY_INFERENCE_URL` | `http://inference:8000` | LLM streaming gateway URL |
-| `FRIDAY_INTELX_URL` | `http://intelx:8000` | Real-time search & OSINT specialist URL |
-| `FRIDAY_MEMORA_URL` | `http://memora:8000` | Vector memory & recall specialist URL |
-| `FRIDAY_SENTINEL_URL` | `http://sentinel:8000` | Security watchdog specialist URL |
-| `FRIDAY_VYRALX_URL` | `http://vyralx:8000` | Video production and approval-governed YouTube distribution agent URL |
-| `FRIDAY_STRATEX_URL` | `http://stratex:8000` | 24/7 Algorithmic trading bot URL |
+| `CORTEX_URL` | `http://cortex:8000` | Cognitive reasoning specialist URL |
+| `FORGE_URL` | `http://forge:8000` | Software engineering & execution sandbox URL |
+| `FUTURIS_URL` | `http://futuris:8000` | Predictive forecasting specialist URL |
+| `INFERENCE_URL` | `http://inference:8000` | LLM streaming gateway URL |
+| `INTELX_URL` | `http://intelx:8000` | Real-time search & OSINT specialist URL |
+| `MEMORA_URL` | `http://memora:8000` | Vector memory & recall specialist URL |
+| `SENTINEL_URL` | `http://sentinel:8000` | Security watchdog specialist URL |
+| `VYRALX_URL` | `http://vyralx:8000` | Video production and approval-governed YouTube distribution agent URL |
+| `STRATEX_URL` | `http://stratex:8000` | 24/7 Algorithmic trading bot URL |
 
 FRIDAY uses VyralX's documented authenticated `POST /api/v1/tasks` contract for explicit structured tasks. HTTP 202 is recorded as pending, not completed; a separate status query reads the queue and never creates or publishes content. Publishing remains approval-governed within VyralX and is not exposed as a direct FRIDAY upload action.
 | **Autonomy & Self-Repair** | | |
