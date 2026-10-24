@@ -1,0 +1,14 @@
+{
+  "entries": [
+    {
+      "entry_id": "audit_b54e40d7a312",
+      "timestamp": 1792884913.0657132,
+      "action": "test",
+      "agent": "test",
+      "details": {
+        "x": 1
+      },
+      "level": "info"
+    }
+  ]
+}
