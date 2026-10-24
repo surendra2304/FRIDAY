@@ -1,0 +1,98 @@
+{
+  "mem_3bf6b7fb00ea": {
+    "memory_id": "mem_3bf6b7fb00ea",
+    "content": "Trading decision for TEST: buy_prob=0.300, backtest_return=0.0%, sharpe=0.0",
+    "agent_origin": "Stratex",
+    "tags": [
+      "trading",
+      "TEST"
+    ],
+    "importance": 0.8,
+    "confidence": 0.5,
+    "access_count": 0,
+    "last_accessed": 1792882936.9565122,
+    "created_at": 1792882936.956513,
+    "superseded_by": null,
+    "links": []
+  },
+  "mem_8c4ae6607d01": {
+    "memory_id": "mem_8c4ae6607d01",
+    "content": "Security event: 3 threats, 1 vulns. Decision: Block Immediately (confidence: 0.73)",
+    "agent_origin": "Sentinel",
+    "tags": [
+      "security",
+      "incident"
+    ],
+    "importance": 0.9,
+    "confidence": 0.5,
+    "access_count": 0,
+    "last_accessed": 1792882936.994139,
+    "created_at": 1792882936.9941392,
+    "superseded_by": null,
+    "links": []
+  },
+  "mem_fcdb158b9735": {
+    "memory_id": "mem_fcdb158b9735",
+    "content": "Trading decision for TEST: buy_prob=0.300, backtest_return=0.0%, sharpe=0.0",
+    "agent_origin": "Stratex",
+    "tags": [
+      "trading",
+      "TEST"
+    ],
+    "importance": 0.8,
+    "confidence": 0.5,
+    "access_count": 0,
+    "last_accessed": 1792882965.5062985,
+    "created_at": 1792882965.506299,
+    "superseded_by": null,
+    "links": []
+  },
+  "mem_888f15d41164": {
+    "memory_id": "mem_888f15d41164",
+    "content": "Security event: 3 threats, 2 vulns. Decision: Block Immediately (confidence: 0.73)",
+    "agent_origin": "Sentinel",
+    "tags": [
+      "security",
+      "incident"
+    ],
+    "importance": 0.9,
+    "confidence": 0.5,
+    "access_count": 0,
+    "last_accessed": 1792882965.5104804,
+    "created_at": 1792882965.5104806,
+    "superseded_by": null,
+    "links": []
+  },
+  "mem_73299d658104": {
+    "memory_id": "mem_73299d658104",
+    "content": "Code review: add_numbers.py score=100.0, decision=Deploy, complexity=1",
+    "agent_origin": "Forge",
+    "tags": [
+      "code",
+      "review"
+    ],
+    "importance": 0.7,
+    "confidence": 0.5,
+    "access_count": 0,
+    "last_accessed": 1792882965.5135515,
+    "created_at": 1792882965.5135517,
+    "superseded_by": null,
+    "links": []
+  },
+  "mem_3240283c4c24": {
+    "memory_id": "mem_3240283c4c24",
+    "content": "Content decision: 'AI Trends 2024' -> Publish Now (engagement: 36.0, forecast: 54040.8119)",
+    "agent_origin": "VyralX",
+    "tags": [
+      "content",
+      "decision"
+    ],
+    "importance": 0.6,
+    "confidence": 0.5,
+    "access_count": 0,
+    "last_accessed": 1792882965.5164332,
+    "created_at": 1792882965.5164332,
+    "superseded_by": null,
+    "links": []
+  }
+}

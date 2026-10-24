@@ -1,0 +1,90 @@
+{
+  "indicators": {
+    "ioc_03b111ef5452": {
+      "indicator_id": "ioc_03b111ef5452",
+      "value": "Detected sql_injection pattern: union select",
+      "type": "hash",
+      "tlp": "amber",
+      "confidence": 0.6,
+      "first_seen": 1792882936.9929826,
+      "last_seen": 1792882936.992983,
+      "tags": [
+        "sql_injection"
+      ],
+      "related_indicators": []
+    },
+    "ioc_12ab94649a3a": {
+      "indicator_id": "ioc_12ab94649a3a",
+      "value": "Detected xss pattern: <script>",
+      "type": "hash",
+      "tlp": "amber",
+      "confidence": 0.6,
+      "first_seen": 1792882936.9931042,
+      "last_seen": 1792882936.9931045,
+      "tags": [
+        "xss"
+      ],
+      "related_indicators": []
+    },
+    "ioc_52b8f19de0a5": {
+      "indicator_id": "ioc_52b8f19de0a5",
+      "value": "Detected command_injection pattern: ",
+      "type": "hash",
+      "tlp": "amber",
+      "confidence": 0.95,
+      "first_seen": 1792882936.993287,
+      "last_seen": 1792882936.9932873,
+      "tags": [
+        "command_injection"
+      ],
+      "related_indicators": []
+    },
+    "ioc_f9f6d195abd9": {
+      "indicator_id": "ioc_f9f6d195abd9",
+      "value": "Detected sql_injection pattern: union select",
+      "type": "hash",
+      "tlp": "amber",
+      "confidence": 0.6,
+      "first_seen": 1792882965.5092025,
+      "last_seen": 1792882965.5092027,
+      "tags": [
+        "sql_injection"
+      ],
+      "related_indicators": [
+        "ioc_03b111ef5452"
+      ]
+    },
+    "ioc_440569726bba": {
+      "indicator_id": "ioc_440569726bba",
+      "value": "Detected xss pattern: <script>",
+      "type": "hash",
+      "tlp": "amber",
+      "confidence": 0.6,
+      "first_seen": 1792882965.5094233,
+      "last_seen": 1792882965.5094237,
+      "tags": [
+        "xss"
+      ],
+      "related_indicators": [
+        "ioc_12ab94649a3a"
+      ]
+    },
+    "ioc_8dc477cbb788": {
+      "indicator_id": "ioc_8dc477cbb788",
+      "value": "Detected command_injection pattern: ",
+      "type": "hash",
+      "tlp": "amber",
+      "confidence": 0.95,
+      "first_seen": 1792882965.509636,
+      "last_seen": 1792882965.5096362,
+      "tags": [
+        "command_injection"
+      ],
+      "related_indicators": [
+        "ioc_52b8f19de0a5"
+      ]
+    }
+  },
+  "campaigns": {},
+  "reports": []
+}

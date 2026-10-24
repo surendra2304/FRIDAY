@@ -1,0 +1,50 @@
+[
+  {
+    "decision_id": "dec_5b5f7dffaeb5",
+    "question": "Should we execute the TEST trade?",
+    "best_option": "Skip",
+    "risk_level": "low",
+    "confidence": 0.73,
+    "timestamp": 1792882936.9567547
+  },
+  {
+    "decision_id": "dec_2d73b39b66d8",
+    "question": "What security response should we take?",
+    "best_option": "Block Immediately",
+    "risk_level": "low",
+    "confidence": 0.73,
+    "timestamp": 1792882936.9939315
+  },
+  {
+    "decision_id": "dec_c0952f4fb07c",
+    "question": "Should we execute the TEST trade?",
+    "best_option": "Skip",
+    "risk_level": "low",
+    "confidence": 0.73,
+    "timestamp": 1792882965.5066562
+  },
+  {
+    "decision_id": "dec_9cdcafe1f6ad",
+    "question": "What security response should we take?",
+    "best_option": "Block Immediately",
+    "risk_level": "low",
+    "confidence": 0.73,
+    "timestamp": 1792882965.5103328
+  },
+  {
+    "decision_id": "dec_602aebf26591",
+    "question": "Should we deploy this code?",
+    "best_option": "Deploy",
+    "risk_level": "low",
+    "confidence": 0.73,
+    "timestamp": 1792882965.5133822
+  },
+  {
+    "decision_id": "dec_7015504854ed",
+    "question": "Should we publish this content?",
+    "best_option": "Publish Now",
+    "risk_level": "high",
+    "confidence": 0.4,
+    "timestamp": 1792882965.5161908
+  }
+]

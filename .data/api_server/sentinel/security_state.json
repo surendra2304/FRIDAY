@@ -1,0 +1,117 @@
+{
+  "threats": [
+    {
+      "threat_id": "thr_a30ada8810ea",
+      "threat_type": "sql_injection",
+      "severity": "critical",
+      "description": "Detected sql_injection pattern: union select",
+      "source": "network",
+      "confidence": 0.6,
+      "timestamp": 1792882936.9925904,
+      "indicators": [
+        "union select"
+      ]
+    },
+    {
+      "threat_id": "thr_86a178d0dfab",
+      "threat_type": "xss",
+      "severity": "high",
+      "description": "Detected xss pattern: <script>",
+      "source": "network",
+      "confidence": 0.6,
+      "timestamp": 1792882936.9926164,
+      "indicators": [
+        "<script>"
+      ]
+    },
+    {
+      "threat_id": "thr_ac36db32aa91",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "network",
+      "confidence": 0.95,
+      "timestamp": 1792882936.9926486,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_c4965b324267",
+      "threat_type": "sql_injection",
+      "severity": "critical",
+      "description": "Detected sql_injection pattern: union select",
+      "source": "network",
+      "confidence": 0.6,
+      "timestamp": 1792882965.508868,
+      "indicators": [
+        "union select"
+      ]
+    },
+    {
+      "threat_id": "thr_625331cf26f0",
+      "threat_type": "xss",
+      "severity": "high",
+      "description": "Detected xss pattern: <script>",
+      "source": "network",
+      "confidence": 0.6,
+      "timestamp": 1792882965.5088797,
+      "indicators": [
+        "<script>"
+      ]
+    },
+    {
+      "threat_id": "thr_9ce2ce98e8f9",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "network",
+      "confidence": 0.95,
+      "timestamp": 1792882965.508896,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    }
+  ],
+  "vulnerabilities": [
+    {
+      "vuln_id": "VULN-001_d2696e65",
+      "severity": "critical",
+      "title": "Hardcoded credentials",
+      "description": "Hardcoded credentials found in code",
+      "cve": "",
+      "cvss_score": 9.0,
+      "affected": "input.py",
+      "remediation": "Use environment variables or secret management system"
+    },
+    {
+      "vuln_id": "VULN-001_6de5cf02",
+      "severity": "critical",
+      "title": "Hardcoded credentials",
+      "description": "Hardcoded credentials found in code",
+      "cve": "",
+      "cvss_score": 9.0,
+      "affected": "input.py",
+      "remediation": "Use environment variables or secret management system"
+    },
+    {
+      "vuln_id": "VULN-002_7738f92b",
+      "severity": "high",
+      "title": "Weak password",
+      "description": "Weak password detected (less than 12 characters)",
+      "cve": "",
+      "cvss_score": 7.0,
+      "affected": "input.py",
+      "remediation": "Use a password with at least 12 characters including special characters"
+    }
+  ],
+  "incidents": []
+}

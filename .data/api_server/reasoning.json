@@ -1,0 +1,14 @@
+{
+  "beliefs": {
+    "hyp_731705ca9a20": {
+      "belief_id": "hyp_731705ca9a20",
+      "statement": "Trading TEST is profitable",
+      "confidence": 0.3,
+      "evidence": [
+        "Backtest return: 0.0%, Sharpe: 0.0",
+        "Backtest return: 0.0%, Sharpe: 0.0"
+      ],
+      "last_updated": 1792882965.506117
+    }
+  }
+}
