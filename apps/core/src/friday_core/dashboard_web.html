@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FRIDAY Universe Dashboard v3.0</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0a0e1a; color: #e0e0e0; overflow-x: hidden; }
+.header { background: linear-gradient(135deg, #1a1a3e 0%, #2d2d5e 100%); padding: 20px 30px; border-bottom: 2px solid #4a4a8a; }
+.header h1 { color: #7b8cff; font-size: 28px; display: flex; align-items: center; gap: 12px; }
+.header .subtitle { color: #888; font-size: 14px; margin-top: 4px; }
+.header .version { background: #4a4a8a; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 12px; }
+.layout { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; padding: 16px; }
+.card { background: #161b2e; border-radius: 12px; padding: 16px; border: 1px solid #2a2a4a; }
+.card h2 { color: #7b8cff; font-size: 16px; margin-bottom: 12px; border-bottom: 1px solid #2a2a4a; padding-bottom: 8px; }
+.agent-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.agent-card { background: #1a2035; border-radius: 8px; padding: 10px; border-left: 3px solid #4a4a8a; }
+.agent-card.healthy { border-left-color: #4caf50; }
+.agent-card.degraded { border-left-color: #ff9800; }
+.agent-card.unhealthy { border-left-color: #f44336; }
+.agent-name { font-weight: bold; font-size: 14px; color: #e0e0e0; }
+.agent-status { font-size: 11px; color: #888; margin-top: 4px; }
+.agent-stats { display: flex; gap: 8px; font-size: 10px; color: #666; margin-top: 4px; }
+.stat-bar { height: 4px; border-radius: 2px; margin-top: 4px; }
+.stat-bar.cpu { background: linear-gradient(90deg, #2196f3, #64b5f6); }
+.stat-bar.mem { background: linear-gradient(90deg, #9c27b0, #ba68c8); }
+.layer-badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-right: 4px; }
+.layer-badge.basic { background: #1e3a5f; color: #64b5f6; }
+.layer-badge.advanced { background: #3e1e5f; color: #ba68c8; }
+.layer-badge.deep { background: #1e5f3a; color: #81c784; }
+.alert-item { padding: 8px; border-radius: 6px; margin-bottom: 6px; font-size: 12px; }
+.alert-item.error { background: rgba(244, 67, 54, 0.15); border-left: 3px solid #f44336; }
+.alert-item.warning { background: rgba(255, 152, 0, 0.15); border-left: 3px solid #ff9800; }
+.alert-item.critical { background: rgba(156, 39, 176, 0.15); border-left: 3px solid #9c27b0; }
+.alert-item.info { background: rgba(33, 150, 243, 0.15); border-left: 3px solid #2196f3; }
+.pipeline-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.pipeline-stat { background: #1a2035; border-radius: 6px; padding: 8px; text-align: center; }
+.pipeline-stat .value { font-size: 20px; font-weight: bold; color: #7b8cff; }
+.pipeline-stat .label { font-size: 10px; color: #666; margin-top: 2px; }
+.workflow-list { list-style: none; }
+.workflow-item { padding: 6px 0; border-bottom: 1px solid #2a2a4a; font-size: 12px; display: flex; justify-content: space-between; }
+.btn { background: #4a4a8a; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+.btn:hover { background: #5a5a9a; }
+.btn-primary { background: #6200ee; }
+.btn-primary:hover { background: #7b00ff; }
+.input { background: #1a2035; border: 1px solid #2a2a4a; color: #e0e0e0; padding: 8px 12px; border-radius: 6px; font-size: 12px; width: 100%; margin-bottom: 8px; }
+.footer { text-align: center; padding: 16px; color: #444; font-size: 11px; }
+.full-width { grid-column: span 3; }
+.two-col { grid-column: span 2; }
+.timeline { max-height: 300px; overflow-y: auto; }
+.pulse { animation: pulse 2s infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+.online { color: #4caf50; }
+.offline { color: #f44336; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>⚙️ FRIDAY Universe <span class="version">v3.0</span></h1>
+  <div class="subtitle">Unified Multi-Agent Intelligence Platform — 9 Agents · 3 Layers · 60+ Engines</div>
+</div>
+
+<div class="layout">
+  <!-- Agent Status -->
+  <div class="card">
+    <h2>🤖 Agent Status</h2>
+    <div class="agent-grid" id="agentGrid"></div>
+  </div>
+
+  <!-- Layer Coverage -->
+  <div class="card">
+    <h2>📊 Layer Coverage</h2>
+    <div id="layerCoverage"></div>
+  </div>
+
+  <!-- Alerts -->
+  <div class="card">
+    <h2>🚨 Alerts</h2>
+    <div id="alertsList"><div style="color:#666;font-size:12px">No alerts</div></div>
+  </div>
+
+  <!-- Pipeline Stats -->
+  <div class="card full-width">
+    <h2>⚡ Realtime Pipeline</h2>
+    <div class="pipeline-stats" id="pipelineStats"></div>
+  </div>
+
+  <!-- Workflow Stats -->
+  <div class="card two-col">
+    <h2>🔄 Workflow Executions</h2>
+    <ul class="workflow-list" id="workflowList"></ul>
+  </div>
+
+  <!-- Quick Test -->
+  <div class="card">
+    <h2>🔬 Quick Test</h2>
+    <input class="input" id="testCode" placeholder='Code to scan: eval("1+1")' value='password = "secret"; eval("1+1")'>
+    <button class="btn btn-primary" onclick="runSecurityScan()">Scan Code</button>
+    <div id="scanResult" style="margin-top:8px;font-size:12px"></div>
+    <br>
+    <input class="input" id="testText" placeholder="Content to moderate" value="Great educational video about AI">
+    <button class="btn btn-primary" onclick="runModeration()">Moderate</button>
+    <div id="modResult" style="margin-top:8px;font-size:12px"></div>
+  </div>
+
+  <!-- Timeline -->
+  <div class="card full-width">
+    <h2>📡 Activity Timeline</h2>
+    <div class="timeline" id="timeline"></div>
+  </div>
+</div>
+
+<div class="footer">
+  FRIDAY Universe Dashboard v3.0.0 · 9 Agents · 3 Layers · Real Functional Implementations · Powered by Arena.ai
+</div>
+
+<script>
+const API = '';
+let dashboardData = null;
+
+async function fetchDashboard() {
+  try {
+    const resp = await fetch(`${API}/api/dashboard`);
+    dashboardData = await resp.json();
+    renderAgents();
+    renderLayers();
+    renderAlerts();
+    renderPipeline();
+    renderWorkflows();
+  } catch(e) {
+    console.error('Dashboard fetch failed:', e);
+  }
+}
+
+function renderAgents() {
+  const grid = document.getElementById('agentGrid');
+  const agents = dashboardData.agents;
+  grid.innerHTML = Object.entries(agents).map(([id, a]) => `
+    <div class="agent-card ${a.status}">
+      <div class="agent-name">${a.name}</div>
+      <div class="agent-status">${a.status} · ${a.engines} engines · ${a.layers} layers</div>
+      <div class="agent-stats">
+        <span>CPU ${(a.cpu*100).toFixed(0)}%</span>
+        <span>Mem ${(a.memory*100).toFixed(0)}%</span>
+        <span class="${a.errors > 0 ? 'offline' : 'online'}">${a.errors} err</span>
+      </div>
+      <div class="stat-bar cpu" style="width:${a.cpu*100}%"></div>
+      <div class="stat-bar mem" style="width:${a.memory*100}%"></div>
+    </div>
+  `).join('');
+}
+
+function renderLayers() {
+  const div = document.getElementById('layerCoverage');
+  const agents = dashboardData.agents;
+  let basic = 0, advanced = 0, deep = 0;
+  Object.values(agents).forEach(a => {
+    if (a.layers >= 1) basic++;
+    if (a.layers >= 2) advanced++;
+    if (a.layers >= 3) deep++;
+  });
+  div.innerHTML = `
+    <div style="margin-bottom:8px"><span class="layer-badge basic">BASIC</span> ${basic} agents</div>
+    <div style="margin-bottom:8px"><span class="layer-badge advanced">ADVANCED</span> ${advanced} agents</div>
+    <div style="margin-bottom:8px"><span class="layer-badge deep">DEEP</span> ${deep} agents</div>
+    <div style="margin-top:12px;color:#888;font-size:12px">Total API endpoints: ${dashboardData.dashboard?.total_api_endpoints || 60}</div>
+  `;
+}
+
+function renderAlerts() {
+  const div = document.getElementById('alertsList');
+  const alerts = dashboardData.alerts || [];
+  if (alerts.length === 0) {
+    div.innerHTML = '<div style="color:#4caf50;font-size:12px">✓ No alerts — all systems nominal</div>';
+    return;
+  }
+  div.innerHTML = alerts.slice(-10).reverse().map(a => `
+    <div class="alert-item ${a.level}">
+      <div style="font-weight:bold;color:#e0e0e0">${a.message}</div>
+      <div style="color:#666;font-size:10px">${a.source} · ${new Date(a.timestamp*1000).toLocaleTimeString()}</div>
+    </div>
+  `).join('');
+}
+
+function renderPipeline() {
+  const p = dashboardData.pipeline || {};
+  document.getElementById('pipelineStats').innerHTML = `
+    <div class="pipeline-stat"><div class="value">${p.total_events || 0}</div><div class="label">Total Events</div></div>
+    <div class="pipeline-stat"><div class="value">${p.total_processed || 0}</div><div class="label">Processed</div></div>
+    <div class="pipeline-stat"><div class="value">${p.total_errors || 0}</div><div class="label">Errors</div></div>
+    <div class="pipeline-stat"><div class="value">${p.avg_duration_ms || 0}</div><div class="label">Avg ms</div></div>
+  `;
+}
+
+function renderWorkflows() {
+  const w = dashboardData.workflows || {};
+  const list = document.getElementById('workflowList');
+  list.innerHTML = `
+    <div class="workflow-item"><span>Total Workflows</span><span>${w.total_workflows || 0}</span></div>
+    <div class="workflow-item"><span>Successful</span><span style="color:#4caf50">${w.successful_workflows || 0}</span></div>
+    <div class="workflow-item"><span>Total Steps</span><span>${w.total_steps || 0}</span></div>
+  `;
+}
+
+function addTimeline(msg, color = '#7b8cff') {
+  const tl = document.getElementById('timeline');
+  const item = document.createElement('div');
+  item.style.cssText = `padding:6px 0;border-bottom:1px solid #2a2a4a;font-size:12px;color:${color}`;
+  item.innerHTML = `<span style="color:#666">${new Date().toLocaleTimeString()}</span> — ${msg}`;
+  tl.insertBefore(item, tl.firstChild);
+  while (tl.children.length > 50) tl.removeChild(tl.lastChild);
+}
+
+async function runSecurityScan() {
+  const code = document.getElementById('testCode').value;
+  try {
+    const resp = await fetch(`${API}/api/deep/security-scan`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({code, filename: 'test.py'})
+    });
+    const result = await resp.json();
+    document.getElementById('scanResult').innerHTML = `
+      <div style="color:#7b8cff">Findings: ${result.summary?.total_findings || result.findings?.length || 0}</div>
+      <div style="color:#f44336">Critical: ${result.summary?.critical || 0}</div>
+      <div style="color:#ff9800">High: ${result.summary?.high || 0}</div>
+      <div style="color:#666">Risk Score: ${result.summary?.risk_score || 0}</div>
+    `;
+    addTimeline(`Security scan: ${result.summary?.total_findings || 0} findings`, '#f44336');
+  } catch(e) {
+    document.getElementById('scanResult').innerHTML = '<div style="color:#f44336">Error: ' + e.message + '</div>';
+  }
+}
+
+async function runModeration() {
+  const text = document.getElementById('testText').value;
+  try {
+    const resp = await fetch(`${API}/api/deep/moderation`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({content_id: 'web1', text})
+    });
+    const result = await resp.json();
+    const color = result.action === 'approved' ? '#4caf50' : result.action === 'flagged' ? '#ff9800' : '#f44336';
+    document.getElementById('modResult').innerHTML = `
+      <div style="color:${color}">Action: ${result.action}</div>
+      <div style="color:#888">Reason: ${result.reason}</div>
+      <div style="color:#666">Category: ${result.category}</div>
+    `;
+    addTimeline(`Moderation: ${result.action} (${result.category})`, color);
+  } catch(e) {
+    document.getElementById('modResult').innerHTML = '<div style="color:#f44336">Error: ' + e.message + '</div>';
+  }
+}
+
+// Fetch dashboard and auto-refresh
+fetchDashboard();
+setInterval(fetchDashboard, 5000);
+addTimeline('Dashboard initialized');
+addTimeline('Connected to FRIDAY Universe API');
+</script>
+</body>
+</html>

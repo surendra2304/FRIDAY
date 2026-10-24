@@ -743,7 +743,26 @@ async def deep_content_workflow(req: DeepContentWorkflowRequest):
 
 @app.get("/api/dashboard")
 async def universe_dashboard():
-    return _universe_orch.get_universe_dashboard()
+    from friday_core.universe_dashboard import universe_dashboard as dash_instance
+    return dash_instance.get_dashboard_data()
+
+
+@app.get("/api/dashboard/benchmarks")
+async def dashboard_benchmarks():
+    from friday_core.universe_dashboard import universe_dashboard as dash_instance
+    return dash_instance.get_benchmarks()
+
+
+@app.get("/api/dashboard/alerts")
+async def dashboard_alerts():
+    from friday_core.universe_dashboard import universe_dashboard as dash_instance
+    return {"alerts": dash_instance._alert_manager.get_alerts()}
+
+
+@app.get("/api/dashboard/agents")
+async def dashboard_agents():
+    from friday_core.universe_dashboard import universe_dashboard as dash_instance
+    return dash_instance._monitor.get_status()
 
 
 # ── Status API ───────────────────────────────────────────────────────────
