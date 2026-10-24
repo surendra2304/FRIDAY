@@ -2011,5 +2011,8 @@ app.include_router(universe_soak_test_router, prefix="/api/v1")
 from friday_core.autonomous_laptop_operator import router as laptop_operator_router
 from friday_core.general_cognitive_coordinator import router as cognitive_coordinator_router
 
+from friday.services.autonomous_problem_solver import router as problem_solver_router
+
 app.include_router(laptop_operator_router, prefix="/api/v1")
 app.include_router(cognitive_coordinator_router, prefix="/api/v1")
+app.include_router(problem_solver_router, prefix="/api/v1")
