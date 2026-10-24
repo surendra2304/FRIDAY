@@ -2046,3 +2046,14 @@ app.include_router(universe_gateway_router, prefix="/api/v1")
 app.include_router(universe_config_router, prefix="/api/v1")
 app.include_router(universe_metrics_router, prefix="/api/v1")
 app.include_router(error_envelope_router, prefix="/api/v1")
+
+# --- Wave 35: Cross-Agent & Security Integrations ---
+from friday_core.universe_dispatch_bus import router as dispatch_bus_router
+from friday_core.universe_auth import router as universe_auth_router
+from friday_core.cross_agent_integration import router as cross_agent_router
+from friday_core.security_hardening import router as security_hardening_router
+
+app.include_router(dispatch_bus_router, prefix="/api/v1")
+app.include_router(universe_auth_router, prefix="/api/v1")
+app.include_router(cross_agent_router, prefix="/api/v1")
+app.include_router(security_hardening_router, prefix="/api/v1")
