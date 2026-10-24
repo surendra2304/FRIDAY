@@ -92,7 +92,7 @@ class UniverseTaskRouter:
             raise HTTPException(status_code=404, detail="Task not found")
 
         decision_id = f"route_{uuid.uuid4().hex[:12]}"
-        decision = RoutingDecision(decision_id=decision_id, task_id=task_id)
+        decision = RoutingDecision(decision_id=decision_id, task_id=task_id, assigned_agent="")
 
         # Score agents
         scores = {}
