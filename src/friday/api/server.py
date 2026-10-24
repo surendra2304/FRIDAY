@@ -1964,11 +1964,18 @@ async def emergency_halt_agent(agent: str):
 
 
 # --- Autonomous Decision Making Integration ---
-from friday_core.autonomous_decision_making import router as autonomous_decision_router
-
-app.include_router(autonomous_decision_router, prefix="/api/v1")
+try:
+    _apps_core_path = Path(__file__).resolve().parents[3] / "apps" / "core" / "src"
+    if _apps_core_path.is_dir() and str(_apps_core_path) not in sys.path:
+        sys.path.insert(0, str(_apps_core_path))
+    from friday_core.autonomous_decision_making import router as autonomous_decision_router
+    app.include_router(autonomous_decision_router, prefix="/api/v1")
+except Exception as _e:
+    logger.warning(f"Could not load autonomous_decision_making router: {_e}")
 
 # --- Agent Mesh Coordinator Integration ---
-from friday_core.agent_mesh_coordinator import router as mesh_coordinator_router
-
-app.include_router(mesh_coordinator_router, prefix="/api/v1")
+try:
+    from friday_core.agent_mesh_coordinator import router as mesh_coordinator_router
+    app.include_router(mesh_coordinator_router, prefix="/api/v1")
+except Exception as _e:
+    logger.warning(f"Could not load agent_mesh_coordinator router: {_e}")
