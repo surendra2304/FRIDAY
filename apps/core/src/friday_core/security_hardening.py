@@ -105,6 +105,23 @@ class SecurityHardeningEngine:
 
     def check_ssrf(self, url: str) -> bool:
         """Check if a URL is safe from SSRF attacks."""
+        # Block non-HTTP(S) protocols
+        from urllib.parse import urlparse
+        _parsed = urlparse(url)
+        if _parsed.scheme and _parsed.scheme.lower() not in ("http", "https"):
+            self._violations[f"v_{uuid.uuid4().hex[:8]}"] = SecurityViolation(
+                violation_id=f"v_{uuid.uuid4().hex[:8]}",
+                violation_type="ssrf", target=url,
+                severity="critical",
+                description=f"Blocked non-HTTP protocol: {_parsed.scheme}",
+            )
+            self._checks.append(SecurityCheck(
+                check_id=f"c_{uuid.uuid4().hex[:8]}",
+                check_type="ssrf", target=url, passed=False,
+                details=f"Blocked protocol: {_parsed.scheme}",
+            ))
+            return False
+
         for pattern in BLOCKED_URL_PATTERNS:
             if re.search(pattern, url, re.IGNORECASE):
                 self._violations[f"v_{uuid.uuid4().hex[:8]}"] = SecurityViolation(
@@ -152,11 +169,17 @@ class SecurityHardeningEngine:
 
     def check_path_traversal(self, file_path: str, sandbox_dirs: list[str] | None = None) -> bool:
         """Check if a file path is safe from traversal attacks."""
+        import urllib.parse
         sandbox_dirs = sandbox_dirs or self._sandbox_dirs
         if not sandbox_dirs:
             return True  # No sandbox configured, allow
 
-        resolved = str(Path(file_path).resolve())
+        # Decode URL-encoded characters to catch obfuscation
+        decoded_path = urllib.parse.unquote(file_path)
+        # Normalize ....// patterns (double-dot bypass)
+        decoded_path = decoded_path.replace("....//", "../").replace("..\\", "../")
+
+        resolved = str(Path(decoded_path).resolve())
         for sandbox in sandbox_dirs:
             sandbox_resolved = str(Path(sandbox).resolve())
             if resolved.startswith(sandbox_resolved):
