@@ -2075,3 +2075,10 @@ from friday_core.universe_state_manager import router as universe_state_router
 
 app.include_router(universe_event_bus_router, prefix="/api/v1")
 app.include_router(universe_state_router, prefix="/api/v1")
+
+# --- Wave 44: Audit Trail & Rate Limiter ---
+from friday_core.universe_audit_trail import router as universe_audit_router
+from friday_core.universe_rate_limiter import router as universe_rate_router
+
+app.include_router(universe_audit_router, prefix="/api/v1")
+app.include_router(universe_rate_router, prefix="/api/v1")
