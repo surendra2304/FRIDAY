@@ -662,6 +662,90 @@ async def deep_moderation(req: DeepModerationRequest):
             "category": result.category, "confidence": result.confidence}
 
 
+# ── Deep Workflow Endpoints ──────────────────────────────────────────────
+
+_orchestrator = load_engine("FRIDAY/apps/core/src/friday_core/universe_orchestrator.py", "api_orchestrator")
+_universe_orch = _orchestrator.universe_orchestrator
+
+
+class DeepSecurityWorkflowRequest(BaseModel):
+    code: str
+    logs: list[str] = []
+
+
+class DeepTradingWorkflowRequest(BaseModel):
+    symbol: str
+    prices: list[float]
+    trades: list[dict] = []
+
+
+class DeepIntelWorkflowRequest(BaseModel):
+    indicators: list[dict]
+
+
+class DeepContentWorkflowRequest(BaseModel):
+    topic: str
+    content_text: str
+    viewers: list[dict] = []
+
+
+@app.post("/api/workflow/deep/security")
+async def deep_security_workflow(req: DeepSecurityWorkflowRequest):
+    result = _universe_orch.run_deep_security(req.code, req.logs)
+    return {
+        "workflow_id": result.workflow_id,
+        "status": result.status,
+        "complexity": result.complexity,
+        "steps": len(result.steps),
+        "final_output": result.final_output,
+        "total_duration_ms": result.total_duration_ms,
+    }
+
+
+@app.post("/api/workflow/deep/trading")
+async def deep_trading_workflow(req: DeepTradingWorkflowRequest):
+    result = _universe_orch.run_deep_trading(req.symbol, req.prices, req.trades)
+    return {
+        "workflow_id": result.workflow_id,
+        "status": result.status,
+        "complexity": result.complexity,
+        "steps": len(result.steps),
+        "final_output": result.final_output,
+        "total_duration_ms": result.total_duration_ms,
+    }
+
+
+@app.post("/api/workflow/deep/intel")
+async def deep_intel_workflow(req: DeepIntelWorkflowRequest):
+    result = _universe_orch.run_deep_intel(req.indicators)
+    return {
+        "workflow_id": result.workflow_id,
+        "status": result.status,
+        "complexity": result.complexity,
+        "steps": len(result.steps),
+        "final_output": result.final_output,
+        "total_duration_ms": result.total_duration_ms,
+    }
+
+
+@app.post("/api/workflow/deep/content")
+async def deep_content_workflow(req: DeepContentWorkflowRequest):
+    result = _universe_orch.run_deep_content(req.topic, req.content_text, req.viewers)
+    return {
+        "workflow_id": result.workflow_id,
+        "status": result.status,
+        "complexity": result.complexity,
+        "steps": len(result.steps),
+        "final_output": result.final_output,
+        "total_duration_ms": result.total_duration_ms,
+    }
+
+
+@app.get("/api/dashboard")
+async def universe_dashboard():
+    return _universe_orch.get_universe_dashboard()
+
+
 # ── Status API ───────────────────────────────────────────────────────────
 
 @app.get("/api/status")
