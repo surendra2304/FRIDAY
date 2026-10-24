@@ -1997,3 +1997,17 @@ app.include_router(adaptive_router_router, prefix="/api/v1")
 app.include_router(unified_errors_router, prefix="/api/v1")
 app.include_router(self_improvement_router, prefix="/api/v1")
 app.include_router(automated_consolidation_router, prefix="/api/v1")
+
+
+# --- Additional Mesh Module Integrations ---
+from mesh.performance_profiler import router as performance_profiler_router
+from mesh.universe_soak_test import router as universe_soak_test_router
+
+app.include_router(performance_profiler_router, prefix="/api/v1")
+app.include_router(universe_soak_test_router, prefix="/api/v1")
+
+
+# --- FRIDAY Core Module Integrations ---
+from friday_core.autonomous_laptop_operator import router as laptop_operator_router
+
+app.include_router(laptop_operator_router, prefix="/api/v1")
