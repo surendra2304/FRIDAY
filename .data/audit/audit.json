@@ -9,6 +9,16 @@
         "x": 1
       },
       "level": "info"
+    },
+    {
+      "entry_id": "audit_3951a09f83b6",
+      "timestamp": 1792885248.3800037,
+      "action": "test",
+      "agent": "test",
+      "details": {
+        "x": 1
+      },
+      "level": "info"
     }
   ]
 }

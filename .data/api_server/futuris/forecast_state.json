@@ -67,6 +67,23 @@
         "holt",
         "arima"
       ]
+    },
+    "fc_6238d94293a9": {
+      "forecast_id": "fc_6238d94293a9",
+      "symbol": "CONTENT",
+      "prediction": 54040.8119,
+      "lower_bound": 53854.4827,
+      "upper_bound": 54227.1411,
+      "confidence": 0.966,
+      "timestamp": 1792885254.7924857,
+      "horizon_sec": 3600.0,
+      "model_name": "ensemble",
+      "features_used": [
+        "sma",
+        "ses",
+        "holt",
+        "arima"
+      ]
     }
   },
   "actuals": {}

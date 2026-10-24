@@ -199,6 +199,46 @@
         "",
         ""
       ]
+    },
+    {
+      "threat_id": "thr_4421efd64c70",
+      "threat_type": "sql_injection",
+      "severity": "critical",
+      "description": "Detected sql_injection pattern: union select",
+      "source": "network",
+      "confidence": 0.6,
+      "timestamp": 1792885254.7815354,
+      "indicators": [
+        "union select"
+      ]
+    },
+    {
+      "threat_id": "thr_4c74e19ec33e",
+      "threat_type": "xss",
+      "severity": "high",
+      "description": "Detected xss pattern: <script>",
+      "source": "network",
+      "confidence": 0.6,
+      "timestamp": 1792885254.7815485,
+      "indicators": [
+        "<script>"
+      ]
+    },
+    {
+      "threat_id": "thr_e5f50a4f6e59",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "network",
+      "confidence": 0.95,
+      "timestamp": 1792885254.7816625,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
     }
   ],
   "vulnerabilities": [
@@ -284,6 +324,26 @@
     },
     {
       "vuln_id": "VULN-002_f55c8bd7",
+      "severity": "high",
+      "title": "Weak password",
+      "description": "Weak password detected (less than 12 characters)",
+      "cve": "",
+      "cvss_score": 7.0,
+      "affected": "input.py",
+      "remediation": "Use a password with at least 12 characters including special characters"
+    },
+    {
+      "vuln_id": "VULN-001_5364b1fe",
+      "severity": "critical",
+      "title": "Hardcoded credentials",
+      "description": "Hardcoded credentials found in code",
+      "cve": "",
+      "cvss_score": 9.0,
+      "affected": "input.py",
+      "remediation": "Use environment variables or secret management system"
+    },
+    {
+      "vuln_id": "VULN-002_f821767a",
       "severity": "high",
       "title": "Weak password",
       "description": "Weak password detected (less than 12 characters)",

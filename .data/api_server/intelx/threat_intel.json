@@ -236,6 +236,63 @@
         "ioc_5fa2f1737c64",
         "ioc_8b33287f1434"
       ]
+    },
+    "ioc_9fcc49bd1f65": {
+      "indicator_id": "ioc_9fcc49bd1f65",
+      "value": "Detected sql_injection pattern: union select",
+      "type": "hash",
+      "tlp": "amber",
+      "confidence": 0.6,
+      "first_seen": 1792885254.782068,
+      "last_seen": 1792885254.7820683,
+      "tags": [
+        "sql_injection"
+      ],
+      "related_indicators": [
+        "ioc_03b111ef5452",
+        "ioc_f9f6d195abd9",
+        "ioc_ed8d887dd091",
+        "ioc_08b09e0aaebe",
+        "ioc_7dc268d25ecf"
+      ]
+    },
+    "ioc_0c2668e2ffdf": {
+      "indicator_id": "ioc_0c2668e2ffdf",
+      "value": "Detected xss pattern: <script>",
+      "type": "hash",
+      "tlp": "amber",
+      "confidence": 0.6,
+      "first_seen": 1792885254.7825315,
+      "last_seen": 1792885254.7825317,
+      "tags": [
+        "xss"
+      ],
+      "related_indicators": [
+        "ioc_12ab94649a3a",
+        "ioc_440569726bba",
+        "ioc_8474e48529d3",
+        "ioc_23b16094774d",
+        "ioc_dc5b99c21a42"
+      ]
+    },
+    "ioc_d08485d48151": {
+      "indicator_id": "ioc_d08485d48151",
+      "value": "Detected command_injection pattern: ",
+      "type": "hash",
+      "tlp": "amber",
+      "confidence": 0.95,
+      "first_seen": 1792885254.7830505,
+      "last_seen": 1792885254.7830508,
+      "tags": [
+        "command_injection"
+      ],
+      "related_indicators": [
+        "ioc_52b8f19de0a5",
+        "ioc_8dc477cbb788",
+        "ioc_5fa2f1737c64",
+        "ioc_8b33287f1434",
+        "ioc_620241dc4692"
+      ]
     }
   },
   "campaigns": {},
