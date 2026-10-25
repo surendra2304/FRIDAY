@@ -29,6 +29,16 @@
         "x": 1
       },
       "level": "info"
+    },
+    {
+      "entry_id": "audit_b05980179148",
+      "timestamp": 1792903843.1605878,
+      "action": "test",
+      "agent": "test",
+      "details": {
+        "x": 1
+      },
+      "level": "info"
     }
   ]
 }
