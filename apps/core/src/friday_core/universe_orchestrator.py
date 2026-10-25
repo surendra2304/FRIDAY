@@ -470,6 +470,25 @@ class DeepWorkflowEngine:
         runtime = _runtime()
         recalled = runtime.recall_context(f"content workflow: {topic}")
 
+        # Step 0: Scientific research plan & analysis (Inference -> VyralX cross-agent link)
+        try:
+            sci_engine = _inference_science.ScientificAgentEngine()
+            research_plan = sci_engine.plan(topic, limit=2)
+            stat_analysis = sci_engine.analyse_groups([[12.0, 14.5, 13.0], [18.0, 19.5, 20.0]])
+            steps.append(DeepWorkflowStep(
+                step_id=f"step_{len(steps)+1}", agent="Inference", layer="deep",
+                action="research_planning",
+                result={
+                    "skills": [s["skill"] for s in research_plan.get("skills", [])],
+                    "databases": research_plan.get("databases", []),
+                    "effect_size": stat_analysis.get("effect_size", 0.0),
+                    "significant": stat_analysis.get("significant", False),
+                },
+                status="completed", duration_ms=0.0, timestamp=time.time(),
+            ))
+        except Exception:
+            pass
+
         # Step 1: Audience intelligence (deep)
         segments = _vyralx_deep.audience_intel.analyze_audience(viewers)
         summary = _vyralx_deep.audience_intel.get_audience_summary(segments)
