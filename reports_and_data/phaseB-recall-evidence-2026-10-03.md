@@ -69,7 +69,7 @@ it is a product decision about whether lessons are per-agent or fleet-wide.
 ## Verbatim transcript
 
 ```
-  real database : C:\Users\Surendra\AppData\Local\Temp\phaseB-recall-z4rhde62\memora.db
+  real database : USER_HOME\AppData\Local\Temp\phaseB-recall-z4rhde62\memora.db
 
 === 1. a real failure is recorded ===
   status : local_only

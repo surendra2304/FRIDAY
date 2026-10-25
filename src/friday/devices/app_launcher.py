@@ -42,8 +42,8 @@ APP_LAUNCH_CONFIGS: dict[str, dict[str, Any]] = {
     "vscode": {
         "cim_cmd": "explorer.exe vscode:",
         "fallback_cmd": [
-            r"C:\Users\Surendra\AppData\Local\Programs\Microsoft VS Code\Code.exe"
-            if os.path.exists(r"C:\Users\Surendra\AppData\Local\Programs\Microsoft VS Code\Code.exe")
+            r"USER_HOME\AppData\Local\Programs\Microsoft VS Code\Code.exe"
+            if os.path.exists(r"USER_HOME\AppData\Local\Programs\Microsoft VS Code\Code.exe")
             else "code"
         ],
         "keywords": ["visual studio code", "code"],

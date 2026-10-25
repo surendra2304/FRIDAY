@@ -97,7 +97,7 @@ def test_02_ambiguous_application_chrome_flow(agent, monkeypatch):
     mock_installs = {
         "chrome": [
             r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-            r"C:\Users\Surendra\AppData\Local\Google\Chrome\Application\chrome.exe",
+            r"USER_HOME\AppData\Local\Google\Chrome\Application\chrome.exe",
         ]
     }
     monkeypatch.setenv("FRIDAY_MOCK_INSTALLATIONS", json.dumps(mock_installs))

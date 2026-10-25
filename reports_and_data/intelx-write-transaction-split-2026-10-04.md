@@ -159,7 +159,7 @@ The options that remain, none of which is a local patch:
 ## Reproducing
 
 ```
-cd "D:\FRIDAY Universe\IntelX"
+cd "FRIDAY_UNIVERSE_HOME\IntelX"
 python scripts/conc_loop.py 30                 # 23/30 on the committed baseline (4-test instrument; 17/30 corrected)
 python scripts/probe_writer_fairness.py deferred   # 1/5, the race with no ORM
 python scripts/probe_writer_fairness.py immediate  # 5/5

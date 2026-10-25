@@ -132,7 +132,7 @@ to understand the write-transaction rule.
 ## Reproducing
 
 ```
-cd "D:\FRIDAY Universe\IntelX"
+cd "FRIDAY_UNIVERSE_HOME\IntelX"
 python scripts/probe_failed_run_terminal.py                  # 2/2, exit 0
 python scripts/conc_loop.py 30                               # 22/30 (4-test instrument; 17/30 corrected)
 ```

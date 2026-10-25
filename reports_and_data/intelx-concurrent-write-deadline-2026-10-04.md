@@ -155,7 +155,7 @@ all writes. **No test was weakened or changed to accommodate this.**
 ## Reproducing
 
 ```
-cd "D:\FRIDAY Universe/IntelX"
+cd "FRIDAY_UNIVERSE_HOME/IntelX"
 python scripts/conc_loop.py 14                 # determinism over the two concurrency files
 python scripts/diag_gap_owner.py               # intra-transaction gaps, attributed to a stage
 python scripts/live_concurrent_verify.py 5 2   # live 5-concurrent submissions + terminal states
