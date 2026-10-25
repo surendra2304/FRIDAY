@@ -65,6 +65,22 @@ _intelx_deep = _load("orch_intelx_deep", "IntelX/intelx/services/real_deep_threa
 _futuris_deep = _load("orch_futuris_deep", "Futuris/futuris/core/real_deep_forecast.py")
 _vyralx_deep = _load("orch_vyralx_deep", "VyralX/app/services/real_deep_content.py")
 
+# Deep assets that now back real agent capabilities (not just standalone modules).
+_sentinel_cyber = _load("orch_sentinel_cyber", "Sentinel/app/services/real_cyber_skills.py")
+_memora_viking = _load("orch_memora_viking", "Memora/core/memory/real_viking_context.py")
+_inference_science = _load("orch_inference_science", "Inference/app/agents/real_scientific_skills.py")
+_vyralx_diagram = _load("orch_vyralx_diagram", "VyralX/app/agents/real_diagram_design.py")
+
+_CORE_SRC = str(ROOT / "FRIDAY" / "apps" / "core" / "src")
+if _CORE_SRC not in sys.path:
+    sys.path.insert(0, _CORE_SRC)
+from friday_core.agent_runtime import FridayAgentRuntime  # noqa: E402
+
+
+def _runtime() -> "FridayAgentRuntime":
+    """A cache-free runtime factory so workflows never share mutable state."""
+    return FridayAgentRuntime()
+
 
 # ── Deep Cross-Agent Workflow Engine ──────────────────────────────────────
 
@@ -124,6 +140,39 @@ class DeepWorkflowEngine:
             status="completed", duration_ms=0.0, timestamp=time.time(),
         ))
 
+        # Step 2b: Cybersecurity-skills crosswalk — map detected threats to
+        # ATT&CK techniques, severity and a phased response playbook.
+        cyber_engine = _sentinel_cyber.CyberSkillsEngine()
+        events = []
+        for index, threat in enumerate(threats[:10], start=1):
+            description = str(getattr(threat, "description", threat))
+            technique = getattr(threat, "technique", "") or ""
+            events.append({
+                "timestamp": f"2026-01-01T00:00:{index:02d}",
+                "description": description,
+                "technique": technique or _guess_technique(description),
+                "host": "unknown",
+            })
+        triage = cyber_engine.triage(
+            f"security review of {len(log_entries)} log line(s)", events
+        )
+        playbook = cyber_engine.playbook(
+            f"Respond to {triage['severity']['severity']} severity incident",
+            triage["techniques"][:6] or ["T1071"],
+        )
+        steps.append(DeepWorkflowStep(
+            step_id=f"step_{len(steps)+1}", agent="Sentinel", layer="deep",
+            action="cyber_skill_triage",
+            result={
+                "severity": triage["severity"]["severity"],
+                "score": triage["severity"]["score"],
+                "techniques": triage["techniques"][:6],
+                "tactics": triage["crosswalk"]["tactics"],
+                "playbook_steps": len(playbook["steps"]),
+            },
+            status="completed", duration_ms=0.0, timestamp=time.time(),
+        ))
+
         # Step 3: Deep vulnerability management
         vuln_engine = _sentinel_deep.VulnerabilityManagementSystem()
         for f in findings:
@@ -171,8 +220,29 @@ class DeepWorkflowEngine:
             status="completed", duration_ms=0.0, timestamp=time.time(),
         ))
 
+        # Step 6: Harness verification of the workflow outcome before shipping it.
+        runtime = _runtime()
+        verification = runtime.verify(
+            "\n".join(f"{step.action}:{step.status}" for step in steps),
+            [
+                harness_check("all_steps_completed",
+                              lambda art: ("failed" not in art, "every step completed")),
+                harness_check("triage_present",
+                              lambda art: ("cyber_skill_triage" in art,
+                                           "cyber-skill triage ran")),
+            ],
+        )
+        steps.append(DeepWorkflowStep(
+            step_id=f"step_{len(steps)+1}", agent="FRIDAY", layer="deep",
+            action="harness_verification",
+            result={"passed": verification["passed"],
+                    "score": verification["final_score"]},
+            status="completed" if verification["passed"] else "failed",
+            duration_ms=0.0, timestamp=time.time(),
+        ))
+
         # Determine final action
-        if summary.get("open_critical", 0) > 0 or score < 50:
+        if summary.get("open_critical", 0) > 0 or score < 50 or not verification["passed"]:
             final = "Block Immediately"
         else:
             final = "Review"
@@ -358,6 +428,21 @@ class DeepWorkflowEngine:
             status="completed", duration_ms=0.0, timestamp=time.time(),
         ))
 
+        # Step 5: Diagram-design engine — ship one self-contained explainer
+        # diagram with the content pack.
+        diagram = _vyralx_diagram.DiagramDesignEngine().render_flowchart(
+            topic, ["Hook", "Proof", "Call to action"]
+        )
+        steps.append(DeepWorkflowStep(
+            step_id=f"step_{len(steps)+1}", agent="VyralX", layer="deep",
+            action="explainer_diagram",
+            result={"diagram_type": "flowchart", "nodes": diagram["nodes"],
+                    "bytes": len(diagram["html"]),
+                    "valid": diagram["validation"]["passed"]},
+            status="completed" if diagram["validation"]["passed"] else "failed",
+            duration_ms=0.0, timestamp=time.time(),
+        ))
+
         final = "Publish" if moderation.action == "approved" else "Do Not Publish"
 
         return DeepWorkflowResult(
@@ -366,6 +451,37 @@ class DeepWorkflowEngine:
             total_duration_ms=round((time.time() - t0) * 1000, 2),
             complexity="deep",
         )
+
+
+# ── Harness helpers ───────────────────────────────────────────────────────
+
+def harness_check(name, fn, weight=1.0):
+    """Build a harness verification Check without importing it at module scope."""
+    from friday_core.real_harness_engineering import Check
+
+    return Check(name, fn, weight=weight)
+
+
+TECHNIQUE_HINTS = [
+    ("ransom", "T1486"),
+    ("powershell", "T1059"),
+    ("phish", "T1566"),
+    ("login", "T1078"),
+    ("credential", "T1003"),
+    ("exfiltrat", "T1041"),
+    ("c2", "T1071"),
+    ("beacon", "T1071"),
+    ("privilege", "T1068"),
+]
+
+
+def _guess_technique(description: str) -> str:
+    """Map a free-text log finding to an ATT&CK technique for the crosswalk."""
+    lowered = (description or "").lower()
+    for needle, technique in TECHNIQUE_HINTS:
+        if needle in lowered:
+            return technique
+    return "T1071"
 
 
 # ── Universe Orchestrator ─────────────────────────────────────────────────
@@ -429,6 +545,26 @@ class FullUniverseOrchestrator:
         self._save_stats()
         return result
 
+    def run_web_task(self, pages: list[dict[str, Any]], goal: str) -> dict[str, Any]:
+        """Drive the browser automation engine from the orchestrator."""
+        runtime = _runtime()
+        result = runtime.browse(pages, goal)
+        self._stats["total_workflows"] += 1
+        self._stats["successful_workflows"] += 1 if result.get("success") else 0
+        self._save_stats()
+        return result
+
+    def run_guarded_task(self, task: str, steps: list[dict[str, Any]],
+                         files: dict[str, str] | None = None) -> dict[str, Any]:
+        """Execute a tool plan under FRIDAY's permission gate and verification."""
+        runtime = FridayAgentRuntime(workspace=files or {})
+        result = runtime.execute(task, steps)
+        self._stats["total_workflows"] += 1
+        self._stats["total_steps"] += len(result.observations)
+        self._stats["successful_workflows"] += 1 if result.ok else 0
+        self._save_stats()
+        return result.as_dict()
+
     def get_universe_dashboard(self) -> dict[str, Any]:
         """Get universe dashboard with all agent stats."""
         return {
@@ -436,14 +572,14 @@ class FullUniverseOrchestrator:
             "layers": ["basic", "advanced", "deep"],
             "agents": {
                 "Cortex": {"layers": 3, "engines": ["decision", "recommend", "predict", "foresight"]},
-                "Inference": {"layers": 2, "engines": ["bayesian", "causal", "argument"]},
-                "Memora": {"layers": 2, "engines": ["tf-idf", "knowledge_graph", "consolidation"]},
+                "Inference": {"layers": 2, "engines": ["bayesian", "causal", "argument", "scientific_skills"]},
+                "Memora": {"layers": 2, "engines": ["tf-idf", "knowledge_graph", "consolidation", "viking_context"]},
                 "Stratex": {"layers": 3, "engines": ["trading", "options", "sentiment", "orderflow", "patterns"]},
                 "Forge": {"layers": 3, "engines": ["code", "security_scan", "deps", "refactor"]},
-                "Sentinel": {"layers": 3, "engines": ["security", "threat_hunting", "vuln_mgmt", "compliance"]},
+                "Sentinel": {"layers": 3, "engines": ["security", "threat_hunting", "vuln_mgmt", "compliance", "cyber_skills"]},
                 "IntelX": {"layers": 3, "engines": ["threat_intel", "darkweb", "forecast", "quality", "disinfo"]},
                 "Futuris": {"layers": 3, "engines": ["forecast", "quantum", "ensemble", "stress"]},
-                "VyralX": {"layers": 3, "engines": ["content", "audience", "growth", "moderation"]},
+                "VyralX": {"layers": 3, "engines": ["content", "audience", "growth", "moderation", "diagram_design"]},
             },
             "workflows": self._stats,
             "total_api_endpoints": 54,  # 11 basic + 4 workflow + 21 deep + health/status

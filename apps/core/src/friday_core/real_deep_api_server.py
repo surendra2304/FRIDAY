@@ -41,10 +41,18 @@ intelx_deep = _load("deep_intelx_api", "IntelX/intelx/services/real_deep_threat_
 futuris_deep = _load("deep_futuris_api", "Futuris/futuris/core/real_deep_forecast.py")
 vyralx_deep = _load("deep_vyralx_api", "VyralX/app/services/real_deep_content.py")
 
+# FRIDAY's own agent runtime: harness loop + browser automation, mounted below.
+sys.path.insert(0, str(ROOT / "FRIDAY" / "apps" / "core" / "src"))
+from friday_core.agent_runtime import router as agent_runtime_router  # noqa: E402
+
 app = FastAPI(title="FRIDAY Universe Deep API", version="3.0.0",
               description="Deep layer-3 engines across all agents")
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+# Harness/browser capabilities: /v1/agent/capabilities, /plan, /execute,
+# /context/compact, /browser/run, /trace
+app.include_router(agent_runtime_router)
 
 
 # Request models
