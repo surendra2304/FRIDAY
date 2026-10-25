@@ -68,6 +68,30 @@ class UniverseDispatchBus:
         self._circuit_threshold: int = 3
         self._register_default_agents()
 
+    def resolve_agent_by_capability(self, capability: str) -> str | None:
+        """Resolve which agent owns a capability through the central registry."""
+        try:
+            from mesh.registry import AgentRegistry
+            reg = AgentRegistry()
+            manifests = reg.discover_by_capability(capability)
+            if manifests:
+                return manifests[0].name
+        except Exception:
+            pass
+        return None
+
+    def resolve_agent_by_intent(self, intent: str) -> str | None:
+        """Resolve which agent handles an intent through the central registry."""
+        try:
+            from mesh.registry import AgentRegistry
+            reg = AgentRegistry()
+            manifests = reg.discover_by_intent(intent)
+            if manifests:
+                return manifests[0].name
+        except Exception:
+            pass
+        return None
+
     def _register_default_agents(self) -> None:
         """Register default agent dispatch configurations."""
         agents = [

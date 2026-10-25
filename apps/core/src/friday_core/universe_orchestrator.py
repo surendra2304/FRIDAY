@@ -107,10 +107,35 @@ class DeepWorkflowResult:
     final_output: str
     total_duration_ms: float
     complexity: str  # basic, advanced, deep
+    recalled_context: list[dict[str, Any]] = field(default_factory=list)
+
+    def __getitem__(self, item: str) -> Any:
+        return getattr(self, item)
+
+    def get(self, item: str, default: Any = None) -> Any:
+        return getattr(self, item, default)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "workflow_id": self.workflow_id,
+            "workflow_type": self.workflow_type,
+            "status": self.status,
+            "steps": [s.__dict__ if hasattr(s, "__dict__") else s for s in self.steps],
+            "final_output": self.final_output,
+            "total_duration_ms": self.total_duration_ms,
+            "complexity": self.complexity,
+            "recalled_context": self.recalled_context,
+        }
 
 
 class DeepWorkflowEngine:
     """Real deep cross-agent workflow engine."""
+
+    def __init__(self) -> None:
+        self._sentinel_engine = getattr(self, "_sentinel_engine", None) or _sentinel.SecurityEngine()
+        self._cyber_engine = getattr(self, "_cyber_engine", None) or _sentinel_cyber.CyberSkillsEngine()
+        self._vuln_engine = getattr(self, "_vuln_engine", None) or _sentinel_deep.VulnerabilityManagementSystem()
+        self._intelx_engine = getattr(self, "_intelx_engine", None) or _intelx.ThreatIntelEngine()
 
     def run_full_security_workflow(
         self, code_text: str, log_entries: list[str]
@@ -119,6 +144,8 @@ class DeepWorkflowEngine:
         workflow_id = f"deep_sec_{uuid.uuid4().hex[:12]}"
         steps = []
         t0 = time.time()
+        runtime = _runtime()
+        recalled = runtime.recall_context(f"security workflow: {len(log_entries)} logs")
 
         # Step 1: Deep code security scan
         findings = _forge_deep.security_scanner.scan(code_text, "unknown")
@@ -130,7 +157,7 @@ class DeepWorkflowEngine:
         ))
 
         # Step 2: Sentinel threat scan
-        sentinel_engine = _sentinel.SecurityEngine()
+        sentinel_engine = getattr(self, "_sentinel_engine", None) or _sentinel.SecurityEngine()
         log_text = "\n".join(log_entries) if isinstance(log_entries, list) else str(log_entries)
         threats = sentinel_engine.detect_threats(log_text)
         steps.append(DeepWorkflowStep(
@@ -142,7 +169,7 @@ class DeepWorkflowEngine:
 
         # Step 2b: Cybersecurity-skills crosswalk — map detected threats to
         # ATT&CK techniques, severity and a phased response playbook.
-        cyber_engine = _sentinel_cyber.CyberSkillsEngine()
+        cyber_engine = getattr(self, "_cyber_engine", None) or _sentinel_cyber.CyberSkillsEngine()
         events = []
         for index, threat in enumerate(threats[:10], start=1):
             description = str(getattr(threat, "description", threat))
@@ -174,7 +201,7 @@ class DeepWorkflowEngine:
         ))
 
         # Step 3: Deep vulnerability management
-        vuln_engine = _sentinel_deep.VulnerabilityManagementSystem()
+        vuln_engine = getattr(self, "_vuln_engine", None) or _sentinel_deep.VulnerabilityManagementSystem()
         for f in findings:
             if f.severity == "critical":
                 vuln_engine.add_vulnerability(
@@ -190,7 +217,7 @@ class DeepWorkflowEngine:
         ))
 
         # Step 4: IntelX deep threat intel
-        intelx_engine = _intelx.ThreatIntelEngine()
+        intelx_engine = getattr(self, "_intelx_engine", None) or _intelx.ThreatIntelEngine()
         if threats:
             for t in threats[:5]:
                 threat_desc = getattr(t, "description", "unknown")
@@ -236,10 +263,13 @@ class DeepWorkflowEngine:
             step_id=f"step_{len(steps)+1}", agent="FRIDAY", layer="deep",
             action="harness_verification",
             result={"passed": verification["passed"],
+                    "checks": verification.get("checks", []),
+                    "weight": verification.get("final_score", 1.0),
                     "score": verification["final_score"]},
             status="completed" if verification["passed"] else "failed",
             duration_ms=0.0, timestamp=time.time(),
         ))
+        runtime.commit_memory()
 
         # Determine final action
         if summary.get("open_critical", 0) > 0 or score < 50 or not verification["passed"]:
@@ -251,7 +281,7 @@ class DeepWorkflowEngine:
             workflow_id=workflow_id, workflow_type="full_security",
             status="completed", steps=steps, final_output=final,
             total_duration_ms=round((time.time() - t0) * 1000, 2),
-            complexity="deep",
+            complexity="deep", recalled_context=recalled,
         )
 
     def run_full_trading_workflow(
@@ -261,6 +291,8 @@ class DeepWorkflowEngine:
         workflow_id = f"deep_trade_{uuid.uuid4().hex[:12]}"
         steps = []
         t0 = time.time()
+        runtime = _runtime()
+        recalled = runtime.recall_context(f"trading workflow: {symbol}")
 
         # Step 1: Sentiment analysis (deep)
         sentiment = _stratex_deep.sentiment_engine.analyze(symbol, "Strong growth and positive market conditions")
@@ -307,13 +339,36 @@ class DeepWorkflowEngine:
             status="completed", duration_ms=0.0, timestamp=time.time(),
         ))
 
+        # Step 6: Harness verification & memory commit
+        verification = runtime.verify(
+            "\n".join(f"{step.action}:{step.status}" for step in steps),
+            [
+                harness_check("all_steps_completed",
+                              lambda art: ("failed" not in art, "every step completed")),
+                harness_check("pattern_and_forecast_present",
+                              lambda art: ("pattern_recognition" in art and "forecast" in art,
+                                           "pattern and forecast ran")),
+            ],
+        )
+        steps.append(DeepWorkflowStep(
+            step_id=f"step_{len(steps)+1}", agent="FRIDAY", layer="deep",
+            action="harness_verification",
+            result={"passed": verification["passed"],
+                    "checks": verification.get("checks", []),
+                    "weight": verification.get("final_score", 1.0),
+                    "score": verification["final_score"]},
+            status="completed" if verification["passed"] else "failed",
+            duration_ms=0.0, timestamp=time.time(),
+        ))
+        runtime.commit_memory()
+
         final = "Buy" if sentiment.sentiment_score > 0 and flow.signal == "bullish" else "Skip"
 
         return DeepWorkflowResult(
             workflow_id=workflow_id, workflow_type="full_trading",
             status="completed", steps=steps, final_output=final,
             total_duration_ms=round((time.time() - t0) * 1000, 2),
-            complexity="deep",
+            complexity="deep", recalled_context=recalled,
         )
 
     def run_full_intel_workflow(
@@ -323,6 +378,8 @@ class DeepWorkflowEngine:
         workflow_id = f"deep_intel_{uuid.uuid4().hex[:12]}"
         steps = []
         t0 = time.time()
+        runtime = _runtime()
+        recalled = runtime.recall_context("threat intelligence workflow")
 
         # Step 1: Quality evaluation (deep)
         quality = _intelx_deep.quality_evaluator.evaluate("workflow", indicators, [])
@@ -371,13 +428,36 @@ class DeepWorkflowEngine:
             status="completed", duration_ms=0.0, timestamp=time.time(),
         ))
 
+        # Step 5: Harness verification & memory commit
+        verification = runtime.verify(
+            "\n".join(f"{step.action}:{step.status}" for step in steps),
+            [
+                harness_check("all_steps_completed",
+                              lambda art: ("failed" not in art, "every step completed")),
+                harness_check("intel_quality_evaluated",
+                              lambda art: ("intel_quality_check" in art,
+                                           "intel quality check ran")),
+            ],
+        )
+        steps.append(DeepWorkflowStep(
+            step_id=f"step_{len(steps)+1}", agent="FRIDAY", layer="deep",
+            action="harness_verification",
+            result={"passed": verification["passed"],
+                    "checks": verification.get("checks", []),
+                    "weight": verification.get("final_score", 1.0),
+                    "score": verification["final_score"]},
+            status="completed" if verification["passed"] else "failed",
+            duration_ms=0.0, timestamp=time.time(),
+        ))
+        runtime.commit_memory()
+
         final = "Valid Intel" if quality.grade in ("A", "B") else "Low Quality Intel"
 
         return DeepWorkflowResult(
             workflow_id=workflow_id, workflow_type="full_intel",
             status="completed", steps=steps, final_output=final,
             total_duration_ms=round((time.time() - t0) * 1000, 2),
-            complexity="deep",
+            complexity="deep", recalled_context=recalled,
         )
 
     def run_full_content_workflow(
@@ -387,6 +467,8 @@ class DeepWorkflowEngine:
         workflow_id = f"deep_content_{uuid.uuid4().hex[:12]}"
         steps = []
         t0 = time.time()
+        runtime = _runtime()
+        recalled = runtime.recall_context(f"content workflow: {topic}")
 
         # Step 1: Audience intelligence (deep)
         segments = _vyralx_deep.audience_intel.analyze_audience(viewers)
@@ -445,11 +527,13 @@ class DeepWorkflowEngine:
 
         final = "Publish" if moderation.action == "approved" else "Do Not Publish"
 
+        runtime.commit_memory()
+
         return DeepWorkflowResult(
             workflow_id=workflow_id, workflow_type="full_content",
             status="completed", steps=steps, final_output=final,
             total_duration_ms=round((time.time() - t0) * 1000, 2),
-            complexity="deep",
+            complexity="deep", recalled_context=recalled,
         )
 
 
@@ -548,7 +632,9 @@ class FullUniverseOrchestrator:
     def run_web_task(self, pages: list[dict[str, Any]], goal: str) -> dict[str, Any]:
         """Drive the browser automation engine from the orchestrator."""
         runtime = _runtime()
+        recalled = runtime.recall_context(goal)
         result = runtime.browse(pages, goal)
+        result["recalled_context"] = recalled
         self._stats["total_workflows"] += 1
         self._stats["successful_workflows"] += 1 if result.get("success") else 0
         self._save_stats()
@@ -558,12 +644,15 @@ class FullUniverseOrchestrator:
                          files: dict[str, str] | None = None) -> dict[str, Any]:
         """Execute a tool plan under FRIDAY's permission gate and verification."""
         runtime = FridayAgentRuntime(workspace=files or {})
+        recalled = runtime.recall_context(task)
         result = runtime.execute(task, steps)
+        d = result.as_dict()
+        d["recalled_context"] = recalled
         self._stats["total_workflows"] += 1
         self._stats["total_steps"] += len(result.observations)
         self._stats["successful_workflows"] += 1 if result.ok else 0
         self._save_stats()
-        return result.as_dict()
+        return d
 
     def get_universe_dashboard(self) -> dict[str, Any]:
         """Get universe dashboard with all agent stats."""

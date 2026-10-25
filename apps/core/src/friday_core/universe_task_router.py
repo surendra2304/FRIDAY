@@ -56,6 +56,16 @@ class UniverseTaskRouter:
         self._capabilities: dict[str, AgentCapability] = {}
         self._tasks: dict[str, Task] = {}
         self._decisions: list[RoutingDecision] = []
+        self._load_from_registry()
+
+    def _load_from_registry(self) -> None:
+        try:
+            from mesh.registry import AgentRegistry
+            reg = AgentRegistry()
+            for m in reg.list_all():
+                self.register_agent(m.name, list(m.capabilities))
+        except Exception:
+            pass
 
     def register_agent(self, agent: str, capabilities: list[str],
                        success_rate: float = 0.8) -> AgentCapability:

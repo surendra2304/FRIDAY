@@ -133,9 +133,11 @@ class ExecutionStep:
 
     tool: str
     arguments: dict[str, Any] = field(default_factory=dict)
+    kind: str = "tool"
 
     def as_action(self) -> LoopAction:
-        return LoopAction(kind="tool", tool=self.tool, arguments=dict(self.arguments))
+        tool_name = "browser" if (self.kind == "browser" or self.tool in ("browser", "browse")) else self.tool
+        return LoopAction(kind="tool", tool=tool_name, arguments=dict(self.arguments))
 
 
 @dataclass
@@ -177,7 +179,12 @@ class FridayAgentRuntime:
         rules: Iterable[PermissionRule] | None = None,
     ) -> None:
         self.registry = default_registry(workspace or {})
-        self.gate = PermissionGate(rules, registry=self.registry)
+        from .real_harness_engineering import DEFAULT_RULES
+        default_rules = list(DEFAULT_RULES) + [
+            PermissionRule("browser", "allow", priority=5),
+            PermissionRule("browse", "allow", priority=5),
+        ]
+        self.gate = PermissionGate(rules if rules is not None else default_rules, registry=self.registry)
         self.approvals = _ApprovalLog()
         self.budget = budget or ContextBudget()
         self.state = StateStore()
@@ -186,6 +193,32 @@ class FridayAgentRuntime:
         self.guard = SensitiveDataGuard()
         self.memory = memory
         self._blueprint = HarnessBlueprint()
+        self._register_browser_tools()
+
+    def _register_browser_tools(self) -> None:
+        from .real_harness_engineering import ParamSpec, ToolSpec
+
+        def _browse_handler(goal: str = "", pages: list[dict[str, Any]] | None = None, start_url: str = "") -> str:
+            site_pages = pages or []
+            if not site_pages:
+                site_pages = [{
+                    "url": start_url or "https://web.internal/search",
+                    "title": "Search",
+                    "spec": {"tag": "body", "children": [{"tag": "h1", "text": "Results"}, {"tag": "p", "text": f"Found content for {goal or 'search'}"}]},
+                    "doc_height": 1000.0,
+                    "requires_auth": False,
+                }]
+            res = self.browse(site_pages, goal=goal or "search", start_url=start_url)
+            return f"browsed: {res.get('final_url', '')} - steps: {len(res.get('steps', []))}"
+
+        self.registry.register(
+            ToolSpec("browser", "Autonomous browser agent execution.", [ParamSpec("goal", required=False, default="search")], risk="low"),
+            _browse_handler,
+        )
+        self.registry.register(
+            ToolSpec("browse", "Autonomous browser agent execution.", [ParamSpec("goal", required=False, default="search")], risk="low"),
+            _browse_handler,
+        )
 
     # -- planning ---------------------------------------------------------
     def plan(self, goal: str, steps: Iterable[str | dict[str, Any]]) -> dict[str, Any]:
@@ -315,8 +348,11 @@ class FridayAgentRuntime:
     def _coerce(step: ExecutionStep | dict[str, Any]) -> ExecutionStep:
         if isinstance(step, ExecutionStep):
             return step
-        return ExecutionStep(tool=step.get("tool", ""),
-                             arguments=dict(step.get("arguments") or {}))
+        kind = step.get("kind", "browser" if step.get("tool") in ("browser", "browse") else "tool")
+        tool = step.get("tool", "browser" if kind == "browser" else "")
+        return ExecutionStep(tool=tool,
+                             arguments=dict(step.get("arguments") or {}),
+                             kind=kind)
 
     # -- memory -----------------------------------------------------------
     def commit_memory(self) -> dict[str, Any]:
@@ -450,9 +486,24 @@ if _ROUTER_AVAILABLE:
         return _RUNTIME.browse(pages, request.goal, start_url=request.start_url,
                                max_steps=request.max_steps)
 
+    class ApprovalResolveRequest(BaseModel):  # type: ignore[misc]
+        approved: bool = True
+        approver: str = "operator"
+
+    @router.post("/approvals/{request_id}")
+    def resolve_approval(request_id: str, request: ApprovalResolveRequest | None = None) -> dict[str, Any]:
+        approved = request.approved if request else True
+        approver = request.approver if request else "operator"
+        try:
+            return _RUNTIME.approvals.resolve(request_id, approved, approver)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=f"Request {request_id} not found") from exc
+
     @router.get("/trace")
     def trace() -> dict[str, Any]:
-        return _RUNTIME.tracer.trace.summary()
+        summary = _RUNTIME.tracer.trace.summary()
+        summary["pending_approvals"] = _RUNTIME.approvals.pending()
+        return summary
 
 else:  # pragma: no cover
     router = None
