@@ -19,6 +19,7 @@ import sys
 import importlib.util
 from typing import Any
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from pathlib import Path
@@ -370,3 +371,68 @@ def deep_moderation(req: ModerationRequest):
 def health_deep():
     return {"status": "healthy", "engines": 7, "layer": "deep",
             "version": "3.0.0"}
+
+
+_LANDING_GROUPS: list[tuple[str, list[str]]] = [
+    ("FRIDAY — agent harness + browser", [
+        "GET  /v1/agent/capabilities",
+        "POST /v1/agent/plan",
+        "POST /v1/agent/execute",
+        "POST /v1/agent/context/compact",
+        "POST /v1/agent/browser/run",
+        "GET  /v1/agent/trace/{trace_id}",
+    ]),
+    ("Cortex — decisions", ["POST /api/deep/recommend", "POST /api/deep/predict",
+                            "POST /api/deep/foresight"]),
+    ("Stratex — trading", ["POST /api/deep/sentiment", "POST /api/deep/orderflow",
+                           "POST /api/deep/patterns"]),
+    ("Forge — code", ["POST /api/deep/security-scan", "POST /api/deep/deps",
+                      "POST /api/deep/refactor"]),
+    ("Sentinel — security", ["POST /api/deep/vuln-mgmt", "POST /api/deep/compliance",
+                             "POST /api/deep/incidents"]),
+    ("IntelX — threat intel", ["POST /api/deep/threat-forecast",
+                               "POST /api/deep/intel-quality", "POST /api/deep/disinfo"]),
+    ("Futuris — forecasting", ["POST /api/deep/ensemble", "POST /api/deep/forecast",
+                               "POST /api/deep/stress"]),
+    ("VyralX — content", ["POST /api/deep/audience", "POST /api/deep/growth",
+                          "POST /api/deep/moderation"]),
+]
+
+
+@app.get("/", include_in_schema=False, response_class=HTMLResponse)
+def index() -> str:
+    """Human-readable index so the service root is not a bare 404."""
+    rows = "".join(
+        "<section><h2>{}</h2><ul>{}</ul></section>".format(
+            title,
+            "".join(f"<li><code>{ep}</code></li>" for ep in endpoints),
+        )
+        for title, endpoints in _LANDING_GROUPS
+    )
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FRIDAY Universe — Deep API</title>
+<style>
+ :root {{ color-scheme: light dark; }}
+ body {{ font: 15px/1.55 ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;
+        margin: 0 auto; max-width: 60rem; padding: 2.5rem 1.25rem 4rem; }}
+ h1 {{ font-size: 1.5rem; margin: 0 0 .25rem; }}
+ p.lede {{ margin: 0 0 2rem; opacity: .72; }}
+ section {{ border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+            border-radius: .65rem; padding: .85rem 1.1rem; margin-bottom: .9rem; }}
+ h2 {{ font-size: .95rem; margin: .15rem 0 .5rem; letter-spacing: .01em; }}
+ ul {{ margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: .4rem .9rem; }}
+ code {{ font-size: .82rem; }}
+ a {{ color: inherit; }}
+ nav a {{ margin-right: .9rem; }}
+</style></head>
+<body>
+<h1>FRIDAY Universe — Deep API</h1>
+<p class="lede">Layer-3 engines for nine agents plus FRIDAY's own harness and browser runtime.
+<nav>
+<a href="/docs">OpenAPI docs</a><a href="/health/deep">Health</a>
+<a href="/v1/agent/capabilities">Agent capabilities</a>
+</nav></p>
+{rows}
+</body></html>"""
