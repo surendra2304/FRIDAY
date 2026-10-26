@@ -37,7 +37,8 @@
 The dispatch bus defaults to Docker service DNS names on port 8000. Override individual endpoints with
 `FRIDAY_DISPATCH_<AGENT>_URL`, `FRIDAY_<AGENT>_URL`, or the legacy `<AGENT>_URL`.
 Configure credentials with `FRIDAY_DISPATCH_<AGENT>_API_KEY`, `FRIDAY_<AGENT>_API_KEY`, or
-`<AGENT>_API_KEY`. The bus sends configured credentials as `x-api-key`. Agent-specific action
+`<AGENT>_API_KEY`. The default credential header is `x-api-key`; override it per agent with
+`FRIDAY_DISPATCH_<AGENT>_AUTH_HEADER`. Agent-specific action
 routes can be set with `FRIDAY_DISPATCH_<AGENT>_ACTION_PATH`, using `{action}` as the path placeholder.
 
 A dispatch response with HTTP 202, or a response body reporting `accepted`, `queued`, `pending`,
