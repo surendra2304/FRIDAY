@@ -123,9 +123,12 @@ class UniverseDispatchBus:
             auth_header = os.getenv(
                 f"FRIDAY_DISPATCH_{key}_AUTH_HEADER", "x-api-key"
             ).strip() or "x-api-key"
+            default_action_path = (
+                "/api/v1/tasks" if service == "vyralx"
+                else f"/agent/{service}/{{action}}"
+            )
             action_path = os.getenv(
-                f"FRIDAY_DISPATCH_{key}_ACTION_PATH",
-                f"/agent/{service}/{{action}}",
+                f"FRIDAY_DISPATCH_{key}_ACTION_PATH", default_action_path,
             )
             self.register_agent(
                 name, base, f"{base}/health", api_key=api_key,
@@ -157,6 +160,18 @@ class UniverseDispatchBus:
     def _headers(config: AgentDispatchConfig) -> dict[str, str]:
         """Attach a configured service credential when present."""
         return {config.auth_header: config.api_key} if config.api_key else {}
+
+    @staticmethod
+    def _request_payload(envelope: TaskEnvelope, config: AgentDispatchConfig) -> dict[str, Any]:
+        """Adapt FRIDAY's task envelope to VyralX's documented durable task API."""
+        if config.agent_name.lower() == "vyralx" and config.action_path.rstrip("/") == "/api/v1/tasks":
+            return {
+                "task_id": envelope.task_id,
+                "task_type": envelope.action,
+                "input": envelope.payload,
+                "correlation_id": envelope.task_id,
+            }
+        return envelope.payload
 
     @staticmethod
     def _receipt_for_response(envelope: TaskEnvelope, response: httpx.Response) -> TaskReceipt | None:
@@ -215,7 +230,7 @@ class UniverseDispatchBus:
             try:
                 async with httpx.AsyncClient(timeout=timeout) as client:
                     resp = await client.post(
-                        url, json=envelope.payload, headers=self._headers(config)
+                        url, json=self._request_payload(envelope, config), headers=self._headers(config)
                     )
                     receipt = self._receipt_for_response(envelope, resp)
                     if receipt is not None:
@@ -301,7 +316,7 @@ class UniverseDispatchBus:
             envelope.retry_count = attempt
             try:
                 resp = httpx.post(
-                    url, json=envelope.payload, timeout=timeout,
+                    url, json=self._request_payload(envelope, config), timeout=timeout,
                     headers=self._headers(config),
                 )
                 receipt = self._receipt_for_response(envelope, resp)
