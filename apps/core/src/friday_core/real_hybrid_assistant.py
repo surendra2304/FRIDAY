@@ -75,3 +75,50 @@ class HybridAssistantEngine:
                 self.history = self.history[-2 * self.history_turns:] if self.history_turns else []
                 return AssistantReply(answer.strip(), "cloud", model)
         return AssistantReply("Cloud unavailable; registered local actions remain available.", "fallback")
+
+
+class CloudProviderError(RuntimeError):
+    """Sanitized transport error retaining retry metadata, never credentials."""
+
+    def __init__(self, status_code: int, headers: dict[str, str]) -> None:
+        super().__init__(f"Cloud provider HTTP {status_code}")
+        self.status_code = status_code
+        self.headers = headers
+
+
+class GroqChatProvider:
+    """Actual stdlib HTTP provider for Jarvis-style Groq chat completion.
+
+    Explicit opt-in via GROQ_API_KEY; never sends supplied research text or market
+    observations. Only the conversational question/history reaches the provider.
+    """
+
+    def __init__(self, api_key: str, timeout: float = 15) -> None:
+        if not api_key.strip() or timeout <= 0 or not math.isfinite(timeout):
+            raise ValueError("API key and finite positive timeout required")
+        self._api_key = api_key.strip()
+        self.timeout = timeout
+
+    def __call__(self, model: str, messages: list[dict[str, str]]) -> str:
+        import json
+        from urllib.request import Request, urlopen
+        from urllib.error import HTTPError
+        request = Request("https://api.groq.com/openai/v1/chat/completions",
+            data=json.dumps({"model": model, "messages": messages, "max_tokens": 350,
+                             "temperature": 0.6}).encode(),
+            headers={"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"},
+            method="POST")
+        try:
+            with urlopen(request, timeout=self.timeout) as response:
+                raw = response.read(1024 * 1024 + 1)
+                if len(raw) > 1024 * 1024:
+                    raise ValueError("cloud response exceeded size limit")
+                data = json.loads(raw)
+            answer = data["choices"][0]["message"]["content"]
+            if not isinstance(answer, str) or not answer.strip():
+                raise ValueError("empty cloud answer")
+            return answer.strip()
+        except HTTPError as error:
+            headers = {"Retry-After": error.headers.get("Retry-After", "60")} if error.headers else {}
+            error.close()
+            raise CloudProviderError(error.code, headers) from None

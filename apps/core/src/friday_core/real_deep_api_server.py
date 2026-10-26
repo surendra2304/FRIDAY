@@ -55,6 +55,11 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 # /context/compact, /browser/run, /trace
 app.include_router(agent_runtime_router)
 
+from friday_core.real_cross_agent_engine import CrossAgentEngine
+from friday_core.real_research_api import create_research_router
+research_engine = CrossAgentEngine(state_dir=str(ROOT / "FRIDAY" / ".data" / "research_api"))
+app.include_router(create_research_router(research_engine))
+
 
 # Request models
 class RecommendRequest(BaseModel):

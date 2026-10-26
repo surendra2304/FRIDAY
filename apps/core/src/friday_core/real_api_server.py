@@ -82,6 +82,9 @@ cross_engine = _cross.CrossAgentEngine(state_dir=_state_dir)
 
 app = FastAPI(title="FRIDAY Universe API", version="2.0.0")
 
+from friday_core.real_research_api import create_research_router
+app.include_router(create_research_router(cross_engine))
+
 # CORS for all origins (needed for preview environment)
 app.add_middleware(
     CORSMiddleware,
@@ -153,6 +156,7 @@ class ContentPredictRequest(BaseModel):
 
 
 class WorkflowRequest(BaseModel):
+    strategy: str = "sma_cross"
     symbol: str | None = None
     prices: list[float] | None = None
     code: str | None = None
@@ -214,12 +218,23 @@ async def memory_search(req: MemorySearchRequest):
 
 # ── Trading API ──────────────────────────────────────────────────────────
 
+@app.post("/api/trading/signals")
+async def trading_signals(req: TradingBacktestRequest):
+    """Signals from the same strategies used by Stratex backtests."""
+    from dataclasses import asdict
+    bars = [_stratex.PriceBar(i, p, p, p, p) for i, p in enumerate(req.prices)]
+    try:
+        return {"symbol": req.symbol, "strategy": req.strategy,
+                "signals": [asdict(s) for s in trading_engine.generate_signals(req.symbol, bars, req.strategy)]}
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+
+
 @app.post("/api/trading/backtest")
 async def trading_backtest(req: TradingBacktestRequest):
     """Run a backtest."""
-    from real_trading_engine import PriceBar
     bars = [
-        PriceBar(timestamp=i, open=p, high=p+0.5, low=p-0.5, close=p, volume=10000)
+        _stratex.PriceBar(timestamp=i, open=p, high=p+0.5, low=p-0.5, close=p, volume=10000)
         for i, p in enumerate(req.prices)
     ]
     result = trading_engine.backtest(req.symbol, bars, req.strategy, req.initial_capital)
@@ -313,7 +328,7 @@ async def workflow_trading(req: WorkflowRequest):
     """Run a trading workflow."""
     if not req.prices:
         raise HTTPException(status_code=400, detail="prices required")
-    result = cross_engine.run_trading_workflow(req.symbol or "TEST", req.prices)
+    result = cross_engine.run_trading_workflow(req.symbol or "TEST", req.prices, strategy=req.strategy)
     return {
         "workflow_id": result.workflow_id,
         "status": result.status,

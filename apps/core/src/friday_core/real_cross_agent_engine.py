@@ -105,9 +105,65 @@ class CrossAgentEngine:
             state_dir=f"{self._state_dir}/vyralx"
         )
 
+    def research_threats(self, documents: list[dict[str, str]], per_host_limit: int = 3) -> dict[str, Any]:
+        """IntelX evidence ingestion -> persistent Memora research summary."""
+        result = self._threat_intel.ingest_research(documents, per_host_limit)
+        report = result["report"]
+        memory = self._memory.store(
+            f"IntelX report {report['report_id']}: {report['summary']}",
+            agent_origin="IntelX", tags=["osint", "unverified"], importance=0.5)
+        result["memory_id"] = memory.memory_id
+        return result
+
+    def assistant_reply(self, query: str, market: dict[str, Any] | None = None,
+                        documents: list[dict[str, str]] | None = None,
+                        provider=None, models: list[str] | None = None) -> dict[str, Any]:
+        """Read-only local agent dispatch before optional cloud inference.
+
+        Context is explicit: no shell, browser execution or order placement.
+        API requests use no shared conversational history.
+        """
+        from dataclasses import asdict
+        from friday_core.real_hybrid_assistant import HybridAssistantEngine
+        import re
+        payload: dict[str, Any] = {}
+
+        def local(command):
+            if re.search(r"\b(market|stock|momentum|analyze)\b", command, re.I) and market is not None:
+                report = self._trading.analyze_momentum(**market)
+                payload["agent"] = "Stratex"
+                payload["analysis"] = asdict(report)
+                return f"{report.symbol}: {report.signal}; price {report.price}; change {report.percent_change:.2f}%."
+            if re.search(r"\b(research|osint|threat|investigate)\b", command, re.I) and documents is not None:
+                payload["agent"] = "IntelX"
+                payload["research"] = self.research_threats(documents)
+                return payload["research"]["report"]["summary"]
+            if command.lower() in {"status", "universe status"}:
+                payload["agent"] = "FRIDAY"
+                payload["status"] = self.get_universe_status()
+                return "FRIDAY Universe engine status retrieved."
+            return None
+
+        # A configured in-process provider can be attached once, preserving its
+        # cooldown across calls. No arbitrary endpoint or API key enters the API.
+        if not hasattr(self, "_assistant"):
+            import os
+            from friday_core.real_hybrid_assistant import GroqChatProvider
+            key = os.environ.get("GROQ_API_KEY", "").strip()
+            if provider is None and key:
+                provider = GroqChatProvider(key)
+                models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+            self._assistant = HybridAssistantEngine(models or [], provider, local, history_turns=0)
+        self._assistant.local_action = local
+        if provider is not None:
+            self._assistant.provider = provider
+            self._assistant.models = tuple(models or [])
+        reply = self._assistant.respond(query)
+        return {**asdict(reply), **payload}
+
     # ── Trading Workflow ────────────────────────────────────────────────────
 
-    def run_trading_workflow(self, symbol: str, price_data: list[float]) -> WorkflowResult:
+    def run_trading_workflow(self, symbol: str, price_data: list[float], strategy: str = "sma_cross") -> WorkflowResult:
         """Full trading workflow: Stratex -> Inference -> Memora -> Cortex."""
         workflow_id = f"wf_{uuid.uuid4().hex[:12]}"
         start = time.time()
@@ -124,7 +180,7 @@ class CrossAgentEngine:
             _stratex.PriceBar(timestamp=i, open=p, high=p+1, low=p-1, close=p, volume=10000)
             for i, p in enumerate(price_data)
         ]
-        signals = self._trading.generate_signals(symbol, bars, strategy="sma_cross")
+        signals = self._trading.generate_signals(symbol, bars, strategy=strategy)
         step1.status = "completed"
         step1.result = {"signal_count": len(signals), "signals": [str(s) for s in signals[:3]]}
         step1.completed_at = time.time()
@@ -137,7 +193,7 @@ class CrossAgentEngine:
             input_ref="s1",
             started_at=time.time(),
         )
-        bt_result = self._trading.backtest(symbol, bars, strategy="sma_cross", initial_capital=10000)
+        bt_result = self._trading.backtest(symbol, bars, strategy=strategy, initial_capital=10000)
         step2.status = "completed"
         step2.result = {
             "return_pct": bt_result.total_return_pct,
