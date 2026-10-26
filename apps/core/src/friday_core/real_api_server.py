@@ -32,6 +32,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from friday_core.real_engines_router import real_engines_router
 
 ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent.parent
 
@@ -81,6 +82,7 @@ content_engine = _vyralx.ContentEngine(state_dir=f"{_state_dir}/vyralx")
 cross_engine = _cross.CrossAgentEngine(state_dir=_state_dir)
 
 app = FastAPI(title="FRIDAY Universe API", version="2.0.0")
+app.include_router(real_engines_router)
 
 # CORS for all origins (needed for preview environment)
 app.add_middleware(
