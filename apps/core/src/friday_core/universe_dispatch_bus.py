@@ -58,6 +58,7 @@ class AgentDispatchConfig:
     consecutive_failures: int = 0
     last_success: float = 0.0
     api_key: str = ""
+    auth_header: str = "x-api-key"
     action_path: str = ""
 
 
@@ -119,24 +120,28 @@ class UniverseDispatchBus:
                 or os.getenv(f"{key}_API_KEY")
                 or ""
             )
+            auth_header = os.getenv(
+                f"FRIDAY_DISPATCH_{key}_AUTH_HEADER", "x-api-key"
+            ).strip() or "x-api-key"
             action_path = os.getenv(
                 f"FRIDAY_DISPATCH_{key}_ACTION_PATH",
                 f"/agent/{service}/{{action}}",
             )
             self.register_agent(
                 name, base, f"{base}/health", api_key=api_key,
-                action_path=action_path,
+                auth_header=auth_header, action_path=action_path,
             )
 
     def register_agent(self, agent_name: str, base_url: str,
                        health_url: str = "", timeout_sec: float = 30.0,
                        max_retries: int = 3, api_key: str = "",
+                       auth_header: str = "x-api-key",
                        action_path: str = "") -> AgentDispatchConfig:
         """Register an agent with its endpoint and optional credential."""
         config = AgentDispatchConfig(
             agent_name=agent_name, base_url=base_url,
             health_url=health_url, timeout_sec=timeout_sec, max_retries=max_retries,
-            api_key=api_key, action_path=action_path,
+            api_key=api_key, auth_header=auth_header, action_path=action_path,
         )
         self._configs[agent_name] = config
         return config
@@ -151,7 +156,7 @@ class UniverseDispatchBus:
     @staticmethod
     def _headers(config: AgentDispatchConfig) -> dict[str, str]:
         """Attach a configured service credential when present."""
-        return {"x-api-key": config.api_key} if config.api_key else {}
+        return {config.auth_header: config.api_key} if config.api_key else {}
 
     @staticmethod
     def _receipt_for_response(envelope: TaskEnvelope, response: httpx.Response) -> TaskReceipt | None:
