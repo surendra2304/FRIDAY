@@ -27,10 +27,22 @@
 ### Key Capabilities
 1. **Unified Multi-Provider AI Gateway**: Real-time cross-provider failover (`Groq` ➔ `Mistral` ➔ `OpenRouter` ➔ `AI Universe`) for sub-second text reasoning and tool calling.
 2. **Dedicated Voice & Multimodal Perception**: Dedicated Google Gemini Live API integration for full-duplex conversational voice, server-side Voice Activity Detection (VAD), and screen OCR.
-3. **Specialist Multi-Agent Delegation**: Orchestrates tasks across 8 specialized containerized peer agents via the internal `friday_mesh` network.
+3. **Specialist Multi-Agent Delegation**: Orchestrates tasks across 9 specialized containerized peer agents via the internal `friday_mesh` network.
 4. **FastMCP Server**: Standardized Model Context Protocol server exposing system tools, terminal execution, and device control.
 5. **Universal Computer Control**: Native Win32 UI automation, application lifecycle management, and Android ADB device abstraction.
 6. **Standing-Mandate Autonomy**: Signed, cryptographic self-repair and diagnostic loops capable of fixing codebase errors in sandboxes before deployment.
+
+## Dispatch configuration and task states
+
+The dispatch bus defaults to Docker service DNS names on port 8000. Override individual endpoints with
+`FRIDAY_DISPATCH_<AGENT>_URL`, `FRIDAY_<AGENT>_URL`, or the legacy `<AGENT>_URL`.
+Configure credentials with `FRIDAY_DISPATCH_<AGENT>_API_KEY`, `FRIDAY_<AGENT>_API_KEY`, or
+`<AGENT>_API_KEY`. The bus sends configured credentials as `x-api-key`. Agent-specific action
+routes can be set with `FRIDAY_DISPATCH_<AGENT>_ACTION_PATH`, using `{action}` as the path placeholder.
+
+A dispatch response with HTTP 202, or a response body reporting `accepted`, `queued`, `pending`,
+or `running`, is recorded as `accepted`. FRIDAY must query the agent's own task status API before
+claiming that such work is complete. A synchronous success response is recorded as `completed`.
 
 ### Core Architecture & Mesh Flow
 ```mermaid
@@ -57,6 +69,7 @@ flowchart TD
         Memora[Memora :8000\nEpisodic Memory]
         Sentinel[Sentinel :8000\nSecurity Watchdog]
         Stratex[Stratex :8000\nAlgorithmic Trading]
+        VyralX[VyralX :8000\nVideo Production & Governed Publishing]
     end
 
     Resilience -->|Async HTTP / Keep-Alive| Cortex
@@ -67,6 +80,7 @@ flowchart TD
     Resilience -->|Async HTTP / Keep-Alive| Memora
     Resilience -->|Async HTTP / Keep-Alive| Sentinel
     Resilience -->|Async HTTP / Keep-Alive| Stratex
+    Resilience -->|Authenticated task API| VyralX
 ```
 
 ---
