@@ -547,4 +547,7 @@ def create_research_router(engine: Any) -> APIRouter:
         router.add_event_handler("startup", start_business_scheduler)
         router.add_event_handler("shutdown", stop_business_scheduler)
 
+    # Keep the established APIs stable while exposing the new workplace contract.
+    from .real_capability_api import create_capability_router
+    router.include_router(create_capability_router(engine), prefix="/v2")
     return router

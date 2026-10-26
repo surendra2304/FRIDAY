@@ -798,6 +798,12 @@ async def status():
     return cross_engine.get_universe_status()
 
 
+@app.get("/", include_in_schema=False)
+async def assistant_home():
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse("/v2/assistant")
+
+
 @app.get("/health")
 async def health():
     """Health check."""

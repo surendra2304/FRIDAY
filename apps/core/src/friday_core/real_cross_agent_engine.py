@@ -74,6 +74,8 @@ class CrossAgentEngine:
     """Real cross-agent engine that orchestrates multiple agents working together."""
 
     def __init__(self, state_dir: str | None = None) -> None:
+        from threading import RLock
+        self._capability_lock = RLock()
         self._state_dir = state_dir or str(ROOT / "FRIDAY" / ".data" / "cross_agent")
         Path(self._state_dir).mkdir(parents=True, exist_ok=True)
 
@@ -105,6 +107,14 @@ class CrossAgentEngine:
         self._content = _vyralx.ContentEngine(
             state_dir=f"{self._state_dir}/vyralx"
         )
+
+    def capability_runtime(self):
+        """Versioned workplace capabilities, preserving the existing agent APIs."""
+        with self._capability_lock:
+            if not hasattr(self, "_capability_runtime"):
+                from friday_core.real_capability_runtime import AgentCapabilityRuntime
+                self._capability_runtime = AgentCapabilityRuntime(self)
+            return self._capability_runtime
 
     def local_action_engine(self):
         from friday_core.real_local_actions import LocalActionEngine
