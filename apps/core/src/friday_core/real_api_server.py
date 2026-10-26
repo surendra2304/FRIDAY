@@ -128,6 +128,11 @@ class TradingBacktestRequest(BaseModel):
     prices: list[float]
     strategy: str = "sma_cross"
     initial_capital: float = 10000.0
+    position_size_pct: float = 0.1
+    fee_pct: float = 0.001
+    slippage_pct: float = 0.0
+    stop_loss_pct: float | None = None
+    take_profit_pct: float | None = None
 
 
 class CodeAnalyzeRequest(BaseModel):
@@ -237,7 +242,12 @@ async def trading_backtest(req: TradingBacktestRequest):
         _stratex.PriceBar(timestamp=i, open=p, high=p+0.5, low=p-0.5, close=p, volume=10000)
         for i, p in enumerate(req.prices)
     ]
-    result = trading_engine.backtest(req.symbol, bars, req.strategy, req.initial_capital)
+    try:
+        result = trading_engine.backtest(req.symbol, bars, req.strategy, req.initial_capital,
+                                        req.position_size_pct, req.fee_pct, req.slippage_pct,
+                                        req.stop_loss_pct, req.take_profit_pct)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
     return {
         "symbol": result.symbol,
         "total_return_pct": result.total_return_pct,

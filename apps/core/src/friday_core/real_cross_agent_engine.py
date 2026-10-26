@@ -17,6 +17,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
+import json
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent.parent
@@ -105,9 +106,48 @@ class CrossAgentEngine:
             state_dir=f"{self._state_dir}/vyralx"
         )
 
-    def research_threats(self, documents: list[dict[str, str]], per_host_limit: int = 3) -> dict[str, Any]:
+    def local_action_engine(self):
+        from friday_core.real_local_actions import LocalActionEngine
+        import os
+        if not hasattr(self, "_local_actions"):
+            try:
+                apps = json.loads(os.environ.get("FRIDAY_ALLOWED_APPS", "{}"))
+                if not isinstance(apps, dict) or any(not isinstance(k, str) or not isinstance(v, list) or
+                        any(not isinstance(arg, str) or len(arg) > 500 for arg in v) for k,v in apps.items()):
+                    apps = {}
+            except (ValueError, TypeError):
+                apps = {}
+            self._local_actions = LocalActionEngine(self._state_dir, apps=apps,
+                mail_cache=os.environ.get("FRIDAY_MAIL_CACHE"))
+        return self._local_actions
+
+    def voice_engine(self, recognizer=None, synthesizer=None):
+        module = load_engine("VyralX/app/agents/real_assistant_voice.py", "friday_assistant_voice")
+        session_id = "voice_" + uuid.uuid4().hex
+        return module.AssistantVoiceEngine(
+            lambda query: self.assistant_reply(query, session_id=session_id), recognizer, synthesizer)
+
+    def business_ops_engine(self):
+        module = load_engine("FRIDAY/apps/core/src/friday_core/real_business_ops_engine.py", "friday_business_ops")
+        if not hasattr(self, "_business_ops"):
+            self._business_ops = module.BusinessOpsEngine(str(Path(self._state_dir) / "business_ops"))
+        return self._business_ops
+
+    def trading_coach(self):
+        return self._trading.coach_engine()
+
+    def investigation_engine(self, endpoints=None, collector=None):
+        """Full live IntelX research lifecycle, preserving Memora integration."""
+        if endpoints is None and collector is None:
+            if not hasattr(self, "_investigator"):
+                self._investigator = self._threat_intel.investigation_engine(ingest=self.research_threats)
+            return self._investigator
+        return self._threat_intel.investigation_engine(endpoints, collector, self.research_threats)
+
+    def research_threats(self, documents: list[dict[str, str]], per_host_limit: int = 3,
+                         allow_clearweb: bool = False) -> dict[str, Any]:
         """IntelX evidence ingestion -> persistent Memora research summary."""
-        result = self._threat_intel.ingest_research(documents, per_host_limit)
+        result = self._threat_intel.ingest_research(documents, per_host_limit, allow_clearweb)
         report = result["report"]
         memory = self._memory.store(
             f"IntelX report {report['report_id']}: {report['summary']}",
@@ -117,7 +157,10 @@ class CrossAgentEngine:
 
     def assistant_reply(self, query: str, market: dict[str, Any] | None = None,
                         documents: list[dict[str, str]] | None = None,
-                        provider=None, models: list[str] | None = None) -> dict[str, Any]:
+                        provider=None, models: list[str] | None = None,
+                        ohlcv_bars: list[dict[str, Any]] | None = None,
+                        business_data: dict[str, Any] | None = None,
+                        session_id: str | None = None) -> dict[str, Any]:
         """Read-only local agent dispatch before optional cloud inference.
 
         Context is explicit: no shell, browser execution or order placement.
@@ -133,6 +176,9 @@ class CrossAgentEngine:
                 report = self._trading.analyze_momentum(**market)
                 payload["agent"] = "Stratex"
                 payload["analysis"] = asdict(report)
+                if ohlcv_bars:
+                    bars = [_stratex.PriceBar(**bar) for bar in ohlcv_bars]
+                    payload["technical_review"] = asdict(self._trading.review_market(report.symbol, bars))
                 return f"{report.symbol}: {report.signal}; price {report.price}; change {report.percent_change:.2f}%."
             if re.search(r"\b(research|osint|threat|investigate)\b", command, re.I) and documents is not None:
                 payload["agent"] = "IntelX"
@@ -142,6 +188,40 @@ class CrossAgentEngine:
                 payload["agent"] = "FRIDAY"
                 payload["status"] = self.get_universe_status()
                 return "FRIDAY Universe engine status retrieved."
+            import os
+            if re.search(r"\b(business idea|startup idea|idea catalog|lead review|follow.?up|ad report|campaign report|ops sweep)\b", command, re.I):
+                ops = self.business_ops_engine()
+                if re.search(r"\b(idea|business idea|startup idea|catalog)\b", command, re.I):
+                    result = ops.recommend_ideas(command)
+                    payload["agent"] = "FRIDAY-Business"
+                    payload["business_ideas"] = result
+                    return ("Search the imported Drive idea cards. " + result.get("guidance", "Ranked ideas are attached."))
+                if business_data is None:
+                    payload["agent"] = "FRIDAY-Business"
+                    return "Provide a current, permissioned read-only business snapshot; FRIDAY will prepare drafts/reports, not send messages or edit records."
+                if "lead" in command.lower() or "follow" in command.lower():
+                    workflow = "lead_review"
+                elif "ad" in command.lower() or "campaign" in command.lower():
+                    workflow = "daily_ad_report"
+                else:
+                    workflow = "weekly_ops_sweep"
+                result = ops.run(workflow, business_data)
+                payload["agent"] = "FRIDAY-Business"
+                payload["business_workflow"] = asdict(result)
+                return f"{workflow.replace('_', ' ').title()} prepared from supplied records; nothing was sent or changed."
+            if re.search(r"\b(market|stock|nifty|sensex|crypto|bitcoin)\b", command, re.I) and market is None:
+                if os.environ.get("FRIDAY_LIVE_MARKETS") != "1":
+                    return "Live market lookup is disabled; supply market observations or enable FRIDAY_LIVE_MARKETS."
+                aliases = {"nifty": "^NSEI", "sensex": "^BSESN", "bitcoin": "BTC-USD"}
+                symbols = [symbol for name, symbol in aliases.items() if name in command.lower()]
+                payload["agent"] = "Stratex"
+                payload["market"] = self._trading.live_market_report(symbols or None)
+                return payload["market"]["briefing"]
+            planned = self.local_action_engine().plan(command)
+            if planned:
+                payload.update({k: v for k, v in planned.items() if k not in {"text", "source"}})
+                payload["agent"] = "FRIDAY"
+                return planned["text"]
             return None
 
         # A configured in-process provider can be attached once, preserving its
@@ -153,12 +233,13 @@ class CrossAgentEngine:
             if provider is None and key:
                 provider = GroqChatProvider(key)
                 models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
-            self._assistant = HybridAssistantEngine(models or [], provider, local, history_turns=0)
+            self._assistant = HybridAssistantEngine(models or [], provider, local,
+                                                   history_turns=0, session_history_turns=3)
         self._assistant.local_action = local
         if provider is not None:
             self._assistant.provider = provider
             self._assistant.models = tuple(models or [])
-        reply = self._assistant.respond(query)
+        reply = self._assistant.respond(query, session_id=session_id)
         return {**asdict(reply), **payload}
 
     # ── Trading Workflow ────────────────────────────────────────────────────
@@ -177,7 +258,7 @@ class CrossAgentEngine:
             started_at=time.time(),
         )
         bars = [
-            _stratex.PriceBar(timestamp=i, open=p, high=p+1, low=p-1, close=p, volume=10000)
+            _stratex.PriceBar(timestamp=i, open=p, high=p+1, low=max(p-1,1e-12), close=p, volume=10000)
             for i, p in enumerate(price_data)
         ]
         signals = self._trading.generate_signals(symbol, bars, strategy=strategy)
