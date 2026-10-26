@@ -39,7 +39,7 @@ The dispatch bus defaults to Docker service DNS names on port 8000. Override ind
 Configure credentials with `FRIDAY_DISPATCH_<AGENT>_API_KEY`, `FRIDAY_<AGENT>_API_KEY`, or
 `<AGENT>_API_KEY`. The default credential header is `x-api-key`; override it per agent with
 `FRIDAY_DISPATCH_<AGENT>_AUTH_HEADER`. Agent-specific action
-routes can be set with `FRIDAY_DISPATCH_<AGENT>_ACTION_PATH`, using `{action}` as the path placeholder.
+routes can be set with `FRIDAY_DISPATCH_<AGENT>_ACTION_PATH`, using `{action}` as the path placeholder. VyralX defaults to its documented `/api/v1/tasks` envelope (`task_id`, `task_type`, `input`, and `correlation_id`); other agents retain configurable action routes.
 
 A dispatch response with HTTP 202, or a response body reporting `accepted`, `queued`, `pending`,
 or `running`, is recorded as `accepted`. FRIDAY must query the agent's own task status API before
