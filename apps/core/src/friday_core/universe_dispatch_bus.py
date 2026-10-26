@@ -181,6 +181,8 @@ class UniverseDispatchBus:
                 body = response.json()
             except (ValueError, TypeError):
                 body = {}
+            if not isinstance(body, dict):
+                body = {}
             return TaskReceipt(
                 task_id=envelope.task_id, agent=envelope.agent, status="accepted",
                 result=str(body.get("task_id", body.get("id", "accepted"))),
