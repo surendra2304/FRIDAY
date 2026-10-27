@@ -4,7 +4,6 @@ import time
 import random
 import subprocess
 import base64
-import urllib.request
 import oci
 
 SUBNET_ID = "ocid1.subnet.oc1.ap-hyderabad-1.aaaaaaaa2rox2pqtptjmmm6p6ddritbf6uxxa7zpeiicxwx6kbsydcfudibq"
@@ -12,28 +11,24 @@ UBUNTU_24_IMAGE = "ocid1.image.oc1.ap-hyderabad-1.aaaaaaaacx5cw6qxwnemznb2wojrfd
 UBUNTU_22_IMAGE = "ocid1.image.oc1.ap-hyderabad-1.aaaaaaaal66vxpbfui73cgdt2bzw7s2bs7blexelkda5ij7xbtnsct4qmqyq"
 SSH_KEY = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDsKkIMQ/GEBLSdYRPkvO6k1f8PJF/Xeva6qbEz2aUmE9DzWAg473x+tyH3iwSxYsg6j/jw/KZvnj8cqlSWYPq+93H88gyi5+etoXmL3Ej4bpQalSboL91HOqiVgeXtzx4XKtuizmY+w6osOlJJQiW0nFiHyeKzDFWfE02P4ljvIku7Fe3O2tu531qzzLBjzDWHWS9LRb5TvQ9f3rHZSnCXs4RiAXSj1fEyjjMOFcIzyfyqeORMM/3816Vv4eQ6/6hrx7V127s8f+14JKQJfykQryDdcOvKjLons+wm61/yMKbQgFASIHHTIPVE3ZRedkEQP1Q80BWh15wm9USmMkgP ssh-key-2026-10-13"
 
-DUCKDNS_DOMAIN = "friday-universe"
-DUCKDNS_TOKEN = "742e2800-6ad7-4f87-9c34-bcc9cfeaa414"
+# NOTE: This script must never change friday-universe.duckdns.org.
+# Production ingress is pinned to server 1 (140.245.208.100), which fronts all agents via Caddy.
+# A newly allocated ARM host is reported through the GitHub issue below; promoting it to public
+# ingress is a deliberate manual step, never an automatic side effect of winning capacity.
 
 def generate_cloud_init():
     """Generates a cloud-init bash script executed by Oracle on instance first boot."""
-    script = f"""#!/bin/bash
+    script = """#!/bin/bash
 set -e
 
-# 1. Update DuckDNS immediately upon acquiring IP
-curl -s "https://www.duckdns.org/update?domains={DUCKDNS_DOMAIN}&token={DUCKDNS_TOKEN}&ip=" || true
-
-# 2. Open firewall for Dokploy, Traefik, HTTP & HTTPS
+# 1. Open firewall for HTTP, HTTPS and the Dokploy dashboard port
 iptables -I INPUT 6 -m state --state NEW -p tcp --dport 80 -j ACCEPT || true
 iptables -I INPUT 6 -m state --state NEW -p tcp --dport 443 -j ACCEPT || true
 iptables -I INPUT 6 -m state --state NEW -p tcp --dport 3000 -j ACCEPT || true
 netfilter-persistent save || true
 
-# 3. Autonomous unattended Dokploy installation
+# 2. Autonomous unattended Dokploy installation
 curl -sSL https://dokploy.com/install.sh | sh || true
-
-# 4. Final DuckDNS check
-curl -s "https://www.duckdns.org/update?domains={DUCKDNS_DOMAIN}&token={DUCKDNS_TOKEN}&ip=" || true
 """
     return base64.b64encode(script.encode("utf-8")).decode("utf-8")
 
@@ -101,31 +96,18 @@ def resolve_instance_public_ip(network_client, compute_client, compartment_id, i
     print("[IP Assignment Pending]")
     return "Pending Public IP"
 
-def update_duckdns(public_ip=None):
-    """Updates DuckDNS to point to the newly acquired ARM public IP immediately."""
-    try:
-        url = f"https://www.duckdns.org/update?domains={DUCKDNS_DOMAIN}&token={DUCKDNS_TOKEN}"
-        if public_ip and public_ip != "Pending Public IP":
-            url += f"&ip={public_ip}"
-        req = urllib.request.urlopen(url, timeout=10)
-        res = req.read().decode("utf-8").strip()
-        print(f"🦆 DuckDNS updated: {res}")
-    except Exception as e:
-        print(f"⚠️ DuckDNS update notice: {e}")
-
 def notify_success(instance_id, ocpus, ram, public_ip):
-    """Logs markdown summary, updates DNS, and creates a GitHub notification issue."""
-    update_duckdns(public_ip)
-
+    """Logs markdown summary and creates a GitHub notification issue."""
     summary_md = f"""# 🎉 Oracle Ampere A1 Instance Claimed!
 
 - **Instance OCID**: `{instance_id}`
 - **Shape**: `VM.Standard.A1.Flex`
 - **Allocation**: {ocpus} OCPUs & {ram} GB RAM
 - **Public IP**: `{public_ip}`
-- **Domain**: `http://friday-universe.duckdns.org`
+- **Production Domain**: `http://friday-universe.duckdns.org` — unchanged, still served by server 1
 - **SSH Quick Connect**: `ssh -i C:\\Users\\Surendra\\.ssh\\friday_universe_oracle.key ubuntu@{public_ip}`
 - **Cloud-Init Status**: Cloud-init is automatically installing Dokploy and configuring firewall on first boot!
+- **Next Step**: Promote this host manually. DuckDNS is intentionally not updated by this workflow.
 - **Time**: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}
 """
     print(summary_md)
@@ -145,7 +127,9 @@ def notify_success(instance_id, ocpus, ram, public_ip):
             f"- **Public IP**: `{public_ip}`\n"
             f"- **OCPUs**: {ocpus}\n"
             f"- **RAM**: {ram} GB\n"
-            f"- **Domain**: `http://friday-universe.duckdns.org`\n\n"
+            f"- **Production Domain**: `http://friday-universe.duckdns.org` (unchanged, still on server 1)\n\n"
+            f"DuckDNS was deliberately **not** updated. Production ingress stays on server 1 until you\n"
+            f"choose to promote this host manually.\n\n"
             f"### SSH Quick Connect:\n"
             f"```bash\n"
             f"ssh -i C:\\Users\\Surendra\\.ssh\\friday_universe_oracle.key ubuntu@{public_ip}\n"
