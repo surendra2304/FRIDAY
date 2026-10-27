@@ -1969,14 +1969,14 @@ try:
     if _apps_core_path.is_dir() and str(_apps_core_path) not in sys.path:
         sys.path.insert(0, str(_apps_core_path))
     from friday_core.autonomous_decision_making import router as autonomous_decision_router
-    app.include_router(autonomous_decision_router, prefix="/api/v1")
+    app.include_router(autonomous_decision_router)  # routes already start with /api/v1
 except Exception as _e:
     logger.warning(f"Could not load autonomous_decision_making router: {_e}")
 
 # --- Agent Mesh Coordinator Integration ---
 try:
     from friday_core.agent_mesh_coordinator import router as mesh_coordinator_router
-    app.include_router(mesh_coordinator_router, prefix="/api/v1")
+    app.include_router(mesh_coordinator_router)  # routes already start with /api/v1
 except Exception as _e:
     logger.warning(f"Could not load agent_mesh_coordinator router: {_e}")
 
@@ -1990,21 +1990,22 @@ from mesh.unified_errors import router as unified_errors_router
 from mesh.self_improvement_loop import router as self_improvement_router
 from mesh.automated_consolidation import router as automated_consolidation_router
 
-app.include_router(universe_health_router, prefix="/api/v1")
-app.include_router(universe_status_router, prefix="/api/v1")
-app.include_router(cross_agent_context_router, prefix="/api/v1")
-app.include_router(adaptive_router_router, prefix="/api/v1")
-app.include_router(unified_errors_router, prefix="/api/v1")
-app.include_router(self_improvement_router, prefix="/api/v1")
-app.include_router(automated_consolidation_router, prefix="/api/v1")
+# These mesh routers declare absolute paths (/api/v1/mesh/...).
+app.include_router(universe_health_router)
+app.include_router(universe_status_router)
+app.include_router(cross_agent_context_router)
+app.include_router(adaptive_router_router)
+app.include_router(unified_errors_router)
+app.include_router(self_improvement_router)
+app.include_router(automated_consolidation_router)
 
 
 # --- Additional Mesh Module Integrations ---
 from mesh.performance_profiler import router as performance_profiler_router
 from mesh.universe_soak_test import router as universe_soak_test_router
 
-app.include_router(performance_profiler_router, prefix="/api/v1")
-app.include_router(universe_soak_test_router, prefix="/api/v1")
+app.include_router(performance_profiler_router)
+app.include_router(universe_soak_test_router)
 
 
 # --- FRIDAY Core Module Integrations ---
@@ -2014,10 +2015,10 @@ from friday_core.general_cognitive_coordinator import router as cognitive_coordi
 from friday.services.autonomous_problem_solver import router as problem_solver_router
 from friday.services.multi_agent_coordinator import router as coordinator_router
 
-app.include_router(laptop_operator_router, prefix="/api/v1")
-app.include_router(cognitive_coordinator_router, prefix="/api/v1")
-app.include_router(problem_solver_router, prefix="/api/v1")
-app.include_router(coordinator_router, prefix="/api/v1")
+app.include_router(laptop_operator_router)
+app.include_router(cognitive_coordinator_router)
+app.include_router(problem_solver_router)
+app.include_router(coordinator_router)
 
 # --- New FRIDAY Deep Module Integrations ---
 from friday_core.task_decomposition_engine import router as task_decomp_router
