@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  />
+  <title>FRIDAY · Agent Workplace</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font: 15px system-ui;
+      background: #080f18;
+      color: #dcebf5;
+    }
+    body {
+      margin: 0;
+    }
+    header {
+      padding: 24px 5%;
+      border-bottom: 1px solid #244456;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    h1 {
+      font-size: 24px;
+      letter-spacing: 5px;
+      margin: 0;
+      color: #70e4ef;
+    }
+    small {
+      color: #8ca6b9;
+    }
+    main {
+      max-width: 1250px;
+      margin: auto;
+      padding: 28px;
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 22px;
+    }
+    section {
+      background: #0e1b29;
+      border: 1px solid #244456;
+      border-radius: 14px;
+      padding: 22px;
+    }
+    h2 {
+      font-size: 17px;
+      margin-top: 0;
+    }
+    #chat {
+      height: 330px;
+      overflow: auto;
+      white-space: pre-wrap;
+    }
+    .bubble {
+      padding: 12px;
+      border-bottom: 1px solid #213547;
+    }
+    .user {
+      color: #8bf0cf;
+    }
+    form {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+    }
+    input,
+    textarea,
+    select,
+    button {
+      font: inherit;
+      background: #09131f;
+      color: #e3f6ff;
+      border: 1px solid #31546a;
+      border-radius: 7px;
+      padding: 10px;
+    }
+    input,
+    textarea {
+      min-width: 0;
+      flex: 1;
+    }
+    button {
+      cursor: pointer;
+      background: #163448;
+    }
+    button:hover {
+      background: #225169;
+    }
+    button:disabled {
+      opacity: 0.4;
+      cursor: wait;
+    }
+    pre {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font: 12px ui-monospace;
+    }
+    a {
+      color: #7be4d2;
+    }
+    #meter {
+      width: 100%;
+      accent-color: #71e9d1;
+    }
+    #quotes {
+      font-size: 13px;
+    }
+    .quote {
+      padding: 12px 0;
+      border-bottom: 1px solid #254052;
+    }
+    #research {
+      grid-column: 1/-1;
+    }
+    label {
+      display: block;
+      margin: 12px 0 6px;
+      color: #97b3c7;
+    }
+    .error {
+      color: #ffab9b;
+    }
+    .pill {
+      font-size: 12px;
+      color: #8ce9db;
+    }
+    #status {
+      max-width: 60ch;
+    }
+    .row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .full {
+      width: 100%;
+      box-sizing: border-box;
+    }
+    @media (max-width: 760px) {
+      main {
+        grid-template-columns: 1fr;
+        padding: 15px;
+      }
+      header {
+        gap: 20px;
+        align-items: start;
+      }
+      h1 {
+        font-size: 19px;
+      }
+      #chat {
+        height: 260px;
+      }
+    }
+  </style>
+  <header>
+    <div>
+      <h1>F R I D A Y</h1>
+      <small>Agent workplace · real engines, explicit permissions</small>
+    </div>
+    <div id="status" class="pill">Checking capabilities…</div>
+  </header>
+  <main>
+    <section>
+      <h2>Assistant <small>FRIDAY → Stratex / IntelX / VyralX</small></h2>
+      <div id="chat" aria-live="polite"></div>
+      <form id="ask">
+        <input
+          id="question"
+          aria-label="Command"
+          placeholder="Hey Friday, what time is it?"
+          required
+          maxlength="4000"
+        /><button>Send</button>
+      </form>
+      <div class="row" style="margin-top: 12px">
+        <button id="mic">Enable microphone</button
+        ><button id="stop" disabled>Stop</button
+        ><label
+          ><input type="checkbox" id="speak" checked /> Speak answers</label
+        >
+      </div>
+      <meter id="meter" min="0" max="0.3" value="0"></meter
+      ><small id="voiceStatus"
+        >Microphone off. Typed commands always work.</small
+      >
+      <div id="action"></div>
+    </section>
+    <section>
+      <h2>Market watchlist</h2>
+      <small
+        >Yahoo chart observations · cached quotes are labelled · signals are not
+        advice</small
+      >
+      <form id="watch">
+        <input
+          id="tickers"
+          aria-label="Tickers"
+          value="^NSEI,BTC-USD,NVDA"
+        /><button>Refresh</button>
+      </form>
+      <div id="quotes">No quotes loaded.</div>
+      <h2 style="margin-top: 24px">Capabilities</h2>
+      <pre id="diagnostics"></pre>
+    </section>
+    <section id="research">
+      <h2>IntelX investigation</h2>
+      <small
+        >Tor must be configured on the server. Research evidence is untrusted
+        and requires independent corroboration.</small
+      >
+      <form id="investigate">
+        <input
+          id="query"
+          aria-label="Research query"
+          placeholder="Organization or incident to investigate"
+          required
+          maxlength="1000"
+        /><select id="preset">
+          <option value="threat_intel">Threat intelligence</option>
+          <option value="ransomware_malware">Ransomware / malware</option>
+          <option value="corporate_espionage">Corporate exposure</option>
+          <option value="personal_identity">Identity exposure</option></select
+        ><button>Investigate</button>
+      </form>
+      <pre id="report">No investigation run.</pre>
+      <div id="reports"></div>
+    </section>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let capabilities = {},
+      chatSession = null,
+      voiceSession = null,
+      stream = null,
+      recognition = null,
+      audioContext = null,
+      timer = null,
+      playing = false,
+      currentAudio = null,
+      recorder = null,
+      parts = [];
+    async function api(path, body) {
+      const response = await fetch("/v2" + path, {
+        method: body === undefined ? "GET" : "POST",
+        headers:
+          body === undefined ? {} : { "Content-Type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      if (!response.ok) {
+        let error = await response
+          .json()
+          .catch(() => ({ detail: response.statusText }));
+        throw new Error(
+          typeof error.detail === "string"
+            ? error.detail
+            : JSON.stringify(error.detail),
+        );
+      }
+      return response.json();
+    }
+    function bubble(who, text) {
+      let div = document.createElement("div");
+      div.className = "bubble " + (who === "You" ? "user" : "");
+      div.textContent = who + ": " + text;
+      $("chat").append(div);
+      $("chat").scrollTop = $("chat").scrollHeight;
+    }
+    function silence() {
+      speechSynthesis.cancel();
+      if (currentAudio) {
+        currentAudio.pause();
+        URL.revokeObjectURL(currentAudio.src);
+        currentAudio = null;
+      }
+      playing = false;
+    }
+    async function speak(text) {
+      if (!$("speak").checked) return;
+      silence();
+      playing = true;
+      if (capabilities.speech?.tts) {
+        try {
+          const response = await fetch("/v2/api/voice/speak", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: text.slice(0, 4000) }),
+          });
+          if (!response.ok) throw new Error("voice unavailable");
+          currentAudio = new Audio(URL.createObjectURL(await response.blob()));
+          currentAudio.onended = () => {
+            playing = false;
+            URL.revokeObjectURL(currentAudio.src);
+          };
+          await currentAudio.play();
+          return;
+        } catch (error) {
+          $("voiceStatus").textContent =
+            "Server voice unavailable; using browser voice.";
+        }
+      }
+      let utterance = new SpeechSynthesisUtterance(text);
+      utterance.onend = () => (playing = false);
+      utterance.onerror = () => (playing = false);
+      speechSynthesis.speak(utterance);
+    }
+    function display(reply) {
+      bubble("FRIDAY", reply.text || JSON.stringify(reply));
+      $("action").replaceChildren();
+      let action = reply.action;
+      if (action?.payload?.url) {
+        let url = new URL(action.payload.url);
+        if (["https:", "http:"].includes(url.protocol)) {
+          let link = document.createElement("a");
+          link.href = url.href;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.textContent =
+            action.kind === "compose_message"
+              ? "Open message draft (not sent)"
+              : "Open " + action.target;
+          $("action").append(link);
+        }
+      } else if (action?.status === "pending") {
+        let note = document.createElement("p");
+        note.textContent =
+          "Approval required. Action ID: " +
+          action.id +
+          ". Approve from your trusted administrator client; no execution token is stored in this browser.";
+        $("action").append(note);
+      }
+      speak(reply.text || "");
+    }
+    $("ask").onsubmit = async (event) => {
+      event.preventDefault();
+      let query = $("question").value;
+      $("question").value = "";
+      bubble("You", query);
+      try {
+        display(
+          await api(
+            chatSession
+              ? "/api/assistant/sessions/" + chatSession
+              : "/api/assistant/respond",
+            chatSession ? { text: query } : { query },
+          ),
+        );
+      } catch (error) {
+        bubble("Error", error.message);
+      }
+    };
+    $("watch").onsubmit = async (event) => {
+      event.preventDefault();
+      $("quotes").textContent = "Loading quotes…";
+      try {
+        let result = await api("/api/trading/watchlist", {
+          symbols: $("tickers")
+            .value.split(",")
+            .map((v) => v.trim())
+            .filter(Boolean),
+        });
+        $("quotes").replaceChildren();
+        for (let row of result.results) {
+          let div = document.createElement("div");
+          div.className = "quote";
+          let s = row.snapshot;
+          div.textContent = s
+            ? `${s.name} · ${s.currency} ${s.price} · ${s.analysis.signal}${s.stale ? " · STALE CACHE" : ""}`
+            : `${row.symbol}: ${row.error}`;
+          $("quotes").append(div);
+        }
+      } catch (error) {
+        $("quotes").textContent = error.message;
+      }
+    };
+    async function history() {
+      try {
+        let reports = await api("/api/threat/investigations");
+        $("reports").replaceChildren();
+        for (let report of reports.slice(0, 10)) {
+          let link = document.createElement("a");
+          link.href =
+            "/v2/api/threat/investigations/" +
+            encodeURIComponent(report.id) +
+            "/export";
+          link.textContent = report.query + " · " + report.status;
+          link.style.display = "block";
+          $("reports").append(link);
+        }
+      } catch (error) {
+        $("reports").textContent = error.message;
+      }
+    }
+    $("investigate").onsubmit = async (event) => {
+      event.preventDefault();
+      $("report").textContent =
+        "Searching, reading and assembling cited evidence…";
+      try {
+        let result = await api("/api/threat/investigate", {
+          query: $("query").value,
+          preset: $("preset").value,
+        });
+        $("report").textContent =
+          "Status: " +
+          result.status +
+          "\n\n" +
+          result.summary +
+          "\n\n" +
+          (result.warnings || []).join("\n");
+        history();
+      } catch (error) {
+        $("report").textContent = error.message;
+      }
+    };
+    async function transcript(text) {
+      if (!voiceSession) return;
+      try {
+        let result = await api(
+          "/api/voice/sessions/" + voiceSession + "/transcript",
+          { text, at: performance.now() / 1000 },
+        );
+        if (result.status === "answered") {
+          silence();
+          bubble("You", result.utterance);
+          display(result.reply);
+        } else $("voiceStatus").textContent = result.status;
+      } catch (error) {
+        $("voiceStatus").textContent = error.message;
+      }
+    }
+    function startRecorder() {
+      if (
+        !stream ||
+        !capabilities.speech?.stt ||
+        recognition ||
+        !window.MediaRecorder
+      )
+        return;
+      parts = [];
+      recorder = new MediaRecorder(stream);
+      recorder.ondataavailable = (event) => {
+        if (event.data.size) parts.push(event.data);
+      };
+      recorder.onstop = async () => {
+        let blob = new Blob(parts, { type: recorder.mimeType });
+        if (stream) startRecorder();
+        if (blob.size > 4 * 1024 * 1024) {
+          $("voiceStatus").textContent =
+            "Audio segment too large; use a shorter utterance.";
+          return;
+        }
+        let reader = new FileReader();
+        reader.onload = async () => {
+          try {
+            let result = await api("/api/voice/transcribe", {
+              audio_base64: reader.result.split(",")[1],
+              media_type: blob.type.split(";")[0],
+            });
+            transcript(result.text);
+          } catch (error) {
+            $("voiceStatus").textContent = error.message;
+          }
+        };
+        reader.readAsDataURL(blob);
+      };
+      recorder.start();
+    }
+    $("mic").onclick = async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true },
+        });
+        voiceSession = (await api("/api/voice/sessions", {})).session_id;
+        audioContext = new AudioContext();
+        await audioContext.resume();
+        let analyser = audioContext.createAnalyser();
+        analyser.fftSize = 1024;
+        audioContext.createMediaStreamSource(stream).connect(analyser);
+        let samples = new Float32Array(1024),
+          busy = false;
+        timer = setInterval(async () => {
+          if (busy || !voiceSession) return;
+          busy = true;
+          analyser.getFloatTimeDomainData(samples);
+          try {
+            let frame = await api(
+              "/api/voice/sessions/" + voiceSession + "/frame",
+              {
+                samples: Array.from(samples),
+                at: performance.now() / 1000,
+                playback: playing,
+              },
+            );
+            $("meter").value = frame.energy;
+            $("voiceStatus").textContent =
+              frame.kind + (frame.clap ? " · clap wake" : "");
+            if (frame.barge_in) silence();
+            if (frame.kind === "speech_end" && recorder?.state === "recording")
+              recorder.stop();
+          } catch (error) {
+            $("voiceStatus").textContent = error.message;
+          } finally {
+            busy = false;
+          }
+        }, 100);
+        const Recognition =
+          window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (Recognition) {
+          recognition = new Recognition();
+          recognition.continuous = true;
+          recognition.interimResults = false;
+          recognition.onresult = (event) => {
+            for (let i = event.resultIndex; i < event.results.length; i++)
+              if (event.results[i].isFinal)
+                transcript(event.results[i][0].transcript);
+          };
+          recognition.onerror = (event) =>
+            ($("voiceStatus").textContent = "Recognition: " + event.error);
+          recognition.onend = () => {
+            if (stream)
+              try {
+                recognition.start();
+              } catch (error) {
+                $("voiceStatus").textContent = error.message;
+              }
+          };
+          recognition.start();
+        } else if (capabilities.speech?.stt) {
+          startRecorder();
+        } else {
+          $("voiceStatus").textContent =
+            "Speech recognition unavailable in this browser. Typed input remains available.";
+        }
+        $("mic").disabled = true;
+        $("stop").disabled = false;
+      } catch (error) {
+        $("voiceStatus").textContent = error.message;
+      }
+    };
+    $("stop").onclick = () => {
+      clearInterval(timer);
+      let old = stream;
+      stream = null;
+      voiceSession = null;
+      if (recognition) {
+        recognition.onend = null;
+        recognition.stop();
+        recognition = null;
+      }
+      if (recorder) {
+        recorder.onstop = null;
+        if (recorder.state !== "inactive") recorder.stop();
+        recorder = null;
+      }
+      if (old) old.getTracks().forEach((track) => track.stop());
+      if (audioContext) audioContext.close();
+      silence();
+      $("mic").disabled = false;
+      $("stop").disabled = true;
+      $("voiceStatus").textContent = "Microphone off.";
+    };
+    api("/api/assistant/capabilities")
+      .then((result) => {
+        capabilities = result;
+        $("diagnostics").textContent = JSON.stringify(result, null, 2);
+        $("status").textContent =
+          "Local-first · " +
+          (result.research_network
+            ? "Tor research enabled"
+            : "Tor research disabled");
+      })
+      .catch((error) => ($("status").textContent = error.message));
+    api("/api/assistant/sessions", {})
+      .then((result) => (chatSession = result.session_id))
+      .catch((error) => ($("status").textContent = error.message));
+    history();
+    bubble(
+      "FRIDAY",
+      "Ready. Try “open GitHub”, “what time is it”, “stock market”, or enable the microphone and say “Hey Friday”.",
+    );
+  </script>
+</html>
