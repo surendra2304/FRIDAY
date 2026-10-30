@@ -51,29 +51,13 @@ daily_goals_table = Table(
 
 
 def get_postgres_dsn() -> str | None:
-    """Resolve PostgreSQL asyncpg DSN with fallback to friday_db defaults."""
+    """Resolve the Oracle Autonomous Database DSN (historical function name)."""
     raw_url = os.getenv("ORACLE_CORE_ASYNC_URL") or os.getenv("DATABASE_URL") or os.getenv("FRIDAY_DATABASE_URL")
     if raw_url:
-        if raw_url.startswith("postgresql://"):
-            return raw_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-        elif raw_url.startswith("postgres://"):
-            return raw_url.replace("postgres://", "postgresql+asyncpg://", 1)
-        elif raw_url.startswith("oracle+oracledb://"):
-            return raw_url.replace("oracle+oracledb://", "oracle+oracledb_async://", 1)
-        elif raw_url.startswith("oracle://"):
-            return raw_url.replace("oracle://", "oracle+oracledb_async://", 1)
+        if raw_url.startswith("oracle://"):
+            return raw_url.replace("oracle://", "oracle+oracledb://", 1)
         return raw_url
-
-    host = os.getenv("POSTGRES_HOST") or os.getenv("FRIDAY_POSTGRES_HOST")
-    if not host:
-        return None
-
-    port = os.getenv("POSTGRES_PORT") or os.getenv("FRIDAY_POSTGRES_PORT") or "5432"
-    db = os.getenv("POSTGRES_DB") or os.getenv("FRIDAY_POSTGRES_DB") or "friday_db"
-    user = os.getenv("POSTGRES_USER") or os.getenv("FRIDAY_POSTGRES_USER") or "friday_user"
-    pw = os.getenv("POSTGRES_PASSWORD") or os.getenv("FRIDAY_POSTGRES_PASSWORD") or ""
-
-    return f"postgresql+asyncpg://{user}:{pw}@{host}:{port}/{db}"
+    return None
 
 
 @dataclass(frozen=True)
@@ -92,7 +76,9 @@ class DailyGoal:
 class DailyRhythmManager:
     """Manages daily focus objectives, morning briefings, and evening check-ins.
 
-    Persists into PostgreSQL (friday_db.daily_goals) with transparent SQLite fallback.
+    Persists into Oracle Autonomous Database (``FRIDAY.daily_goals``) when a DSN
+    is configured; an explicit ``db_path`` keeps SQLite available for isolated
+    tests only.
     """
 
     def __init__(
@@ -162,7 +148,7 @@ class DailyRhythmManager:
                     self.postgres_dsn,
                     echo=False,
                     pool_pre_ping=True,
-                    connect_args={"timeout": 2.0},
+                    connect_args={"tcp_connect_timeout": 2.0},
                 )
             except Exception as e:
                 logger.warning("Failed to create async engine for postgres: %s", e)

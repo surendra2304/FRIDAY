@@ -456,7 +456,7 @@ async def health_check() -> dict[str, Any]:
 @app.api_route("/ready", methods=["GET", "HEAD"])
 @app.api_route("/api/ready", methods=["GET", "HEAD"])
 async def readiness_check() -> JSONResponse:
-    """Readiness probe verifying local SQLite integrity and pre-flight readiness."""
+    """Readiness probe verifying the configured database backend and disk space."""
     status: dict[str, Any] = {
         "status": "ready",
         "ready": True,
@@ -465,22 +465,58 @@ async def readiness_check() -> JSONResponse:
         "canonical_name": "FRIDAY",
         "version": "2.0.0",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "database": "healthy",
+        "database": "unavailable",
+        "database_backend": "unconfigured",
         "mesh": "configured",
     }
-    try:
-        data_dir = Path("data")
-        data_dir.mkdir(parents=True, exist_ok=True)
-        probe_path = get_ephemeral_db_path("readiness_probe.db")
-        conn = connect_sqlite(probe_path, timeout=2.0)
-        conn.execute("CREATE TABLE IF NOT EXISTS _probe (id INTEGER PRIMARY KEY);")
-        conn.execute("INSERT OR REPLACE INTO _probe VALUES (1);")
-        conn.commit()
-        conn.close()
-    except Exception as exc:
+
+    settings_obj = get_settings()
+    dsn = getattr(settings_obj, "oracle_dsn", None)
+    backend = "unconfigured"
+    if dsn:
+        backend = "oracle"
+    else:
+        from friday.core.oracle import resolve_database_url
+
+        raw = resolve_database_url(getattr(settings_obj, "database_url", None)) or ""
+        lowered = raw.lower()
+        if lowered.startswith("sqlite"):
+            backend = "sqlite"
+        elif lowered.startswith(("postgresql", "postgres")):
+            backend = "postgresql"
+    status["database_backend"] = backend
+
+    db_status = "unavailable"
+    if dsn:
+        try:
+            from sqlalchemy import text
+
+            from friday.core.oracle import get_engine
+
+            engine = get_engine(dsn)
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1 FROM DUAL"))
+            db_status = "connected"
+        except Exception as exc:
+            status["database_error"] = type(exc).__name__
+    else:
+        # Local development only: production settings reject a non-Oracle backend.
+        try:
+            data_dir = Path("data")
+            data_dir.mkdir(parents=True, exist_ok=True)
+            probe_path = get_ephemeral_db_path("readiness_probe.db")
+            conn = connect_sqlite(probe_path, timeout=2.0)
+            conn.execute("CREATE TABLE IF NOT EXISTS _probe (id INTEGER PRIMARY KEY);")
+            conn.execute("INSERT OR REPLACE INTO _probe VALUES (1);")
+            conn.commit()
+            conn.close()
+            db_status = "connected"
+        except Exception as exc:
+            status["database_error"] = type(exc).__name__
+    status["database"] = db_status
+    if db_status != "connected":
         status["ready"] = False
         status["status"] = "not_ready"
-        status["database"] = f"unhealthy: {type(exc).__name__}"
 
     try:
         import shutil
@@ -501,6 +537,18 @@ async def readiness_check() -> JSONResponse:
         status["ready"] = False
         status["status"] = "not_ready"
         status["environment_issues"] = env_rep["issues"]
+
+    # Production readiness: non-Oracle backend must return 503
+    is_prod = False
+    try:
+        env_str = os.getenv("APP_ENV", os.getenv("ENVIRONMENT", "development"))
+        is_prod = str(env_str).lower() == "production"
+    except Exception:
+        pass
+    if is_prod and status.get("database_backend", "sqlite") != "oracle" and status.get("ready", False):
+        status["ready"] = False
+        status["status"] = "not_ready"
+        status["database_notice"] = f"Production requires Oracle backend; got {status.get('database_backend')}"
 
     status_code = 200 if status["ready"] else 503
     return JSONResponse(status_code=status_code, content=status)

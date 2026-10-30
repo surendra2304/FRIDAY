@@ -1,9 +1,17 @@
 """Execution Trace Checkpoint Persistence for FRIDAY Core.
 
-Persists distributed inter-agent execution traces, task receipts, retry telemetry,
-and multi-agent consensus checkpoints directly into `friday_db.execution_traces` in
-PostgreSQL via SQLAlchemy / asyncpg, with seamless local SQLite fallback for
-zero-downtime offline and desktop execution.
+Persists distributed inter-agent execution traces, task receipts, retry telemetry
+and multi-agent consensus checkpoints into Oracle Autonomous Database
+(``FRIDAY.execution_traces``) through the shared engine in
+:mod:`friday.core.oracle`.
+
+Backends:
+
+* Oracle is the default when no ``db_path`` is supplied. The engine is resolved
+  lazily so importing this module -- and the module-level ``trace_store``
+  singleton -- never opens a socket.
+* SQLite is still available by passing ``db_path`` explicitly (local development
+  and the existing unit tests).
 """
 
 from __future__ import annotations
@@ -11,11 +19,8 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import sqlite3
-import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Optional
 
 from sqlalchemy import (
@@ -26,16 +31,17 @@ from sqlalchemy import (
     String,
     Table,
     Text,
-    desc,
-    select,
+    insert,
 )
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
+from friday.core import oracle
 from friday.core.database import get_db_connection
+from friday.core.exceptions import PersistenceConfigError
 from friday.core.logging import get_logger
 
 logger = get_logger("agent.execution_trace")
 
+#: Legacy PostgreSQL/SQLite table description, kept for callers that import it.
 metadata = MetaData()
 execution_traces_table = Table(
     "execution_traces",
@@ -58,31 +64,33 @@ execution_traces_table = Table(
     Column("created_at", String(64), nullable=False, index=True),
 )
 
+#: Columns read from Oracle -- CLOB columns are suffixed to avoid reserved words.
+_ORACLE_SELECT = (
+    "SELECT id, trace_id, task_id, target_agent, action, status, consensus_status, "
+    "participating_agents_json, agreement_ratio, latency_ms, retry_count, "
+    "payload_summary, result_summary, error, receipt_json, created_at "
+    "FROM execution_traces"
+)
+
 
 def get_postgres_dsn() -> str | None:
-    """Resolve PostgreSQL asyncpg DSN with fallback to friday_db defaults."""
-    raw_url = os.getenv("ORACLE_CORE_ASYNC_URL") or os.getenv("DATABASE_URL") or os.getenv("FRIDAY_DATABASE_URL")
+    """Resolve the Oracle Autonomous Database DSN.
+
+    Kept under its historical name because tests and callers import it. Oracle
+    URLs are normalised to ``oracle+oracledb://``: SQLAlchemy 2.x serves sync and
+    async Oracle engines from that single dialect. PostgreSQL and SQLite are not
+    supported backends.
+    """
+    raw_url = (
+        os.getenv("ORACLE_CORE_ASYNC_URL")
+        or os.getenv("DATABASE_URL")
+        or os.getenv("FRIDAY_DATABASE_URL")
+    )
     if raw_url:
-        if raw_url.startswith("postgresql://"):
-            return raw_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-        elif raw_url.startswith("postgres://"):
-            return raw_url.replace("postgres://", "postgresql+asyncpg://", 1)
-        elif raw_url.startswith("oracle+oracledb://"):
-            return raw_url.replace("oracle+oracledb://", "oracle+oracledb_async://", 1)
-        elif raw_url.startswith("oracle://"):
-            return raw_url.replace("oracle://", "oracle+oracledb_async://", 1)
+        if raw_url.startswith("oracle://"):
+            return raw_url.replace("oracle://", "oracle+oracledb://", 1)
         return raw_url
-
-    host = os.getenv("POSTGRES_HOST") or os.getenv("FRIDAY_POSTGRES_HOST")
-    if not host:
-        return None
-
-    port = os.getenv("POSTGRES_PORT") or os.getenv("FRIDAY_POSTGRES_PORT") or "5432"
-    db = os.getenv("POSTGRES_DB") or os.getenv("FRIDAY_POSTGRES_DB") or "friday_db"
-    user = os.getenv("POSTGRES_USER") or os.getenv("FRIDAY_POSTGRES_USER") or "friday_user"
-    pw = os.getenv("POSTGRES_PASSWORD") or os.getenv("FRIDAY_POSTGRES_PASSWORD") or ""
-
-    return f"postgresql+asyncpg://{user}:{pw}@{host}:{port}/{db}"
+    return None
 
 
 @dataclass(frozen=True)
@@ -109,25 +117,53 @@ class ExecutionTraceCheckpoint:
 
 
 class ExecutionTraceStore:
-    """Manages persistent execution trace checkpoints in PostgreSQL & SQLite."""
+    """Manages persistent execution trace checkpoints in Oracle (or SQLite)."""
 
     def __init__(
         self,
         db_path: Optional[str] = None,
         postgres_dsn: Optional[str] = None,
         enable_postgres: bool = True,
+        *,
+        dsn: Optional[str] = None,
     ) -> None:
-        if not db_path:
-            from friday.core.database import get_ephemeral_db_path
-            db_path = get_ephemeral_db_path("traces.db")
         self.db_path = db_path
         self.enable_postgres = enable_postgres
         self._postgres_dsn = postgres_dsn or get_postgres_dsn()
-        self._engine: Optional[AsyncEngine] = None
-        self._postgres_available: Optional[bool] = None
+        self._backend = "sqlite" if db_path else "oracle"
+        self._oracle_engine: Any | None = None
+        self._oracle_dsn = dsn
+        self._oracle_disabled = False
         self._last_postgres_failure: float = 0.0
 
-        self._init_sqlite()
+        if db_path:
+            self._init_sqlite()
+
+    # ------------------------------------------------------------------
+    # Backend plumbing
+    # ------------------------------------------------------------------
+    @property
+    def backend(self) -> str:
+        """Active storage backend: ``oracle`` or ``sqlite``."""
+        return self._backend
+
+    def _ensure_oracle(self) -> Any | None:
+        """Resolve the shared Oracle engine lazily (never at import time)."""
+        if self._oracle_disabled:
+            return None
+        if self._oracle_engine is None:
+            try:
+                self._oracle_engine = oracle.get_engine(self._oracle_dsn)
+            except PersistenceConfigError:
+                if not oracle.ephemeral_backend_allowed():
+                    raise
+                logger.warning(
+                    "No Oracle DSN configured; execution traces are not persisted "
+                    "because this process is a test run."
+                )
+                self._oracle_disabled = True
+                return None
+        return self._oracle_engine
 
     def _init_sqlite(self) -> None:
         """Create execution_traces table in SQLite if it doesn't exist."""
@@ -162,37 +198,9 @@ class ExecutionTraceStore:
         except Exception as exc:
             logger.warning("Failed to initialize SQLite execution_traces: %s", exc)
 
-    async def _get_engine(self) -> Optional[AsyncEngine]:
-        """Lazy-initialize asyncpg engine for PostgreSQL."""
-        if not self.enable_postgres or not self._postgres_dsn:
-            return None
-
-        # Backoff for 60 seconds if PostgreSQL failed recently
-        if self._postgres_available is False:
-            if time.monotonic() - self._last_postgres_failure < 60.0:
-                return None
-
-        if self._engine is None:
-            try:
-                self._engine = create_async_engine(
-                    self._postgres_dsn,
-                    pool_pre_ping=True,
-                    pool_size=5,
-                    max_overflow=10,
-                    connect_args={"timeout": 5.0},
-                )
-                # Verify connection and ensure schema
-                async with self._engine.begin() as conn:
-                    await conn.run_sync(metadata.create_all)
-                self._postgres_available = True
-            except Exception as exc:
-                logger.warning("PostgreSQL connection to friday_db.execution_traces failed: %s", exc)
-                self._postgres_available = False
-                self._last_postgres_failure = time.monotonic()
-                return None
-
-        return self._engine
-
+    # ------------------------------------------------------------------
+    # Writes
+    # ------------------------------------------------------------------
     def _sync_sqlite_insert(self, cp: ExecutionTraceCheckpoint) -> int:
         """Insert trace checkpoint into SQLite synchronously."""
         try:
@@ -231,70 +239,58 @@ class ExecutionTraceStore:
             logger.warning("Failed to insert execution trace to SQLite: %s", exc)
             return 0
 
-    async def record_checkpoint_async(self, cp: ExecutionTraceCheckpoint) -> ExecutionTraceCheckpoint:
-        """Persist trace checkpoint to PostgreSQL if online, mirroring to SQLite."""
-        engine = await self._get_engine()
-        agents_json = json.dumps(cp.participating_agents)
-        pg_inserted_id = None
-
-        if engine is not None and self._postgres_available is not False:
-            try:
-                async with engine.begin() as conn:
-                    stmt = (
-                        execution_traces_table.insert()
-                        .values(
-                            trace_id=cp.trace_id,
-                            task_id=cp.task_id,
-                            target_agent=cp.target_agent,
-                            action=cp.action,
-                            status=cp.status,
-                            consensus_status=cp.consensus_status,
-                            participating_agents=agents_json,
-                            agreement_ratio=float(cp.agreement_ratio),
-                            latency_ms=int(cp.latency_ms),
-                            retry_count=int(cp.retry_count),
-                            payload_summary=cp.payload_summary,
-                            result_summary=cp.result_summary,
-                            error=cp.error,
-                            receipt_json=cp.receipt_json,
-                            created_at=cp.created_at,
-                        )
-                        .returning(execution_traces_table.c.id)
+    def _sync_oracle_insert(self, cp: ExecutionTraceCheckpoint) -> int:
+        """Insert a trace row into Oracle and return its identity value."""
+        engine = self._ensure_oracle()
+        if engine is None:
+            return 0
+        table = oracle.execution_traces_table
+        try:
+            with engine.begin() as conn:
+                result = conn.execute(
+                    insert(table)
+                    .values(
+                        trace_id=cp.trace_id,
+                        task_id=cp.task_id,
+                        target_agent=cp.target_agent,
+                        action=cp.action,
+                        status=cp.status,
+                        consensus_status=cp.consensus_status,
+                        participating_agents_json=json.dumps(cp.participating_agents),
+                        agreement_ratio=float(cp.agreement_ratio),
+                        latency_ms=int(cp.latency_ms),
+                        retry_count=int(cp.retry_count),
+                        payload_summary=oracle.nullif_empty(cp.payload_summary),
+                        result_summary=oracle.nullif_empty(cp.result_summary),
+                        error=oracle.nullif_empty(cp.error),
+                        receipt_json=cp.receipt_json,
+                        created_at=cp.created_at,
                     )
-                    res = await conn.execute(stmt)
-                    pg_inserted_id = res.scalar_one_or_none()
-                    self._postgres_available = True
-            except Exception as exc:
-                logger.warning("PostgreSQL record_checkpoint_async failed, falling back to SQLite: %s", exc)
-                self._postgres_available = False
-                self._last_postgres_failure = time.monotonic()
+                    .returning(table.c.id)
+                )
+                return int(result.scalar_one())
+        except Exception as exc:
+            logger.warning("Failed to insert execution trace to Oracle: %s", exc)
+            return 0
 
-        sqlite_id = self._sync_sqlite_insert(cp)
-        assigned_id = pg_inserted_id if pg_inserted_id is not None else sqlite_id
-        return ExecutionTraceCheckpoint(
-            id=assigned_id,
-            trace_id=cp.trace_id,
-            task_id=cp.task_id,
-            target_agent=cp.target_agent,
-            action=cp.action,
-            status=cp.status,
-            consensus_status=cp.consensus_status,
-            participating_agents=cp.participating_agents,
-            agreement_ratio=cp.agreement_ratio,
-            latency_ms=cp.latency_ms,
-            retry_count=cp.retry_count,
-            payload_summary=cp.payload_summary,
-            result_summary=cp.result_summary,
-            error=cp.error,
-            receipt_json=cp.receipt_json,
-            created_at=cp.created_at,
-        )
+    def _sync_insert(self, cp: ExecutionTraceCheckpoint) -> int:
+        if self._backend == "sqlite":
+            return self._sync_sqlite_insert(cp)
+        return self._sync_oracle_insert(cp)
+
+    async def record_checkpoint_async(self, cp: ExecutionTraceCheckpoint) -> ExecutionTraceCheckpoint:
+        """Persist a trace checkpoint without blocking the event loop."""
+        inserted_id = await asyncio.to_thread(self._sync_insert, cp)
+        return self._with_id(cp, inserted_id)
 
     def record_checkpoint(self, cp: ExecutionTraceCheckpoint) -> ExecutionTraceCheckpoint:
-        """Synchronously persist to SQLite and queue non-blocking async PostgreSQL write."""
-        sqlite_id = self._sync_sqlite_insert(cp)
-        res_cp = ExecutionTraceCheckpoint(
-            id=sqlite_id,
+        """Persist a trace checkpoint synchronously."""
+        return self._with_id(cp, self._sync_insert(cp))
+
+    @staticmethod
+    def _with_id(cp: ExecutionTraceCheckpoint, assigned_id: int) -> ExecutionTraceCheckpoint:
+        return ExecutionTraceCheckpoint(
+            id=assigned_id or None,
             trace_id=cp.trace_id,
             task_id=cp.task_id,
             target_agent=cp.target_agent,
@@ -312,14 +308,54 @@ class ExecutionTraceStore:
             created_at=cp.created_at,
         )
 
+    # ------------------------------------------------------------------
+    # Reads
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _agents(raw: Any) -> list[str]:
         try:
-            loop = asyncio.get_running_loop()
-            if loop.is_running():
-                loop.create_task(self.record_checkpoint_async(cp))
-        except RuntimeError:
-            pass
+            parsed = json.loads(raw or "[]")
+        except Exception:
+            return []
+        return parsed if isinstance(parsed, list) else []
 
-        return res_cp
+    @classmethod
+    def _from_oracle_row(cls, row: dict[str, Any]) -> ExecutionTraceCheckpoint:
+        return cls._from_mapping(row, "participating_agents_json")
+
+    @classmethod
+    def _from_sqlite_row(cls, row: Any) -> ExecutionTraceCheckpoint:
+        return cls._from_mapping(row, "participating_agents")
+
+    @classmethod
+    def _from_mapping(cls, row: Any, agents_key: str) -> ExecutionTraceCheckpoint:
+        return ExecutionTraceCheckpoint(
+            id=row["id"],
+            trace_id=row["trace_id"],
+            task_id=row["task_id"],
+            target_agent=row["target_agent"],
+            action=row["action"],
+            status=row["status"],
+            consensus_status=row["consensus_status"],
+            participating_agents=cls._agents(row[agents_key]),
+            agreement_ratio=row["agreement_ratio"],
+            latency_ms=row["latency_ms"],
+            retry_count=row["retry_count"],
+            payload_summary=row["payload_summary"],
+            result_summary=row["result_summary"],
+            error=row["error"],
+            receipt_json=row["receipt_json"],
+            created_at=row["created_at"],
+        )
+
+    def _oracle_traces(self, where: str = "", params: dict[str, Any] | None = None, limit: int = 50) -> list[ExecutionTraceCheckpoint]:
+        engine = self._ensure_oracle()
+        if engine is None:
+            return []
+        sql = _ORACLE_SELECT + (f" WHERE {where}" if where else "")
+        sql += " ORDER BY id DESC FETCH FIRST :lim ROWS ONLY"
+        rows = oracle.query_all(sql, {**(params or {}), "lim": max(1, int(limit))}, engine=engine)
+        return [self._from_oracle_row(row) for row in rows]
 
     def get_recent_traces(
         self,
@@ -327,7 +363,22 @@ class ExecutionTraceStore:
         target_agent: Optional[str] = None,
         status: Optional[str] = None,
     ) -> list[ExecutionTraceCheckpoint]:
-        """Fetch recent execution traces from local store."""
+        """Fetch recent execution traces."""
+        if self._backend == "oracle":
+            try:
+                conditions: list[str] = []
+                params: dict[str, Any] = {}
+                if target_agent:
+                    conditions.append("target_agent = :agent")
+                    params["agent"] = target_agent
+                if status:
+                    conditions.append("status = :status")
+                    params["status"] = status
+                return self._oracle_traces(" AND ".join(conditions), params, limit)
+            except Exception as exc:
+                logger.warning("Failed to query execution_traces from Oracle: %s", exc)
+                return []
+
         traces: list[ExecutionTraceCheckpoint] = []
         try:
             with get_db_connection(self.db_path) as conn:
@@ -347,37 +398,21 @@ class ExecutionTraceStore:
 
                 cur = conn.execute(query, params)
                 for row in cur.fetchall():
-                    agents = []
-                    try:
-                        agents = json.loads(row["participating_agents"] or "[]")
-                    except Exception:
-                        pass
-                    traces.append(
-                        ExecutionTraceCheckpoint(
-                            id=row["id"],
-                            trace_id=row["trace_id"],
-                            task_id=row["task_id"],
-                            target_agent=row["target_agent"],
-                            action=row["action"],
-                            status=row["status"],
-                            consensus_status=row["consensus_status"],
-                            participating_agents=agents,
-                            agreement_ratio=row["agreement_ratio"],
-                            latency_ms=row["latency_ms"],
-                            retry_count=row["retry_count"],
-                            payload_summary=row["payload_summary"],
-                            result_summary=row["result_summary"],
-                            error=row["error"],
-                            receipt_json=row["receipt_json"],
-                            created_at=row["created_at"],
-                        )
-                    )
+                    traces.append(self._from_sqlite_row(row))
         except Exception as exc:
             logger.warning("Failed to query execution_traces from SQLite: %s", exc)
         return traces
 
     def get_trace_by_id(self, trace_id: str) -> Optional[ExecutionTraceCheckpoint]:
         """Fetch single trace checkpoint by trace_id."""
+        if self._backend == "oracle":
+            try:
+                rows = self._oracle_traces("trace_id = :tid", {"tid": trace_id}, limit=1)
+                return rows[0] if rows else None
+            except Exception as exc:
+                logger.warning("Failed to query trace_id %s from Oracle: %s", trace_id, exc)
+                return None
+
         try:
             with get_db_connection(self.db_path) as conn:
                 cur = conn.execute(
@@ -385,37 +420,20 @@ class ExecutionTraceStore:
                     (trace_id,),
                 )
                 row = cur.fetchone()
-                if not row:
-                    return None
-                agents = []
-                try:
-                    agents = json.loads(row["participating_agents"] or "[]")
-                except Exception:
-                    pass
-                return ExecutionTraceCheckpoint(
-                    id=row["id"],
-                    trace_id=row["trace_id"],
-                    task_id=row["task_id"],
-                    target_agent=row["target_agent"],
-                    action=row["action"],
-                    status=row["status"],
-                    consensus_status=row["consensus_status"],
-                    participating_agents=agents,
-                    agreement_ratio=row["agreement_ratio"],
-                    latency_ms=row["latency_ms"],
-                    retry_count=row["retry_count"],
-                    payload_summary=row["payload_summary"],
-                    result_summary=row["result_summary"],
-                    error=row["error"],
-                    receipt_json=row["receipt_json"],
-                    created_at=row["created_at"],
-                )
+                return self._from_sqlite_row(row) if row else None
         except Exception as exc:
             logger.warning("Failed to query trace_id %s: %s", trace_id, exc)
             return None
 
     def get_consensus_traces(self, limit: int = 50) -> list[ExecutionTraceCheckpoint]:
         """Fetch traces that were executed under multi-agent consensus routing."""
+        if self._backend == "oracle":
+            try:
+                return self._oracle_traces("consensus_status <> 'NONE'", None, limit)
+            except Exception as exc:
+                logger.warning("Failed to query consensus traces from Oracle: %s", exc)
+                return []
+
         traces: list[ExecutionTraceCheckpoint] = []
         try:
             with get_db_connection(self.db_path) as conn:
@@ -428,35 +446,12 @@ class ExecutionTraceStore:
                     (limit,),
                 )
                 for row in cur.fetchall():
-                    agents = []
-                    try:
-                        agents = json.loads(row["participating_agents"] or "[]")
-                    except Exception:
-                        pass
-                    traces.append(
-                        ExecutionTraceCheckpoint(
-                            id=row["id"],
-                            trace_id=row["trace_id"],
-                            task_id=row["task_id"],
-                            target_agent=row["target_agent"],
-                            action=row["action"],
-                            status=row["status"],
-                            consensus_status=row["consensus_status"],
-                            participating_agents=agents,
-                            agreement_ratio=row["agreement_ratio"],
-                            latency_ms=row["latency_ms"],
-                            retry_count=row["retry_count"],
-                            payload_summary=row["payload_summary"],
-                            result_summary=row["result_summary"],
-                            error=row["error"],
-                            receipt_json=row["receipt_json"],
-                            created_at=row["created_at"],
-                        )
-                    )
+                    traces.append(self._from_sqlite_row(row))
         except Exception as exc:
             logger.warning("Failed to query consensus traces: %s", exc)
         return traces
 
 
-# Global singleton instance
+# Global singleton instance. Construction is side-effect free: the Oracle engine
+# (and therefore the schema bootstrap) is resolved on first use.
 trace_store = ExecutionTraceStore()

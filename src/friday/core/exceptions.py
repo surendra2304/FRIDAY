@@ -190,9 +190,22 @@ class StateTransitionError(StateError):
 
 
 class PersistenceError(FridayError):
-    """Raised when SQLite, checkpoint store, or file memory operations fail."""
+    """Raised when the memory store, checkpoint store, or file memory operations fail."""
     default_code = ErrorCode.PERSISTENCE_ERROR
     default_user_message = "Data persistence or checkpointing failed."
+
+
+class PersistenceConfigError(PersistenceError):
+    """Raised when no usable database is configured (fail-closed at startup).
+
+    FRIDAY persists to Oracle Autonomous Database. A missing ``DATABASE_URL``
+    or a non-Oracle DSN is a configuration error, never a reason to fall back
+    to a local SQLite file.
+    """
+    default_user_message = (
+        "Persistence is not configured: set DATABASE_URL to an Oracle "
+        "oracle+oracledb:// DSN owned by the FRIDAY schema user."
+    )
 
 
 class MemoryError(PersistenceError):

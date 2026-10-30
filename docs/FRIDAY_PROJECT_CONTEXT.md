@@ -47,7 +47,8 @@ FRIDAY operates on a core orchestration loop (`FridayAgent`) governed by a `Reas
 - **Execution & Verification:** All physical executions pass through the sandbox/authorization layer. Verification follows execution.
 
 ## G. MEMORY ARCHITECTURE
-- **SQLite Memory:** Persistent message storage.
+- **Oracle Autonomous Database**: FRIDAY persists conversation memory and traces in the Oracle `FRIDAY` schema; PostgreSQL and SQLite are not supported production backends.
+- **FTS fallback**: When the embedding provider is unavailable, recall falls back to Oracle full-text search rather than a local file.
 - **Episodic / Task Memory:** Active context isolation (`ActiveTaskContext`).
 - **Checkpoints:** State machine checkpoints for pause/resume of long-running tasks.
 

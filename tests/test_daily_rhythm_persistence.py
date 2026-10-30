@@ -1,4 +1,4 @@
-"""Unit tests for Autonomous Daily Rhythm Engine with SQLAlchemy and PostgreSQL/SQLite resilience."""
+"""Unit tests for the Autonomous Daily Rhythm engine and its persistence paths."""
 
 from __future__ import annotations
 
@@ -24,16 +24,16 @@ from friday.planning.types import TaskGraph, TaskStep
 
 
 def test_get_postgres_dsn_resolution():
-    """Verify get_postgres_dsn normalizes postgresql:// and resolves environment variables."""
-    with patch.dict(os.environ, {"DATABASE_URL": "postgresql://user:pass@host:5432/friday_db"}):
-        dsn = get_postgres_dsn()
-        assert dsn.startswith("postgresql+asyncpg://")
+    """Verify get_postgres_dsn resolves Oracle DSNs and never invents a fallback."""
+    oracle_dsn = "oracle+oracledb://FRIDAY:pass@adb.example.com:1522/?service_name=TEST"
+    with patch.dict(os.environ, {"DATABASE_URL": oracle_dsn}):
+        assert get_postgres_dsn() == oracle_dsn
 
-    with patch.dict(os.environ, {"DATABASE_URL": "", "FRIDAY_DATABASE_URL": "", "POSTGRES_PASSWORD": "custom_password", "POSTGRES_HOST": "db.mesh"}):
-        dsn_env = get_postgres_dsn()
-        assert "custom_password" in dsn_env
-        assert "db.mesh" in dsn_env
-        assert "friday_user" in dsn_env
+    with patch.dict(
+        os.environ,
+        {"DATABASE_URL": "", "FRIDAY_DATABASE_URL": "", "ORACLE_CORE_ASYNC_URL": ""},
+    ):
+        assert get_postgres_dsn() is None
 
 
 def test_daily_rhythm_waking_schedule_and_phases():

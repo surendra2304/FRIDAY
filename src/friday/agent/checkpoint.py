@@ -2,7 +2,7 @@
 
 Provides:
 - `TaskCheckpoint`: Serialized, sanitized snapshot of a task execution state.
-- `TaskCheckpointStore` (Memory & SQLite backends):
+- `TaskCheckpointStore` (Memory, SQLite & Oracle backends):
   * Stores task snapshots safely.
   * Excludes secrets, raw credentials, private chain-of-thought, and raw screenshots.
 - Validation on Resumption:
@@ -101,14 +101,33 @@ class TaskCheckpoint:
 
 
 class TaskCheckpointStore:
-    """Stores and retrieves TaskCheckpoint records."""
+    """Stores and retrieves TaskCheckpoint records.
 
-    def __init__(self, db_path: str | None = None) -> None:
+    Backend selection:
+
+    * ``db_path`` given -> SQLite file. This is the explicit local-development /
+      test path and keeps existing callers working unchanged.
+    * no ``db_path`` -> Oracle Autonomous Database, schema ``FRIDAY``. This is
+      what ``FridayAgent`` gets in production.
+    * no ``db_path`` and no Oracle DSN in a test process -> memory only, with a
+      warning. Production raises ``PersistenceConfigError`` instead of silently
+      writing a SQLite file.
+    """
+
+    def __init__(self, db_path: str | None = None, *, dsn: str | None = None) -> None:
         self.db_path = db_path
         self._memory_store: dict[str, TaskCheckpoint] = {}
+        self._engine: Any | None = None
+        self._backend = "memory"
         if self.db_path:
+            self._backend = "sqlite"
             self._init_db()
+        else:
+            self._init_oracle(dsn)
 
+    # ------------------------------------------------------------------
+    # Backend selection
+    # ------------------------------------------------------------------
     def _init_db(self) -> None:
         """Initialize SQLite checkpoint table."""
         with sqlite3.connect(self.db_path) as conn:
@@ -130,6 +149,126 @@ class TaskCheckpointStore:
                 )
             """)
             conn.commit()
+
+    def _init_oracle(self, dsn: str | None) -> None:
+        """Bind to the shared Oracle engine, or degrade to memory in test runs."""
+        from friday.core import oracle
+        from friday.core.exceptions import PersistenceConfigError
+
+        try:
+            self._engine = oracle.get_engine(dsn)
+        except PersistenceConfigError:
+            if not oracle.ephemeral_backend_allowed():
+                raise
+            logger.warning(
+                "No Oracle DSN configured; task checkpoints are in-memory only because "
+                "this process is a test run."
+            )
+            return
+        self._backend = "oracle"
+
+    @property
+    def backend(self) -> str:
+        """Active backend: ``sqlite``, ``oracle`` or ``memory``."""
+        return self._backend
+
+    def _save_oracle(self, chk: TaskCheckpoint) -> None:
+        from friday.core import oracle
+
+        oracle.execute(
+            """
+            MERGE INTO task_checkpoints t
+            USING (SELECT :checkpoint_id AS checkpoint_id FROM DUAL) s
+            ON (t.checkpoint_id = s.checkpoint_id)
+            WHEN MATCHED THEN UPDATE SET
+                task_id = :task_id,
+                goal = :goal,
+                state = :state,
+                active_step_id = :active_step_id,
+                plan_json = :plan_json,
+                completed_json = :completed_json,
+                pending_json = :pending_json,
+                results_json = :results_json,
+                env_hash = :env_hash,
+                interruption_reason = :interruption_reason,
+                recovery_state_json = :recovery_state_json,
+                created_at = :created_at
+            WHEN NOT MATCHED THEN INSERT
+                (checkpoint_id, task_id, goal, state, active_step_id, plan_json,
+                 completed_json, pending_json, results_json, env_hash,
+                 interruption_reason, recovery_state_json, created_at)
+            VALUES
+                (:checkpoint_id, :task_id, :goal, :state, :active_step_id, :plan_json,
+                 :completed_json, :pending_json, :results_json, :env_hash,
+                 :interruption_reason, :recovery_state_json, :created_at)
+            """,
+            {
+                "checkpoint_id": chk.checkpoint_id,
+                "task_id": chk.task_id,
+                "goal": chk.goal,
+                "state": chk.state.value,
+                "active_step_id": chk.active_step_id,
+                "plan_json": json.dumps(chk.plan_dict),
+                "completed_json": json.dumps(chk.completed_steps),
+                "pending_json": json.dumps(chk.pending_steps),
+                "results_json": json.dumps(chk.step_results),
+                "env_hash": chk.environment_hash,
+                "interruption_reason": (
+                    chk.interruption_reason.value if chk.interruption_reason else None
+                ),
+                "recovery_state_json": (
+                    json.dumps(chk.recovery_state) if chk.recovery_state else None
+                ),
+                "created_at": chk.created_at.isoformat(),
+            },
+            engine=self._engine,
+        )
+
+    def _get_latest_oracle(self, task_id: str) -> TaskCheckpoint | None:
+        from friday.core import oracle
+
+        row = oracle.query_one(
+            "SELECT checkpoint_id, task_id, goal, state, active_step_id, plan_json, "
+            "completed_json, pending_json, results_json, env_hash, interruption_reason, "
+            "recovery_state_json, created_at FROM task_checkpoints "
+            "WHERE task_id = :tid ORDER BY created_at DESC FETCH FIRST 1 ROWS ONLY",
+            {"tid": task_id},
+            engine=self._engine,
+        )
+        if not row:
+            return None
+        int_r = row["interruption_reason"]
+        rec_s = json.loads(row["recovery_state_json"]) if row["recovery_state_json"] else None
+        state_val = row["state"]
+        return TaskCheckpoint(
+            checkpoint_id=row["checkpoint_id"],
+            task_id=row["task_id"],
+            goal=row["goal"],
+            state=TaskState(state_val) if state_val in TaskState._value2member_map_ else TaskState.PAUSED,
+            active_step_id=row["active_step_id"],
+            plan_dict=json.loads(row["plan_json"]),
+            completed_steps=json.loads(row["completed_json"]),
+            pending_steps=json.loads(row["pending_json"]),
+            step_results=json.loads(row["results_json"]),
+            environment_hash=row["env_hash"],
+            interruption_reason=(
+                InterruptionReason(int_r)
+                if int_r and int_r in InterruptionReason._value2member_map_
+                else None
+            ),
+            recovery_state=rec_s,
+            created_at=datetime.fromisoformat(row["created_at"]),
+        )
+
+    def _delete_oracle(self, task_id: str) -> bool:
+        from friday.core import oracle
+
+        return oracle.execute(
+            "DELETE FROM task_checkpoints WHERE task_id = :tid",
+            {"tid": task_id},
+            engine=self._engine,
+        ) > 0
+
 
     def save_checkpoint(
         self,
@@ -179,7 +318,9 @@ class TaskCheckpointStore:
 
         self._memory_store[task_id] = chk
 
-        if self.db_path:
+        if self._backend == "oracle":
+            self._save_oracle(chk)
+        elif self._backend == "sqlite":
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute(
                     """
@@ -210,7 +351,10 @@ class TaskCheckpointStore:
 
     def get_latest_checkpoint(self, task_id: str) -> TaskCheckpoint | None:
         """Retrieve the latest checkpoint for a given task ID."""
-        if self.db_path:
+        if self._backend == "oracle":
+            checkpoint = self._get_latest_oracle(task_id)
+            return checkpoint or self._memory_store.get(task_id)
+        if self._backend == "sqlite":
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.execute(
                     "SELECT checkpoint_id, task_id, goal, state, active_step_id, plan_json, completed_json, pending_json, results_json, env_hash, interruption_reason, recovery_state_json, created_at "
@@ -262,7 +406,10 @@ class TaskCheckpointStore:
             del self._memory_store[task_id]
             deleted = True
 
-        if self.db_path:
+        if self._backend == "oracle":
+            if self._delete_oracle(task_id):
+                deleted = True
+        elif self._backend == "sqlite":
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.execute("DELETE FROM task_checkpoints WHERE task_id = ?", (task_id,))
                 conn.commit()

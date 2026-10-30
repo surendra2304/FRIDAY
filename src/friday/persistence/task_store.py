@@ -1,4 +1,13 @@
-"""Persistent SQLite task store for user todos, reminders, and scheduled tasks."""
+"""Persistent task store for user todos, reminders, and scheduled tasks.
+
+Two backends share one interface:
+
+* :class:`OracleTaskStore` -- the production store, writing to the ``FRIDAY``
+  Oracle schema (``user_tasks``) through :mod:`friday.core.oracle`.
+* :class:`SQLiteTaskStore` -- retained for explicit local development and the
+  existing unit tests. It is only selected when a ``db_path`` is passed to
+  :func:`create_task_store`.
+"""
 
 from __future__ import annotations
 
@@ -9,13 +18,24 @@ import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
+from friday.core import oracle
 from friday.core.logging import get_logger
 
 logger = get_logger("persistence.task_store")
 
 DEFAULT_DB_PATH = "data/friday.db"
+
+_TASK_COLUMNS = (
+    "id, title, description, status, priority, created_at, due_at, "
+    "completed_at, recurrence, metadata_json"
+)
+
+_TASK_ORDERING = (
+    " ORDER BY CASE status WHEN 'pending' THEN 1 WHEN 'in_progress' THEN 2 ELSE 3 END, "
+    "created_at DESC"
+)
 
 
 @dataclass
@@ -54,6 +74,29 @@ class TaskItem:
             due_at=row[6],
             completed_at=row[7],
             recurrence=row[8],
+            metadata=meta,
+        )
+
+    @classmethod
+    def from_mapping(cls, row: Mapping[str, Any]) -> TaskItem:
+        """Build from a lower-cased Oracle row mapping."""
+        raw_meta = row.get("metadata_json")
+        meta: dict[str, Any] = {}
+        if raw_meta:
+            try:
+                meta = json.loads(raw_meta)
+            except Exception:
+                meta = {}
+        return cls(
+            id=row["id"],
+            title=row["title"],
+            description=row.get("description") or "",
+            status=row.get("status") or "pending",
+            priority=row.get("priority") or "medium",
+            created_at=row.get("created_at") or time.time(),
+            due_at=row.get("due_at"),
+            completed_at=row.get("completed_at"),
+            recurrence=row.get("recurrence"),
             metadata=meta,
         )
 
@@ -243,3 +286,177 @@ class SQLiteTaskStore:
             cursor = conn.execute("DELETE FROM user_tasks WHERE id = ?", (task_id,))
             conn.commit()
             return cursor.rowcount > 0
+
+
+class OracleTaskStore:
+    """Thread-safe task store backed by Oracle Autonomous Database."""
+
+    backend = "oracle"
+
+    def __init__(self, dsn: str | None = None, *, engine: Any | None = None) -> None:
+        self._lock = threading.RLock()
+        self._dsn = dsn
+        self._engine = engine if engine is not None else oracle.get_engine(dsn)
+
+    @property
+    def db_path(self) -> str:
+        """Compatibility accessor; Oracle has no file path."""
+        return "oracle://FRIDAY"
+
+    def _query(self, sql: str, params: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+        return oracle.query_all(sql, params, engine=self._engine)
+
+    def create_task(
+        self,
+        title: str,
+        description: str = "",
+        priority: str = "medium",
+        due_at: float | None = None,
+        recurrence: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> TaskItem:
+        item = TaskItem(
+            id=f"task_{uuid.uuid4().hex[:8]}",
+            title=title.strip(),
+            description=description.strip(),
+            status="pending",
+            priority=priority.lower().strip() or "medium",
+            created_at=time.time(),
+            due_at=due_at,
+            completed_at=None,
+            recurrence=recurrence,
+            metadata=metadata or {},
+        )
+        with self._lock:
+            oracle.execute(
+                "INSERT INTO user_tasks (id, title, description, status, priority, "
+                "created_at, due_at, completed_at, recurrence, metadata_json) "
+                "VALUES (:id, :title, :description, :status, :priority, :created_at, "
+                ":due_at, :completed_at, :recurrence, :metadata_json)",
+                {
+                    "id": item.id,
+                    "title": item.title,
+                    "description": oracle.nullif_empty(item.description),
+                    "status": item.status,
+                    "priority": item.priority,
+                    "created_at": float(item.created_at),
+                    "due_at": item.due_at,
+                    "completed_at": item.completed_at,
+                    "recurrence": oracle.nullif_empty(item.recurrence),
+                    "metadata_json": json.dumps(item.metadata),
+                },
+                engine=self._engine,
+            )
+        logger.info("Created task '%s' (ID: %s)", item.title, item.id)
+        return item
+
+    def list_tasks(
+        self,
+        status: str | None = None,
+        priority: str | None = None,
+        limit: int = 50,
+    ) -> list[TaskItem]:
+        query = f"SELECT {_TASK_COLUMNS} FROM user_tasks"
+        clauses: list[str] = []
+        params: dict[str, Any] = {}
+        if status:
+            clauses.append("status = :status")
+            params["status"] = status.lower().strip()
+        if priority:
+            clauses.append("priority = :priority")
+            params["priority"] = priority.lower().strip()
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += _TASK_ORDERING + " FETCH FIRST :lim ROWS ONLY"
+        params["lim"] = max(1, int(limit))
+        with self._lock:
+            rows = self._query(query, params)
+        return [TaskItem.from_mapping(row) for row in rows]
+
+    def get_task(self, task_id: str) -> TaskItem | None:
+        with self._lock:
+            rows = self._query(
+                f"SELECT {_TASK_COLUMNS} FROM user_tasks WHERE id = :id", {"id": task_id}
+            )
+        return TaskItem.from_mapping(rows[0]) if rows else None
+
+    def update_task(
+        self,
+        task_id: str,
+        title: str | None = None,
+        description: str | None = None,
+        status: str | None = None,
+        priority: str | None = None,
+        due_at: float | None = None,
+    ) -> TaskItem | None:
+        item = self.get_task(task_id)
+        if not item:
+            return None
+
+        if title is not None:
+            item.title = title.strip()
+        if description is not None:
+            item.description = description.strip()
+        if status is not None:
+            item.status = status.lower().strip()
+            if item.status == "completed" and not item.completed_at:
+                item.completed_at = time.time()
+        if priority is not None:
+            item.priority = priority.lower().strip()
+        if due_at is not None:
+            item.due_at = due_at
+
+        with self._lock:
+            oracle.execute(
+                "UPDATE user_tasks SET title = :title, description = :description, "
+                "status = :status, priority = :priority, due_at = :due_at, "
+                "completed_at = :completed_at WHERE id = :id",
+                {
+                    "title": item.title,
+                    "description": oracle.nullif_empty(item.description),
+                    "status": item.status,
+                    "priority": item.priority,
+                    "due_at": item.due_at,
+                    "completed_at": item.completed_at,
+                    "id": item.id,
+                },
+                engine=self._engine,
+            )
+        return item
+
+    def complete_task(self, task_id_or_keyword: str) -> TaskItem | None:
+        target = task_id_or_keyword.strip()
+        item = self.get_task(target)
+        if not item:
+            with self._lock:
+                rows = self._query(
+                    "SELECT id FROM user_tasks WHERE status <> 'completed' "
+                    "AND LOWER(title) LIKE :pat FETCH FIRST 1 ROWS ONLY",
+                    {"pat": f"%{target.lower()}%"},
+                )
+            if rows:
+                item = self.get_task(rows[0]["id"])
+
+        if item:
+            return self.update_task(item.id, status="completed")
+        return None
+
+    def delete_task(self, task_id: str) -> bool:
+        with self._lock:
+            return oracle.execute(
+                "DELETE FROM user_tasks WHERE id = :id", {"id": task_id}, engine=self._engine
+            ) > 0
+
+
+def create_task_store(db_path: str | None = None, *, dsn: str | None = None) -> SQLiteTaskStore | OracleTaskStore:
+    """Return the configured task store.
+
+    ``db_path`` explicitly selects SQLite (local development / tests). Without
+    it the production Oracle store is used, and a missing Oracle DSN raises
+    :class:`~friday.core.exceptions.PersistenceConfigError` rather than silently
+    creating a SQLite file.
+    """
+    if db_path:
+        return SQLiteTaskStore(db_path=db_path)
+    return OracleTaskStore(dsn=dsn)
+

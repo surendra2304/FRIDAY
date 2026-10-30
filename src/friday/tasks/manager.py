@@ -180,15 +180,49 @@ class TaskProgressReport:
 
 
 class TaskPersistenceStore:
-    """Durable SQLite storage for background tasks and execution progress."""
+    """Durable storage for background tasks and execution progress.
 
-    def __init__(self, db_path: str | None = None) -> None:
-        self.db_path = db_path or ":memory:"
+    * ``db_path`` given (including ``":memory:"``) -> SQLite. This is the
+      explicit local-development / test path.
+    * no ``db_path`` -> Oracle ``FRIDAY.background_tasks``.
+    * no ``db_path`` and no Oracle DSN in a test process -> ``:memory:`` SQLite,
+      matching the previous default so unit tests stay hermetic. Production
+      raises ``PersistenceConfigError``.
+    """
+
+    def __init__(self, db_path: str | None = None, *, dsn: str | None = None) -> None:
+        self.db_path = db_path
         self._lock = threading.Lock()
         self._conn = None
-        if self.db_path == ":memory:":
-            self._conn = sqlite3.connect(":memory:", check_same_thread=False)
+        self._engine = None
+        self._backend = "sqlite"
+        if db_path:
+            self.db_path = db_path
+            if self.db_path == ":memory:":
+                self._conn = sqlite3.connect(":memory:", check_same_thread=False)
+        else:
+            from friday.core import oracle
+            from friday.core.exceptions import PersistenceConfigError
+
+            try:
+                self._engine = oracle.get_engine(dsn)
+                self._backend = "oracle"
+                self.db_path = "oracle://FRIDAY"
+            except PersistenceConfigError:
+                if not oracle.ephemeral_backend_allowed():
+                    raise
+                logger.warning(
+                    "No Oracle DSN configured; background tasks use an in-memory "
+                    "SQLite database because this process is a test run."
+                )
+                self.db_path = ":memory:"
+                self._conn = sqlite3.connect(":memory:", check_same_thread=False)
         self._init_db()
+
+    @property
+    def backend(self) -> str:
+        """Active backend: ``oracle`` or ``sqlite``."""
+        return self._backend
 
     def _get_connection(self):
         if self._conn:
@@ -196,6 +230,9 @@ class TaskPersistenceStore:
         return sqlite3.connect(self.db_path)
 
     def _init_db(self) -> None:
+        if self._backend == "oracle":
+            # ``oracle.get_engine`` already bootstrapped the shared schema.
+            return
         if self.db_path != ":memory:":
             Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         with self._lock:
@@ -250,6 +287,47 @@ class TaskPersistenceStore:
     ) -> None:
         """Persist or update background task state."""
         now_iso = datetime.now(timezone.utc).isoformat()
+        params = {
+            "task_id": task_id,
+            "goal": redact_secrets(goal),
+            "status": status.value,
+            "spec_json": json.dumps(spec.to_dict()),
+            "plan_json": json.dumps(plan.to_dict(), default=_task_json_default) if plan else None,
+            "completed_steps": completed_steps,
+            "total_steps": total_steps,
+            "progress_pct": progress_pct,
+            "error": redact_secrets(error) if error else None,
+            "created_at": now_iso,
+            "updated_at": now_iso,
+        }
+        if self._backend == "oracle":
+            from friday.core import oracle
+
+            oracle.execute(
+                """
+                MERGE INTO background_tasks t
+                USING (SELECT :task_id AS task_id FROM DUAL) s
+                ON (t.task_id = s.task_id)
+                WHEN MATCHED THEN UPDATE SET
+                    status = :status,
+                    plan_json = :plan_json,
+                    completed_steps = :completed_steps,
+                    total_steps = :total_steps,
+                    progress_pct = :progress_pct,
+                    error = :error,
+                    updated_at = :updated_at
+                WHEN NOT MATCHED THEN INSERT
+                    (task_id, goal, status, spec_json, plan_json, completed_steps,
+                     total_steps, progress_pct, error, created_at, updated_at)
+                VALUES
+                    (:task_id, :goal, :status, :spec_json, :plan_json, :completed_steps,
+                     :total_steps, :progress_pct, :error, :created_at, :updated_at)
+                """,
+                params,
+                engine=self._engine,
+            )
+            return
+
         with self._lock:
             conn = self._get_connection()
             try:
@@ -268,14 +346,14 @@ class TaskPersistenceStore:
                         updated_at=excluded.updated_at
                 """, (
                     task_id,
-                    redact_secrets(goal),
-                    status.value,
-                    json.dumps(spec.to_dict()),
-                    json.dumps(plan.to_dict(), default=_task_json_default) if plan else None,
+                    params["goal"],
+                    params["status"],
+                    params["spec_json"],
+                    params["plan_json"],
                     completed_steps,
                     total_steps,
                     progress_pct,
-                    redact_secrets(error) if error else None,
+                    params["error"],
                     now_iso,
                     now_iso,
                 ))
@@ -286,6 +364,18 @@ class TaskPersistenceStore:
 
     def get_incomplete_tasks(self) -> list[dict[str, Any]]:
         """Retrieve tasks that were active when process stopped."""
+        if self._backend == "oracle":
+            from friday.core import oracle
+
+            rows = oracle.query_all(
+                "SELECT task_id, goal, status, spec_json, plan_json, completed_steps, "
+                "total_steps, progress_pct, error, created_at, updated_at "
+                "FROM background_tasks "
+                "WHERE status IN ('SUBMITTED', 'RUNNING', 'PAUSED')",
+                engine=self._engine,
+            )
+            return rows
+
         with self._lock:
             conn = self._get_connection()
             conn.row_factory = sqlite3.Row
@@ -298,6 +388,7 @@ class TaskPersistenceStore:
             finally:
                 if not self._conn:
                     conn.close()
+
 
 
 class LongRunningTaskManager:

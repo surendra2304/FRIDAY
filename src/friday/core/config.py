@@ -468,8 +468,31 @@ class Settings(BaseSettings):
     )
 
     # Memory & Semantic Settings
-    memory_backend: str = Field(default="sqlite", description="Memory backend: 'sqlite', 'in_memory'")
-    memory_db_path: str = Field(default="data/friday.db", description="Path to SQLite database file")
+    memory_backend: str = Field(
+        default="oracle",
+        description=(
+            "Memory backend: 'oracle' (default, Oracle Autonomous Database via DATABASE_URL), "
+            "'sqlite' (explicit local development/testing only), 'in_memory', or 'mem0'."
+        ),
+    )
+    memory_db_path: str = Field(
+        default="data/friday.db",
+        description="Path to the SQLite database file used only when memory_backend='sqlite'",
+    )
+    database_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "FRIDAY_DATABASE_URL",
+            "DATABASE_URL",
+            "FRIDAY_UNIVERSE_DB_URL",
+            "database_url",
+        ),
+        description=(
+            "Oracle Autonomous Database DSN (oracle+oracledb://user:pass@host:port/service). "
+            "Aliases: DATABASE_URL, FRIDAY_UNIVERSE_DB_URL."
+        ),
+    )
+
     memory_max_messages: int = Field(default=50, ge=2, description="Maximum messages stored in short-term buffer")
     memory_auto_persist: bool = Field(default=True, description="Whether to persist conversations automatically")
     memory_retention_days: int | None = Field(default=None, ge=1, description="Optional retention policy in days (older messages pruned)")
@@ -495,7 +518,7 @@ class Settings(BaseSettings):
         description="Optional formal address (e.g. 'sir') inserted on important announcements only; empty = always use the user's name",
     )
     # Backup configuration
-    backup_dir: str = Field(default="data/backups", description="Directory for SQLite hot backups")
+    backup_dir: str = Field(default="data/backups", description="Directory for local memory exports and backup artifacts")
 
     # Voice Interface Settings
     voice_enabled: bool = Field(
@@ -757,11 +780,54 @@ class Settings(BaseSettings):
 
     @property
     def sqlite_db_path(self) -> str:
-        """Compatibility accessor for memory_db_path enforcing Invariant 2 tmpfs."""
+        """Compatibility accessor for memory_db_path enforcing Invariant 2 tmpfs.
+
+        Only consulted when ``memory_backend='sqlite'`` (local development or a
+        unit test that opts in explicitly). Production persists to Oracle.
+        """
         from friday.core.database import get_ephemeral_db_path
         if self.memory_db_path in ("data/friday.db", "friday.db"):
             return get_ephemeral_db_path("friday.db")
         return self.memory_db_path
+
+    @property
+    def oracle_dsn(self) -> str | None:
+        """Normalised ``oracle+oracledb://`` DSN, or None when unset/non-Oracle."""
+        from friday.core.oracle import is_oracle_url, normalise_oracle_url, resolve_database_url
+
+        raw = resolve_database_url(self.database_url)
+        if raw and is_oracle_url(raw):
+            return normalise_oracle_url(raw)
+        return None
+
+    @property
+    def memory_backend_kind(self) -> str:
+        """Lower-cased memory backend selection."""
+        return (self.memory_backend or "oracle").strip().lower()
+
+    @model_validator(mode="after")
+    def enforce_memory_backend_fail_closed(self) -> "Settings":
+        """Fail-closed: production oracle backend requires a valid Oracle DSN."""
+        from friday.core.exceptions import PersistenceConfigError
+        from friday.core.oracle import resolve_database_url
+
+        if self.memory_backend_kind == "oracle":
+            dsn = self.oracle_dsn
+            if dsn:
+                return self
+            configured = resolve_database_url(self.database_url)
+            if configured:
+                raise PersistenceConfigError(
+                    "memory_backend='oracle' requires an Oracle DSN; the configured "
+                    f"database URL uses scheme '{configured.split('://', 1)[0]}://'. "
+                    "Set DATABASE_URL to an oracle+oracledb:// DSN owned by the FRIDAY schema."
+                )
+            raise PersistenceConfigError(
+                "memory_backend='oracle' requires DATABASE_URL (or FRIDAY_DATABASE_URL / "
+                "FRIDAY_UNIVERSE_DB_URL) to point at Oracle Autonomous Database. "
+                "FRIDAY no longer falls back to a local SQLite file in production."
+            )
+        return self
 
     def __repr__(self) -> str:
         """Safe string representation masking sensitive secrets."""
