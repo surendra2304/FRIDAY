@@ -50,7 +50,7 @@ def test_parse_retry_after():
 @pytest.fixture
 def isolated_router(tmp_path):
     db_path = str(tmp_path / "test_router_traces.db")
-    store = ExecutionTraceStore(db_path=db_path, enable_postgres=False)
+    store = ExecutionTraceStore(db_path=db_path)
     router = SpecialistRouter(
         timeout_ceiling=5.0,
         max_retries=2,

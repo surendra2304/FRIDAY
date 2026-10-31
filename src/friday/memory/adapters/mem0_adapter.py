@@ -2,8 +2,9 @@
 
 Adapts Mem0's personalized semantic memory into FRIDAY's BaseMemory interface.
 FRIDAY remains the authoritative owner of privacy, security, user identity, and
-retention. If `mem0ai` is not installed, it degrades gracefully to FRIDAY's
-canonical SQLiteConversationMemory.
+retention. If `mem0ai` is not installed, it degrades gracefully to the memory
+backend configured by :func:`friday.memory.factory.create_memory` (Oracle
+Autonomous Database in production).
 """
 
 from __future__ import annotations
@@ -20,9 +21,16 @@ from friday.core.types import (
     SemanticSearchResult,
 )
 from friday.memory.base import BaseMemory
-from friday.memory.sqlite import SQLiteConversationMemory
 
 logger = get_logger("memory.mem0_adapter")
+
+
+def _default_fallback() -> BaseMemory:
+    """Build FRIDAY's configured authoritative memory backend."""
+    from friday.core.config import get_settings
+    from friday.memory.factory import create_memory
+
+    return create_memory(get_settings())
 
 
 class Mem0MemoryAdapter(BaseMemory):
@@ -36,7 +44,7 @@ class Mem0MemoryAdapter(BaseMemory):
     ) -> None:
         self.user_id = user_id
         self.mem0_config = mem0_config or {}
-        self.fallback = fallback_memory or SQLiteConversationMemory()
+        self.fallback = fallback_memory or _default_fallback()
         self._mem0_client: Any | None = None
         self._initialized: bool = False
 
@@ -60,7 +68,7 @@ class Mem0MemoryAdapter(BaseMemory):
                     self._mem0_client = Memory.from_config(self.mem0_config) if self.mem0_config else Memory()
                     logger.info("Mem0 memory provider initialized successfully.")
                 except Exception as e:
-                    logger.warning(f"Failed to initialize Mem0: {e}. Falling back to SQLiteConversationMemory.")
+                    logger.warning(f"Failed to initialize Mem0: {e}. Falling back to FRIDAY memory.")
                     self._mem0_client = None
         return self._mem0_client
 

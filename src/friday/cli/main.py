@@ -113,7 +113,7 @@ def print_help() -> None:
     print("  /tools          : View loaded tools and safety classifications")
     print("  /clear          : Reset active conversation memory buffer")
     print("  /delete [id]    : Delete a conversation (requires confirmation)")
-    print("  /backup [path]  : Create local backup of SQLite database")
+    print("  /backup [path]  : Export an Oracle-backed database snapshot")
     print("  /export [path]  : Export current conversation to JSON")
     print("  /purge          : Permanently delete ALL stored memory (requires confirmation)")
     print("  /friday         : View FRIDAY Windows laptop controller commands")
@@ -408,11 +408,11 @@ Modes:
 
     if args.run_lab:
         from friday.lab.experiment import run_standard_lab_suite
-        from friday.memory.sqlite import SQLiteConversationMemory
+        from friday.memory.factory import create_memory
         print("\n==================================================")
         print("  🔬 FRIDAY LAB: Multi-Provider Performance Matrix")
         print("==================================================")
-        mem = SQLiteConversationMemory(db_path=settings.sqlite_db_path)
+        mem = create_memory(settings)
         trials = run_standard_lab_suite(memory=mem)
         print(f"  {'Provider':<14} | {'Model':<20} | {'Latency':<9} | {'Accuracy':<8} | {'Success':<7} | {'Tokens':<6}")
         print("  " + "-" * 72)
@@ -699,10 +699,7 @@ Modes:
     )
 
     if not os.getenv("RENDER"):
-        notification_path = os.getenv(
-            "FRIDAY_NOTIFICATION_DB_PATH",
-            str(Path.home() / ".friday" / "notifications.sqlite3"),
-        )
+        notification_path = os.getenv("FRIDAY_NOTIFICATION_DB_PATH") or None
         try:
             agent.notifications.enable_persistence(notification_path)
         except Exception as exc:

@@ -6,7 +6,7 @@ Provides:
 - `TaskBudget`: Request and tool invocation budget controls.
 - `TaskSpec`: Immutable specification defining unique task ID, goal, scope, budget, timeout, retry limit, and authorization policy.
 - `TaskProgressReport`: Realtime thread-safe progress report.
-- `TaskPersistenceStore`: SQLite-backed persistent registry for task specs, checkpoints, and recovery states.
+- `TaskPersistenceStore`: Oracle-backed persistent registry for task specs, checkpoints, and recovery states.
 - `LongRunningTaskManager`:
   * Explicit background task creation and concurrent worker management.
   * Thread-safe progress tracking, state querying, and milestone reporting.
@@ -182,12 +182,13 @@ class TaskProgressReport:
 class TaskPersistenceStore:
     """Durable storage for background tasks and execution progress.
 
-    * ``db_path`` given (including ``":memory:"``) -> SQLite. This is the
-      explicit local-development / test path.
-    * no ``db_path`` -> Oracle ``FRIDAY.background_tasks``.
-    * no ``db_path`` and no Oracle DSN in a test process -> ``:memory:`` SQLite,
-      matching the previous default so unit tests stay hermetic. Production
-      raises ``PersistenceConfigError``.
+    * no ``db_path`` -> Oracle ``FRIDAY.background_tasks``. This is what every
+      production caller gets.
+    * ``db_path`` given (including ``":memory:"``) -> test-only SQLite. Rejected
+      outside a pytest run.
+    * no ``db_path`` and no Oracle DSN in a test process -> ``:memory:`` SQLite
+      so unit tests stay hermetic. Production raises
+      ``PersistenceConfigError``.
     """
 
     def __init__(self, db_path: str | None = None, *, dsn: str | None = None) -> None:
@@ -195,8 +196,17 @@ class TaskPersistenceStore:
         self._lock = threading.Lock()
         self._conn = None
         self._engine = None
+        self._dsn = dsn
         self._backend = "sqlite"
         if db_path:
+            from friday.core import oracle
+            from friday.core.exceptions import PersistenceConfigError
+
+            if not oracle.ephemeral_backend_allowed():
+                raise PersistenceConfigError(
+                    "TaskPersistenceStore(db_path=...) is test-only; omit db_path so "
+                    "background tasks are written to Oracle Autonomous Database."
+                )
             self.db_path = db_path
             if self.db_path == ":memory:":
                 self._conn = sqlite3.connect(":memory:", check_same_thread=False)
@@ -205,7 +215,8 @@ class TaskPersistenceStore:
             from friday.core.exceptions import PersistenceConfigError
 
             try:
-                self._engine = oracle.get_engine(dsn)
+                # Validate configuration only; the engine connects on first use.
+                self._dsn = oracle.require_database_url(dsn)
                 self._backend = "oracle"
                 self.db_path = "oracle://FRIDAY"
             except PersistenceConfigError:
@@ -218,6 +229,17 @@ class TaskPersistenceStore:
                 self.db_path = ":memory:"
                 self._conn = sqlite3.connect(":memory:", check_same_thread=False)
         self._init_db()
+
+    @property
+    def engine(self):
+        """Resolve the shared Oracle engine on first use (never at import)."""
+        if self._backend != "oracle":
+            return None
+        if self._engine is None:
+            from friday.core import oracle
+
+            self._engine = oracle.get_engine(getattr(self, "_dsn", None))
+        return self._engine
 
     @property
     def backend(self) -> str:
@@ -324,7 +346,7 @@ class TaskPersistenceStore:
                      :total_steps, :progress_pct, :error, :created_at, :updated_at)
                 """,
                 params,
-                engine=self._engine,
+                engine=self.engine,
             )
             return
 
@@ -372,7 +394,7 @@ class TaskPersistenceStore:
                 "total_steps, progress_pct, error, created_at, updated_at "
                 "FROM background_tasks "
                 "WHERE status IN ('SUBMITTED', 'RUNNING', 'PAUSED')",
-                engine=self._engine,
+                engine=self.engine,
             )
             return rows
 

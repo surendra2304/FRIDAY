@@ -1,4 +1,9 @@
-"""SQLite-backed conversation memory with ACID persistence and conversation isolation."""
+"""SQLite-backed conversation memory.
+
+Test-only. Production FRIDAY persists to Oracle Autonomous Database through
+:func:`friday.memory.factory.create_memory`; constructing this class outside a
+pytest run raises :class:`friday.core.exceptions.PersistenceConfigError`.
+"""
 
 import base64
 import hashlib
@@ -58,6 +63,15 @@ class SQLiteConversationMemory(BaseMemory):
         max_messages: int = 50,
         embedding_provider: Any | None = None,
     ) -> None:
+        from friday.core.exceptions import PersistenceConfigError
+        from friday.core.oracle import ephemeral_backend_allowed
+
+        if not ephemeral_backend_allowed():
+            raise PersistenceConfigError(
+                "SQLiteConversationMemory is a test-only backend; use "
+                "friday.memory.factory.create_memory() so FRIDAY persists to "
+                "Oracle Autonomous Database."
+            )
         self.db_path = db_path
         self.max_messages = max(2, max_messages)
         self.embedding_provider = embedding_provider

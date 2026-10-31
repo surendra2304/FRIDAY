@@ -4,9 +4,8 @@ Two backends share one interface:
 
 * :class:`OracleTaskStore` -- the production store, writing to the ``FRIDAY``
   Oracle schema (``user_tasks``) through :mod:`friday.core.oracle`.
-* :class:`SQLiteTaskStore` -- retained for explicit local development and the
-  existing unit tests. It is only selected when a ``db_path`` is passed to
-  :func:`create_task_store`.
+* :class:`SQLiteTaskStore` -- test-only, reachable only when a test passes an
+  explicit ``db_path`` to :func:`create_task_store`.
 """
 
 from __future__ import annotations
@@ -102,9 +101,22 @@ class TaskItem:
 
 
 class SQLiteTaskStore:
-    """Thread-safe persistent task store backed by SQLite."""
+    """Test-only task store backed by an explicit SQLite path.
+
+    Production code must use :class:`OracleTaskStore` through
+    :func:`create_task_store`; constructing this class outside a pytest run
+    raises :class:`~friday.core.exceptions.PersistenceConfigError`.
+    """
 
     def __init__(self, db_path: str = DEFAULT_DB_PATH) -> None:
+        from friday.core.exceptions import PersistenceConfigError
+        from friday.core.oracle import ephemeral_backend_allowed
+
+        if not ephemeral_backend_allowed():
+            raise PersistenceConfigError(
+                "SQLiteTaskStore is test-only. Use create_task_store() so FRIDAY "
+                "persists user tasks to Oracle Autonomous Database."
+            )
         self.db_path = db_path
         self._lock = threading.RLock()
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -296,7 +308,14 @@ class OracleTaskStore:
     def __init__(self, dsn: str | None = None, *, engine: Any | None = None) -> None:
         self._lock = threading.RLock()
         self._dsn = dsn
-        self._engine = engine if engine is not None else oracle.get_engine(dsn)
+        self._engine = engine
+
+    @property
+    def engine(self) -> Any:
+        """Resolve the shared Oracle engine on first use (never at import)."""
+        if self._engine is None:
+            self._engine = oracle.get_engine(self._dsn)
+        return self._engine
 
     @property
     def db_path(self) -> str:
@@ -304,7 +323,7 @@ class OracleTaskStore:
         return "oracle://FRIDAY"
 
     def _query(self, sql: str, params: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
-        return oracle.query_all(sql, params, engine=self._engine)
+        return oracle.query_all(sql, params, engine=self.engine)
 
     def create_task(
         self,
@@ -345,7 +364,7 @@ class OracleTaskStore:
                     "recurrence": oracle.nullif_empty(item.recurrence),
                     "metadata_json": json.dumps(item.metadata),
                 },
-                engine=self._engine,
+                engine=self.engine,
             )
         logger.info("Created task '%s' (ID: %s)", item.title, item.id)
         return item
@@ -420,7 +439,7 @@ class OracleTaskStore:
                     "completed_at": item.completed_at,
                     "id": item.id,
                 },
-                engine=self._engine,
+                engine=self.engine,
             )
         return item
 
@@ -444,17 +463,17 @@ class OracleTaskStore:
     def delete_task(self, task_id: str) -> bool:
         with self._lock:
             return oracle.execute(
-                "DELETE FROM user_tasks WHERE id = :id", {"id": task_id}, engine=self._engine
+                "DELETE FROM user_tasks WHERE id = :id", {"id": task_id}, engine=self.engine
             ) > 0
 
 
 def create_task_store(db_path: str | None = None, *, dsn: str | None = None) -> SQLiteTaskStore | OracleTaskStore:
     """Return the configured task store.
 
-    ``db_path`` explicitly selects SQLite (local development / tests). Without
-    it the production Oracle store is used, and a missing Oracle DSN raises
-    :class:`~friday.core.exceptions.PersistenceConfigError` rather than silently
-    creating a SQLite file.
+    ``db_path`` explicitly selects the test-only SQLite store and is rejected
+    outside a pytest run. Without it the production Oracle store is used, and a
+    missing Oracle DSN raises :class:`~friday.core.exceptions.PersistenceConfigError`
+    rather than silently creating a SQLite file.
     """
     if db_path:
         return SQLiteTaskStore(db_path=db_path)

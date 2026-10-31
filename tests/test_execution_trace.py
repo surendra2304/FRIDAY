@@ -10,7 +10,7 @@ from friday.agent.execution_trace import (
 @pytest.fixture
 def temp_trace_store(tmp_path):
     db_path = str(tmp_path / "test_traces.db")
-    store = ExecutionTraceStore(db_path=db_path, enable_postgres=False)
+    store = ExecutionTraceStore(db_path=db_path)
     yield store
 
 

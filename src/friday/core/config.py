@@ -472,12 +472,15 @@ class Settings(BaseSettings):
         default="oracle",
         description=(
             "Memory backend: 'oracle' (default, Oracle Autonomous Database via DATABASE_URL), "
-            "'sqlite' (explicit local development/testing only), 'in_memory', or 'mem0'."
+            "'sqlite' (explicit test-only local store), 'in_memory', or 'mem0'."
         ),
     )
     memory_db_path: str = Field(
         default="data/friday.db",
-        description="Path to the SQLite database file used only when memory_backend='sqlite'",
+        description=(
+            "Path to the SQLite file used only by the explicit test-only backend "
+            "(memory_backend='sqlite' inside a pytest run). Ignored in production."
+        ),
     )
     database_url: str | None = Field(
         default=None,
@@ -780,10 +783,11 @@ class Settings(BaseSettings):
 
     @property
     def sqlite_db_path(self) -> str:
-        """Compatibility accessor for memory_db_path enforcing Invariant 2 tmpfs.
+        """Compatibility accessor for the explicit test-only SQLite file.
 
-        Only consulted when ``memory_backend='sqlite'`` (local development or a
-        unit test that opts in explicitly). Production persists to Oracle.
+        Only consulted when ``memory_backend='sqlite'`` inside a pytest run.
+        Production persists to Oracle and this raises instead of handing back a
+        path that would create a ``.db`` file on the host.
         """
         from friday.core.database import get_ephemeral_db_path
         if self.memory_db_path in ("data/friday.db", "friday.db"):
@@ -807,9 +811,19 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def enforce_memory_backend_fail_closed(self) -> "Settings":
-        """Fail-closed: production oracle backend requires a valid Oracle DSN."""
+        """Fail-closed: a production Oracle backend requires a valid Oracle DSN.
+
+        Two distinct rules, because they protect different things:
+
+        * A *configured but non-Oracle* URL is always rejected. Pointing FRIDAY at
+          SQLite or PostgreSQL is a misconfiguration, never a supported mode.
+        * A *missing* DSN is only tolerated inside a test process
+          (``FRIDAY_ENV=testing``/``test`` or a running pytest), where the memory
+          factory swaps in the ephemeral in-memory backend. Production raises
+          here, at configuration time, instead of at the first write.
+        """
         from friday.core.exceptions import PersistenceConfigError
-        from friday.core.oracle import resolve_database_url
+        from friday.core.oracle import ephemeral_backend_allowed, resolve_database_url
 
         if self.memory_backend_kind == "oracle":
             dsn = self.oracle_dsn
@@ -822,10 +836,12 @@ class Settings(BaseSettings):
                     f"database URL uses scheme '{configured.split('://', 1)[0]}://'. "
                     "Set DATABASE_URL to an oracle+oracledb:// DSN owned by the FRIDAY schema."
                 )
+            if ephemeral_backend_allowed():
+                return self
             raise PersistenceConfigError(
                 "memory_backend='oracle' requires DATABASE_URL (or FRIDAY_DATABASE_URL / "
                 "FRIDAY_UNIVERSE_DB_URL) to point at Oracle Autonomous Database. "
-                "FRIDAY no longer falls back to a local SQLite file in production."
+                "FRIDAY has no SQLite or PostgreSQL fallback in production."
             )
         return self
 

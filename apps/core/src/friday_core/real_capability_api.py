@@ -118,7 +118,7 @@ def create_capability_router(cross) -> APIRouter:
 
     @router.get('/assistant',response_class=HTMLResponse)
     def assistant_ui():
-        return Path(__file__).with_name('assistant_workplace.html').read_text()
+        return Path(__file__).with_name('assistant_workplace.html').read_text(encoding='utf-8')
 
     @router.post('/api/assistant/respond')
     def respond(request: AssistantQuery):

@@ -9,9 +9,12 @@ from dataclasses import asdict, dataclass
 from datetime import date, datetime, time, timedelta
 import json
 import math
+import os
 from pathlib import Path
 import re
 import sqlite3
+import sys
+import threading
 import uuid
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -66,31 +69,395 @@ class WorkflowRun:
     external_actions_taken: tuple[str, ...] = ()
 
 
+_ORACLE_PREFIXES = ("oracle://", "oracle+oracledb://", "oracledb://")
+_BUSINESS_DSN_ENV = (
+    "FRIDAY_DATABASE_URL",
+    "DATABASE_URL",
+    "FRIDAY_UNIVERSE_DB_URL",
+    "ORACLE_CORE_ASYNC_URL",
+)
+
+
+def _oracle_dsn(value: str | None) -> str | None:
+    text = (value or "").strip()
+    if not text.lower().startswith(_ORACLE_PREFIXES):
+        return None
+    scheme, _, rest = text.partition("://")
+    if scheme.lower() in {"oracle", "oracledb"}:
+        return "oracle+oracledb://" + rest
+    return text
+
+
+def _resolve_business_dsn(state_dir: str | None) -> str | None:
+    """Resolve the business-ops backend.
+
+    An explicit Oracle DSN wins. Under pytest an explicit directory is a
+    test-only SQLite override. Otherwise the FRIDAY Oracle DSN is resolved from
+    the environment; a plain directory outside tests is refused in production.
+    """
+    explicit = _oracle_dsn(state_dir)
+    if explicit:
+        return explicit
+    testing = "pytest" in sys.modules or (os.getenv("FRIDAY_ENV") or "").strip().lower() in {"testing", "test"}
+    if state_dir and testing:
+        return None
+    configured_raw = next(
+        ((os.getenv(key) or "").strip() for key in _BUSINESS_DSN_ENV if (os.getenv(key) or "").strip()),
+        "",
+    )
+    configured = _oracle_dsn(configured_raw)
+    if configured:
+        return configured
+    if state_dir:
+        environment = (os.getenv("FRIDAY_ENV") or "").strip().lower()
+        if environment == "production":
+            raise RuntimeError(
+                "FRIDAY business operations require an Oracle DSN in production; "
+                "explicit directories are test-only."
+            )
+        return None
+    if configured_raw:
+        raise RuntimeError(
+            "FRIDAY_DATABASE_URL must be an oracle+oracledb:// DSN; SQLite and "
+            "PostgreSQL are not supported production backends."
+        )
+    raise RuntimeError(
+        "FRIDAY business operations require an Oracle Autonomous Database DSN "
+        "(FRIDAY_DATABASE_URL or DATABASE_URL)."
+    )
+
+
+def _lob_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, bytes):
+        return value.decode("utf-8")
+    read = getattr(value, "read", None)
+    return read() if callable(read) else str(value)
+
+
+class _OracleBusinessStore:
+    """Oracle-backed ideas, skills, routines, runs and snapshots."""
+
+    def __init__(self, dsn: str) -> None:
+        self.dsn = dsn
+        self._engine: Any | None = None
+        self._lock = threading.RLock()
+        self._ensure_schema()
+
+    def _get_engine(self):
+        if self._engine is not None:
+            return self._engine
+        with self._lock:
+            if self._engine is None:
+                from sqlalchemy import create_engine
+
+                self._engine = create_engine(
+                    self.dsn,
+                    pool_pre_ping=True,
+                    pool_size=3,
+                    max_overflow=5,
+                    pool_recycle=1800,
+                )
+        return self._engine
+
+    def _ensure_schema(self) -> None:
+        from sqlalchemy import text
+
+        ddl = {
+            "BUSINESS_IDEAS": """CREATE TABLE business_ideas (
+                id VARCHAR2(10) PRIMARY KEY, category VARCHAR2(300), title VARCHAR2(500),
+                buyer VARCHAR2(500), problem CLOB, solution CLOB, body CLOB,
+                source_file VARCHAR2(300), imported_at VARCHAR2(80))""",
+            "BUSINESS_SKILLS": """CREATE TABLE business_skills (
+                id VARCHAR2(64) PRIMARY KEY, name VARCHAR2(100) UNIQUE, workflow VARCHAR2(100),
+                spec CLOB, created_at VARCHAR2(80))""",
+            "BUSINESS_ROUTINES": """CREATE TABLE business_routines (
+                id VARCHAR2(64) PRIMARY KEY, skill_id VARCHAR2(64), weekdays VARCHAR2(64),
+                local_time VARCHAR2(20), timezone VARCHAR2(100), enabled NUMBER(1),
+                last_run VARCHAR2(80), created_at VARCHAR2(80), max_age_hours NUMBER)""",
+            "BUSINESS_RUNS": """CREATE TABLE business_runs (
+                id VARCHAR2(64) PRIMARY KEY, routine_id VARCHAR2(64), workflow VARCHAR2(100),
+                status VARCHAR2(64), generated_at VARCHAR2(80), output CLOB)""",
+            "BUSINESS_SNAPSHOTS": """CREATE TABLE business_snapshots (
+                source_id VARCHAR2(100) NOT NULL, observed_at VARCHAR2(80) NOT NULL,
+                payload CLOB NOT NULL, source_link VARCHAR2(1000),
+                PRIMARY KEY (source_id, observed_at))""",
+        }
+        with self._get_engine().begin() as conn:
+            for table, statement in ddl.items():
+                present = conn.execute(
+                    text("SELECT COUNT(*) FROM user_tables WHERE table_name = :name"),
+                    {"name": table},
+                ).scalar_one()
+                if not present:
+                    conn.exec_driver_sql(statement)
+
+    def import_ideas(self, cards: list[dict], imported_at: str) -> None:
+        from sqlalchemy import text
+
+        statement = text(
+            """MERGE INTO business_ideas target
+               USING (SELECT :id AS id FROM dual) source
+               ON (target.id = source.id)
+               WHEN MATCHED THEN UPDATE SET category = :category, title = :title,
+                   buyer = :buyer, problem = :problem, solution = :solution, body = :body,
+                   source_file = :source_file, imported_at = :imported_at
+               WHEN NOT MATCHED THEN INSERT
+                   (id, category, title, buyer, problem, solution, body, source_file, imported_at)
+                   VALUES (:id, :category, :title, :buyer, :problem, :solution, :body,
+                           :source_file, :imported_at)"""
+        )
+        with self._get_engine().begin() as conn:
+            for card in cards:
+                conn.execute(statement, {**card, "imported_at": imported_at})
+
+    def list_ideas(self) -> list[dict]:
+        from sqlalchemy import text
+
+        with self._get_engine().connect() as conn:
+            rows = conn.execute(
+                text("""SELECT id, category, title, buyer, problem, solution, body, source_file
+                        FROM business_ideas""")
+            ).fetchall()
+        keys = ("id", "category", "title", "buyer", "problem", "solution", "body", "source_file")
+        return [
+            {key: (_lob_text(value) if key in {"problem", "solution", "body"} else value)
+             for key, value in zip(keys, row)}
+            for row in rows
+        ]
+
+    def save_skill(self, skill_id: str, name: str, workflow: str, spec: str, created_at: str) -> None:
+        from sqlalchemy import text
+
+        statement = text(
+            """MERGE INTO business_skills target
+               USING (SELECT :name AS name FROM dual) source
+               ON (target.name = source.name)
+               WHEN MATCHED THEN UPDATE SET id = :id, workflow = :workflow,
+                   spec = :spec, created_at = :created_at
+               WHEN NOT MATCHED THEN INSERT (id, name, workflow, spec, created_at)
+                   VALUES (:id, :name, :workflow, :spec, :created_at)"""
+        )
+        with self._get_engine().begin() as conn:
+            conn.execute(statement, {"id": skill_id, "name": name, "workflow": workflow,
+                                     "spec": spec, "created_at": created_at})
+
+    def list_skills(self) -> list[dict]:
+        from sqlalchemy import text
+
+        with self._get_engine().connect() as conn:
+            rows = conn.execute(
+                text("""SELECT id, name, workflow, spec, created_at FROM business_skills
+                        ORDER BY created_at DESC""")
+            ).fetchall()
+        return [{"skill_id": row[0], "name": row[1], "workflow": row[2],
+                 "spec": json.loads(_lob_text(row[3])), "created_at": row[4]} for row in rows]
+
+    def skill_exists(self, skill_id: str) -> bool:
+        from sqlalchemy import text
+
+        with self._get_engine().connect() as conn:
+            count = conn.execute(
+                text("SELECT COUNT(*) FROM business_skills WHERE id = :id"), {"id": skill_id}
+            ).scalar_one()
+        return bool(count)
+
+    def insert_routine(self, routine_id: str, skill_id: str, weekdays: str, local_time: str,
+                       timezone_name: str, created: str, max_age_hours: float) -> None:
+        from sqlalchemy import text
+
+        with self._get_engine().begin() as conn:
+            conn.execute(
+                text("""INSERT INTO business_routines
+                        (id, skill_id, weekdays, local_time, timezone, enabled, last_run,
+                         created_at, max_age_hours)
+                        VALUES (:id, :skill_id, :weekdays, :local_time, :timezone, 1, NULL,
+                                :created_at, :max_age_hours)"""),
+                {"id": routine_id, "skill_id": skill_id, "weekdays": weekdays,
+                 "local_time": local_time, "timezone": timezone_name,
+                 "created_at": created, "max_age_hours": max_age_hours},
+            )
+
+    def get_routine(self, routine_id: str) -> dict | None:
+        from sqlalchemy import text
+
+        with self._get_engine().connect() as conn:
+            row = conn.execute(
+                text("""SELECT weekdays, local_time, timezone, enabled, last_run, max_age_hours,
+                               skill_id FROM business_routines WHERE id = :id"""),
+                {"id": routine_id},
+            ).fetchone()
+        if row is None:
+            return None
+        keys = ("weekdays", "local_time", "timezone", "enabled", "last_run", "max_age_hours", "skill_id")
+        return dict(zip(keys, row))
+
+    def list_routines(self) -> list[dict]:
+        from sqlalchemy import text
+
+        with self._get_engine().connect() as conn:
+            rows = conn.execute(
+                text("""SELECT id, skill_id, weekdays, local_time, timezone, enabled, last_run,
+                               max_age_hours FROM business_routines ORDER BY created_at DESC""")
+            ).fetchall()
+        return [{"routine_id": r[0], "skill_id": r[1], "weekdays": json.loads(r[2]),
+                 "local_time": r[3], "timezone": r[4], "enabled": bool(r[5]),
+                 "last_run": r[6], "max_snapshot_age_hours": r[7]} for r in rows]
+
+    def routine_skill(self, routine_id: str) -> dict | None:
+        from sqlalchemy import text
+
+        with self._get_engine().connect() as conn:
+            row = conn.execute(
+                text("""SELECT s.workflow, s.spec, r.enabled, r.max_age_hours
+                        FROM business_routines r JOIN business_skills s ON s.id = r.skill_id
+                        WHERE r.id = :id"""),
+                {"id": routine_id},
+            ).fetchone()
+        if row is None:
+            return None
+        return {"workflow": row[0], "spec": _lob_text(row[1]),
+                "enabled": bool(row[2]), "max_age_hours": row[3]}
+
+    def ingest_snapshot(self, source_id: str, observed_at: str, body: str,
+                        source_link: str | None) -> None:
+        from sqlalchemy import text
+
+        merge = text(
+            """MERGE INTO business_snapshots target
+               USING (SELECT :source_id AS source_id, :observed_at AS observed_at FROM dual) source
+               ON (target.source_id = source.source_id AND target.observed_at = source.observed_at)
+               WHEN MATCHED THEN UPDATE SET payload = :payload, source_link = :source_link
+               WHEN NOT MATCHED THEN INSERT (source_id, observed_at, payload, source_link)
+                   VALUES (:source_id, :observed_at, :payload, :source_link)"""
+        )
+        prune = text(
+            """DELETE FROM business_snapshots
+               WHERE source_id = :source_id
+                 AND observed_at < (
+                     SELECT MIN(observed_at) FROM (
+                         SELECT observed_at FROM business_snapshots
+                         WHERE source_id = :source_id ORDER BY observed_at DESC
+                     ) WHERE ROWNUM <= 10)"""
+        )
+        params = {"source_id": source_id, "observed_at": observed_at,
+                  "payload": body, "source_link": source_link}
+        with self._get_engine().begin() as conn:
+            conn.execute(merge, params)
+            conn.execute(prune, {"source_id": source_id})
+
+    def snapshot_rows(self, source_id: str) -> list[dict]:
+        from sqlalchemy import text
+
+        with self._get_engine().connect() as conn:
+            rows = conn.execute(
+                text("""SELECT observed_at, payload, source_link FROM business_snapshots
+                        WHERE source_id = :source_id ORDER BY observed_at DESC
+                        FETCH FIRST 10 ROWS ONLY"""),
+                {"source_id": source_id},
+            ).fetchall()
+        return [{"observed_at": row[0], "payload": _lob_text(row[1]), "source_link": row[2]}
+                for row in rows]
+
+    def insert_run(self, run_id: str, routine_id: str, workflow: str, status: str,
+                   generated_at: str, output: str) -> None:
+        from sqlalchemy import text
+
+        with self._get_engine().begin() as conn:
+            conn.execute(
+                text("""INSERT INTO business_runs
+                        (id, routine_id, workflow, status, generated_at, output)
+                        VALUES (:id, :routine_id, :workflow, :status, :generated_at, :output)"""),
+                {"id": run_id, "routine_id": routine_id, "workflow": workflow,
+                 "status": status, "generated_at": generated_at, "output": output},
+            )
+
+    def update_last_run(self, routine_id: str, generated_at: str) -> None:
+        from sqlalchemy import text
+
+        with self._get_engine().begin() as conn:
+            conn.execute(
+                text("UPDATE business_routines SET last_run = :last_run WHERE id = :id"),
+                {"last_run": generated_at, "id": routine_id},
+            )
+
+    def set_enabled(self, routine_id: str, enabled: bool) -> int:
+        from sqlalchemy import text
+
+        with self._get_engine().begin() as conn:
+            result = conn.execute(
+                text("UPDATE business_routines SET enabled = :enabled WHERE id = :id"),
+                {"enabled": 1 if enabled else 0, "id": routine_id},
+            )
+        return int(result.rowcount or 0)
+
+    def claim_due_slot(self, routine_id: str, current: datetime, parse_date) -> tuple | None:
+        """Lock one routine row, claim a due slot and persist ``last_run``."""
+        from sqlalchemy import text
+
+        with self._get_engine().begin() as conn:
+            row = conn.execute(
+                text("""SELECT weekdays, local_time, timezone, enabled, last_run, max_age_hours,
+                               skill_id FROM business_routines WHERE id = :id FOR UPDATE"""),
+                {"id": routine_id},
+            ).fetchone()
+            if row is None:
+                raise KeyError(routine_id)
+            weekdays, local_clock, zone_name, enabled, last_run, max_age, skill_id = row
+            if not enabled:
+                return None
+            zone = ZoneInfo(zone_name)
+            local_now = current.astimezone(zone)
+            last = parse_date(last_run, "last_run", ZoneInfo("UTC")) if last_run else None
+            target = time.fromisoformat(local_clock)
+            slot = None
+            for offset in range(8):
+                day = (local_now - timedelta(days=offset)).date()
+                candidate = datetime.combine(day, target, zone)
+                if (day.weekday() in json.loads(weekdays) and candidate <= local_now
+                        and (last is None or candidate > last.astimezone(zone))):
+                    slot = candidate
+                    break
+            if slot is None:
+                return None
+            conn.execute(
+                text("UPDATE business_routines SET last_run = :last_run WHERE id = :id"),
+                {"last_run": slot.isoformat(), "id": routine_id},
+            )
+            return slot, max_age, skill_id
+
+
 class BusinessOpsEngine:
     """Drive-sourced business design and Grok-style reviewed workflow routines."""
 
-    def __init__(self, state_dir: str) -> None:
-        Path(state_dir).mkdir(parents=True, exist_ok=True)
-        self.database = str(Path(state_dir) / "business_ops.sqlite3")
-        with sqlite3.connect(self.database) as db:
-            db.execute("PRAGMA journal_mode=WAL")
-            db.execute("""CREATE TABLE IF NOT EXISTS ideas (
-                id TEXT PRIMARY KEY, category TEXT, title TEXT, buyer TEXT, problem TEXT,
-                solution TEXT, body TEXT, source_file TEXT, imported_at TEXT)""")
-            db.execute("""CREATE TABLE IF NOT EXISTS skills (
-                id TEXT PRIMARY KEY, name TEXT UNIQUE, workflow TEXT, spec TEXT, created_at TEXT)""")
-            db.execute("""CREATE TABLE IF NOT EXISTS routines (
-                id TEXT PRIMARY KEY, skill_id TEXT, weekdays TEXT, local_time TEXT,
-                timezone TEXT, enabled INTEGER, last_run TEXT, created_at TEXT)""")
-            db.execute("""CREATE TABLE IF NOT EXISTS runs (
-                id TEXT PRIMARY KEY, routine_id TEXT, workflow TEXT, status TEXT,
-                generated_at TEXT, output TEXT)""")
-            db.execute("""CREATE TABLE IF NOT EXISTS snapshots (
-                source_id TEXT NOT NULL, observed_at TEXT NOT NULL, payload TEXT NOT NULL,
-                source_link TEXT, PRIMARY KEY(source_id, observed_at))""")
-            routine_columns = {row[1] for row in db.execute("PRAGMA table_info(routines)")}
-            if "max_age_hours" not in routine_columns:
-                db.execute("ALTER TABLE routines ADD COLUMN max_age_hours REAL NOT NULL DEFAULT 24")
+    def __init__(self, state_dir: str = "") -> None:
+        dsn = _resolve_business_dsn(state_dir)
+        self._oracle: _OracleBusinessStore | None = _OracleBusinessStore(dsn) if dsn else None
+        self.database = dsn if self._oracle is not None else str(Path(state_dir) / "business_ops.sqlite3")
+        if self._oracle is None:
+            Path(state_dir).mkdir(parents=True, exist_ok=True)
+            with sqlite3.connect(self.database) as db:
+                db.execute("PRAGMA journal_mode=WAL")
+                db.execute("""CREATE TABLE IF NOT EXISTS ideas (
+                    id TEXT PRIMARY KEY, category TEXT, title TEXT, buyer TEXT, problem TEXT,
+                    solution TEXT, body TEXT, source_file TEXT, imported_at TEXT)""")
+                db.execute("""CREATE TABLE IF NOT EXISTS skills (
+                    id TEXT PRIMARY KEY, name TEXT UNIQUE, workflow TEXT, spec TEXT, created_at TEXT)""")
+                db.execute("""CREATE TABLE IF NOT EXISTS routines (
+                    id TEXT PRIMARY KEY, skill_id TEXT, weekdays TEXT, local_time TEXT,
+                    timezone TEXT, enabled INTEGER, last_run TEXT, created_at TEXT)""")
+                db.execute("""CREATE TABLE IF NOT EXISTS runs (
+                    id TEXT PRIMARY KEY, routine_id TEXT, workflow TEXT, status TEXT,
+                    generated_at TEXT, output TEXT)""")
+                db.execute("""CREATE TABLE IF NOT EXISTS snapshots (
+                    source_id TEXT NOT NULL, observed_at TEXT NOT NULL, payload TEXT NOT NULL,
+                    source_link TEXT, PRIMARY KEY(source_id, observed_at))""")
+                routine_columns = {row[1] for row in db.execute("PRAGMA table_info(routines)")}
+                if "max_age_hours" not in routine_columns:
+                    db.execute("ALTER TABLE routines ADD COLUMN max_age_hours REAL NOT NULL DEFAULT 24")
         self._scheduler_stop: Event | None = None
         self._scheduler_thread: Thread | None = None
 
@@ -145,11 +512,14 @@ class BusinessOpsEngine:
                            "buyer": buyer, "problem": problem, "solution": solution,
                            "body": chunk[:20000], "source_file": source_file})
         now = datetime.now().astimezone().isoformat()
-        with sqlite3.connect(self.database) as db:
-            for card in parsed:
-                db.execute("INSERT OR REPLACE INTO ideas VALUES (?,?,?,?,?,?,?,?,?)",
-                    (card["id"], card["category"], card["title"], card["buyer"], card["problem"],
-                     card["solution"], card["body"], card["source_file"], now))
+        if self._oracle is not None:
+            self._oracle.import_ideas(parsed, now)
+        else:
+            with sqlite3.connect(self.database) as db:
+                for card in parsed:
+                    db.execute("INSERT OR REPLACE INTO ideas VALUES (?,?,?,?,?,?,?,?,?)",
+                        (card["id"], card["category"], card["title"], card["buyer"], card["problem"],
+                         card["solution"], card["body"], card["source_file"], now))
         return {"imported": len(parsed), "source_file": source_file,
                 "source": {"file_id": IDEA_SOURCE["drive_file_id"], "folder_id": IDEA_SOURCE["folder_id"]},
                 "partial_import_allowed": len(parsed) < 200}
@@ -159,9 +529,14 @@ class BusinessOpsEngine:
         if not query or not 1 <= limit <= 50:
             raise ValueError("query and a limit between 1 and 50 are required")
         terms = self._tokens(query)
-        with sqlite3.connect(self.database) as db:
-            rows = db.execute("SELECT id,category,title,buyer,problem,solution,body,source_file FROM ideas").fetchall()
-        if not rows:
+        if self._oracle is not None:
+            cards = self._oracle.list_ideas()
+        else:
+            with sqlite3.connect(self.database) as db:
+                rows = db.execute("SELECT id,category,title,buyer,problem,solution,body,source_file FROM ideas").fetchall()
+            cards = [dict(zip(("id", "category", "title", "buyer", "problem", "solution", "body", "source_file"), row))
+                     for row in rows]
+        if not cards:
             ranked_categories = sorted(((len(terms & self._tokens(category)), category)
                                         for category in IDEA_SOURCE["categories"]), key=lambda item:(-item[0],item[1]))
             matches = [{"category": category, "score": score,
@@ -171,8 +546,7 @@ class BusinessOpsEngine:
                     "catalog": IDEA_SOURCE,
                     "guidance": "Import extracted Drive card text via POST /api/business/ideas/import for exact 200-card recommendations."}
         ranked = []
-        for row in rows:
-            card = dict(zip(("id", "category", "title", "buyer", "problem", "solution", "body", "source_file"), row))
+        for card in cards:
             fields = {"title": self._tokens(card["title"]), "buyer": self._tokens(card["buyer"]),
                       "problem": self._tokens(card["problem"]), "solution": self._tokens(card["solution"]),
                       "category": self._tokens(card["category"])}
@@ -187,7 +561,7 @@ class BusinessOpsEngine:
                              "citation": {"drive_file_id": IDEA_SOURCE["drive_file_id"],
                                           "source_file": card["source_file"]}}
                             for score, card in ranked[:limit]],
-                "catalog_count": len(rows), "heuristic": "token-overlap ranking, not market validation"}
+                "catalog_count": len(cards), "heuristic": "token-overlap ranking, not market validation"}
 
     def score_idea(self, idea: dict[str, Any]) -> dict:
         """Transparent readiness checklist; scores are founder inputs, not predictions."""
@@ -450,12 +824,17 @@ class BusinessOpsEngine:
         if len(normalized)>20000:raise ValueError("serialized skill exceeds 20 KB")
         skill_id = "skill_" + uuid.uuid4().hex
         now = datetime.now().astimezone().isoformat()
-        with sqlite3.connect(self.database) as db:
-            db.execute("INSERT OR REPLACE INTO skills VALUES (?,?,?,?,?)", (skill_id, name, workflow, normalized, now))
+        if self._oracle is not None:
+            self._oracle.save_skill(skill_id, name, workflow, normalized, now)
+        else:
+            with sqlite3.connect(self.database) as db:
+                db.execute("INSERT OR REPLACE INTO skills VALUES (?,?,?,?,?)", (skill_id, name, workflow, normalized, now))
         return {"skill_id": skill_id, "name": name, "workflow": workflow, "spec": spec,
                 "approval_boundary_required": True}
 
     def list_skills(self) -> list[dict]:
+        if self._oracle is not None:
+            return self._oracle.list_skills()
         with sqlite3.connect(self.database) as db: rows = db.execute("SELECT id,name,workflow,spec,created_at FROM skills ORDER BY created_at DESC").fetchall()
         return [{"skill_id": a, "name": b, "workflow": c, "spec": json.loads(d), "created_at": e} for a,b,c,d,e in rows]
 
@@ -470,22 +849,34 @@ class BusinessOpsEngine:
         try: clock = time.fromisoformat(local_time)
         except ValueError as error: raise ValueError("local_time must be HH:MM[:SS]") from error
         if clock.tzinfo: raise ValueError("local_time must be wall time in the chosen timezone")
-        with sqlite3.connect(self.database) as db:
-            if not db.execute("SELECT 1 FROM skills WHERE id=?", (skill_id,)).fetchone(): raise KeyError(skill_id)
-            routine_id = "routine_" + uuid.uuid4().hex
-            created = datetime.now(zone).isoformat()
-            db.execute("INSERT OR REPLACE INTO routines (id,skill_id,weekdays,local_time,timezone,enabled,last_run,created_at,max_age_hours) VALUES (?,?,?,?,?,?,?,?,?)",
-                       (routine_id,skill_id,json.dumps(sorted(weekdays)),local_time,timezone_name,1,None,created,max_snapshot_age_hours))
+        routine_id = "routine_" + uuid.uuid4().hex
+        created = datetime.now(zone).isoformat()
+        if self._oracle is not None:
+            if not self._oracle.skill_exists(skill_id): raise KeyError(skill_id)
+            self._oracle.insert_routine(routine_id, skill_id, json.dumps(sorted(weekdays)),
+                                        local_time, timezone_name, created, max_snapshot_age_hours)
+        else:
+            with sqlite3.connect(self.database) as db:
+                if not db.execute("SELECT 1 FROM skills WHERE id=?", (skill_id,)).fetchone(): raise KeyError(skill_id)
+                db.execute("INSERT OR REPLACE INTO routines (id,skill_id,weekdays,local_time,timezone,enabled,last_run,created_at,max_age_hours) VALUES (?,?,?,?,?,?,?,?,?)",
+                           (routine_id,skill_id,json.dumps(sorted(weekdays)),local_time,timezone_name,1,None,created,max_snapshot_age_hours))
         return {"routine_id": routine_id, "skill_id": skill_id, "weekdays": sorted(weekdays),
                 "local_time": local_time, "timezone": timezone_name, "enabled": True,
                 "max_snapshot_age_hours": max_snapshot_age_hours,
                 "execution": "local process scheduler when FRIDAY_ENABLE_ROUTINES=1; requires a fresh snapshot; never sends or edits"}
 
     def next_run(self, routine_id: str, after: datetime | None = None) -> dict:
-        with sqlite3.connect(self.database) as db:
-            row=db.execute("SELECT weekdays,local_time,timezone,enabled,last_run,max_age_hours FROM routines WHERE id=?",(routine_id,)).fetchone()
-        if not row: raise KeyError(routine_id)
-        weekdays, local_clock, zone_name, enabled, last_run, max_age_hours=row
+        if self._oracle is not None:
+            routine = self._oracle.get_routine(routine_id)
+        else:
+            with sqlite3.connect(self.database) as db:
+                row=db.execute("SELECT weekdays,local_time,timezone,enabled,last_run,max_age_hours FROM routines WHERE id=?",(routine_id,)).fetchone()
+            routine = None if row is None else dict(zip(
+                ("weekdays", "local_time", "timezone", "enabled", "last_run", "max_age_hours"), row))
+        if routine is None: raise KeyError(routine_id)
+        weekdays, local_clock, zone_name, enabled, last_run, max_age_hours = (
+            routine["weekdays"], routine["local_time"], routine["timezone"], routine["enabled"],
+            routine["last_run"], routine["max_age_hours"])
         if not enabled: return {"routine_id":routine_id,"enabled":False,"next_run":None}
         zone=ZoneInfo(zone_name); now=(after or datetime.now(zone)).astimezone(zone)
         target_time=time.fromisoformat(local_clock); chosen=None
@@ -511,9 +902,12 @@ class BusinessOpsEngine:
         parsed = self._date(stamp,"observed_at",ZoneInfo("UTC"))
         if parsed is None: raise ValueError("observed_at is required")
         source_link = self._clean(source_link,1000)
-        with sqlite3.connect(self.database) as db:
-            db.execute("INSERT OR REPLACE INTO snapshots VALUES (?,?,?,?)",(source_id,parsed.isoformat(),body,source_link or None))
-            db.execute("DELETE FROM snapshots WHERE source_id=? AND observed_at NOT IN (SELECT observed_at FROM snapshots WHERE source_id=? ORDER BY observed_at DESC LIMIT 10)",(source_id,source_id))
+        if self._oracle is not None:
+            self._oracle.ingest_snapshot(source_id, parsed.isoformat(), body, source_link or None)
+        else:
+            with sqlite3.connect(self.database) as db:
+                db.execute("INSERT OR REPLACE INTO snapshots VALUES (?,?,?,?)",(source_id,parsed.isoformat(),body,source_link or None))
+                db.execute("DELETE FROM snapshots WHERE source_id=? AND observed_at NOT IN (SELECT observed_at FROM snapshots WHERE source_id=? ORDER BY observed_at DESC LIMIT 10)",(source_id,source_id))
         return {"source_id":source_id,"observed_at":parsed.isoformat(),"bytes":len(body.encode()),"stored":True}
 
     def _snapshot_data(self, routine_id: str, spec: dict, max_age_hours: float,
@@ -523,8 +917,12 @@ class BusinessOpsEngine:
             return None,{"status":"blocked_missing_sources","missing_sources":["skill has no configured source IDs"]}
         data={}; freshness={}; missing=[]; stale=[]
         for source_id in source_ids:
-            with sqlite3.connect(self.database) as db:
-                rows=db.execute("SELECT observed_at,payload,source_link FROM snapshots WHERE source_id=? ORDER BY observed_at DESC LIMIT 10",(source_id,)).fetchall()
+            if self._oracle is not None:
+                rows=[(r["observed_at"], r["payload"], r["source_link"])
+                      for r in self._oracle.snapshot_rows(source_id)]
+            else:
+                with sqlite3.connect(self.database) as db:
+                    rows=db.execute("SELECT observed_at,payload,source_link FROM snapshots WHERE source_id=? ORDER BY observed_at DESC LIMIT 10",(source_id,)).fetchall()
             candidates=[]
             for stamp,body,link in rows:
                 parsed=self._date(stamp,"observed_at",ZoneInfo("UTC"))
@@ -547,10 +945,16 @@ class BusinessOpsEngine:
 
     def run_routine(self, routine_id: str, data: dict[str, Any] | None = None,
                     generated_at: datetime | None = None) -> dict:
-        with sqlite3.connect(self.database) as db:
-            row=db.execute("SELECT s.workflow,s.spec,r.enabled,r.max_age_hours FROM routines r JOIN skills s ON s.id=r.skill_id WHERE r.id=?",(routine_id,)).fetchone()
-        if not row: raise KeyError(routine_id)
-        workflow,spec_json,enabled,max_age_hours=row
+        if self._oracle is not None:
+            routine = self._oracle.routine_skill(routine_id)
+        else:
+            with sqlite3.connect(self.database) as db:
+                row=db.execute("SELECT s.workflow,s.spec,r.enabled,r.max_age_hours FROM routines r JOIN skills s ON s.id=r.skill_id WHERE r.id=?",(routine_id,)).fetchone()
+            routine = None if row is None else {"workflow": row[0], "spec": row[1],
+                                                "enabled": bool(row[2]), "max_age_hours": row[3]}
+        if routine is None: raise KeyError(routine_id)
+        workflow, spec_json, enabled, max_age_hours = (
+            routine["workflow"], routine["spec"], routine["enabled"], routine["max_age_hours"])
         if not enabled: raise ValueError("routine is disabled")
         now=generated_at or datetime.now().astimezone()
         if data is None:
@@ -567,48 +971,44 @@ class BusinessOpsEngine:
             result=asdict(workflow_run)
             result["output"].setdefault("snapshot_freshness",source_state.get("freshness"))
         run_id="run_"+uuid.uuid4().hex
-        with sqlite3.connect(self.database) as db:
-            db.execute("INSERT INTO runs VALUES (?,?,?,?,?,?)",(run_id,routine_id,workflow,result["status"],result["generated_at"],json.dumps(result)))
-            db.execute("UPDATE routines SET last_run=? WHERE id=?",(result["generated_at"],routine_id))
+        if self._oracle is not None:
+            self._oracle.insert_run(run_id, routine_id, workflow, result["status"],
+                                    result["generated_at"], json.dumps(result))
+            self._oracle.update_last_run(routine_id, result["generated_at"])
+        else:
+            with sqlite3.connect(self.database) as db:
+                db.execute("INSERT INTO runs VALUES (?,?,?,?,?,?)",(run_id,routine_id,workflow,result["status"],result["generated_at"],json.dumps(result)))
+                db.execute("UPDATE routines SET last_run=? WHERE id=?",(result["generated_at"],routine_id))
         return {"run_id":run_id,**result}
-
-    def _due_slot(self, routine_id: str, now: datetime) -> tuple[datetime | None, tuple] | None:
-        with sqlite3.connect(self.database) as db:
-            row=db.execute("SELECT weekdays,local_time,timezone,enabled,last_run,max_age_hours,skill_id FROM routines WHERE id=?",(routine_id,)).fetchone()
-        if not row: return None
-        weekdays,local_clock,zone_name,enabled,last_run,max_age,skill_id=row
-        if not enabled:return None
-        zone=ZoneInfo(zone_name); local_now=now.astimezone(zone); last=self._date(last_run,"last_run",ZoneInfo("UTC")) if last_run else None
-        target=time.fromisoformat(local_clock)
-        for offset in range(8):
-            day=(local_now-timedelta(days=offset)).date()
-            candidate=datetime.combine(day,target,zone)
-            if day.weekday() in json.loads(weekdays) and candidate<=local_now and (last is None or candidate>last.astimezone(zone)):
-                return candidate,(max_age,skill_id)
-        return None
 
     def run_due(self, routine_id: str, now: datetime | None = None) -> dict | None:
         """Atomically claim one due wall-clock slot across concurrent API workers."""
         current=now or datetime.now().astimezone()
-        with sqlite3.connect(self.database,timeout=10) as db:
-            db.execute("BEGIN IMMEDIATE")
-            row=db.execute("SELECT weekdays,local_time,timezone,enabled,last_run,max_age_hours,skill_id FROM routines WHERE id=?",(routine_id,)).fetchone()
-            if not row:
-                db.rollback();raise KeyError(routine_id)
-            weekdays,local_clock,zone_name,enabled,last_run,max_age,skill_id=row
-            if not enabled:
-                db.rollback();return None
-            zone=ZoneInfo(zone_name); local_now=current.astimezone(zone); last=self._date(last_run,"last_run",ZoneInfo("UTC")) if last_run else None
-            target=time.fromisoformat(local_clock); slot=None
-            for offset in range(8):
-                day=(local_now-timedelta(days=offset)).date()
-                candidate=datetime.combine(day,target,zone)
-                if day.weekday() in json.loads(weekdays) and candidate<=local_now and (last is None or candidate>last.astimezone(zone)):
-                    slot=candidate;break
-            if slot is None:
-                db.rollback();return None
-            db.execute("UPDATE routines SET last_run=? WHERE id=?",(slot.isoformat(),routine_id))
-            db.commit()
+        if self._oracle is not None:
+            claimed = self._oracle.claim_due_slot(routine_id, current, self._date)
+            if claimed is None:
+                return None
+            slot, _, _ = claimed
+        else:
+            with sqlite3.connect(self.database,timeout=10) as db:
+                db.execute("BEGIN IMMEDIATE")
+                row=db.execute("SELECT weekdays,local_time,timezone,enabled,last_run,max_age_hours,skill_id FROM routines WHERE id=?",(routine_id,)).fetchone()
+                if not row:
+                    db.rollback();raise KeyError(routine_id)
+                weekdays,local_clock,zone_name,enabled,last_run,max_age,skill_id=row
+                if not enabled:
+                    db.rollback();return None
+                zone=ZoneInfo(zone_name); local_now=current.astimezone(zone); last=self._date(last_run,"last_run",ZoneInfo("UTC")) if last_run else None
+                target=time.fromisoformat(local_clock); slot=None
+                for offset in range(8):
+                    day=(local_now-timedelta(days=offset)).date()
+                    candidate=datetime.combine(day,target,zone)
+                    if day.weekday() in json.loads(weekdays) and candidate<=local_now and (last is None or candidate>last.astimezone(zone)):
+                        slot=candidate;break
+                if slot is None:
+                    db.rollback();return None
+                db.execute("UPDATE routines SET last_run=? WHERE id=?",(slot.isoformat(),routine_id))
+                db.commit()
         result=self.run_routine(routine_id,data=None,generated_at=current)
         return {**result,"scheduled_for":slot.isoformat()}
 
@@ -618,7 +1018,8 @@ class BusinessOpsEngine:
             try:
                 result=self.run_due(routine["routine_id"],now)
                 if result: due.append(result)
-            except (KeyError,ValueError,sqlite3.Error):
+            except Exception:
+                # A single broken routine must not stop the polling scheduler.
                 continue
         return due
 
@@ -641,12 +1042,17 @@ class BusinessOpsEngine:
     def set_routine_enabled(self, routine_id: str, enabled: bool) -> dict:
         if not isinstance(enabled, bool):
             raise ValueError("enabled must be a boolean")
-        with sqlite3.connect(self.database) as db:
-            changed=db.execute("UPDATE routines SET enabled=? WHERE id=?",(int(enabled),routine_id)).rowcount
+        if self._oracle is not None:
+            changed = self._oracle.set_enabled(routine_id, enabled)
+        else:
+            with sqlite3.connect(self.database) as db:
+                changed=db.execute("UPDATE routines SET enabled=? WHERE id=?",(int(enabled),routine_id)).rowcount
         if not changed:
             raise KeyError(routine_id)
         return {"routine_id":routine_id,"enabled":enabled}
 
     def list_routines(self) -> list[dict]:
+        if self._oracle is not None:
+            return self._oracle.list_routines()
         with sqlite3.connect(self.database) as db: rows=db.execute("SELECT id,skill_id,weekdays,local_time,timezone,enabled,last_run,max_age_hours FROM routines ORDER BY created_at DESC").fetchall()
         return [{"routine_id":r[0],"skill_id":r[1],"weekdays":json.loads(r[2]),"local_time":r[3],"timezone":r[4],"enabled":bool(r[5]),"last_run":r[6],"max_snapshot_age_hours":r[7]} for r in rows]

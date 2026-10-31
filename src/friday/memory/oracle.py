@@ -106,13 +106,8 @@ class OracleConversationMemory(BaseMemory):
         self._dsn = dsn
         self._vector_store = None
         self.settings = get_settings()
-
-        if create_default_conversation:
-            self._active_conversation_id = conversation_id or self.create_conversation(
-                title="Default Conversation"
-            )
-        else:
-            self._active_conversation_id = conversation_id or "default"
+        self._create_default_conversation = create_default_conversation
+        self._active_conversation_id = conversation_id
 
     # ------------------------------------------------------------------
     # Engine / schema
@@ -126,6 +121,16 @@ class OracleConversationMemory(BaseMemory):
 
     @property
     def active_conversation_id(self) -> str:
+        """Resolve the active conversation, creating one on first use.
+
+        Deferred so importing a module that builds a ``FridayAgent`` -- notably
+        ``friday.api.server`` -- never opens a database connection.
+        """
+        if self._active_conversation_id is None:
+            if self._create_default_conversation:
+                self._active_conversation_id = self._get_or_create_default_conversation()
+            else:
+                self._active_conversation_id = "default"
         return self._active_conversation_id
 
     # ------------------------------------------------------------------
@@ -256,7 +261,7 @@ class OracleConversationMemory(BaseMemory):
         conversation_id: str | None = None,
         auto_embed: bool = True,
     ) -> None:
-        conv_id = conversation_id or self._active_conversation_id
+        conv_id = conversation_id or self.active_conversation_id
         msg_id = str(uuid.uuid4())
         content = filter_secrets(message.content)
 
@@ -449,7 +454,7 @@ class OracleConversationMemory(BaseMemory):
         )
 
     def get_messages(self, conversation_id: str | None = None) -> list[Message]:
-        conv_id = conversation_id or self._active_conversation_id
+        conv_id = conversation_id or self.active_conversation_id
         rows = oracle.query_all(
             f"SELECT {self._MESSAGE_COLUMNS} FROM messages WHERE conversation_id = :cid "
             "ORDER BY created_at ASC, id ASC",
@@ -467,7 +472,7 @@ class OracleConversationMemory(BaseMemory):
     ) -> list[Message]:
         if max_messages <= 0:
             return []
-        conv_id = conversation_id or self._active_conversation_id
+        conv_id = conversation_id or self.active_conversation_id
         if max_turns is not None and max_turns > 0:
             effective_limit = min(max_messages, max_turns * 2)
         else:
@@ -499,7 +504,7 @@ class OracleConversationMemory(BaseMemory):
     def clear(self, conversation_id: str | None = None, confirm: bool = False) -> None:
         if not confirm:
             raise ValueError("Clear memory requires confirm=True")
-        conv_id = conversation_id or self._active_conversation_id
+        conv_id = conversation_id or self.active_conversation_id
         now = datetime.now(timezone.utc).isoformat()
         with self._lock:
             with self.engine.begin() as conn:
@@ -518,7 +523,7 @@ class OracleConversationMemory(BaseMemory):
     def __len__(self) -> int:
         value = oracle.scalar(
             "SELECT COUNT(*) AS count FROM messages WHERE conversation_id = :cid",
-            {"cid": self._active_conversation_id},
+            {"cid": self.active_conversation_id},
             engine=self.engine,
             default=0,
         )
@@ -1370,7 +1375,7 @@ class OracleConversationMemory(BaseMemory):
 
     def close(self) -> None:
         """Release per-instance resources; the shared engine stays pooled."""
-        logger.debug("Closed OracleConversationMemory for conversation '%s'", self._active_conversation_id)
+        logger.debug("Closed OracleConversationMemory for conversation '%s'", self._active_conversation_id or 'default')
 
 
 __all__ = ["OracleConversationMemory"]

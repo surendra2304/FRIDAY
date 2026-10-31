@@ -1,7 +1,8 @@
 """FRIDAY Lab Experimentation Framework for FRIDAY Lab.
 
-Runs multi-provider A/B benchmarking across defined tasks, records performance metrics
-(latency, accuracy, success rate, failure modes) into SQLite, and provides CLI comparison reporting.
+Runs multi-provider A/B benchmarking across defined tasks and records performance
+metrics (latency, accuracy, success rate, failure modes) through the configured
+memory backend (Oracle Autonomous Database in production).
 """
 
 import time
@@ -11,7 +12,7 @@ from dataclasses import dataclass, field
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role
 from friday.llm.base import BaseLLMProvider
-from friday.memory.sqlite import SQLiteConversationMemory
+from friday.memory.base import BaseMemory
 
 logger = get_logger("lab.experiment")
 
@@ -50,7 +51,7 @@ class ExperimentRunner:
     def __init__(
         self,
         providers: list[BaseLLMProvider],
-        memory: SQLiteConversationMemory | None = None,
+        memory: BaseMemory | None = None,
         verifier_llm: BaseLLMProvider | None = None,
     ) -> None:
         self.providers = providers
@@ -149,7 +150,7 @@ class ExperimentRunner:
         return results
 
 
-def run_standard_lab_suite(memory: SQLiteConversationMemory | None = None) -> list[TrialResult]:
+def run_standard_lab_suite(memory: BaseMemory | None = None) -> list[TrialResult]:
     """Predefined standard test suite across system intelligence tasks."""
     from friday.core.config import get_settings
     from friday.llm.factory import create_llm_provider

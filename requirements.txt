@@ -23,5 +23,5 @@ PyGithub>=2.0.0
 numpy>=1.26.0
 pytesseract>=0.3.10
 sqlalchemy[asyncio]>=2.0.0
-asyncpg>=0.29.0
+oracledb>=2.5.0
 -e .

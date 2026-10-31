@@ -859,20 +859,12 @@ class WindowsFridayController:
         # 3. Memora memory database lookup
         try:
             from friday.memory.memora_client import memora_client
-            if hasattr(memora_client, "local_db_path") and os.path.exists(memora_client.local_db_path):
-                import sqlite3
-                with sqlite3.connect(memora_client.local_db_path) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "SELECT content_text FROM memory_records WHERE content_text LIKE ?",
-                        (f"%{clean_name}%",)
-                    )
-                    for (text,) in cursor.fetchall():
-                        m = re.search(r"(?:phone|number|mobile|whatsapp|wa)?\s*(?:is|:)?\s*([+\d\s-]{10,16})", text, re.IGNORECASE)
-                        if m:
-                            clean_digits = re.sub(r"[^\d+]", "", m.group(1))
-                            if len(re.sub(r"[^\d]", "", clean_digits)) >= 10:
-                                return clean_digits
+            for text in memora_client.search_local_text(clean_name):
+                m = re.search(r"(?:phone|number|mobile|whatsapp|wa)?\s*(?:is|:)?\s*([+\d\s-]{10,16})", text, re.IGNORECASE)
+                if m:
+                    clean_digits = re.sub(r"[^\d+]", "", m.group(1))
+                    if len(re.sub(r"[^\d]", "", clean_digits)) >= 10:
+                        return clean_digits
         except Exception:
             pass
         return None
@@ -911,18 +903,10 @@ class WindowsFridayController:
         # 2. Memora memory database lookup
         try:
             from friday.memory.memora_client import memora_client
-            if hasattr(memora_client, "local_db_path") and os.path.exists(memora_client.local_db_path):
-                import sqlite3
-                with sqlite3.connect(memora_client.local_db_path) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "SELECT content_text FROM memory_records WHERE content_text LIKE ?",
-                        (f"%{clean_name}%",)
-                    )
-                    for (text,) in cursor.fetchall():
-                        m = re.search(r"\b([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)", text)
-                        if m:
-                            return m.group(1)
+            for text in memora_client.search_local_text(clean_name):
+                m = re.search(r"\b([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)", text)
+                if m:
+                    return m.group(1)
         except Exception:
             pass
         return None

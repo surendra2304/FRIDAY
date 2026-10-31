@@ -103,7 +103,7 @@ class ProductionMonitor:
 
         # 3. Inspect FRIDAY OS Tier. The process can attest to facts about itself -
         # its thread count, its pid, and which memory object it holds - and nothing
-        # more. "HEALTHY" and "SQLite (friday.db)" were assertions about the
+        # more. "HEALTHY" and the backend name were assertions about the
         # deployment, not measurements.
         memory_backend = type(self.memory).__name__ if self.memory is not None else "none configured"
         friday_data = {

@@ -3,7 +3,7 @@ from __future__ import annotations
 """Active Working Task Memory & Context Isolation for FRIDAY.
 
 Provides:
-- Short-term working task state (`ActiveTaskContext`) isolated from long-term SQLite memory.
+- Short-term working task state (`ActiveTaskContext`) isolated from long-term Oracle memory.
 - Tracking of goal, plan, current state, active step, step outputs, constraints, observations, and clarifications.
 - Automatic context size budgeting and relevance filtering to prevent token bloat and context contamination.
 - Strict secret redaction, prevention of raw chain-of-thought and raw screenshot persistence.

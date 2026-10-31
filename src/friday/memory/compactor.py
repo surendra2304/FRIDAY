@@ -6,7 +6,7 @@ Summarizes old episodic memories into concise semantic knowledge facts using LLM
 from friday.core.logging import get_logger
 from friday.core.types import Message, Role
 from friday.llm.base import BaseLLMProvider
-from friday.memory.sqlite import SQLiteConversationMemory
+from friday.memory.base import BaseMemory
 
 logger = get_logger("memory.compactor")
 
@@ -16,7 +16,7 @@ class MemoryCompactor:
 
     def __init__(
         self,
-        memory: SQLiteConversationMemory,
+        memory: BaseMemory,
         llm_provider: BaseLLMProvider,
         compaction_threshold: int = 20,
     ) -> None:

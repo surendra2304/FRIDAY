@@ -7,8 +7,8 @@ from friday.core.database import get_ephemeral_db_path
 from friday.core.config import Settings
 from friday.agent.router import SpecialistRouter, SPECIALIST_CONFIGS
 from friday.ecosystem.fleet_client import FleetClient, CANONICAL_INTERNAL_MESH_URLS
-from friday.autonomous.daily_rhythm import get_postgres_dsn as daily_rhythm_get_dsn
-from friday.agent.execution_trace import get_postgres_dsn as trace_get_dsn
+from friday.autonomous.daily_rhythm import get_oracle_dsn as daily_rhythm_get_dsn
+from friday.agent.execution_trace import get_trace_dsn as trace_get_dsn
 
 
 def test_get_ephemeral_db_path_linux_tmpfs():
@@ -77,16 +77,17 @@ def test_fleet_client_canonical_mesh_in_production():
             assert client.vyralx_url == "http://10.0.0.120:8010"
 
 
-def test_oracle_23ai_dsn_normalization():
-    """Verify Oracle 23ai sync URLs are automatically normalized to asyncpg / oracledb_async."""
-    oracle_sync = "oracle+oracledb://TEST_USER:TestOnlyPassword%21%23Value@adb.ap-hyderabad-1.oraclecloud.com:1521/g7e6177242670c3_fridaycore_medium.adb.oraclecloud.com"
-    expected_async = "oracle+oracledb_async://TEST_USER:TestOnlyPassword%21%23Value@adb.ap-hyderabad-1.oraclecloud.com:1521/g7e6177242670c3_fridaycore_medium.adb.oraclecloud.com" (feat(integration): wire autonomous modules into all agent entry points)
-    
-    with patch.dict(os.environ, {"DATABASE_URL": oracle_sync}):
-        assert daily_rhythm_get_dsn() == expected_async
-        assert trace_get_dsn() == expected_async
+def test_oracle_dsn_normalization():
+    """Verify every accepted Oracle URL form normalises to ``oracle+oracledb://``."""
+    host = "adb.ap-hyderabad-1.oraclecloud.com:1521/g7e6177242670c3_fridaycore_medium.adb.oraclecloud.com"
+    creds = "TEST_USER:TestOnlyPassword%21%23Value@"
+    expected = f"oracle+oracledb://{creds}{host}"
 
-    oracle_plain = "oracle://TEST_USER:TestOnlyPassword%21%23Value@adb.ap-hyderabad-1.oraclecloud.com:1521/g7e6177242670c3_fridaycore_medium.adb.oraclecloud.com" (feat(integration): wire autonomous modules into all agent entry points)
-    with patch.dict(os.environ, {"DATABASE_URL": oracle_plain}):
-        assert daily_rhythm_get_dsn() == expected_async
-        assert trace_get_dsn() == expected_async
+    for variant in (
+        f"oracle+oracledb://{creds}{host}",
+        f"oracle://{creds}{host}",
+        f"oracle+oracledb_async://{creds}{host}",
+    ):
+        with patch.dict(os.environ, {"DATABASE_URL": variant}):
+            assert daily_rhythm_get_dsn() == expected
+            assert trace_get_dsn() == expected

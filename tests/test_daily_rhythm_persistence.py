@@ -9,31 +9,28 @@ import tempfile
 from unittest.mock import MagicMock, patch
 
 import pytest
-from sqlalchemy.ext.asyncio import create_async_engine
 
 from friday.autonomous.daily_rhythm import (
     DailyGoal,
     DailyRhythmManager,
-    daily_goals_table,
-    get_postgres_dsn,
-    metadata,
+    get_oracle_dsn,
 )
 from friday.planning.executors import BaseExecutor, ExecutorRegistry, ExecutorResult
 from friday.planning.scheduler import TaskGraphScheduler
 from friday.planning.types import TaskGraph, TaskStep
 
 
-def test_get_postgres_dsn_resolution():
-    """Verify get_postgres_dsn resolves Oracle DSNs and never invents a fallback."""
+def test_get_oracle_dsn_resolution():
+    """Verify get_oracle_dsn resolves Oracle DSNs and never invents a fallback."""
     oracle_dsn = "oracle+oracledb://FRIDAY:pass@adb.example.com:1522/?service_name=TEST"
     with patch.dict(os.environ, {"DATABASE_URL": oracle_dsn}):
-        assert get_postgres_dsn() == oracle_dsn
+        assert get_oracle_dsn() == oracle_dsn
 
     with patch.dict(
         os.environ,
         {"DATABASE_URL": "", "FRIDAY_DATABASE_URL": "", "ORACLE_CORE_ASYNC_URL": ""},
     ):
-        assert get_postgres_dsn() is None
+        assert get_oracle_dsn() is None
 
 
 def test_daily_rhythm_waking_schedule_and_phases():
@@ -85,7 +82,7 @@ async def test_daily_rhythm_sqlite_fallback_lifecycle():
     db_path = os.path.join(tmp_dir, "test_goals.db")
 
     try:
-        manager = DailyRhythmManager(db_path=db_path, enable_postgres=False)
+        manager = DailyRhythmManager(db_path=db_path)
 
         # 1. Set daily goal
         goal = manager.set_daily_goal("Achieve Tier-1 Autonomy", "Full universe mesh integration")
@@ -126,36 +123,26 @@ async def test_daily_rhythm_sqlite_fallback_lifecycle():
 
 
 @pytest.mark.asyncio
-async def test_daily_rhythm_async_sqlalchemy_engine():
-    """Verify DailyRhythmManager executes async SQLAlchemy operations over an async engine."""
+async def test_daily_rhythm_async_wrappers():
+    """Verify the async API delegates to the configured persistence backend."""
     tmp_dir = tempfile.mkdtemp()
     sqlite_db_path = os.path.join(tmp_dir, "local_goals.db")
 
-    # Use a separate file for the async SQLAlchemy mock engine
-    engine_file = os.path.join(tmp_dir, "async_pg_mock.db")
-    test_dsn = f"sqlite+aiosqlite:///{engine_file}"
-    test_engine = create_async_engine(test_dsn, echo=False)
-
-    async with test_engine.begin() as conn:
-        await conn.run_sync(metadata.create_all)
-
     try:
-        manager = DailyRhythmManager(db_path=sqlite_db_path, enable_postgres=True)
-        manager._async_engine = test_engine
-        manager._postgres_available = True
+        manager = DailyRhythmManager(db_path=sqlite_db_path)
 
         # Async set goal
         goal = await manager.set_daily_goal_async(
-            title="Async Postgres Goal",
-            description="Testing SQLAlchemy asyncpg pipeline",
+            title="Async Goal",
+            description="Testing async wrappers",
         )
-        assert goal.title == "Async Postgres Goal"
+        assert goal.title == "Async Goal"
         assert goal.status == "in_progress"
 
         # Async get goal
         retrieved = await manager.get_active_goal_async()
         assert retrieved is not None
-        assert retrieved.title == "Async Postgres Goal"
+        assert retrieved.title == "Async Goal"
 
         # Async update goal
         updated = await manager.update_goal_progress_async(0.8, notes="80% reached")
@@ -166,10 +153,9 @@ async def test_daily_rhythm_async_sqlalchemy_engine():
         # Async periodic task sweep
         sweep = await manager.periodic_task_sweep_async()
         assert sweep["has_active_goal"] is True
-        assert sweep["goal_title"] == "Async Postgres Goal"
+        assert sweep["goal_title"] == "Async Goal"
 
     finally:
-        await test_engine.dispose()
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 

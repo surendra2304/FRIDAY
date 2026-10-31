@@ -13,7 +13,7 @@ Provides structured domain exceptions across all subsystems:
 - TOOL_ERROR: Tool execution exceptions, invalid tool names, or internal tool crashes.
 - TIMEOUT: Step execution, plan duration, or background deadline expirations.
 - STATE_ERROR: Invalid state machine transitions or corrupted task states.
-- PERSISTENCE_ERROR: SQLite database errors, checkpoint save/load corruption, disk full.
+- PERSISTENCE_ERROR: Database errors, checkpoint save/load corruption, disk full.
 - CANCELLED: Explicit task cancellation via user, timeout, or parent task.
 - INTERNAL_ERROR: Unhandled system bugs, unexpected invariants, or system faults.
 

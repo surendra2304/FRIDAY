@@ -11,16 +11,17 @@ import hashlib
 import hmac
 import logging
 import os
-from pathlib import Path
 import re
-import sqlite3
 import time
-from friday.core.database import connect_sqlite
 from typing import Any, Dict, List, Optional
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+
+from friday.core import oracle
+from friday.core.exceptions import PersistenceConfigError
+from friday.core.oracle import ephemeral_backend_allowed
 
 logger = logging.getLogger("friday.memory.memora_client")
 
@@ -170,25 +171,27 @@ class MemoraClient:
         self.timeout = timeout
         self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="friday-memory")
 
-        # Primary local memora database file (defaults to user home directory or local repo)
-        try:
-            from friday.core.database import get_ephemeral_db_path
-            default_local = get_ephemeral_db_path("memora.db")
-        except Exception:
-            default_local = str(Path.home() / ".friday" / "data" / "memora.db")
-
+        # Local fallback storage. Production uses the FRIDAY Oracle schema; an
+        # explicit path is test-only.
+        self.local_db_path: Optional[str] = None
+        self._backend = "oracle"
         if local_db_path:
+            if not ephemeral_backend_allowed():
+                raise PersistenceConfigError(
+                    "MemoraClient(local_db_path=...) is test-only; omit local_db_path "
+                    "so the local fallback writes to Oracle Autonomous Database."
+                )
             self.local_db_path = local_db_path
-        else:
-            candidates = [
-                os.getenv("MEMORA_DB_PATH"),
-                "d:/FRIDAY Universe/Memora/data/memora.db",
-                "../Memora/data/memora.db",
-                "data/memora.db",
-                default_local,
-            ]
-            self.local_db_path = next((p for p in candidates if p and (p == ":memory:" or os.path.exists(p))), default_local)
+            self._backend = "sqlite"
+        # Schema bootstrap is lazy: importing this module must never open a
+        # socket, and a transient Oracle outage must not break process start.
+        self._schema_ready = False
         self._ensure_tables()
+
+    def _ready(self) -> None:
+        """Ensure the local fallback schema exists, retrying after a failure."""
+        if not self._schema_ready:
+            self._ensure_tables()
 
     def _remote_headers(self, agent_name: str, *, json_body: bool = False, api_key: Optional[str] = None) -> dict[str, str]:
         headers = {"X-Agent-Name": agent_name.lower()}
@@ -413,48 +416,57 @@ class MemoraClient:
             return {"status": "error", "error": type(exc).__name__}
 
     def _ensure_tables(self) -> None:
-        """Ensure SQLite schema exists in local database."""
-        try:
-            if self.local_db_path != ":memory:":
-                db_dir = os.path.dirname(os.path.abspath(self.local_db_path))
-                os.makedirs(db_dir, exist_ok=True)
-            with connect_sqlite(self.local_db_path, timeout=5.0) as conn:
-                c = conn.cursor()
-                c.execute("""
-                    CREATE TABLE IF NOT EXISTS agents (
-                        id TEXT PRIMARY KEY,
-                        name TEXT UNIQUE,
-                        role TEXT,
-                        tenant_id TEXT
-                    )
-                """)
-                c.execute("""
-                    CREATE TABLE IF NOT EXISTS namespaces (
-                        id TEXT PRIMARY KEY,
-                        path TEXT UNIQUE,
-                        type TEXT,
-                        agent_id TEXT,
-                        tenant_id TEXT
-                    )
-                """)
-                c.execute("""
-                    CREATE TABLE IF NOT EXISTS memory_records (
-                        id TEXT PRIMARY KEY,
-                        namespace_id TEXT,
-                        owner_id TEXT,
-                        memory_type TEXT,
-                        content_text TEXT,
-                        source TEXT,
-                        confidence REAL,
-                        importance REAL,
-                        lifecycle_state TEXT,
-                        tenant_id TEXT,
-                        created_at TEXT
-                    )
-                """)
-                conn.commit()
-        except Exception as e:
-            logger.debug(f"Memora table initialization: {e}")
+        """Ensure the local fallback schema exists.
+
+        Failures are logged, not raised: this runs at import time for the shared
+        module-level client, and a database outage must not stop FRIDAY from
+        starting. The next local write retries through :meth:`_ready`.
+        """
+        if self._backend == "oracle":
+            try:
+                oracle.ensure_schema()
+                self._schema_ready = True
+            except Exception as exc:
+                logger.warning("Memora Oracle schema bootstrap deferred: %s", exc)
+            return
+        from friday.core.database import connect_sqlite
+
+        with connect_sqlite(self.local_db_path, timeout=5.0) as conn:
+            c = conn.cursor()
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS agents (
+                    id TEXT PRIMARY KEY,
+                    name TEXT UNIQUE,
+                    role TEXT,
+                    tenant_id TEXT
+                )
+            """)
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS namespaces (
+                    id TEXT PRIMARY KEY,
+                    path TEXT UNIQUE,
+                    type TEXT,
+                    agent_id TEXT,
+                    tenant_id TEXT
+                )
+            """)
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS memory_records (
+                    id TEXT PRIMARY KEY,
+                    namespace_id TEXT,
+                    owner_id TEXT,
+                    memory_type TEXT,
+                    content_text TEXT,
+                    source TEXT,
+                    confidence REAL,
+                    importance REAL,
+                    lifecycle_state TEXT,
+                    tenant_id TEXT,
+                    created_at TEXT
+                )
+            """)
+            conn.commit()
+        self._schema_ready = True
 
     @classmethod
     def should_persist(cls, text: str) -> bool:
@@ -749,30 +761,150 @@ class MemoraClient:
     # Local Storage Engine
     # -------------------------------------------------------------------------
 
-    def _get_agent_and_ns(self, conn: sqlite3.Connection, agent_name: str) -> tuple[str, str]:
-        c = conn.cursor()
-        c.execute("SELECT id FROM agents WHERE name = ?", (agent_name.lower(),))
-        row = c.fetchone()
-        if row:
-            aid = row[0]
-        else:
-            aid = str(uuid.uuid4())
-            c.execute("INSERT INTO agents (id, name, role, tenant_id) VALUES (?, ?, ?, ?)",
-                      (aid, agent_name.lower(), "worker", "default"))
-        
-        c.execute("SELECT id FROM namespaces WHERE agent_id = ?", (aid,))
-        row = c.fetchone()
-        if row:
-            nid = row[0]
-        else:
+    def search_local_text(self, fragment: str, limit: int = 50) -> List[str]:
+        """Return local fallback memory rows containing ``fragment`` (case-insensitive)."""
+        needle = (fragment or "").strip()
+        if not needle:
+            return []
+        self._ready()
+        if self._backend == "oracle":
+            rows = oracle.query_all(
+                "SELECT content_text FROM memora_records "
+                "WHERE LOWER(content_text) LIKE :pat FETCH FIRST :lim ROWS ONLY",
+                {"pat": f"%{needle.lower()}%", "lim": max(1, int(limit))},
+            )
+            return [row["content_text"] for row in rows if row.get("content_text")]
+        if not self.local_db_path or not os.path.exists(self.local_db_path):
+            return []
+
+        from friday.core.database import connect_sqlite
+
+        with connect_sqlite(self.local_db_path, timeout=5.0) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT content_text FROM memory_records WHERE content_text LIKE ? LIMIT ?",
+                (f"%{needle}%", max(1, int(limit))),
+            )
+            return [row[0] for row in cursor.fetchall() if row[0]]
+
+    def _get_agent_and_ns(self, agent_name: str) -> tuple[str, str]:
+        """Return the agent id and private namespace id, creating them if needed."""
+        self._ready()
+        name = agent_name.lower()
+        if self._backend == "oracle":
+            row = oracle.query_one(
+                "SELECT id FROM memora_agents WHERE name = :name", {"name": name}
+            )
+            if row:
+                aid = row["id"]
+            else:
+                aid = str(uuid.uuid4())
+                oracle.execute(
+                    "INSERT INTO memora_agents (id, name, role, tenant_id) "
+                    "VALUES (:id, :name, 'worker', 'default')",
+                    {"id": aid, "name": name},
+                )
+            row = oracle.query_one(
+                "SELECT id FROM memora_namespaces WHERE agent_id = :aid", {"aid": aid}
+            )
+            if row:
+                return aid, row["id"]
             nid = str(uuid.uuid4())
-            c.execute("INSERT INTO namespaces (id, path, type, agent_id, tenant_id) VALUES (?, ?, ?, ?, ?)",
-                      (nid, f"memora://{agent_name.lower()}/private", "private", aid, "default"))
-        conn.commit()
-        return aid, nid
+            oracle.execute(
+                "INSERT INTO memora_namespaces (id, path, type, agent_id, tenant_id) "
+                "VALUES (:id, :path, 'private', :aid, 'default')",
+                {"id": nid, "path": f"memora://{name}/private", "aid": aid},
+            )
+            return aid, nid
+
+        from friday.core.database import connect_sqlite
+
+        with connect_sqlite(self.local_db_path, timeout=5.0) as conn:
+            c = conn.cursor()
+            c.execute("SELECT id FROM agents WHERE name = ?", (name,))
+            row = c.fetchone()
+            if row:
+                aid = row[0]
+            else:
+                aid = str(uuid.uuid4())
+                c.execute(
+                    "INSERT INTO agents (id, name, role, tenant_id) VALUES (?, ?, ?, ?)",
+                    (aid, name, "worker", "default"),
+                )
+
+            c.execute("SELECT id FROM namespaces WHERE agent_id = ?", (aid,))
+            row = c.fetchone()
+            if row:
+                nid = row[0]
+            else:
+                nid = str(uuid.uuid4())
+                c.execute(
+                    "INSERT INTO namespaces (id, path, type, agent_id, tenant_id) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (nid, f"memora://{name}/private", "private", aid, "default"),
+                )
+            conn.commit()
+            return aid, nid
+
+    def _insert_record(
+        self,
+        record_id: str,
+        namespace_id: str,
+        owner_id: str,
+        memory_type: str,
+        content_text: str,
+        source: str,
+        importance: float,
+        created_at: str,
+    ) -> None:
+        if self._backend == "oracle":
+            oracle.execute(
+                "INSERT INTO memora_records "
+                "(id, namespace_id, owner_id, memory_type, content_text, source, "
+                "confidence, importance, lifecycle_state, tenant_id, created_at) "
+                "VALUES (:id, :namespace_id, :owner_id, :memory_type, :content_text, "
+                ":source, 1.0, :importance, 'active', 'default', :created_at)",
+                {
+                    "id": record_id,
+                    "namespace_id": namespace_id,
+                    "owner_id": owner_id,
+                    "memory_type": memory_type,
+                    "content_text": oracle.nullif_empty(content_text),
+                    "source": source,
+                    "importance": importance,
+                    "created_at": created_at,
+                },
+            )
+            return
+
+        from friday.core.database import connect_sqlite
+
+        with connect_sqlite(self.local_db_path, timeout=5.0) as conn:
+            conn.execute(
+                """
+                INSERT INTO memory_records
+                (id, namespace_id, owner_id, memory_type, content_text, source, confidence,
+                 importance, lifecycle_state, tenant_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    record_id,
+                    namespace_id,
+                    owner_id,
+                    memory_type,
+                    content_text,
+                    source,
+                    1.0,
+                    importance,
+                    "active",
+                    "default",
+                    created_at,
+                ),
+            )
+            conn.commit()
 
     def _record_locally(self, agent_name: str, user_input: str, agent_output: str) -> Dict[str, Any]:
-        if not os.path.exists(self.local_db_path):
+        if self._backend == "sqlite" and not os.path.exists(self.local_db_path):
             return {"status": "skipped", "reason": "local db not found"}
 
         facts = PreferenceExtractor.extract(user_input)
@@ -780,29 +912,34 @@ class MemoraClient:
         created_ids = []
 
         try:
-            with connect_sqlite(self.local_db_path, timeout=5.0) as conn:
-                aid, nid = self._get_agent_and_ns(conn, agent_name)
-                c = conn.cursor()
+            aid, nid = self._get_agent_and_ns(agent_name)
+            for fact in facts:
+                mid = str(uuid.uuid4())
+                self._insert_record(
+                    mid,
+                    nid,
+                    aid,
+                    "semantic",
+                    fact.normalized,
+                    f"agent:{agent_name.lower()}",
+                    fact.importance,
+                    now_iso,
+                )
+                created_ids.append(mid)
 
-                for fact in facts:
-                    mid = str(uuid.uuid4())
-                    c.execute("""
-                        INSERT INTO memory_records 
-                        (id, namespace_id, owner_id, memory_type, content_text, source, confidence, importance, lifecycle_state, tenant_id, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (mid, nid, aid, "semantic", fact.normalized, f"agent:{agent_name.lower()}", 1.0, fact.importance, "active", "default", now_iso))
-                    created_ids.append(mid)
-
-                # Episodic turn
-                mid_ep = str(uuid.uuid4())
-                dialogue = f"User: {user_input} | Assistant: {agent_output}"
-                c.execute("""
-                    INSERT INTO memory_records 
-                    (id, namespace_id, owner_id, memory_type, content_text, source, confidence, importance, lifecycle_state, tenant_id, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (mid_ep, nid, aid, "episodic", dialogue, f"agent:{agent_name.lower()}", 1.0, 0.7, "active", "default", now_iso))
-                created_ids.append(mid_ep)
-                conn.commit()
+            mid_ep = str(uuid.uuid4())
+            dialogue = f"User: {user_input} | Assistant: {agent_output}"
+            self._insert_record(
+                mid_ep,
+                nid,
+                aid,
+                "episodic",
+                dialogue,
+                f"agent:{agent_name.lower()}",
+                0.7,
+                now_iso,
+            )
+            created_ids.append(mid_ep)
 
             return {"status": "success", "memory_ids": created_ids, "facts_extracted": len(facts)}
         except Exception as e:
@@ -810,34 +947,37 @@ class MemoraClient:
             return {"status": "error", "error": str(e)}
 
     def _record_fact_locally(self, agent_name: str, fact_text: str, category: str, importance: float) -> Dict[str, Any]:
-        if not os.path.exists(self.local_db_path):
+        if self._backend == "sqlite" and not os.path.exists(self.local_db_path):
             return {"status": "skipped", "reason": "local db not found"}
 
         now_iso = time.strftime("%Y-%m-%d %H:%M:%S")
         mid = str(uuid.uuid4())
         try:
-            with connect_sqlite(self.local_db_path, timeout=5.0) as conn:
-                aid, nid = self._get_agent_and_ns(conn, agent_name)
-                c = conn.cursor()
-                c.execute("""
-                    INSERT INTO memory_records 
-                    (id, namespace_id, owner_id, memory_type, content_text, source, confidence, importance, lifecycle_state, tenant_id, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (mid, nid, aid, "semantic", fact_text, f"agent:{agent_name.lower()}", 1.0, importance, "active", "default", now_iso))
-                conn.commit()
+            aid, nid = self._get_agent_and_ns(agent_name)
+            self._insert_record(
+                mid,
+                nid,
+                aid,
+                "semantic",
+                fact_text,
+                f"agent:{agent_name.lower()}",
+                importance,
+                now_iso,
+            )
             return {"status": "success", "id": mid}
         except Exception as e:
             return {"status": "error", "error": str(e)}
 
     def _recall_locally(self, agent_name: str, query: str, limit: int) -> List[Dict[str, Any]]:
-        if not os.path.exists(self.local_db_path):
+        if self._backend == "sqlite" and not os.path.exists(self.local_db_path):
             return []
+        self._ready()
 
         # Extract meaningful keywords for matching
         clean_q = re.sub(r"[^\w\s]", "", query.lower())
         stopwords = {"what", "is", "my", "the", "a", "an", "and", "or", "in", "on", "at", "to", "for", "of", "tell", "me", "about", "do", "you", "know"}
         words = [w for w in clean_q.split() if w not in stopwords and len(w) > 2]
-        
+
         # If looking for favourite/favorite curry or food, expand keywords
         if "curry" in words or "favourite" in words or "favorite" in words or "food" in words:
             words.extend(["curry", "favorite", "favourite", "preference", "likes", "prawn", "prawns"])
@@ -848,32 +988,54 @@ class MemoraClient:
 
         results = []
         try:
-            with connect_sqlite(self.local_db_path, timeout=5.0) as conn:
-                c = conn.cursor()
-                c.execute("""
-                    SELECT m.id, m.content_text, m.memory_type, m.importance, m.created_at, a.name 
-                    FROM memory_records m
-                    JOIN agents a ON m.owner_id = a.id
-                    WHERE m.lifecycle_state = 'active'
-                    ORDER BY m.importance DESC, m.created_at DESC
-                    LIMIT 100
-                """)
-                rows = c.fetchall()
-
+            if self._backend == "oracle":
+                rows = oracle.query_all(
+                    "SELECT m.id, m.content_text, m.memory_type, m.importance, m.created_at, "
+                    "a.name AS owner_name FROM memora_records m "
+                    "JOIN memora_agents a ON m.owner_id = a.id "
+                    "WHERE m.lifecycle_state = 'active' "
+                    "ORDER BY m.importance DESC, m.created_at DESC "
+                    "FETCH FIRST 100 ROWS ONLY"
+                )
                 for row in rows:
-                    content = row[1].lower()
+                    content = (row["content_text"] or "").lower()
                     matches = sum(1 for w in words if w in content)
                     if matches > 0:
-                        score = matches / len(words)
                         results.append({
-                            "id": row[0],
-                            "content_text": row[1],
-                            "memory_type": row[2],
-                            "importance": row[3],
-                            "created_at": row[4],
-                            "owner_name": row[5],
-                            "final_score": score
+                            "id": row["id"],
+                            "content_text": row["content_text"],
+                            "memory_type": row["memory_type"],
+                            "importance": row["importance"],
+                            "created_at": row["created_at"],
+                            "owner_name": row["owner_name"],
+                            "final_score": matches / len(words),
                         })
+            else:
+                from friday.core.database import connect_sqlite
+
+                with connect_sqlite(self.local_db_path, timeout=5.0) as conn:
+                    c = conn.cursor()
+                    c.execute("""
+                        SELECT m.id, m.content_text, m.memory_type, m.importance, m.created_at, a.name
+                        FROM memory_records m
+                        JOIN agents a ON m.owner_id = a.id
+                        WHERE m.lifecycle_state = 'active'
+                        ORDER BY m.importance DESC, m.created_at DESC
+                        LIMIT 100
+                    """)
+                    for row in c.fetchall():
+                        content = row[1].lower()
+                        matches = sum(1 for w in words if w in content)
+                        if matches > 0:
+                            results.append({
+                                "id": row[0],
+                                "content_text": row[1],
+                                "memory_type": row[2],
+                                "importance": row[3],
+                                "created_at": row[4],
+                                "owner_name": row[5],
+                                "final_score": matches / len(words),
+                            })
 
             results.sort(key=lambda x: (x["final_score"], x["importance"]), reverse=True)
             return results[:limit]
@@ -913,7 +1075,7 @@ class MemoraClient:
         context: Optional[str] = None,
         domain: Optional[str] = None
     ) -> Dict[str, Any]:
-        if not os.path.exists(self.local_db_path):
+        if self._backend == "sqlite" and not os.path.exists(self.local_db_path):
             return {"status": "error", "message": f"Local DB not found at {self.local_db_path}"}
 
         rule = self._extract_remediation_rule_fallback(task_name, error_log or "", domain)
@@ -928,15 +1090,17 @@ class MemoraClient:
         now_iso = time.strftime("%Y-%m-%d %H:%M:%S")
         mid = str(uuid.uuid4())
         try:
-            with connect_sqlite(self.local_db_path, timeout=5.0) as conn:
-                aid, nid = self._get_agent_and_ns(conn, agent_name)
-                c = conn.cursor()
-                c.execute("""
-                    INSERT INTO memory_records 
-                    (id, namespace_id, owner_id, memory_type, content_text, source, confidence, importance, lifecycle_state, tenant_id, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (mid, nid, aid, "experience", content_text, f"agent:{agent_name.lower()}", 1.0, 0.99, "active", "default", now_iso))
-                conn.commit()
+            aid, nid = self._get_agent_and_ns(agent_name)
+            self._insert_record(
+                mid,
+                nid,
+                aid,
+                "experience",
+                content_text,
+                f"agent:{agent_name.lower()}",
+                0.99,
+                now_iso,
+            )
             return {"status": "success", "id": mid, "memory_type": "experience", "content": content_text, "rule": rule}
         except Exception as e:
             logger.error(f"Local learn-outcome record failed: {e}")
@@ -949,38 +1113,63 @@ class MemoraClient:
         domain: Optional[str] = None,
         limit: int = 5
     ) -> List[Dict[str, Any]]:
-        if not os.path.exists(self.local_db_path):
+        if self._backend == "sqlite" and not os.path.exists(self.local_db_path):
             return []
+        self._ready()
 
         results = []
         try:
-            with connect_sqlite(self.local_db_path, timeout=5.0) as conn:
-                c = conn.cursor()
-                query = """
-                    SELECT m.id, m.content_text, m.memory_type, m.importance, m.created_at, a.name 
-                    FROM memory_records m
-                    JOIN agents a ON m.owner_id = a.id
-                    WHERE m.lifecycle_state = 'active' AND m.memory_type = 'experience'
-                """
-                c.execute(query + " ORDER BY m.importance DESC, m.created_at DESC LIMIT 50")
-                rows = c.fetchall()
+            if self._backend == "oracle":
+                rows = oracle.query_all(
+                    "SELECT m.id, m.content_text, m.memory_type, m.importance, m.created_at, "
+                    "a.name AS owner_name FROM memora_records m "
+                    "JOIN memora_agents a ON m.owner_id = a.id "
+                    "WHERE m.lifecycle_state = 'active' AND m.memory_type = 'experience' "
+                    "ORDER BY m.importance DESC, m.created_at DESC "
+                    "FETCH FIRST 50 ROWS ONLY"
+                )
+                normalized = [
+                    (
+                        row["id"],
+                        row["content_text"],
+                        row["memory_type"],
+                        row["importance"],
+                        row["created_at"],
+                        row["owner_name"],
+                    )
+                    for row in rows
+                ]
+            else:
+                from friday.core.database import connect_sqlite
 
-                search_terms = [w.lower() for w in f"{task_query} {domain or ''}".split() if len(w) > 2]
-                
-                for row in rows:
-                    content = row[1].lower()
-                    match_count = sum(1 for w in search_terms if w in content) if search_terms else 1
-                    score = (match_count / len(search_terms)) if search_terms else 1.0
-                    if match_count > 0 or not search_terms:
-                        results.append({
-                            "id": row[0],
-                            "content_text": row[1],
-                            "memory_type": row[2],
-                            "importance": row[3],
-                            "created_at": row[4],
-                            "owner_name": row[5],
-                            "final_score": score
-                        })
+                with connect_sqlite(self.local_db_path, timeout=5.0) as conn:
+                    c = conn.cursor()
+                    c.execute("""
+                        SELECT m.id, m.content_text, m.memory_type, m.importance, m.created_at, a.name
+                        FROM memory_records m
+                        JOIN agents a ON m.owner_id = a.id
+                        WHERE m.lifecycle_state = 'active' AND m.memory_type = 'experience'
+                        ORDER BY m.importance DESC, m.created_at DESC
+                        LIMIT 50
+                    """)
+                    normalized = c.fetchall()
+
+            search_terms = [w.lower() for w in f"{task_query} {domain or ''}".split() if len(w) > 2]
+
+            for row in normalized:
+                content = (row[1] or "").lower()
+                match_count = sum(1 for w in search_terms if w in content) if search_terms else 1
+                score = (match_count / len(search_terms)) if search_terms else 1.0
+                if match_count > 0 or not search_terms:
+                    results.append({
+                        "id": row[0],
+                        "content_text": row[1],
+                        "memory_type": row[2],
+                        "importance": row[3],
+                        "created_at": row[4],
+                        "owner_name": row[5],
+                        "final_score": score
+                    })
 
             results.sort(key=lambda x: (x["final_score"], x["importance"]), reverse=True)
             return results[:limit]
@@ -988,5 +1177,4 @@ class MemoraClient:
             logger.error(f"Local experience recall failed: {e}")
             return []
 
-# Singleton instance
 memora_client = MemoraClient()

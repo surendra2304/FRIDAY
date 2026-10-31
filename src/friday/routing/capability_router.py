@@ -2,7 +2,7 @@
 
 Selects the cheapest, safest, and most deterministic valid capability for each request:
 - DIRECT_REASONING: Direct conversational response without tools or external APIs.
-- MEMORY_RETRIEVAL: Local SQLite/embedding search for past context and preferences.
+- MEMORY_RETRIEVAL: Oracle-backed memory search for past context and preferences.
 - LOCAL_COMPUTATION: Instant local deterministic calculation or system time/info.
 - LOCAL_SCREEN_INSPECTION: Reuses cached perception / local ROI checks without calling Vision APIs.
 - VISION_MODEL: External multimodal vision provider (only when visual state has changed or uncached).

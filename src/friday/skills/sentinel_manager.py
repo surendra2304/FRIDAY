@@ -360,12 +360,12 @@ class SentinelManagerSkill(BaseSkill):
                     {"id": "node_web_gw", "label": "Cloudflare Edge / Reverse Proxy", "type": "EDGE_GATEWAY", "status": "SECURE"},
                     {"id": "node_app_srv", "label": "FastAPI Web Application", "type": "APPLICATION", "status": "MONITORED"},
                     {"id": "node_auth_ep", "label": "/api/v1/auth/token Endpoint", "type": "API_ENDPOINT", "status": "REVIEW_RECOMMENDED"},
-                    {"id": "node_db_cluster", "label": "PostgreSQL Primary", "type": "DATABASE", "status": "ISOLATED_VPC"},
+                    {"id": "node_db_cluster", "label": "Oracle Autonomous Database", "type": "DATABASE", "status": "ISOLATED_VPC"},
                 ],
                 "edges": [
                     {"from": "node_web_gw", "to": "node_app_srv", "protocol": "HTTPS/443"},
                     {"from": "node_app_srv", "to": "node_auth_ep", "protocol": "INTERNAL_ROUTE"},
-                    {"from": "node_app_srv", "to": "node_db_cluster", "protocol": "TCP/5432_TLS"},
+                    {"from": "node_app_srv", "to": "node_db_cluster", "protocol": "TCPS/1521_TLS"},
                 ],
                 "choke_points": [
                     "WAF Rule Group: Rate-limiting on /api/v1/auth/* endpoints",

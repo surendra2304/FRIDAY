@@ -8,7 +8,7 @@ Audits and reports sanitized health information for:
 - Voice devices (Microphone, Speaker, VAD)
 - Screen capture & display topology
 - Multimodal Vision provider
-- Memory database & SQLite integrity
+- Memory database & Oracle schema integrity
 - Task manager & concurrent workers
 - Perception cache & memory footprint
 - Safety system & authorizer gating
@@ -28,11 +28,9 @@ Invariants:
 """
 
 import os
-import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from pathlib import Path
 from typing import Any
 
 from friday.core.config import Settings, get_settings
@@ -377,26 +375,30 @@ class FridayDoctor:
             )
 
     def diagnose_memory_database(self) -> ComponentHealth:
-        """Audit SQLite conversation memory database and table integrity."""
+        """Audit the Oracle conversation-memory schema."""
         try:
-            db_path = getattr(self.settings, "memory_db_path", "data/friday.db") or "friday_memory.db"
-            if db_path != ":memory:":
-                Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-            with sqlite3.connect(db_path) as conn:
-                cursor = conn.execute("PRAGMA integrity_check")
-                res = cursor.fetchone()
-                if not res or res[0] != "ok":
-                    return ComponentHealth(
-                        name="memory_database",
-                        status=DiagnosticStatus.ERROR,
-                        message=f"SQLite integrity check failed: {res}",
-                        remediation="Restore database from backup.",
-                    )
+            from friday.core import oracle
+
+            oracle.ensure_schema()
+            rows = oracle.query_all(
+                "SELECT table_name FROM user_tables "
+                "WHERE table_name IN ('CONVERSATIONS', 'MESSAGES', 'MEMORY_NODES', 'EMBEDDINGS')"
+            )
+            present = {str(row["table_name"]).upper() for row in rows}
+            expected = {"CONVERSATIONS", "MESSAGES", "MEMORY_NODES", "EMBEDDINGS"}
+            missing = sorted(expected - present)
+            if missing:
+                return ComponentHealth(
+                    name="memory_database",
+                    status=DiagnosticStatus.ERROR,
+                    message=f"Oracle memory schema is missing tables: {', '.join(missing)}",
+                    remediation="Run friday.core.oracle.ensure_schema() with the FRIDAY DSN.",
+                )
             return ComponentHealth(
                 name="memory_database",
                 status=DiagnosticStatus.AVAILABLE,
-                message=f"SQLite memory database healthy ({Path(db_path).name}).",
-                details={"db_path": Path(db_path).name},
+                message="Oracle conversation memory schema healthy.",
+                details={"backend": "oracle", "tables": len(present)},
             )
         except Exception as e:
             return ComponentHealth(

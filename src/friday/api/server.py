@@ -34,7 +34,6 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from friday.core.startup_validator import validate_runtime_environment
-from friday.core.database import connect_sqlite, get_ephemeral_db_path
 from friday.core.cache import TTLCache, ttl_cached
 from friday.core.resilience import safe_peer_call
 
@@ -472,18 +471,7 @@ async def readiness_check() -> JSONResponse:
 
     settings_obj = get_settings()
     dsn = getattr(settings_obj, "oracle_dsn", None)
-    backend = "unconfigured"
-    if dsn:
-        backend = "oracle"
-    else:
-        from friday.core.oracle import resolve_database_url
-
-        raw = resolve_database_url(getattr(settings_obj, "database_url", None)) or ""
-        lowered = raw.lower()
-        if lowered.startswith("sqlite"):
-            backend = "sqlite"
-        elif lowered.startswith(("postgresql", "postgres")):
-            backend = "postgresql"
+    backend = "oracle" if dsn else "unconfigured"
     status["database_backend"] = backend
 
     db_status = "unavailable"
@@ -500,19 +488,7 @@ async def readiness_check() -> JSONResponse:
         except Exception as exc:
             status["database_error"] = type(exc).__name__
     else:
-        # Local development only: production settings reject a non-Oracle backend.
-        try:
-            data_dir = Path("data")
-            data_dir.mkdir(parents=True, exist_ok=True)
-            probe_path = get_ephemeral_db_path("readiness_probe.db")
-            conn = connect_sqlite(probe_path, timeout=2.0)
-            conn.execute("CREATE TABLE IF NOT EXISTS _probe (id INTEGER PRIMARY KEY);")
-            conn.execute("INSERT OR REPLACE INTO _probe VALUES (1);")
-            conn.commit()
-            conn.close()
-            db_status = "connected"
-        except Exception as exc:
-            status["database_error"] = type(exc).__name__
+        status["database_error"] = "NoOracleDSN"
     status["database"] = db_status
     if db_status != "connected":
         status["ready"] = False
@@ -545,7 +521,7 @@ async def readiness_check() -> JSONResponse:
         is_prod = str(env_str).lower() == "production"
     except Exception:
         pass
-    if is_prod and status.get("database_backend", "sqlite") != "oracle" and status.get("ready", False):
+    if is_prod and status.get("database_backend", "unconfigured") != "oracle" and status.get("ready", False):
         status["ready"] = False
         status["status"] = "not_ready"
         status["database_notice"] = f"Production requires Oracle backend; got {status.get('database_backend')}"

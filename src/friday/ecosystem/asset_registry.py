@@ -132,14 +132,14 @@ class AssetRegistry:
         self.register_asset(
             SecurableAsset(
                 asset_id="asset-cloud-db",
-                name="Primary PostgreSQL Cluster",
+                name="Oracle Autonomous Database",
                 asset_type=AssetType.CLOUD_RESOURCE,
-                target="tcp://db.internal.friday:5432",
+                target="tcps://adb.ap-hyderabad-1.oraclecloud.com:1521",
                 subsystem="infrastructure",
                 risk_level="CLEAN",
                 open_findings_count=0,
                 last_scan_time=now_iso,
-                last_scan_result={"status": "COMPLETED", "mode": "network_scan", "summary": "VPC isolated."},
+                last_scan_result={"status": "COMPLETED", "mode": "network_scan", "summary": "Private endpoint, TLS required."},
                 next_scheduled_scan=next_week_iso,
                 metadata={"vpc": "vpc-friday-core", "ssl": "required"},
             )

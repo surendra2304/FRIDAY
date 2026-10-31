@@ -4,7 +4,7 @@ Features:
 - Stores derived textual observations rather than raw screenshots.
 - Redacts sensitive credentials, passwords, tokens, and financial secrets before storage.
 - Request deduplication to avoid storing identical visual snapshots repeatedly.
-- Integrates with SQLite memory, SQLite FTS5 search, and semantic embeddings with automatic fallback.
+- Integrates with the Oracle conversation memory, lexical search, and semantic embeddings with automatic fallback.
 """
 
 import hashlib
@@ -93,7 +93,7 @@ class VisionMemoryManager:
         if hasattr(self.memory, "active_conversation_id") and not target_conv_id:
             target_conv_id = self.memory.active_conversation_id
 
-        # 4. Save to persistent SQLite memory (triggers FTS and embedding indexing)
+        # 4. Save to persistent conversation memory (triggers search and embedding indexing)
         self.memory.add_message(msg, conversation_id=target_conv_id)
         self._last_stored_hash = content_hash
         logger.info(f"Stored derived visual memory ({len(derived_content)} chars).")

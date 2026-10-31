@@ -10,13 +10,13 @@ from friday.core.types import AuthorizationRequest
 from friday.core.types import SafetyLevel as CoreSafetyLevel
 
 from .models import SafetyLevel, ScheduleType, Task, TaskRunLog
-from .sqlite_store import get_all_tasks, log_task_run, save_task
+from .task_store import get_all_tasks, log_task_run, save_task
 
 logger = get_logger("tasks.scheduler")
 
 class TaskScheduler:
     """Background scheduler for proactive tasks.
-    Checks SQLite task table each second and runs due tasks.
+    Checks the Oracle scheduled-task table each second and runs due tasks.
     """
 
     def __init__(self, agent: FridayAgent):

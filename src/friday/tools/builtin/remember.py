@@ -1,4 +1,8 @@
-"""Tool for explicitly storing user facts, preferences, and memories in persistent storage."""
+"""Tool for explicitly storing user facts, preferences, and memories in persistent storage.
+
+Facts live in the ``FRIDAY`` Oracle schema (``user_memories``). Tests may pass an
+explicit ``db_path`` to use a throwaway SQLite file; production never does.
+"""
 
 from __future__ import annotations
 
@@ -8,14 +12,15 @@ import time
 import uuid
 from typing import Any
 
+from friday.core import oracle
+from friday.core.exceptions import PersistenceConfigError
 from friday.core.logging import get_logger
+from friday.core.oracle import ephemeral_backend_allowed
 from friday.core.types import Message, Role, SafetyLevel, ToolResult
 from friday.memory.base import BaseMemory
 from friday.tools.base import BaseTool
 
 logger = get_logger("tools.remember")
-
-DEFAULT_DB_PATH = "data/friday.db"
 
 
 class RememberFactTool(BaseTool):
@@ -42,28 +47,58 @@ class RememberFactTool(BaseTool):
         "required": ["fact"],
     }
 
-    def __init__(self, memory: BaseMemory | None = None, db_path: str = DEFAULT_DB_PATH) -> None:
+    def __init__(self, memory: BaseMemory | None = None, db_path: str | None = None) -> None:
         super().__init__()
         self.memory = memory
         self.db_path = db_path
         self._lock = threading.RLock()
-        self._init_db()
+        if db_path is not None:
+            if not ephemeral_backend_allowed():
+                raise PersistenceConfigError(
+                    "RememberFactTool(db_path=...) is test-only; omit db_path so "
+                    "facts are written to Oracle Autonomous Database."
+                )
+            self._init_sqlite()
+        else:
+            # Schema bootstrap happens on first query/execute, never at import.
+            pass
 
-    def _init_db(self) -> None:
-        try:
+    def _init_sqlite(self) -> None:
+        with self._lock, sqlite3.connect(self.db_path, timeout=5.0) as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_memories (
+                    id TEXT PRIMARY KEY,
+                    fact TEXT NOT NULL,
+                    category TEXT DEFAULT 'general',
+                    created_at REAL NOT NULL
+                );
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_memories_cat ON user_memories(category);"
+            )
+            conn.commit()
+
+    def _persist(self, mem_id: str, fact: str, category: str, created_at: float) -> None:
+        if self.db_path is not None:
             with self._lock, sqlite3.connect(self.db_path, timeout=5.0) as conn:
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS user_memories (
-                        id TEXT PRIMARY KEY,
-                        fact TEXT NOT NULL,
-                        category TEXT DEFAULT 'general',
-                        created_at REAL NOT NULL
-                    );
-                """)
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_cat ON user_memories(category);")
+                conn.execute(
+                    "INSERT INTO user_memories (id, fact, category, created_at) VALUES (?, ?, ?, ?);",
+                    (mem_id, fact, category, created_at),
+                )
                 conn.commit()
-        except Exception as e:
-            logger.warning(f"Could not initialize user_memories table: {e}")
+            return
+        oracle.execute(
+            "INSERT INTO user_memories (id, fact, category, created_at) "
+            "VALUES (:id, :fact, :category, :created_at)",
+            {
+                "id": mem_id,
+                "fact": fact,
+                "category": category,
+                "created_at": created_at,
+            },
+        )
 
     def execute(self, fact: str, category: str = "general", **kwargs: Any) -> ToolResult:
         f = (fact or "").strip()
@@ -79,18 +114,18 @@ class RememberFactTool(BaseTool):
         now = time.time()
         mem_id = f"mem_{uuid.uuid4().hex[:8]}"
 
-        # 1. Store in user_memories table
         try:
-            with self._lock, sqlite3.connect(self.db_path, timeout=5.0) as conn:
-                conn.execute(
-                    "INSERT INTO user_memories (id, fact, category, created_at) VALUES (?, ?, ?, ?);",
-                    (mem_id, f, cat, now),
-                )
-                conn.commit()
-        except Exception as e:
-            logger.warning(f"Failed to write to user_memories table: {e}")
+            self._persist(mem_id, f, cat, now)
+        except Exception as exc:
+            logger.error("Failed to persist user memory: %s", exc)
+            return ToolResult(
+                name=self.name,
+                content="Error: could not persist the fact; see server logs.",
+                is_error=True,
+                safety_level=self.safety_level,
+            )
 
-        # 2. Also append as a system/memory note in BaseMemory if attached
+        # Also append as a system/memory note in BaseMemory if attached
         if self.memory is not None:
             try:
                 msg = Message(
@@ -101,7 +136,7 @@ class RememberFactTool(BaseTool):
             except Exception as e:
                 logger.debug(f"Could not append to conversation memory: {e}")
 
-        # 3. Synchronize fact to Memora Persistent Memory Fabric
+        # Synchronize fact to Memora Persistent Memory Fabric
         try:
             from friday.memory.memora_client import memora_client
             memora_client.record_fact("friday", fact_text=f, category=cat, importance=0.95)

@@ -112,7 +112,7 @@ class ComprehensiveProductionMonitor:
         except Exception as exc:  # pragma: no cover - depends on the deployment
             deps["TRADING_BOT_REST_API"] = f"PROBE FAILED ({type(exc).__name__})"
         deps["AI_UNIVERSE_ADVISORY"] = "NOT PROBED"
-        deps["SQLITE_MEMORY_STORE"] = "NOT PROBED"
+        deps["ORACLE_MEMORY_STORE"] = "NOT PROBED"
 
         # 3. Trading Risk - whatever the risk dashboard can attest to.
         try:

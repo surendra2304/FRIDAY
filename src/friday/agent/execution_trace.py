@@ -10,8 +10,8 @@ Backends:
 * Oracle is the default when no ``db_path`` is supplied. The engine is resolved
   lazily so importing this module -- and the module-level ``trace_store``
   singleton -- never opens a socket.
-* SQLite is still available by passing ``db_path`` explicitly (local development
-  and the existing unit tests).
+* SQLite is reachable only inside a pytest run by passing ``db_path``
+  explicitly.
 """
 
 from __future__ import annotations
@@ -35,13 +35,12 @@ from sqlalchemy import (
 )
 
 from friday.core import oracle
-from friday.core.database import get_db_connection
 from friday.core.exceptions import PersistenceConfigError
 from friday.core.logging import get_logger
 
 logger = get_logger("agent.execution_trace")
 
-#: Legacy PostgreSQL/SQLite table description, kept for callers that import it.
+#: Legacy SQLAlchemy table description, kept for callers that import it.
 metadata = MetaData()
 execution_traces_table = Table(
     "execution_traces",
@@ -73,24 +72,21 @@ _ORACLE_SELECT = (
 )
 
 
-def get_postgres_dsn() -> str | None:
+def get_trace_dsn() -> str | None:
     """Resolve the Oracle Autonomous Database DSN.
 
-    Kept under its historical name because tests and callers import it. Oracle
-    URLs are normalised to ``oracle+oracledb://``: SQLAlchemy 2.x serves sync and
-    async Oracle engines from that single dialect. PostgreSQL and SQLite are not
-    supported backends.
+    Oracle URLs are normalised to ``oracle+oracledb://``: SQLAlchemy 2.x serves
+    sync and async Oracle engines from that single dialect. PostgreSQL and
+    SQLite are not supported backends.
     """
     raw_url = (
         os.getenv("ORACLE_CORE_ASYNC_URL")
         or os.getenv("DATABASE_URL")
         or os.getenv("FRIDAY_DATABASE_URL")
     )
-    if raw_url:
-        if raw_url.startswith("oracle://"):
-            return raw_url.replace("oracle://", "oracle+oracledb://", 1)
-        return raw_url
-    return None
+    if not raw_url:
+        return None
+    return oracle.normalise_oracle_url(raw_url)
 
 
 @dataclass(frozen=True)
@@ -117,26 +113,26 @@ class ExecutionTraceCheckpoint:
 
 
 class ExecutionTraceStore:
-    """Manages persistent execution trace checkpoints in Oracle (or SQLite)."""
+    """Manages persistent execution trace checkpoints in Oracle (or test SQLite)."""
 
     def __init__(
         self,
         db_path: Optional[str] = None,
-        postgres_dsn: Optional[str] = None,
-        enable_postgres: bool = True,
         *,
         dsn: Optional[str] = None,
     ) -> None:
         self.db_path = db_path
-        self.enable_postgres = enable_postgres
-        self._postgres_dsn = postgres_dsn or get_postgres_dsn()
         self._backend = "sqlite" if db_path else "oracle"
         self._oracle_engine: Any | None = None
         self._oracle_dsn = dsn
         self._oracle_disabled = False
-        self._last_postgres_failure: float = 0.0
 
         if db_path:
+            if not oracle.ephemeral_backend_allowed():
+                raise PersistenceConfigError(
+                    "ExecutionTraceStore(db_path=...) is test-only; omit db_path so "
+                    "traces are written to Oracle Autonomous Database."
+                )
             self._init_sqlite()
 
     # ------------------------------------------------------------------
@@ -166,44 +162,47 @@ class ExecutionTraceStore:
         return self._oracle_engine
 
     def _init_sqlite(self) -> None:
-        """Create execution_traces table in SQLite if it doesn't exist."""
-        try:
-            with get_db_connection(self.db_path) as conn:
-                conn.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS execution_traces (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        trace_id TEXT NOT NULL,
-                        task_id TEXT NOT NULL,
-                        target_agent TEXT NOT NULL,
-                        action TEXT NOT NULL,
-                        status TEXT NOT NULL,
-                        consensus_status TEXT DEFAULT 'NONE',
-                        participating_agents TEXT DEFAULT '[]',
-                        agreement_ratio REAL DEFAULT 1.0,
-                        latency_ms INTEGER DEFAULT 0,
-                        retry_count INTEGER DEFAULT 0,
-                        payload_summary TEXT DEFAULT '',
-                        result_summary TEXT DEFAULT '',
-                        error TEXT DEFAULT '',
-                        receipt_json TEXT DEFAULT '{}',
-                        created_at TEXT NOT NULL
-                    )
-                    """
+        """Create execution_traces table in a test-only SQLite file."""
+        from friday.core.database import get_db_connection
+
+        with get_db_connection(self.db_path) as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS execution_traces (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    trace_id TEXT NOT NULL,
+                    task_id TEXT NOT NULL,
+                    target_agent TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    consensus_status TEXT DEFAULT 'NONE',
+                    participating_agents TEXT DEFAULT '[]',
+                    agreement_ratio REAL DEFAULT 1.0,
+                    latency_ms INTEGER DEFAULT 0,
+                    retry_count INTEGER DEFAULT 0,
+                    payload_summary TEXT DEFAULT '',
+                    result_summary TEXT DEFAULT '',
+                    error TEXT DEFAULT '',
+                    receipt_json TEXT DEFAULT '{}',
+                    created_at TEXT NOT NULL
                 )
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_traces_trace_id ON execution_traces(trace_id)")
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_traces_task_id ON execution_traces(task_id)")
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_traces_target_agent ON execution_traces(target_agent)")
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_traces_status ON execution_traces(status)")
-        except Exception as exc:
-            logger.warning("Failed to initialize SQLite execution_traces: %s", exc)
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_traces_trace_id ON execution_traces(trace_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_traces_task_id ON execution_traces(task_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_traces_target_agent ON execution_traces(target_agent)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_traces_status ON execution_traces(status)")
 
     # ------------------------------------------------------------------
     # Writes
     # ------------------------------------------------------------------
     def _sync_sqlite_insert(self, cp: ExecutionTraceCheckpoint) -> int:
-        """Insert trace checkpoint into SQLite synchronously."""
+        """Insert trace checkpoint into a test-only SQLite file."""
+        from friday.core.database import get_db_connection
+
         try:
+            from friday.core.database import get_db_connection
+
             with get_db_connection(self.db_path) as conn:
                 agents_json = json.dumps(cp.participating_agents)
                 cur = conn.execute(
@@ -381,6 +380,8 @@ class ExecutionTraceStore:
 
         traces: list[ExecutionTraceCheckpoint] = []
         try:
+            from friday.core.database import get_db_connection
+
             with get_db_connection(self.db_path) as conn:
                 query = "SELECT * FROM execution_traces"
                 conditions: list[str] = []
@@ -414,6 +415,8 @@ class ExecutionTraceStore:
                 return None
 
         try:
+            from friday.core.database import get_db_connection
+
             with get_db_connection(self.db_path) as conn:
                 cur = conn.execute(
                     "SELECT * FROM execution_traces WHERE trace_id = ? ORDER BY id DESC LIMIT 1",
@@ -436,6 +439,8 @@ class ExecutionTraceStore:
 
         traces: list[ExecutionTraceCheckpoint] = []
         try:
+            from friday.core.database import get_db_connection
+
             with get_db_connection(self.db_path) as conn:
                 cur = conn.execute(
                     """

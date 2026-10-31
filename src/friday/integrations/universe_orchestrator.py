@@ -108,7 +108,7 @@ class UniverseOrchestrator:
         # 6. Retrieve Experiment Results
         exp_result: UniverseExperimentResult = self.api.get_experiment_results()
 
-        # 7. Record into SQLite experiments table (FRIDAY Lab Integration)
+        # 7. Record into the Oracle experiments table (FRIDAY Lab Integration)
         if self.memory is not None and hasattr(self.memory, "record_experiment"):
             try:
                 self.memory.record_experiment(
@@ -134,7 +134,7 @@ class UniverseOrchestrator:
                 )
                 logger.info(f"Recorded Universe simulation results into experiments table for world '{exp_result.world_id}'")
             except Exception as ex:
-                logger.warning(f"Could not record universe experiment in SQLite: {ex}")
+                logger.warning(f"Could not record universe experiment in Oracle: {ex}")
 
         # 8. Synthesize outcome
         synthesis = (

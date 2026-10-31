@@ -279,6 +279,46 @@ notifications_table = Table(
 )
 _index("ix_notifications_pending", notifications_table, "delivered", "timestamp")
 
+# ---------------------------------------------------------------------------
+# FRIDAY-local Memora fallback (friday/memory/memora_client.py)
+# ---------------------------------------------------------------------------
+memora_agents_table = Table(
+    "memora_agents",
+    metadata,
+    Column("id", UUID, primary_key=True),
+    Column("name", NAME, nullable=False, unique=True),
+    Column("role", SHORT),
+    Column("tenant_id", NAME),
+)
+
+memora_namespaces_table = Table(
+    "memora_namespaces",
+    metadata,
+    Column("id", UUID, primary_key=True),
+    Column("path", NAME, nullable=False, unique=True),
+    Column("type", SHORT),
+    Column("agent_id", UUID, nullable=False),
+    Column("tenant_id", NAME),
+)
+
+memora_records_table = Table(
+    "memora_records",
+    metadata,
+    Column("id", UUID, primary_key=True),
+    Column("namespace_id", UUID, nullable=False),
+    Column("owner_id", UUID, nullable=False),
+    Column("memory_type", SHORT, nullable=False),
+    Column("content_text", BODY),
+    Column("source", NAME),
+    Column("confidence", Float),
+    Column("importance", Float),
+    Column("lifecycle_state", SHORT),
+    Column("tenant_id", NAME),
+    Column("created_at", ISO, nullable=False),
+)
+_index("ix_memora_records_owner", memora_records_table, "owner_id")
+_index("ix_memora_records_type", memora_records_table, "memory_type")
+
 scheduled_tasks_table = Table(
     "scheduled_tasks",
     metadata,
@@ -698,4 +738,7 @@ __all__ = [
     "transaction",
     "user_memories_table",
     "user_tasks_table",
+    "memora_agents_table",
+    "memora_namespaces_table",
+    "memora_records_table",
 ]

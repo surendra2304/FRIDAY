@@ -1,18 +1,27 @@
 """Notification Queue for FRIDAY Proactive Background Monitoring Proactive System.
 
-Buffers proactive discoveries and alerts so FRIDAY can surface them during conversation turns.
+Buffers proactive discoveries and alerts so FRIDAY can surface them during
+conversation turns. Durable notifications live in the ``FRIDAY`` Oracle schema
+(``notifications``); the in-memory queue remains the default for short-lived
+agent instances. Tests may opt into a throwaway SQLite file by passing an
+explicit path.
 """
 
-import threading
-import uuid
+from __future__ import annotations
+
 import json
 import sqlite3
+import threading
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from friday.core import oracle
+from friday.core.exceptions import PersistenceConfigError
 from friday.core.logging import get_logger
+from friday.core.oracle import ephemeral_backend_allowed
 
 logger = get_logger("observability.notifications")
 
@@ -36,40 +45,57 @@ class NotificationManager:
     def __init__(self, storage_path: str | None = None) -> None:
         self._queue: list[ProactiveNotification] = []
         self._lock = threading.RLock()
+        self._storage: str | None = None
         self._storage_path: str | None = None
         if storage_path:
             self.enable_persistence(storage_path)
 
-    def enable_persistence(self, storage_path: str) -> None:
-        """Enable a SQLite-backed inbox and migrate any notifications already queued."""
-        path = str(storage_path).strip()
-        if not path:
-            raise ValueError("storage_path must not be empty")
-        if path != ":memory:":
-            Path(path).expanduser().parent.mkdir(parents=True, exist_ok=True)
+    def enable_persistence(self, storage_path: str | None = None) -> None:
+        """Enable durable storage and migrate any notifications already queued.
+
+        With no ``storage_path`` the production Oracle table is used. A path is
+        accepted only inside a pytest run and selects a throwaway SQLite file.
+        """
         with self._lock:
-            self._storage_path = str(Path(path).expanduser()) if path != ":memory:" else path
-            with self._connect() as connection:
-                connection.execute(
-                    """CREATE TABLE IF NOT EXISTS notifications (
-                        notification_id TEXT PRIMARY KEY, message TEXT NOT NULL,
-                        category TEXT NOT NULL, severity TEXT NOT NULL,
-                        timestamp TEXT NOT NULL, delivered INTEGER NOT NULL DEFAULT 0,
-                        metadata_json TEXT NOT NULL DEFAULT '{}'
-                    )"""
-                )
+            if storage_path:
+                if not ephemeral_backend_allowed():
+                    raise PersistenceConfigError(
+                        "NotificationManager(storage_path=...) is test-only; call "
+                        "enable_persistence() without a path to use Oracle."
+                    )
+                path = str(storage_path).strip()
+                if not path:
+                    raise ValueError("storage_path must not be empty")
+                if path != ":memory:":
+                    Path(path).expanduser().parent.mkdir(parents=True, exist_ok=True)
+                self._storage_path = str(Path(path).expanduser()) if path != ":memory:" else path
+                self._storage = "sqlite"
+                with self._connect() as connection:
+                    connection.execute(
+                        """CREATE TABLE IF NOT EXISTS notifications (
+                            notification_id TEXT PRIMARY KEY, message TEXT NOT NULL,
+                            category TEXT NOT NULL, severity TEXT NOT NULL,
+                            timestamp TEXT NOT NULL, delivered INTEGER NOT NULL DEFAULT 0,
+                            metadata_json TEXT NOT NULL DEFAULT '{}'
+                        )"""
+                    )
+                    for item in self._queue:
+                        self._insert_sqlite(connection, item)
+                    connection.commit()
+            else:
+                oracle.ensure_schema()
+                self._storage = "oracle"
                 for item in self._queue:
-                    self._insert(connection, item)
-                connection.commit()
+                    self._insert_oracle(item)
             self._queue.clear()
 
     def _connect(self) -> sqlite3.Connection:
         if self._storage_path is None:
-            raise RuntimeError("notification persistence is not enabled")
+            raise RuntimeError("SQLite notification persistence is not enabled")
         return sqlite3.connect(self._storage_path, timeout=5.0)
 
     @staticmethod
-    def _insert(connection: sqlite3.Connection, item: ProactiveNotification) -> None:
+    def _insert_sqlite(connection: sqlite3.Connection, item: ProactiveNotification) -> None:
         connection.execute(
             """INSERT OR IGNORE INTO notifications
                (notification_id, message, category, severity, timestamp, delivered, metadata_json)
@@ -77,6 +103,27 @@ class NotificationManager:
             (item.notification_id, item.message, item.category, item.severity,
              item.timestamp.isoformat(), int(item.delivered),
              json.dumps(item.metadata, sort_keys=True, default=str)),
+        )
+
+    @staticmethod
+    def _insert_oracle(item: ProactiveNotification) -> None:
+        oracle.execute(
+            "MERGE INTO notifications t "
+            "USING (SELECT :notification_id AS notification_id FROM DUAL) s "
+            "ON (t.notification_id = s.notification_id) "
+            "WHEN NOT MATCHED THEN INSERT "
+            "(notification_id, message, category, severity, timestamp, delivered, metadata_json) "
+            "VALUES (:notification_id, :message, :category, :severity, :timestamp, :delivered, "
+            ":metadata_json)",
+            {
+                "notification_id": item.notification_id,
+                "message": item.message,
+                "category": item.category,
+                "severity": item.severity,
+                "timestamp": item.timestamp.isoformat(),
+                "delivered": int(item.delivered),
+                "metadata_json": json.dumps(item.metadata, sort_keys=True, default=str),
+            },
         )
 
     def post_notification(
@@ -97,9 +144,11 @@ class NotificationManager:
             metadata=metadata or {},
         )
         with self._lock:
-            if self._storage_path:
+            if self._storage == "oracle":
+                self._insert_oracle(notif)
+            elif self._storage == "sqlite":
                 with self._connect() as connection:
-                    self._insert(connection, notif)
+                    self._insert_sqlite(connection, notif)
                     connection.commit()
             else:
                 self._queue.append(notif)
@@ -109,7 +158,34 @@ class NotificationManager:
     def fetch_pending_notifications(self, mark_delivered: bool = True) -> list[ProactiveNotification]:
         """Retrieve all unread proactive notifications, optionally marking them delivered."""
         with self._lock:
-            if self._storage_path:
+            if self._storage == "oracle":
+                rows = oracle.query_all(
+                    "SELECT notification_id, message, category, severity, timestamp, delivered, "
+                    "metadata_json FROM notifications WHERE delivered = 0 "
+                    "ORDER BY timestamp, notification_id"
+                )
+                pending = [
+                    ProactiveNotification(
+                        notification_id=row["notification_id"],
+                        message=row["message"],
+                        category=row["category"],
+                        severity=row["severity"],
+                        timestamp=datetime.fromisoformat(row["timestamp"]),
+                        delivered=bool(row["delivered"]),
+                        metadata=json.loads(row["metadata_json"] or "{}"),
+                    )
+                    for row in rows
+                ]
+                if mark_delivered and pending:
+                    for item in pending:
+                        oracle.execute(
+                            "UPDATE notifications SET delivered = 1 "
+                            "WHERE notification_id = :id",
+                            {"id": item.notification_id},
+                        )
+                return pending
+
+            if self._storage == "sqlite":
                 with self._connect() as connection:
                     rows = connection.execute(
                         "SELECT notification_id, message, category, severity, timestamp, delivered, metadata_json "
@@ -127,6 +203,7 @@ class NotificationManager:
                         )
                         connection.commit()
                     return pending
+
             pending = [n for n in self._queue if not n.delivered]
             if mark_delivered:
                 for n in pending:
@@ -149,7 +226,9 @@ class NotificationManager:
         """Clear all stored notifications."""
         with self._lock:
             self._queue.clear()
-            if self._storage_path:
+            if self._storage == "oracle":
+                oracle.execute("DELETE FROM notifications")
+            elif self._storage == "sqlite":
                 with self._connect() as connection:
                     connection.execute("DELETE FROM notifications")
                     connection.commit()

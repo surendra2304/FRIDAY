@@ -549,7 +549,7 @@ class GeminiLiveVoiceSession:
                     getattr(self.agent, "conversation_id", None)
                     or getattr(self.agent.memory, "active_conversation_id", None)
                 )
-                # Sensitive/dangerous tool results are stored to SQLite for audit purposes
+                # Sensitive/dangerous tool results are stored for audit purposes
                 # but must NOT be auto-embedded into the semantic vector index.
                 mem_content = "[SENSITIVE TOOL RESULT — content not embedded]" if is_sensitive else guarded_content
                 await asyncio.to_thread(
@@ -1236,30 +1236,26 @@ class GeminiLiveVoiceSession:
                         ):
                             try:
                                 conv_id = getattr(self.agent, "conversation_id", None) or getattr(self.agent.memory, "active_conversation_id", None)
+
+                                def _persist(message: Message) -> None:
+                                    """Append to memory, passing a conversation id only when supported."""
+                                    add = self.agent.memory.add_message
+                                    if conv_id:
+                                        try:
+                                            add(message, conv_id)
+                                            return
+                                        except TypeError:
+                                            pass
+                                    add(message)
+
                                 if user_text:
-                                    if type(self.agent.memory).__name__ == "SQLiteConversationMemory":
-                                        await asyncio.to_thread(
-                                            self.agent.memory.add_message,
-                                            Message(role=Role.USER, content=user_text),
-                                            conv_id,
-                                        )
-                                    else:
-                                        await asyncio.to_thread(
-                                            self.agent.memory.add_message,
-                                            Message(role=Role.USER, content=user_text),
-                                        )
+                                    await asyncio.to_thread(
+                                        _persist, Message(role=Role.USER, content=user_text)
+                                    )
                                 if agent_text:
-                                    if type(self.agent.memory).__name__ == "SQLiteConversationMemory":
-                                        await asyncio.to_thread(
-                                            self.agent.memory.add_message,
-                                            Message(role=Role.ASSISTANT, content=agent_text),
-                                            conv_id,
-                                        )
-                                    else:
-                                        await asyncio.to_thread(
-                                            self.agent.memory.add_message,
-                                            Message(role=Role.ASSISTANT, content=agent_text),
-                                        )
+                                    await asyncio.to_thread(
+                                        _persist, Message(role=Role.ASSISTANT, content=agent_text)
+                                    )
                             except Exception as mem_err:
                                 logger.debug(f"Could not persist turn to memory: {mem_err}")
 

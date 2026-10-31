@@ -6,7 +6,7 @@ API callers cannot enable execution or register arbitrary commands/devices.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import hmac
 import json
 import os
@@ -105,7 +105,7 @@ class LocalActionEngine:
     def parse(self, query: str) -> dict | None:
         command = re.sub(r'^\s*(?:(?:hey|hi)\s+)?(?:jarvis|friday)\b[,\s]*','',query,flags=re.I).strip(' .!?')
         lowered = command.lower()
-        now = datetime.fromtimestamp(self.clock()).astimezone()
+        now = datetime.fromtimestamp(self.clock(), timezone.utc).astimezone()
         if re.fullmatch(r'(?:what(?:\x27s| is)? (?:the )?)?(?:time|date)(?: is it| today)?',lowered):
             return {'text':now.isoformat(timespec='seconds'),'source':'local','agent':'FRIDAY'}
         if lowered in {'system status','system vitals'}:

@@ -1,7 +1,7 @@
 """Task & Todo Management Tool for FRIDAY.
 
-Provides persistent task creation, listing, completion, and updating
-using SQLite persistence.
+Provides persistent task creation, listing, completion, and updating.
+Production rows live in the ``FRIDAY`` Oracle schema (``user_tasks``).
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from typing import Any
 
 from friday.core.logging import get_logger
 from friday.core.types import SafetyLevel, ToolResult
-from friday.persistence.task_store import SQLiteTaskStore
+from friday.persistence.task_store import OracleTaskStore, SQLiteTaskStore, create_task_store
 from friday.tools.base import BaseTool
 
 logger = get_logger("tools.task_management")
@@ -60,13 +60,13 @@ class ManageTasksTool(BaseTool):
         "required": ["action"],
     }
 
-    def __init__(self, store: SQLiteTaskStore | None = None) -> None:
+    def __init__(self, store: SQLiteTaskStore | OracleTaskStore | None = None) -> None:
         super().__init__()
         self._store = store
 
-    def _get_store(self) -> SQLiteTaskStore:
+    def _get_store(self) -> SQLiteTaskStore | OracleTaskStore:
         if self._store is None:
-            self._store = SQLiteTaskStore()
+            self._store = create_task_store()
         return self._store
 
     def execute(

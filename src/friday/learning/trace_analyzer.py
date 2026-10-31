@@ -23,9 +23,10 @@ class TraceAnalyzer:
             return self.memory
         try:
             from friday.core.config import get_settings
-            from friday.memory.sqlite import SQLiteConversationMemory
+            from friday.memory.factory import create_memory
+
             settings = get_settings()
-            self.memory = SQLiteConversationMemory(db_path=settings.sqlite_db_path)
+            self.memory = create_memory(settings)
             return self.memory
         except Exception as e:
             logger.debug(f"Could not initialize memory in TraceAnalyzer: {e}")

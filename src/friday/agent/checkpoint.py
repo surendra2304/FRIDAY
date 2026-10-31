@@ -2,7 +2,7 @@
 
 Provides:
 - `TaskCheckpoint`: Serialized, sanitized snapshot of a task execution state.
-- `TaskCheckpointStore` (Memory, SQLite & Oracle backends):
+- `TaskCheckpointStore` (Memory, Oracle & test-only SQLite backends):
   * Stores task snapshots safely.
   * Excludes secrets, raw credentials, private chain-of-thought, and raw screenshots.
 - Validation on Resumption:
@@ -105,8 +105,8 @@ class TaskCheckpointStore:
 
     Backend selection:
 
-    * ``db_path`` given -> SQLite file. This is the explicit local-development /
-      test path and keeps existing callers working unchanged.
+    * ``db_path`` given -> test-only SQLite file. This path is rejected outside
+      a pytest run.
     * no ``db_path`` -> Oracle Autonomous Database, schema ``FRIDAY``. This is
       what ``FridayAgent`` gets in production.
     * no ``db_path`` and no Oracle DSN in a test process -> memory only, with a
@@ -120,6 +120,14 @@ class TaskCheckpointStore:
         self._engine: Any | None = None
         self._backend = "memory"
         if self.db_path:
+            from friday.core.exceptions import PersistenceConfigError
+            from friday.core.oracle import ephemeral_backend_allowed
+
+            if not ephemeral_backend_allowed():
+                raise PersistenceConfigError(
+                    "TaskCheckpointStore(db_path=...) is test-only; omit db_path so "
+                    "checkpoints are written to Oracle Autonomous Database."
+                )
             self._backend = "sqlite"
             self._init_db()
         else:
@@ -151,12 +159,12 @@ class TaskCheckpointStore:
             conn.commit()
 
     def _init_oracle(self, dsn: str | None) -> None:
-        """Bind to the shared Oracle engine, or degrade to memory in test runs."""
+        """Bind to Oracle by configuration; connect lazily on first use."""
         from friday.core import oracle
         from friday.core.exceptions import PersistenceConfigError
 
         try:
-            self._engine = oracle.get_engine(dsn)
+            self._dsn = oracle.require_database_url(dsn)
         except PersistenceConfigError:
             if not oracle.ephemeral_backend_allowed():
                 raise
@@ -166,6 +174,15 @@ class TaskCheckpointStore:
             )
             return
         self._backend = "oracle"
+
+    @property
+    def engine(self):
+        """Resolve the shared Oracle engine on first use (never at import)."""
+        if self._engine is None:
+            from friday.core import oracle
+
+            self._engine = oracle.get_engine(getattr(self, "_dsn", None))
+        return self._engine
 
     @property
     def backend(self) -> str:
@@ -221,7 +238,7 @@ class TaskCheckpointStore:
                 ),
                 "created_at": chk.created_at.isoformat(),
             },
-            engine=self._engine,
+            engine=self.engine,
         )
 
     def _get_latest_oracle(self, task_id: str) -> TaskCheckpoint | None:
@@ -233,7 +250,7 @@ class TaskCheckpointStore:
             "recovery_state_json, created_at FROM task_checkpoints "
             "WHERE task_id = :tid ORDER BY created_at DESC FETCH FIRST 1 ROWS ONLY",
             {"tid": task_id},
-            engine=self._engine,
+            engine=self.engine,
         )
         if not row:
             return None
@@ -266,7 +283,7 @@ class TaskCheckpointStore:
         return oracle.execute(
             "DELETE FROM task_checkpoints WHERE task_id = :tid",
             {"tid": task_id},
-            engine=self._engine,
+            engine=self.engine,
         ) > 0
 
 

@@ -7,9 +7,9 @@ Selection rules (production first):
   / ``FRIDAY_UNIVERSE_DB_URL``; when the DSN is missing the factory raises
   :class:`~friday.core.exceptions.PersistenceConfigError` rather than quietly
   writing a SQLite file.
-* ``sqlite`` is honoured only for explicit local development, i.e. a caller that
-  opted in by setting ``memory_backend="sqlite"`` or by constructing
-  :class:`~friday.memory.sqlite.SQLiteConversationMemory` directly.
+* ``sqlite`` is honoured only inside a pytest run, and only when the caller opts
+  in explicitly with ``memory_backend="sqlite"``; production raises instead of
+  creating a ``.db`` file.
 * ``in_memory`` / ``mock`` are ephemeral and allowed only outside production.
 * ``mem0`` keeps the Mem0 adapter but backs it with Oracle instead of SQLite.
 
@@ -86,9 +86,15 @@ def create_memory(
             )
 
     if backend == "sqlite":
+        if not ephemeral_backend_allowed():
+            raise PersistenceConfigError(
+                "memory_backend='sqlite' is a test-only backend and cannot be used "
+                "outside a pytest run. Set DATABASE_URL to an oracle+oracledb:// DSN "
+                "and leave memory_backend at its default ('oracle')."
+            )
         logger.warning(
-            "memory_backend='sqlite' is for local development only; dashboard data "
-            "in '%s' is not the production store.",
+            "memory_backend='sqlite' is test-only; rows in '%s' are discarded with "
+            "the test process and are not the production store.",
             settings.memory_db_path,
         )
         return SQLiteConversationMemory(
@@ -132,5 +138,5 @@ def create_memory(
 
     raise PersistenceConfigError(
         f"Unknown memory backend '{backend}'. Supported values: 'oracle' (default), "
-        "'sqlite' (local development only), 'mem0', 'in_memory'."
+        "'sqlite' (test-only), 'mem0', 'in_memory'."
     )

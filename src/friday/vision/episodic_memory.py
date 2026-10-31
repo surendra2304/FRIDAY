@@ -5,7 +5,7 @@ Features:
 - Indexes episodic facts with relevance, recency, importance, confidence, and task association.
 - Low-value repetitive observation suppression (perceptual & semantic deduplication).
 - Safe correction & forgetting mechanisms for environmental facts.
-- Automatic fallback from semantic embeddings to SQLite FTS5 full-text search when embeddings fail/exhaust quota.
+- Automatic fallback from semantic embeddings to Oracle lexical full-text search when embeddings fail/exhaust quota.
 - Strict zero-persistence policy for credentials, passwords, tokens, raw screenshots, and private CoT.
 """
 
