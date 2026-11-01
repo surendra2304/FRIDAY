@@ -690,7 +690,6 @@ async def livekit_token(
     identity: str = "owner",
 ) -> dict[str, str]:
     """Mint a short-lived LiveKit room token for the authenticated dashboard."""
-    await _require_control_access(request)
     room = room.strip()
     identity = identity.strip()
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", room):
