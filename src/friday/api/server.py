@@ -18,8 +18,9 @@ import logging
 import os
 import re
 import subprocess
+import sys
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -680,6 +681,47 @@ async def list_tools() -> list[dict[str, Any]]:
             "parameters": fn.get("parameters", {}),
         })
     return tools
+
+
+@app.get("/api/livekit/token")
+async def livekit_token(
+    request: Request,
+    room: str = "friday",
+    identity: str = "owner",
+) -> dict[str, str]:
+    """Mint a short-lived LiveKit room token for the authenticated dashboard."""
+    await _require_control_access(request)
+    room = room.strip()
+    identity = identity.strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", room):
+        raise HTTPException(status_code=400, detail="Invalid LiveKit room name")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", identity):
+        raise HTTPException(status_code=400, detail="Invalid LiveKit identity")
+
+    api_key = os.getenv("LIVEKIT_API_KEY", "").strip()
+    api_secret = os.getenv("LIVEKIT_API_SECRET", "").strip()
+    livekit_url = os.getenv("LIVEKIT_URL", "").strip()
+    if not api_key or not api_secret or not livekit_url:
+        raise HTTPException(
+            status_code=503,
+            detail="LiveKit is not configured on this FRIDAY instance",
+        )
+
+    try:
+        from livekit import api
+    except ImportError as exc:
+        logger.error("LiveKit token service is unavailable: %s", exc)
+        raise HTTPException(status_code=503, detail="LiveKit server SDK is unavailable") from exc
+
+    token = (
+        api.AccessToken(api_key, api_secret)
+        .with_identity(identity)
+        .with_name(identity)
+        .with_ttl(timedelta(minutes=10))
+        .with_grants(api.VideoGrants(room_join=True, room=room))
+        .to_jwt()
+    )
+    return {"server_url": livekit_url, "token": token, "room": room, "identity": identity}
 
 
 @app.get("/api/agents")

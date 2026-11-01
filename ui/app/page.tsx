@@ -16,6 +16,7 @@ import {
   KeyRound,
   LoaderCircle,
   LockKeyhole,
+  Mic,
   MessageSquareText,
   Monitor,
   Radio,
@@ -27,7 +28,8 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { Room, RoomEvent, Track } from "livekit-client";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Agent = {
   id: string;
@@ -93,11 +95,20 @@ const API_TOKEN_SESSION_KEY = "friday.control.apiToken";
 function apiBase(): string {
   if (typeof window === "undefined") return "";
   const saved = window.sessionStorage.getItem(API_BASE_SESSION_KEY)?.trim();
-  if (saved) return saved.replace(/\/$/, "");
+  if (saved) {
+    const normalized = saved.replace(/\/$/, "");
+    if (
+      window.location.hostname === "localhost" &&
+      normalized === "http://localhost:9000"
+    ) {
+      return "http://localhost:10000";
+    }
+    return normalized;
+  }
   const configured = process.env.NEXT_PUBLIC_FRIDAY_API_URL?.trim();
   if (configured) return configured.replace(/\/$/, "");
   if (window.location.port === "3000") {
-    return `${window.location.protocol}//${window.location.hostname}:9000`;
+    return "https://friday-universe.duckdns.org/friday";
   }
   return window.location.origin;
 }
@@ -164,6 +175,75 @@ function TinyChart({ values, color }: { values: number[]; color: string }) {
   );
 }
 
+function LiveKitVoicePanel() {
+  const [status, setStatus] = useState<"idle" | "connecting" | "connected" | "error">("idle");
+  const [message, setMessage] = useState("LiveKit voice is disconnected.");
+  const roomRef = useRef<Room | null>(null);
+  const audioRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => () => {
+    roomRef.current?.disconnect();
+    roomRef.current = null;
+  }, []);
+
+  async function toggleVoice() {
+    if (status === "connected") {
+      roomRef.current?.disconnect();
+      roomRef.current = null;
+      if (audioRef.current) audioRef.current.replaceChildren();
+      setStatus("idle");
+      setMessage("LiveKit voice is disconnected.");
+      return;
+    }
+
+    setStatus("connecting");
+    setMessage("Requesting a secure voice room…");
+    try {
+      const identity = `owner-${crypto.randomUUID().slice(0, 8)}`;
+      const response = await fetch(`${apiBase()}/api/livekit/token?room=friday&identity=${encodeURIComponent(identity)}`, {
+        headers: apiHeaders(),
+        cache: "no-store",
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(typeof body?.detail === "string" ? body.detail : `LiveKit token request failed (${response.status})`);
+
+      const room = new Room({ adaptiveStream: true, dynacast: true });
+      room.on(RoomEvent.TrackSubscribed, (track) => {
+        if (track.kind !== Track.Kind.Audio || !audioRef.current) return;
+        const element = track.attach();
+        element.autoplay = true;
+        audioRef.current?.appendChild(element);
+      });
+      await room.connect(body.server_url, body.token);
+      await room.localParticipant.setMicrophoneEnabled(true);
+      roomRef.current = room;
+      setStatus("connected");
+      setMessage(`Connected to room “${body.room}”. Microphone is live.`);
+    } catch (error) {
+      roomRef.current?.disconnect();
+      roomRef.current = null;
+      setStatus("error");
+      setMessage(error instanceof Error ? error.message : "LiveKit connection failed.");
+    }
+  }
+
+  return (
+    <article className="surface voice-surface" aria-label="LiveKit voice">
+      <div className="section-heading">
+        <div><div className="section-kicker">REALTIME VOICE</div><h2>LiveKit room</h2></div>
+        <Radio size={17} className={status === "connected" ? "heading-icon live" : "heading-icon"} />
+      </div>
+      <p className="surface-copy">{message}</p>
+      <button className="small-action" onClick={() => void toggleVoice()} disabled={status === "connecting"}>
+        {status === "connecting" ? <LoaderCircle size={14} className="spin" /> : <Mic size={14} />}
+        {status === "connected" ? "Leave room" : "Join voice"}
+      </button>
+      {status === "error" && <div className="inline-error"><AlertCircle size={15} />Check LiveKit configuration and browser microphone permissions.</div>}
+      <div ref={audioRef} hidden />
+    </article>
+  );
+}
+
 export default function FridayCommandCenter() {
   const [fleet, setFleet] = useState<FleetSnapshot | null>(null);
   const [telemetry, setTelemetry] = useState<HostTelemetry | null>(null);
@@ -185,6 +265,7 @@ export default function FridayCommandCenter() {
   const [ramHistory, setRamHistory] = useState<number[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [now, setNow] = useState(new Date());
+  const [hydrated, setHydrated] = useState(false);
 
   const refresh = useCallback(async (manual = false) => {
     if (manual) setRefreshing(true);
@@ -223,6 +304,7 @@ export default function FridayCommandCenter() {
   }, []);
 
   useEffect(() => {
+    setHydrated(true);
     const initial = window.setTimeout(() => void refresh(), 0);
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") void refresh();
@@ -244,7 +326,8 @@ export default function FridayCommandCenter() {
   const agents = fleet?.agents ?? [];
   const onlineCount = agents.filter((agent) => agent.status?.toUpperCase() === "ONLINE").length;
   const selected = agents.find((agent) => agent.id === selectedAgent) ?? null;
-  const hostLabel = typeof window === "undefined"
+  const displayNow = hydrated ? now : new Date(0);
+  const hostLabel = !hydrated
     ? "Service host"
     : ["localhost", "127.0.0.1"].includes(window.location.hostname)
       ? "Connected laptop"
@@ -351,7 +434,7 @@ export default function FridayCommandCenter() {
         <header className="topbar">
           <div className="breadcrumb"><span>Workspace</span><span className="slash">/</span><strong>Command center</strong></div>
           <div className="top-actions">
-            <div className="clock"><Clock3 size={15} /><span>{new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(now)}</span></div>
+            <div className="clock"><Clock3 size={15} /><span>{hydrated ? new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(displayNow) : "—:—"}</span></div>
             <button className="icon-button" title="Refresh live data" onClick={() => void refresh(true)} disabled={refreshing}>
               <RefreshCw size={16} className={refreshing ? "spin" : ""} />
             </button>
@@ -363,7 +446,7 @@ export default function FridayCommandCenter() {
           <section className="welcome-row">
             <div>
               <div className="eyebrow"><span className="eyebrow-line" />PERSONAL ASSISTANT · LIVE CONSOLE</div>
-              <h1>Good {now.getHours() < 12 ? "morning" : now.getHours() < 18 ? "afternoon" : "evening"}, Surendra<span className="title-period">.</span></h1>
+              <h1>Good {displayNow.getHours() < 12 ? "morning" : displayNow.getHours() < 18 ? "afternoon" : "evening"}, Surendra<span className="title-period">.</span></h1>
               <p className="welcome-subtitle">Your workspace at a glance. Ask FRIDAY to handle a task, or inspect the connected agent network.</p>
             </div>
             <div className="live-pill"><span className={`status-dot ${connected}`} />{connected === "online" ? "API responding" : connected === "offline" ? "API unavailable" : "Connecting"}</div>
@@ -470,6 +553,7 @@ export default function FridayCommandCenter() {
           </section>
 
           <section className="bottom-grid">
+            <LiveKitVoicePanel />
             <article className="surface host-surface">
               <div className="section-heading"><div><div className="section-kicker">RUNTIME CONTEXT</div><h2>Connected host</h2></div><Monitor size={17} className="heading-icon" /></div>
               <div className="host-info-row"><span>Host system</span><strong>{telemetry?.os || (telemetryError ? "Unavailable" : "Waiting for telemetry")}</strong></div>
