@@ -209,16 +209,41 @@ function LiveKitVoicePanel() {
 
       const room = new Room({ adaptiveStream: true, dynacast: true });
       room.on(RoomEvent.TrackSubscribed, (track) => {
-        if (track.kind !== Track.Kind.Audio || !audioRef.current) return;
+        if (track.kind !== Track.Kind.Audio) return;
         const element = track.attach();
         element.autoplay = true;
-        audioRef.current?.appendChild(element);
+        if (audioRef.current) {
+          audioRef.current.appendChild(element);
+        } else {
+          document.body.appendChild(element);
+        }
+        element.play().catch((err) => console.warn("LiveKit audio playback deferred by browser:", err));
       });
+
       await room.connect(body.server_url, body.token);
-      await room.localParticipant.setMicrophoneEnabled(true);
+
+      for (const participant of room.remoteParticipants.values()) {
+        for (const publication of participant.trackPublications.values()) {
+          if (publication.track && publication.track.kind === Track.Kind.Audio) {
+            const element = publication.track.attach();
+            element.autoplay = true;
+            if (audioRef.current) audioRef.current.appendChild(element);
+            element.play().catch((err) => console.warn("Audio playback deferred:", err));
+          }
+        }
+      }
+
       roomRef.current = room;
-      setStatus("connected");
-      setMessage(`Connected to room “${body.room}”. Microphone is live.`);
+
+      try {
+        await room.localParticipant.setMicrophoneEnabled(true);
+        setStatus("connected");
+        setMessage(`Connected to room “${body.room}”. Microphone is live.`);
+      } catch (micErr) {
+        console.warn("Microphone access failed (e.g. side browser restricted):", micErr);
+        setStatus("connected");
+        setMessage(`Connected to room “${body.room}” (Listening only — microphone not allowed in this browser view).`);
+      }
     } catch (error) {
       roomRef.current?.disconnect();
       roomRef.current = null;
@@ -238,8 +263,8 @@ function LiveKitVoicePanel() {
         {status === "connecting" ? <LoaderCircle size={14} className="spin" /> : <Mic size={14} />}
         {status === "connected" ? "Leave room" : "Join voice"}
       </button>
-      {status === "error" && <div className="inline-error"><AlertCircle size={15} />Check LiveKit configuration and browser microphone permissions.</div>}
-      <div ref={audioRef} hidden />
+      {status === "error" && <div className="inline-error"><AlertCircle size={15} />{message}</div>}
+      <div ref={audioRef} style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", opacity: 0, pointerEvents: "none" }} />
     </article>
   );
 }
