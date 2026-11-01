@@ -190,7 +190,7 @@ function LiveKitVoicePanel() {
     if (status === "connected") {
       roomRef.current?.disconnect();
       roomRef.current = null;
-      if (audioRef.current) audioRef.current.replaceChildren();
+      document.querySelectorAll("audio[data-livekit]").forEach((el) => el.remove());
       setStatus("idle");
       setMessage("LiveKit voice is disconnected.");
       return;
@@ -208,27 +208,37 @@ function LiveKitVoicePanel() {
       if (!response.ok) throw new Error(typeof body?.detail === "string" ? body.detail : `LiveKit token request failed (${response.status})`);
 
       const room = new Room({ adaptiveStream: true, dynacast: true });
-      room.on(RoomEvent.TrackSubscribed, (track) => {
+
+      const attachAudio = (track: Track) => {
         if (track.kind !== Track.Kind.Audio) return;
-        const element = track.attach();
+        const element = track.attach() as HTMLAudioElement;
+        element.setAttribute("data-livekit", "true");
         element.autoplay = true;
-        if (audioRef.current) {
-          audioRef.current.appendChild(element);
-        } else {
-          document.body.appendChild(element);
+        element.volume = 1.0;
+        document.body.appendChild(element);
+        element.play().catch((err) => {
+          console.warn("LiveKit audio element play deferred:", err);
+          void room.startAudio();
+        });
+      };
+
+      room.on(RoomEvent.TrackSubscribed, (track) => {
+        attachAudio(track);
+      });
+
+      room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
+        if (!room.canPlaybackAudio) {
+          void room.startAudio();
         }
-        element.play().catch((err) => console.warn("LiveKit audio playback deferred by browser:", err));
       });
 
       await room.connect(body.server_url, body.token);
+      await room.startAudio().catch(() => {});
 
       for (const participant of room.remoteParticipants.values()) {
         for (const publication of participant.trackPublications.values()) {
-          if (publication.track && publication.track.kind === Track.Kind.Audio) {
-            const element = publication.track.attach();
-            element.autoplay = true;
-            if (audioRef.current) audioRef.current.appendChild(element);
-            element.play().catch((err) => console.warn("Audio playback deferred:", err));
+          if (publication.track) {
+            attachAudio(publication.track);
           }
         }
       }
