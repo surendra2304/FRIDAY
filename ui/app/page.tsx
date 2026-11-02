@@ -16,8 +16,8 @@ import {
   KeyRound,
   LoaderCircle,
   LockKeyhole,
-  Mic,
   MessageSquareText,
+  Mic,
   Monitor,
   Radio,
   RefreshCw,
@@ -28,6 +28,18 @@ import {
   Volume2,
   X,
   Zap,
+  CheckCircle2,
+  Wifi,
+  WifiOff,
+  Database,
+  Terminal,
+  BarChart2,
+  Network,
+  HardDrive,
+  MousePointer2,
+  Eye,
+  EyeOff,
+  Layers,
 } from "lucide-react";
 import { Room, RoomEvent, Track } from "livekit-client";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -79,6 +91,14 @@ type AutonomySnapshot = {
     directive?: string;
     result?: string;
     success?: boolean;
+  }>;
+  agent_activity?: Record<string, {
+    timestamp?: string;
+    recorded_at?: string;
+    directive?: string;
+    result?: string;
+    success?: boolean;
+    action_type?: string;
   }>;
 };
 
@@ -173,8 +193,6 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   });
   let response = await send();
   if (response.status === 401 && !window.localStorage.getItem(API_TOKEN_SESSION_KEY)) {
-    // The dashboard does not ask the owner to paste the server key. Mint a
-    // short-lived same-origin control session and retry once.
     if (await ensureControlSession(true)) response = await send();
   }
   const body = await response.json().catch(() => null);
@@ -201,31 +219,56 @@ function statusTone(status?: string): string {
   return "muted";
 }
 
-function TinyChart({ values, color }: { values: number[]; color: string }) {
-  const points = useMemo(() => {
-    if (values.length < 2) return "";
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const span = Math.max(max - min, 1);
-    return values.map((value, index) => {
-      const x = (index / (values.length - 1)) * 100;
-      const y = 29 - ((value - min) / span) * 23;
-      return `${x},${y}`;
-    }).join(" ");
-  }, [values]);
+const AGENT_ORDER = [
+  "stratex",
+  "inference",
+  "cortex",
+  "forge",
+  "intelx",
+  "vyralx",
+  "memora",
+  "futuris",
+  "sentinel",
+] as const;
 
+const AGENT_ICONS: Record<string, React.ReactNode> = {
+  stratex: <BarChart2 size={16} />,
+  inference: <Network size={16} />,
+  cortex: <Database size={16} />,
+  forge: <Terminal size={16} />,
+  intelx: <ShieldCheck size={16} />,
+  vyralx: <Layers size={16} />,
+  memora: <HardDrive size={16} />,
+  futuris: <Eye size={16} />,
+  sentinel: <Wifi size={16} />,
+};
+
+function Sparkline({ values, color, width = 120, height = 36 }: {
+  values: number[];
+  color: string;
+  width?: number;
+  height?: number;
+}) {
+  if (values.length < 2) return <svg width={width} height={height} />;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = Math.max(max - min, 1);
+  const points = values.map((v, i) => {
+    const x = (i / (values.length - 1)) * 100;
+    const y = 100 - ((v - min) / span) * 90;
+    return `${x},${y}`;
+  }).join(" ");
   return (
-    <svg className="tiny-chart" viewBox="0 0 100 32" role="img" aria-label="Recent measured samples">
-      <path d="M0 30 H100" className="chart-baseline" />
-      {points && <polyline points={points} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
-      {points && <circle cx={points.split(" ").at(-1)?.split(",")[0]} cy={points.split(" ").at(-1)?.split(",")[1]} r="2.2" fill={color} />}
+    <svg width={width} height={height} viewBox="0 0 100 100" role="img" aria-label="Recent samples" className="sparkline">
+      <path d={`M${points}`} fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={points.split(" ").at(-1)?.split(",")[0]} cy={points.split(" ").at(-1)?.split(",")[1]} r="2.5" fill={color} />
     </svg>
   );
 }
 
 function LiveKitVoicePanel() {
   const [status, setStatus] = useState<"idle" | "connecting" | "connected" | "error">("idle");
-  const [message, setMessage] = useState("LiveKit voice is disconnected.");
+  const [message, setMessage] = useState("Voice disconnected");
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [agentAudio, setAgentAudio] = useState(false);
   const roomRef = useRef<Room | null>(null);
@@ -248,17 +291,15 @@ function LiveKitVoicePanel() {
       setAgentAudio(false);
       setAudioBlocked(false);
       setStatus("idle");
-      setMessage("LiveKit voice is disconnected.");
+      setMessage("Voice disconnected");
       return;
     }
 
     setStatus("connecting");
-    setMessage("Requesting a secure voice room…");
+    setMessage("Requesting voice room…");
     setAudioBlocked(false);
     setAgentAudio(false);
 
-    // Create the room and unlock its audio context *inside* the click gesture,
-    // before any network await can consume the browser's transient activation.
     const room = new Room({ adaptiveStream: true, dynacast: true });
     void room.startAudio().catch(() => {});
 
@@ -291,117 +332,99 @@ function LiveKitVoicePanel() {
         if (track.kind !== Track.Kind.Audio) return;
         attachAudio(track);
         setAgentAudio(true);
-        setMessage("FRIDAY joined the room. Speak now — she can hear you.");
+        setMessage("FRIDAY is listening — speak now");
       });
 
       room.on(RoomEvent.TrackUnsubscribed, (track) => {
         track.detach().forEach((element) => element.remove());
       });
 
-      room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
-        setAudioBlocked(!room.canPlaybackAudio);
+      room.on(RoomEvent.Disconnected, () => {
+        setStatus("idle");
+        setMessage("Voice disconnected");
+        setAgentAudio(false);
+        clearAudioElements();
       });
 
-      room.on(RoomEvent.Disconnected, () => {
-        clearAudioElements();
-        setAgentAudio(false);
-        setStatus("idle");
-        setMessage("LiveKit voice is disconnected.");
+      room.on(RoomEvent.ConnectionStateChanged, (state) => {
+        if (state === "connected") {
+          setStatus("connected");
+        } else if (state === "disconnected") {
+          setStatus("idle");
+        }
       });
 
       await room.connect(body.server_url, body.token);
-      await room.startAudio().catch(() => setAudioBlocked(true));
-
       roomRef.current = room;
-
-      try {
-        await room.localParticipant.setMicrophoneEnabled(true);
-        setStatus("connected");
-        setMessage(`Connected to room “${body.room}”. Microphone is live — say hello.`);
-      } catch (micErr) {
-        console.warn("Microphone access failed (e.g. side browser restricted):", micErr);
-        setStatus("connected");
-        setMessage(`Connected to room “${body.room}” (listening only — microphone was blocked).`);
-      }
     } catch (error) {
-      room.disconnect();
+      const msg = error instanceof Error ? error.message : "Voice connection failed";
+      setStatus("error");
+      setMessage(msg);
+      roomRef.current?.disconnect();
       roomRef.current = null;
       clearAudioElements();
-      setStatus("error");
-      setMessage(error instanceof Error ? error.message : "LiveKit connection failed.");
-    }
-  }
-
-  async function enableAudio() {
-    const room = roomRef.current;
-    if (!room) return;
-    try {
-      await room.startAudio();
-      setAudioBlocked(false);
-    } catch (error) {
-      console.warn("Audio unlock failed:", error);
-      setAudioBlocked(true);
     }
   }
 
   return (
-    <article className="surface voice-surface" aria-label="LiveKit voice">
-      <div className="section-heading">
-        <div><div className="section-kicker">REALTIME VOICE</div><h2>LiveKit room</h2></div>
-        <Radio size={17} className={status === "connected" ? "heading-icon live" : "heading-icon"} />
+    <article className="surface voice-panel">
+      <div className="panel-head">
+        <div className="panel-title">
+          <div className="title-icon voice"><AudioLines size={18} /></div>
+          <div>
+            <h3>Voice</h3>
+            <span className="subtitle">Real-time conversation with FRIDAY</span>
+          </div>
+        </div>
+        <div className="panel-status">
+          <span className={`state-dot ${status === "connected" ? "on" : status === "connecting" ? "pending" : status === "error" ? "off" : ""}`} />
+          <span className={`state-label ${status}`}>{status === "connected" ? "Connected" : status === "connecting" ? "Connecting…" : status === "error" ? "Error" : "Disconnected"}</span>
+        </div>
       </div>
-      <p className="surface-copy">{message}</p>
-      <div className="voice-actions">
-        <button className="small-action" onClick={() => void toggleVoice()} disabled={status === "connecting"}>
-          {status === "connecting" ? <LoaderCircle size={14} className="spin" /> : <Mic size={14} />}
-          {status === "connected" ? "Leave room" : "Join voice"}
-        </button>
-        {status === "connected" && audioBlocked && (
-          <button className="small-action" onClick={() => void enableAudio()}>
-            <Volume2 size={14} /> Enable audio
-          </button>
-        )}
-      </div>
-      {status === "connected" && agentAudio && !audioBlocked && (
-        <p className="voice-live-note">Agent audio track is live.</p>
-      )}
-      {status === "error" && <div className="inline-error"><AlertCircle size={15} />{message}</div>}
+      <p className="voice-message">{message}</p>
+      {audioBlocked && <p className="voice-blocked"><AlertCircle size={12} /> Audio was blocked — click the room to allow playback</p>}
+      <button className={`btn ${status === "connected" ? "btn-danger" : "btn-primary"}`} onClick={toggleVoice} disabled={status === "connecting"}>
+        {status === "connecting" ? <LoaderCircle size={15} className="spin" /> : status === "connected" ? <Volume2 size={15} /> : <Mic size={15} />}
+        {status === "connecting" ? "Connecting…" : status === "connected" ? "Disconnect" : "Connect"}
+      </button>
     </article>
   );
 }
 
-export default function FridayCommandCenter() {
+export default function Page() {
   const [fleet, setFleet] = useState<FleetSnapshot | null>(null);
+  const [fleetError, setFleetError] = useState("");
   const [telemetry, setTelemetry] = useState<HostTelemetry | null>(null);
+  const [telemetryError, setTelemetryError] = useState("");
   const [autonomy, setAutonomy] = useState<AutonomySnapshot | null>(null);
   const [health, setHealth] = useState<Record<string, unknown> | null>(null);
-  const [fleetError, setFleetError] = useState("");
-  const [telemetryError, setTelemetryError] = useState("");
-  const [command, setCommand] = useState("");
-  const [reply, setReply] = useState("");
-  const [commandError, setCommandError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [draftBase, setDraftBase] = useState(process.env.NEXT_PUBLIC_FRIDAY_API_URL?.trim() ?? "");
-  const [draftToken, setDraftToken] = useState("");
   const [connected, setConnected] = useState<"checking" | "online" | "offline">("checking");
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [cpuHistory, setCpuHistory] = useState<number[]>([]);
   const [ramHistory, setRamHistory] = useState<number[]>([]);
-  const [agentActivity, setAgentActivity] = useState<AutonomySnapshot | null>(null);
-  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
-  const [agentDirective, setAgentDirective] = useState("");
-  const [agentResult, setAgentResult] = useState("");
-  const [agentBusy, setAgentBusy] = useState(false);
   const [laptops, setLaptops] = useState<Array<{ laptop_id: string; online?: boolean; connected_at?: string; last_seen?: string }>>([]);
   const [laptopError, setLaptopError] = useState("");
   const [laptopOutput, setLaptopOutput] = useState("");
   const [laptopBusy, setLaptopBusy] = useState("");
-  const [laptopUrl, setLaptopUrl] = useState("https://friday-universe.duckdns.org/friday/");
+  const [laptopUrl, setLaptopUrl] = useState("https://friday-universe.duckdns.org/");
+  const [command, setCommand] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [commandError, setCommandError] = useState("");
+  const [reply, setReply] = useState("");
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [agentDirective, setAgentDirective] = useState("");
+  const [agentBusy, setAgentBusy] = useState(false);
+  const [agentResult, setAgentResult] = useState("");
   const [controlReady, setControlReady] = useState(false);
   const [now, setNow] = useState(new Date());
   const [hydrated, setHydrated] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [draftBase, setDraftBase] = useState("");
+  const [draftToken, setDraftToken] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+
+  const displayNow = useMemo(() => hydrated ? new Date(now) : new Date(), [hydrated, now]);
+  const onlineCount = useMemo(() => fleet?.agents?.filter((a) => a.status === "ONLINE").length ?? 0, [fleet]);
 
   const refresh = useCallback(async (manual = false) => {
     if (manual) setRefreshing(true);
@@ -425,10 +448,10 @@ export default function FridayCommandCenter() {
       const data = telemetryResult.value;
       setTelemetry(data);
       if (data.status === "ok" && typeof data.cpu_percent === "number") {
-        setCpuHistory((current) => [...current, data.cpu_percent!].slice(-32));
+        setCpuHistory((current) => [...current, data.cpu_percent!].slice(-60));
       }
       if (data.status === "ok" && typeof data.ram_percent === "number") {
-        setRamHistory((current) => [...current, data.ram_percent!].slice(-32));
+        setRamHistory((current) => [...current, data.ram_percent!].slice(-60));
       }
       setTelemetryError(data.status === "ok" ? "" : data.error ?? "Host telemetry unavailable");
     } else {
@@ -448,15 +471,12 @@ export default function FridayCommandCenter() {
 
   useEffect(() => {
     setHydrated(true);
-    // First-run defaults: never make the owner re-enter the production URL or key.
     if (typeof window !== "undefined") {
       const base = window.localStorage.getItem(API_BASE_SESSION_KEY);
       if (!base || /localhost:10000|localhost:9000/.test(base)) {
         window.localStorage.setItem(API_BASE_SESSION_KEY, "https://friday-universe.duckdns.org");
       }
       if (!window.localStorage.getItem(API_TOKEN_SESSION_KEY)) {
-        // The control session is the dashboard's credential; the server key is
-        // never shipped in the client bundle.
         void ensureControlSession(true).then((token) => setControlReady(Boolean(token)));
       }
     }
@@ -476,27 +496,11 @@ export default function FridayCommandCenter() {
   async function pollActivity() {
     try {
       const data = await requestJson<AutonomySnapshot>("/api/autonomous/status");
-      setAgentActivity(data);
+      setAutonomy(data);
     } catch {
       // ignore
     }
   }
-
-  function openSettings() {
-    setDraftBase(apiBase());
-    setDraftToken(window.localStorage.getItem(API_TOKEN_SESSION_KEY) ?? "");
-    setShowSettings(true);
-  }
-
-  const agents = fleet?.agents ?? [];
-  const onlineCount = agents.filter((agent) => agent.status?.toUpperCase() === "ONLINE").length;
-  const selected = agents.find((agent) => agent.id === selectedAgent) ?? null;
-  const displayNow = hydrated ? now : new Date(0);
-  const hostLabel = !hydrated
-    ? "Service host"
-    : ["localhost", "127.0.0.1"].includes(window.location.hostname)
-      ? "Connected laptop"
-      : "FRIDAY service host";
 
   async function submitCommand(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -506,38 +510,21 @@ export default function FridayCommandCenter() {
     setCommandError("");
     setReply("");
     try {
-      const result = await requestJson<{ reply?: string; metadata?: Record<string, unknown> }>("/api/command", {
+      const result = await requestJson<{ reply?: string; autonomous_mode?: boolean; mode?: string }>("/api/command", {
         method: "POST",
-        body: JSON.stringify({ command: clean }),
+        body: JSON.stringify({ input: clean }),
       });
-      const answer = result.reply || "FRIDAY returned no reply text.";
+      const answer = result.reply || result.mode || "FRIDAY accepted the command.";
       setReply(answer);
-      setActivity((current) => [{ id: Date.now(), at: new Date().toISOString(), command: clean, reply: answer, success: true }, ...current].slice(0, 12));
-      setCommand("");
+      setActivity((current) => [{ id: Date.now(), at: new Date().toISOString(), command: clean, reply: answer, success: true }, ...current].slice(0, 20));
       void refresh();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "The command could not be sent.";
+      const message = error instanceof Error ? error.message : "Command failed.";
       setCommandError(message);
-      setActivity((current) => [{ id: Date.now(), at: new Date().toISOString(), command: clean, reply: message, success: false }, ...current].slice(0, 12));
+      setActivity((current) => [{ id: Date.now(), at: new Date().toISOString(), command: clean, reply: message, success: false }, ...current].slice(0, 20));
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function cancelTasks() {
-    if (busy) return;
-    setBusy(true);
-    setCommandError("");
-    try {
-      const result = await requestJson<{ status?: string; cancelled_count?: number }>("/api/tasks/cancel-all", { method: "POST" });
-      const answer = result.status === "cancelled"
-        ? `Cancel request returned: ${result.cancelled_count ?? 0} task(s) cancelled.`
-        : `Cancel request returned: ${result.status ?? "unknown status"}.`;
-      setReply(answer);
-    } catch (error) {
-      setCommandError(error instanceof Error ? error.message : "Could not send cancel request.");
-    } finally {
-      setBusy(false);
+      setCommand("");
     }
   }
 
@@ -546,7 +533,7 @@ export default function FridayCommandCenter() {
     setBusy(true);
     setCommandError("");
     try {
-      const result = await requestJson<{ status?: string; autonomous_mode?: boolean }>("/api/autonomous/toggle", { method: "POST" });
+      const result = await requestJson<{ autonomous_mode?: boolean }>("/api/autonomous/toggle", { method: "POST" });
       if (typeof result.autonomous_mode === "boolean") {
         setAutonomy((current) => ({ ...(current ?? {}), autonomous_mode: result.autonomous_mode }));
         setReply(`Autonomous mode is now ${result.autonomous_mode ? "on" : "off"}.`);
@@ -563,36 +550,26 @@ export default function FridayCommandCenter() {
   async function runAgentTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const clean = agentDirective.trim();
-    if (!clean || agentBusy || !selected) return;
+    if (!clean || agentBusy || !selectedAgent) return;
     setAgentBusy(true);
     setAgentResult("");
     setCommandError("");
     try {
       const result = await requestJson<{ reply?: string; metadata?: Record<string, unknown> }>(
-        `/api/agents/${encodeURIComponent(selected.id)}/task`,
+        `/api/agents/${encodeURIComponent(selectedAgent)}/task`,
         { method: "POST", body: JSON.stringify({ directive: clean }) },
       );
-      const answer = result.reply || `${selected.name} returned no reply text.`;
+      const answer = result.reply || `${selectedAgent} returned no reply text.`;
       setAgentResult(answer);
-      setActivity((current) => [{ id: Date.now(), at: new Date().toISOString(), command: `@${selected.id} ${clean}`, reply: answer, success: true }, ...current].slice(0, 12));
+      setActivity((current) => [{ id: Date.now(), at: new Date().toISOString(), command: `@${selectedAgent} ${clean}`, reply: answer, success: true }, ...current].slice(0, 20));
       setAgentDirective("");
       void refresh();
     } catch (error) {
       const message = error instanceof Error ? error.message : "The agent task could not be sent.";
       setAgentResult(message);
-      setActivity((current) => [{ id: Date.now(), at: new Date().toISOString(), command: `@${selected.id} ${clean}`, reply: message, success: false }, ...current].slice(0, 12));
+      setActivity((current) => [{ id: Date.now(), at: new Date().toISOString(), command: `@${selectedAgent} ${clean}`, reply: message, success: false }, ...current].slice(0, 20));
     } finally {
       setAgentBusy(false);
-    }
-  }
-
-  async function refreshLaptops() {
-    try {
-      const result = await requestJson<{ devices?: Array<{ laptop_id: string; online?: boolean; connected_at?: string; last_seen?: string }> }>("/api/laptop/devices");
-      setLaptops(Array.isArray(result.devices) ? result.devices : []);
-      setLaptopError("");
-    } catch (error) {
-      setLaptopError(error instanceof Error ? error.message : "Could not list connected laptops.");
     }
   }
 
@@ -635,290 +612,631 @@ export default function FridayCommandCenter() {
     }
   }
 
+  async function cancelTasks() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const result = await requestJson<Record<string, unknown>>("/api/autonomous/cancel", { method: "POST" });
+      setReply(String(result.message ?? result.status ?? "Active tasks cancelled."));
+    } catch (error) {
+      setCommandError(error instanceof Error ? error.message : "Could not cancel tasks.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function saveConnection(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const cleanBase = draftBase.trim().replace(/\/$/, "");
-    if (cleanBase) window.localStorage.setItem(API_BASE_SESSION_KEY, cleanBase);
-    else window.localStorage.removeItem(API_BASE_SESSION_KEY);
-    if (draftToken.trim()) window.localStorage.setItem(API_TOKEN_SESSION_KEY, draftToken.trim());
-    else window.localStorage.removeItem(API_TOKEN_SESSION_KEY);
+    const base = draftBase.trim().replace(/\/$/, "");
+    const token = draftToken.trim();
+    if (base) window.localStorage.setItem(API_BASE_SESSION_KEY, base);
+    if (token) window.localStorage.setItem(API_TOKEN_SESSION_KEY, token);
     setShowSettings(false);
-    setConnected("checking");
+    setControlReady(false);
+    void ensureControlSession(true).then((t) => setControlReady(Boolean(t)));
     void refresh(true);
   }
 
+  function openSettings() {
+    setDraftBase(apiBase());
+    setDraftToken("");
+    setShowSettings(true);
+  }
+
+  function closeSettings() {
+    setShowSettings(false);
+  }
+
+  if (!hydrated) {
+    return (
+      <main className="shell loading">
+        <div className="loader" aria-label="Loading FRIDAY dashboard">
+          <svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="20" stroke="currentColor" strokeWidth="3" fill="none" strokeDasharray="125.6" strokeDashoffset="31.4"><animateTransform attributeName="transform" type="rotate" from="0 24 24" to="360 24 24" dur="1s" repeatCount="indefinite" /></circle></svg>
+        </div>
+      </main>
+    );
+  }
+
+  const agents = fleet?.agents ?? [];
+  const sortedAgents = [...agents].sort((a, b) => {
+    const ai = AGENT_ORDER.indexOf(a.id as typeof AGENT_ORDER[number]);
+    const bi = AGENT_ORDER.indexOf(b.id as typeof AGENT_ORDER[number]);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+
+  const selected = selectedAgent ? sortedAgents.find((a) => a.id === selectedAgent) : null;
+  const agentActivity = autonomy?.agent_activity ?? {};
+
   return (
-    <main className="friday-shell">
-      <aside className="sidebar">
-        <a className="brand" href="#home" aria-label="FRIDAY home">
-          <span className="brand-mark"><AudioLines size={19} strokeWidth={2.1} /></span>
+    <main className="shell">
+      <aside className="sidebar" aria-label="Navigation">
+        <a className="brand" href="#top" aria-label="FRIDAY home">
+          <span className="brand-mark"><AudioLines size={20} strokeWidth={2.2} /></span>
           <span className="brand-copy"><strong>FRIDAY</strong><small>UNIVERSE CONTROL</small></span>
         </a>
-        <div className="sidebar-label">WORKSPACE</div>
         <nav className="side-nav" aria-label="Main navigation">
-          <a className="nav-link active" href="#home"><Command size={17} />Command center</a>
-          <a className="nav-link" href="#apartment"><Globe2 size={17} />Agent apartment<span className="nav-count">{fleet?.agent_count ?? "—"}</span></a>
-          <a className="nav-link" href="#laptop"><Monitor size={17} />Laptop control</a>
-          <a className="nav-link" href="#host"><Cpu size={17} />Host telemetry</a>
-          <a className="nav-link" href="#activity"><Activity size={17} />This session<span className="nav-count">{activity.length}</span></a>
+          <a className="nav-link active" href="#command"><Command size={17} />Command</a>
+          <a className="nav-link" href="#apartment"><Globe2 size={17} />Apartment</a>
+          <a className="nav-link" href="#laptop"><Monitor size={17} />Laptop</a>
+          <a className="nav-link" href="#telemetry"><Activity size={17} />Telemetry</a>
+          <a className="nav-link" href="#activity"><MessageSquareText size={17} />Session</a>
         </nav>
         <div className="sidebar-spacer" />
-        <div className="sidebar-network">
-          <div className="network-top"><span className={`status-dot ${connected}`} />Network check</div>
-          <p>{connected === "online" ? "FRIDAY API responded" : connected === "offline" ? "FRIDAY API unavailable" : "Checking service…"}</p>
-            <button className="text-button" onClick={openSettings}><Settings2 size={14} /> Connection settings</button>
+        <div className="sidebar-status">
+          <div className="status-row">
+            <span className={`status-dot ${connected}`} />
+            <span>{connected === "online" ? "API responding" : connected === "offline" ? "API unavailable" : "Connecting…"}</span>
+          </div>
+          <button className="text-btn" onClick={openSettings}><Settings2 size={14} /> Connection</button>
         </div>
-        <div className="sidebar-footer"><span className="user-avatar">S</span><span><strong>Surendra</strong><small>Owner</small></span><ChevronDown size={15} /></div>
+        <div className="sidebar-footer"><span className="user-avatar">S</span><span><strong>Surendra</strong><small>Owner</small></span></div>
       </aside>
 
-      <section className="main-area" id="home">
+      <section className="main" id="top">
         <header className="topbar">
           <div className="breadcrumb"><span>Workspace</span><span className="slash">/</span><strong>Command center</strong></div>
           <div className="top-actions">
-            <div className="clock"><Clock3 size={15} /><span>{hydrated ? new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(displayNow) : "—:—"}</span></div>
-            <button className="icon-button" title="Refresh live data" onClick={() => void refresh(true)} disabled={refreshing}>
-              <RefreshCw size={16} className={refreshing ? "spin" : ""} />
-            </button>
-            <button className="top-key" onClick={openSettings}><KeyRound size={14} /> Connect</button>
+            <div className="clock"><Clock3 size={15} /><span>{displayNow.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</span></div>
+            <button className="icon-btn" title="Refresh live data" onClick={() => void refresh(true)} disabled={refreshing}><RefreshCw size={16} className={refreshing ? "spin" : ""} /></button>
+            <button className="icon-btn" title="Settings" onClick={openSettings}><KeyRound size={14} /></button>
           </div>
         </header>
 
-        <div className="page-content">
-          <section className="welcome-row">
-            <div>
-              <div className="eyebrow"><span className="eyebrow-line" />PERSONAL ASSISTANT · LIVE CONSOLE</div>
-              <h1>Good {displayNow.getHours() < 12 ? "morning" : displayNow.getHours() < 18 ? "afternoon" : "evening"}, Surendra<span className="title-period">.</span></h1>
-              <p className="welcome-subtitle">Your workspace at a glance. Ask FRIDAY to handle a task, or inspect the connected agent network.</p>
-            </div>
-            <div className="live-pill"><span className={`status-dot ${connected}`} />{connected === "online" ? "API responding" : connected === "offline" ? "API unavailable" : "Connecting"}</div>
-          </section>
-
-          <section className="command-panel" aria-label="Ask FRIDAY">
-            <div className="command-panel-top">
-              <div className="assistant-avatar"><AudioLines size={20} /></div>
-              <div><strong>Talk to FRIDAY</strong><span>Commands run on the connected FRIDAY host.</span></div>
-              <span className={`panel-tag${controlReady ? " granted" : ""}`}>
-                <LockKeyhole size={12} />
-                {controlReady ? "Control access granted" : "Requesting control access…"}
-              </span>
-            </div>
-            <form className="command-form" onSubmit={submitCommand}>
-              <textarea
-                value={command}
-                onChange={(event) => setCommand(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    event.currentTarget.form?.requestSubmit();
-                  }
-                }}
-                placeholder="Ask FRIDAY to do something on your laptop or across the Universe…"
-                aria-label="Command for FRIDAY"
-                rows={2}
-                disabled={busy}
-              />
-              <div className="composer-bottom">
-                <span><kbd>Enter</kbd> send <span className="composer-separator">·</span> <kbd>Shift + Enter</kbd> new line</span>
-                <button className="send-button" type="submit" disabled={busy || !command.trim()}>
-                  {busy ? <LoaderCircle size={16} className="spin" /> : <Send size={15} />}
-                  {busy ? "Working" : "Send"}
-                </button>
+        <div className="content">
+          {/* COMMAND SECTION */}
+          <section className="section" id="command">
+            <div className="section-header">
+              <div className="section-title">
+                <div className="eyebrow"><span className="eyebrow-line" />PERSONAL ASSISTANT</div>
+                <h1>Good {displayNow.getHours() < 12 ? "morning" : displayNow.getHours() < 18 ? "afternoon" : "evening"}, Surendra.</h1>
               </div>
-            </form>
-            {commandError && <div className="inline-error"><AlertCircle size={15} />{commandError}{/key|required|401|403|503/i.test(commandError) && <button onClick={openSettings}>Set connection key</button>}</div>}
-            {reply && <div className="reply-card"><div className="reply-label"><span className="reply-dot" />FRIDAY RESPONSE</div><p>{reply}</p></div>}
-          </section>
-
-          <section className="metrics-grid" id="host">
-            <article className="metric-card">
-              <div className="metric-heading"><span className="metric-icon cpu"><Cpu size={17} /></span><span>CPU LOAD</span><span className="metric-host">{hostLabel}</span></div>
-              {telemetry?.status === "ok" && typeof telemetry.cpu_percent === "number" ? <>
-                <div className="metric-value">{telemetry.cpu_percent}<small>%</small></div>
-                <div className="metric-bottom"><span>{telemetry.cpu_cores ?? "—"} logical cores</span><TinyChart values={cpuHistory} color="#8de6cf" /></div>
-              </> : <MetricUnavailable message={telemetryError || "Waiting for host telemetry"} />}
-            </article>
-            <article className="metric-card">
-              <div className="metric-heading"><span className="metric-icon memory"><Activity size={17} /></span><span>MEMORY</span><span className="metric-host">{hostLabel}</span></div>
-              {telemetry?.status === "ok" && typeof telemetry.ram_percent === "number" ? <>
-                <div className="metric-value">{telemetry.ram_percent}<small>%</small></div>
-                <div className="metric-bottom"><span>{telemetry.ram_used_gb ?? "—"} / {telemetry.ram_total_gb ?? "—"} GB used</span><TinyChart values={ramHistory} color="#b9a6ff" /></div>
-              </> : <MetricUnavailable message={telemetryError || "Waiting for host telemetry"} />}
-            </article>
-            <article className="metric-card fleet-metric">
-              <div className="metric-heading"><span className="metric-icon fleet"><Globe2 size={17} /></span><span>AGENT REACHABILITY</span><span className={`metric-state ${statusTone(fleet?.status)}`}>{fleet?.status ?? "UNKNOWN"}</span></div>
-              {fleet ? <>
-                <div className="metric-value">{onlineCount}<small> / {fleet.agent_count ?? agents.length}</small></div>
-                <div className="metric-bottom"><span>HTTP health responses only</span><a href="#apartment">Inspect apartment <ArrowUpRight size={13} /></a></div>
-              </> : <MetricUnavailable message={fleetError || "Waiting for network check"} />}
-            </article>
-            <article className="metric-card autonomy-metric">
-              <div className="metric-heading"><span className="metric-icon autonomy"><Zap size={17} /></span><span>AUTONOMOUS MODE</span><span className={`metric-state ${autonomy?.autonomous_mode ? "good" : "muted"}`}>{autonomy ? autonomy.autonomous_mode ? "ON" : "OFF" : "UNKNOWN"}</span></div>
-              <div className="autonomy-row"><div><strong>{autonomy?.autonomous_mode ? "Enabled" : autonomy ? "Manual control" : "Status unavailable"}</strong><span>{autonomy?.history_count ?? "—"} recorded actions</span></div><button className="small-action" onClick={() => void toggleAutonomy()} disabled={busy || !autonomy} title="Toggle autonomy on the connected host">Toggle</button></div>
-            </article>
-          </section>
-
-          <section className="apartment-surface surface" id="apartment">
-            <div className="section-heading">
-              <div><div className="section-kicker">LIVE FLEET</div><h2>Agent apartment</h2></div>
-              <div className="section-heading-right"><span className="updated-at">{agentActivity?.active_agent ? `Active: ${agentActivity.active_agent}` : "All agents standing by"}</span></div>
+              <div className="live-badge">
+                <span className={`status-dot ${connected}`} />
+                <span>{connected === "online" ? "API responding" : "API unavailable"}</span>
+              </div>
             </div>
+
+            <article className="card command-card">
+              <div className="card-head">
+                <div className="card-title">
+                  <div className="title-icon cmd"><AudioLines size={18} /></div>
+                  <div>
+                    <h3>Talk to FRIDAY</h3>
+                    <span className="subtitle">Commands run on the connected FRIDAY host.</span>
+                  </div>
+                </div>
+                <span className={`tag ${controlReady ? "granted" : "pending"}`}>
+                  <LockKeyhole size={11} />
+                  {controlReady ? "Control active" : "Requesting…"}
+                </span>
+              </div>
+              <form className="command-form" onSubmit={submitCommand}>
+                <textarea
+                  value={command}
+                  onChange={(event) => setCommand(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      event.currentTarget.form?.requestSubmit();
+                    }
+                  }}
+                  placeholder="Ask FRIDAY to do something on your laptop or across the Universe…"
+                  aria-label="Command for FRIDAY"
+                  rows={2}
+                  disabled={busy}
+                />
+                <div className="command-footer">
+                  <span className="hint"><kbd>Enter</kbd> send · <kbd>Shift + Enter</kbd> new line</span>
+                  <button className={`btn ${busy ? "btn-disabled" : "btn-primary"}`} type="submit" disabled={busy || !command.trim()}>
+                    {busy ? <LoaderCircle size={15} className="spin" /> : <Send size={15} />}
+                    {busy ? "Working" : "Send"}
+                  </button>
+                </div>
+              </form>
+              {commandError && <div className="inline-error"><AlertCircle size={14} />{commandError}{/key|required|401|403|503/i.test(commandError) && <button onClick={openSettings} className="err-link">Set connection</button>}</div>}
+              {reply && <div className="reply-card"><div className="reply-label"><span className="reply-dot" />FRIDAY RESPONSE</div><p>{reply}</p></div>}
+            </article>
+
+            <div className="metrics-row">
+              <article className="card metric-card">
+                <div className="card-head">
+                  <div className="card-title">
+                    <div className="title-icon cpu"><Cpu size={18} /></div>
+                    <div>
+                      <h3>CPU Load</h3>
+                      <span className="subtitle">{telemetry?.cpu_cores ?? "—"} cores</span>
+                    </div>
+                  </div>
+                  <span className={`state-badge ${statusTone(String(telemetry?.status ?? ""))}`}>{telemetry?.status === "ok" ? `${telemetry.cpu_percent}%` : "Unavailable"}</span>
+                </div>
+                <div className="metric-value-row">
+                  <span className="metric-big">{telemetry?.status === "ok" && typeof telemetry.cpu_percent === "number" ? telemetry.cpu_percent : "—"}<small>%</small></span>
+                  <Sparkline values={cpuHistory} color="#8de6cf" width={140} height={40} />
+                </div>
+              </article>
+
+              <article className="card metric-card">
+                <div className="card-head">
+                  <div className="card-title">
+                    <div className="title-icon mem"><Activity size={18} /></div>
+                    <div>
+                      <h3>Memory</h3>
+                      <span className="subtitle">{telemetry?.ram_total_gb ?? "—"} GB total</span>
+                    </div>
+                  </div>
+                  <span className={`state-badge ${statusTone(String(telemetry?.status ?? ""))}`}>{telemetry?.status === "ok" ? `${telemetry.ram_percent}%` : "Unavailable"}</span>
+                </div>
+                <div className="metric-value-row">
+                  <span className="metric-big">{telemetry?.status === "ok" && typeof telemetry.ram_percent === "number" ? telemetry.ram_percent : "—"}<small>%</small></span>
+                  <Sparkline values={ramHistory} color="#b9a6ff" width={140} height={40} />
+                </div>
+              </article>
+
+              <article className="card metric-card">
+                <div className="card-head">
+                  <div className="card-title">
+                    <div className="title-icon fleet"><Globe2 size={18} /></div>
+                    <div>
+                      <h3>Agent Reachability</h3>
+                      <span className="subtitle">{fleet?.agent_count ?? 9} agents</span>
+                    </div>
+                  </div>
+                  <span className={`state-badge ${statusTone(fleet?.status)}`}>{fleet?.status ?? "Unknown"}</span>
+                </div>
+                <div className="metric-value-row">
+                  <span className="metric-big">{onlineCount}<small> / {fleet?.agent_count ?? agents.length}</small></span>
+                  <div className="mini-dots">
+                    {sortedAgents.map((a) => (
+                      <span key={a.id} className={`mini-dot ${statusTone(a.status)}`} title={`${a.name}: ${a.status}`} />
+                    ))}
+                  </div>
+                </div>
+              </article>
+
+              <article className="card metric-card">
+                <div className="card-head">
+                  <div className="card-title">
+                    <div className="title-icon auto"><Zap size={18} /></div>
+                    <div>
+                      <h3>Autonomous Mode</h3>
+                      <span className="subtitle">{autonomy?.history_count ?? "—"} recorded</span>
+                    </div>
+                  </div>
+                  <span className={`state-badge ${autonomy?.autonomous_mode ? "good" : "muted"}`}>{autonomy?.autonomous_mode ? "Enabled" : "Manual"}</span>
+                </div>
+                <div className="metric-value-row">
+                  <button className={`btn ${autonomy?.autonomous_mode ? "btn-danger" : "btn-primary"}`} onClick={toggleAutonomy} disabled={busy || !autonomy}>
+                    {autonomy?.autonomous_mode ? <Zap size={15} /> : <Radio size={15} />}
+                    {autonomy?.autonomous_mode ? "Disable" : "Enable"}
+                  </button>
+                  <div className="mini-dots">
+                    {Object.entries(agentActivity).map(([id, act]) => (
+                      <span key={id} className={`mini-dot ${act.success ? "good" : "bad"}`} title={`${id}: ${act.directive?.slice(0, 30)}`} />
+                    ))}
+                  </div>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          {/* AGENT APARTMENT */}
+          <section className="section" id="apartment">
+            <div className="section-header">
+              <div className="section-title">
+                <div className="eyebrow"><span className="eyebrow-line" />LIVE FLEET</div>
+                <h2>Agent Apartment</h2>
+              </div>
+              <div className="section-meta">
+                <span className="updated-at">{autonomy?.active_agent ? `Active: ${autonomy.active_agent}` : "All agents standing by"}</span>
+              </div>
+            </div>
+
             <div className="apartment-grid">
-              {agents.map((agent) => {
-                const last = agentActivity?.recent_actions?.find((a) => a.target?.toUpperCase() === agent.name?.toUpperCase());
-                const isActive = agentActivity?.active_agent?.toLowerCase() === agent.id;
+              {sortedAgents.map((agent) => {
+                const last = autonomy?.recent_actions?.find((a) => a.target?.toUpperCase() === agent.name?.toUpperCase());
+                const activityRecord = agentActivity[agent.id];
+                const isActive = autonomy?.active_agent?.toLowerCase() === agent.id;
                 const siteUrl = `https://friday-universe.duckdns.org/${agent.id}`;
+                const Icon = AGENT_ICONS[agent.id] || <Database size={16} />;
                 return (
-                  <div key={agent.id} className={`apartment-room ${isActive ? "active" : ""} ${statusTone(agent.status)}`}>
+                  <article key={agent.id} className={`apartment-room ${isActive ? "active" : ""} ${statusTone(agent.status)}`}>
                     <button
                       type="button"
-                      className="apartment-room-open"
+                      className="room-link"
                       onClick={() => window.open(siteUrl, "_blank", "noopener,noreferrer")}
                       aria-label={`Open ${agent.name} site`}
                       title={`Open ${agent.name} site`}
                     >
-                      <ArrowUpRight size={14} />
+                      <ArrowUpRight size={13} />
                     </button>
                     <button
                       type="button"
-                      className="apartment-room-body"
+                      className="room-body"
                       onClick={() => setSelectedAgent(selectedAgent === agent.id ? null : agent.id)}
                       aria-label={`Show ${agent.name} details and send a task`}
                     >
-                      <div className="apartment-room-head">
-                        <span className={`status-dot ${statusTone(agent.status) === "good" ? "online" : statusTone(agent.status) === "bad" ? "offline" : "checking"}`} />
-                        <strong>{agent.name}</strong>
-                        <span className="apartment-room-id">{agent.id}</span>
+                      <div className="room-head">
+                        <span className={`state-dot ${statusTone(agent.status) === "good" ? "on" : statusTone(agent.status) === "bad" ? "off" : "pending"}`} />
+                        <div className="room-identity">
+                          <div className="room-name-row">
+                            <strong>{agent.name}</strong>
+                            <span className="room-id">{agent.id}</span>
+                          </div>
+                          <div className="room-role">{agent.role || "Specialist Agent"}</div>
+                        </div>
+                        <div className="room-icon">
+                          {Icon}
+                        </div>
                       </div>
-                      <div className="apartment-room-status">{agent.status} · {typeof agent.latency_ms === "number" ? `${Math.round(agent.latency_ms)} ms` : "—"}</div>
-                      <div className="apartment-room-task">{last ? `${last.directive}` : "Idle — awaiting directive"}</div>
-                      {last && <div className={`apartment-room-result ${last.success ? "good" : "bad"}`}>{last.success ? "✓" : "✗"} {String(last.result ?? "").slice(0, 80)}</div>}
+                      <div className="room-status-row">
+                        <span className={`status-pill ${statusTone(agent.status)}`}>{agent.status}</span>
+                        <span className="room-latency">{typeof agent.latency_ms === "number" ? `${Math.round(agent.latency_ms)} ms` : "—"}</span>
+                      </div>
+                      <div className="room-task">{activityRecord ? activityRecord.directive : last ? last.directive : "Idle — awaiting directive"}</div>
+                      {(activityRecord || last) && (
+                        <div className={`room-result ${(activityRecord || last)!.success ? "good" : "bad"}`}>
+                          {(activityRecord || last)!.success ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
+                          <span>{String((activityRecord || last)!.result ?? "").slice(0, 80)}</span>
+                        </div>
+                      )}
                     </button>
-                  </div>
+                  </article>
                 );
               })}
             </div>
           </section>
-          {selected && <article className="surface agent-detail-surface" id="agent-detail">
-            <div className="agent-detail-title"><div><span className="section-kicker">SERVICE DETAIL</span><h3>{selected.name}</h3></div><button className="icon-button compact" onClick={() => setSelectedAgent(null)} aria-label="Close agent detail"><X size={15} /></button></div>
-            <p>{selected.details || selected.desc || "No additional description was returned by the service."}</p>
-            <div className="agent-detail-meta"><span>Role <strong>{selected.role || "—"}</strong></span><span>Endpoint <strong>{selected.endpoint || "not exposed"}</strong></span><span>Latency <strong>{typeof selected.latency_ms === "number" ? `${Math.round(selected.latency_ms)} ms` : "not reported"}</strong></span></div>
-            <div className="agent-detail-actions"><a className="subtle-button" href={`https://friday-universe.duckdns.org/${selected.id}`} target="_blank" rel="noreferrer"><ArrowUpRight size={14} />Open {selected.name} site</a></div>
-            <form className="agent-task-form" onSubmit={runAgentTask}>
-              <label htmlFor="agent-directive">Send {selected.name} a task</label>
-              <div className="agent-task-row">
-                <input
-                  id="agent-directive"
-                  value={agentDirective}
-                  onChange={(event) => setAgentDirective(event.target.value)}
-                  placeholder={`e.g. ${selected.id === "forge" ? "run the test suite and report failures" : selected.id === "intelx" ? "research this week's macro news" : "report status and current workload"}`}
-                  disabled={agentBusy}
-                />
-                <button className="send-button" type="submit" disabled={agentBusy || !agentDirective.trim()}>
-                  {agentBusy ? <LoaderCircle size={15} className="spin" /> : <Send size={14} />}
-                  {agentBusy ? "Dispatching" : "Dispatch"}
-                </button>
-              </div>
-            </form>
-            {agentResult && <div className="reply-card compact"><div className="reply-label"><span className="reply-dot" />{selected.name.toUpperCase()} RESPONSE</div><p>{agentResult}</p></div>}
-          </article>}
 
-          <section className="workspace-grid">
-            <article className="surface laptop-surface" id="laptop">
-              <div className="section-heading">
-                <div><div className="section-kicker">DEVICE CONTROL</div><h2>Laptop control</h2></div>
-                <div className="section-heading-right"><span className="updated-at">{laptops.length ? `${laptops.filter((item) => item.online !== false).length} connected` : "No laptop connected"}</span><button className="subtle-button" onClick={() => void refreshLaptops()} disabled={refreshing}><RefreshCw size={14} className={refreshing ? "spin" : ""} />Refresh</button></div>
-              </div>
-              {laptopError && <div className="inline-error"><AlertCircle size={15} />{laptopError}</div>}
-              {laptops.length === 0 ? <div className="laptop-empty">
-                <div className="laptop-empty-icon"><Monitor size={18} /></div>
-                <strong>Your laptop is not connected</strong>
-                <p>Run the bridge on your laptop once. It dials out to FRIDAY, so no ports or router changes are needed.</p>
-                <code className="laptop-cmd">python scripts/laptop_bridge_client.py</code>
-                <p className="laptop-hint">Set <code>FRIDAY_API_KEY</code> and <code>FRIDAY_BRIDGE_URL</code> first. The same control session that powers this page authorises the tunnel.</p>
-              </div> : <>
-                <div className="laptop-devices">
-                  {laptops.map((device) => <div className="laptop-device" key={device.laptop_id}>
-                    <span className={`status-dot ${device.online === false ? "offline" : "online"}`} />
-                    <strong>{device.laptop_id}</strong>
-                    <span className="laptop-device-state">{device.online === false ? "offline" : "online"}</span>
-                  </div>)}
+          {/* SELECTED AGENT DETAIL */}
+          {selected && (
+            <section className="section" id="agent-detail">
+              <article className="card detail-card">
+                <div className="card-head">
+                  <div className="card-title">
+                    <div className="title-icon">{AGENT_ICONS[selected.id] || <Database size={18} />}</div>
+                    <div>
+                      <h3>{selected.name}</h3>
+                      <span className="subtitle">{selected.role || "Specialist Agent"}</span>
+                    </div>
+                  </div>
+                  <div className="card-actions">
+                    <a className="btn btn-ghost" href={`https://friday-universe.duckdns.org/${selected.id}`} target="_blank" rel="noreferrer"><ArrowUpRight size={14} />Open site</a>
+                    <button className="btn btn-ghost" onClick={() => setSelectedAgent(null)}><X size={14} /></button>
+                  </div>
                 </div>
-                <div className="laptop-actions">
-                  <button className="subtle-button" onClick={() => void runLaptopCommand("system_info")} disabled={Boolean(laptopBusy)}>{laptopBusy === "system_info" ? <LoaderCircle size={14} className="spin" /> : <Cpu size={14} />} System info</button>
-                  <button className="subtle-button" onClick={() => void runLaptopCommand("screenshot")} disabled={Boolean(laptopBusy)}>{laptopBusy === "screenshot" ? <LoaderCircle size={14} className="spin" /> : <Monitor size={14} />} Screenshot</button>
-                  <button className="subtle-button" onClick={() => void runLaptopCommand("notify", { title: "FRIDAY", message: "Laptop control is working." })} disabled={Boolean(laptopBusy)}>{laptopBusy === "notify" ? <LoaderCircle size={14} className="spin" /> : <Zap size={14} />} Notify</button>
-                  <button className="subtle-button" onClick={() => void runLaptopCommand("open_url", { url: laptopUrl })} disabled={Boolean(laptopBusy)}>{laptopBusy === "open_url" ? <LoaderCircle size={14} className="spin" /> : <ArrowUpRight size={14} />} Open URL</button>
+                <p className="detail-desc">{selected.details || selected.desc || "No additional description was returned by the service."}</p>
+                <div className="detail-meta">
+                  <div><strong>Endpoint</strong><span>{selected.endpoint || "not exposed"}</span></div>
+                  <div><strong>Latency</strong><span>{typeof selected.latency_ms === "number" ? `${Math.round(selected.latency_ms)} ms` : "not reported"}</span></div>
                 </div>
-                <label className="laptop-url-field">URL to open<input value={laptopUrl} onChange={(event) => setLaptopUrl(event.target.value)} inputMode="url" /></label>
-              </>}
-              {laptopOutput && <pre className="laptop-output">{laptopOutput}</pre>}
-            </article>
+                <form className="detail-form" onSubmit={runAgentTask}>
+                  <label htmlFor="agent-directive">Send {selected.name} a task</label>
+                  <div className="detail-form-row">
+                    <input
+                      id="agent-directive"
+                      value={agentDirective}
+                      onChange={(event) => setAgentDirective(event.target.value)}
+                      placeholder={`e.g. ${selected.id === "forge" ? "run the test suite and report failures" : selected.id === "intelx" ? "research this week's macro news" : "report status and current workload"}`}
+                      disabled={agentBusy}
+                    />
+                    <button className={`btn ${agentBusy ? "btn-disabled" : "btn-primary"}`} type="submit" disabled={agentBusy || !agentDirective.trim()}>
+                      {agentBusy ? <LoaderCircle size={15} className="spin" /> : <Send size={15} />}
+                      {agentBusy ? "Dispatching" : "Dispatch"}
+                    </button>
+                  </div>
+                </form>
+                {agentResult && <div className="reply-card compact"><div className="reply-label"><span className="reply-dot" />{selected.name.toUpperCase()} RESPONSE</div><p>{agentResult}</p></div>}
+              </article>
+            </section>
+          )}
 
-            <article className="surface activity-surface" id="activity">
-              <div className="section-heading">
-                <div><div className="section-kicker">CURRENT BROWSER SESSION</div><h2>Recent commands</h2></div>
+          {/* LAPTOP CONTROL */}
+          <section className="section" id="laptop">
+            <div className="section-header">
+              <div className="section-title">
+                <div className="eyebrow"><span className="eyebrow-line" />DEVICE CONTROL</div>
+                <h2>Laptop Control</h2>
+              </div>
+              <div className="section-meta">
+                <span className="updated-at">{laptops.length ? `${laptops.filter((item) => item.online !== false).length} connected` : "No laptop connected"}</span>
+                <button className="btn btn-ghost" onClick={() => void refresh()} disabled={refreshing}><RefreshCw size={14} className={refreshing ? "spin" : ""} /></button>
+              </div>
+            </div>
+
+            {laptopError && <div className="inline-error"><AlertCircle size={14} />{laptopError}</div>}
+
+            {laptops.length === 0 ? (
+              <article className="card empty-card">
+                <div className="empty-state">
+                  <div className="empty-icon"><Monitor size={24} /></div>
+                  <strong>Your laptop is not connected</strong>
+                  <p>Run the bridge on your laptop once. It dials out to FRIDAY, so no ports or router changes are needed.</p>
+                  <code className="cmd">python scripts/laptop_bridge_client.py</code>
+                  <p className="hint">Set <code>FRIDAY_API_KEY</code> and <code>FRIDAY_BRIDGE_URL</code> first. The same control session that powers this page authorises the tunnel.</p>
+                </div>
+              </article>
+            ) : (
+              <>
+                <article className="card devices-card">
+                  <div className="card-head">
+                    <div className="card-title">
+                      <div className="title-icon"><Monitor size={18} /></div>
+                      <div>
+                        <h3>Connected Devices</h3>
+                        <span className="subtitle">{laptops.filter((item) => item.online !== false).length} online</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="devices-list">
+                    {laptops.map((device) => (
+                      <div key={device.laptop_id} className="device-row">
+                        <span className={`state-dot ${device.online === false ? "off" : "on"}`} />
+                        <strong>{device.laptop_id}</strong>
+                        <span className="device-state">{device.online === false ? "Offline" : "Online"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </article>
+
+                <article className="card actions-card">
+                  <div className="card-head">
+                    <div className="card-title">
+                      <div className="title-icon"><MousePointer2 size={18} /></div>
+                      <div>
+                        <h3>Actions</h3>
+                        <span className="subtitle">Commands sent to the laptop</span>
+                      </div>
+                    </div>
+                    <div className="action-grid">
+                      <button className={`btn-action ${laptopBusy === "system_info" ? "busy" : ""}`} onClick={() => void runLaptopCommand("system_info")} disabled={Boolean(laptopBusy)}>
+                        <Cpu size={16} />
+                        <span>System Info</span>
+                        {laptopBusy === "system_info" && <LoaderCircle size={14} className="spin" />}
+                      </button>
+                      <button className={`btn-action ${laptopBusy === "screenshot" ? "busy" : ""}`} onClick={() => void runLaptopCommand("screenshot")} disabled={Boolean(laptopBusy)}>
+                        <Monitor size={16} />
+                        <span>Screenshot</span>
+                        {laptopBusy === "screenshot" && <LoaderCircle size={14} className="spin" />}
+                      </button>
+                      <button className={`btn-action ${laptopBusy === "notify" ? "busy" : ""}`} onClick={() => void runLaptopCommand("notify", { title: "FRIDAY", message: "Laptop control is working." })} disabled={Boolean(laptopBusy)}>
+                        <Zap size={16} />
+                        <span>Notify</span>
+                        {laptopBusy === "notify" && <LoaderCircle size={14} className="spin" />}
+                      </button>
+                      <button className={`btn-action ${laptopBusy === "open_url" ? "busy" : ""}`} onClick={() => void runLaptopCommand("open_url", { url: laptopUrl })} disabled={Boolean(laptopBusy)}>
+                        <ArrowUpRight size={16} />
+                        <span>Open URL</span>
+                        {laptopBusy === "open_url" && <LoaderCircle size={14} className="spin" />}
+                      </button>
+                    </div>
+                    <div className="url-field">
+                      <label>URL to open<input value={laptopUrl} onChange={(event) => setLaptopUrl(event.target.value)} inputMode="url" /></label>
+                    </div>
+                  </div>
+                </article>
+
+                {laptopOutput && (
+                  <article className="card output-card">
+                    <div className="card-head">
+                      <div className="card-title">
+                        <div className="title-icon"><Terminal size={18} /></div>
+                        <div>
+                          <h3>Output</h3>
+                          <span className="subtitle">Raw evidence from the laptop</span>
+                        </div>
+                      </div>
+                    </div>
+                    <pre className="output-pre">{laptopOutput}</pre>
+                  </article>
+                )}
+              </>
+            )}
+          </section>
+
+          {/* TELEMETRY DETAIL */}
+          <section className="section" id="telemetry">
+            <div className="section-header">
+              <div className="section-title">
+                <div className="eyebrow"><span className="eyebrow-line" />HOST TELEMETRY</div>
+                <h2>Connected Host</h2>
+              </div>
+              <div className="section-meta">
+                <span className="updated-at">{telemetry?.timestamp ? `Sampled ${formatTime(telemetry.timestamp)}` : "No data"}</span>
+                <button className="btn btn-ghost" onClick={() => void refresh(true)} disabled={refreshing}><RefreshCw size={14} className={refreshing ? "spin" : ""} /></button>
+              </div>
+            </div>
+            <div className="telemetry-grid">
+              <article className="card info-card">
+                <div className="info-row"><span>System</span><strong>{telemetry?.os || (telemetryError ? "Unavailable" : "Waiting…")}</strong></div>
+                <div className="info-row"><span>Operator</span><strong>{telemetry?.operator || "Not reported"}</strong></div>
+                <div className="info-row"><span>CPU Cores</span><strong>{telemetry?.cpu_cores ?? "—"}</strong></div>
+                <div className="info-row"><span>Total RAM</span><strong>{telemetry?.ram_total_gb ?? "—"} GB</strong></div>
+                <div className="info-row"><span>Available RAM</span><strong>{telemetry?.ram_avail_gb ?? "—"} GB</strong></div>
+                <div className="info-row"><span>Health</span><strong className={`state-badge ${statusTone(String(health?.status ?? ""))}`}>{String(health?.status ?? "UNKNOWN")}</strong></div>
+              </article>
+              <article className="card chart-card">
+                <div className="card-head">
+                  <div className="card-title">
+                    <div className="title-icon"><BarChart2 size={18} /></div>
+                    <div>
+                      <h3>CPU History</h3>
+                      <span className="subtitle">Last 60 samples</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="chart-large">
+                  <Sparkline values={cpuHistory} color="#8de6cf" width={400} height={140} />
+                </div>
+              </article>
+              <article className="card chart-card">
+                <div className="card-head">
+                  <div className="card-title">
+                    <div className="title-icon"><Activity size={18} /></div>
+                    <div>
+                      <h3>Memory History</h3>
+                      <span className="subtitle">Last 60 samples</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="chart-large">
+                  <Sparkline values={ramHistory} color="#b9a6ff" width={400} height={140} />
+                </div>
+              </article>
+            </div>
+          </section>
+
+          {/* SESSION ACTIVITY */}
+          <section className="section" id="activity">
+            <div className="section-header">
+              <div className="section-title">
+                <div className="eyebrow"><span className="eyebrow-line" />SESSION LOG</div>
+                <h2>Recent Commands</h2>
+              </div>
+              <div className="section-meta">
                 <span className="activity-count">{activity.length}</span>
+                <button className="text-btn" onClick={() => setActivity([])} disabled={activity.length === 0}>Clear</button>
               </div>
-              {activity.length === 0 ? <div className="activity-empty"><div className="activity-empty-icon"><MessageSquareText size={18} /></div><strong>No commands yet</strong><p>Commands you send here will appear in this session log.</p></div> : <div className="activity-list">
-                {activity.map((item) => <div className="activity-item" key={item.id}>
-                  <span className={`activity-result ${item.success ? "good" : "bad"}`}>{item.success ? <Check size={13} /> : <AlertCircle size={13} />}</span>
-                  <div className="activity-copy"><strong>{item.command}</strong><p>{item.reply}</p><time>{formatTime(item.at)}</time></div>
-                </div>)}
-              </div>}
-              <div className="activity-footer"><span><Clock3 size={13} />Local to this browser tab</span><button className="text-button" onClick={() => setActivity([])} disabled={activity.length === 0}>Clear</button></div>
+            </div>
+            <article className="card activity-card">
+              {activity.length === 0 ? (
+                <div className="empty-state">
+                  <div className="empty-icon"><MessageSquareText size={24} /></div>
+                  <strong>No commands yet</strong>
+                  <p>Commands you send here will appear in this session log.</p>
+                </div>
+              ) : (
+                <div className="activity-list">
+                  {activity.map((item) => (
+                    <div key={item.id} className={`activity-item ${item.success ? "good" : "bad"}`}>
+                      <div className="activity-result">
+                        {item.success ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+                      </div>
+                      <div className="activity-copy">
+                        <strong>{item.command}</strong>
+                        <p>{item.reply}</p>
+                        <time>{formatTime(item.at)}</time>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </article>
           </section>
 
-          <section className="bottom-grid">
+          {/* VOICE PANEL */}
+          <section className="section" id="voice">
             <LiveKitVoicePanel />
-            <article className="surface host-surface">
-              <div className="section-heading"><div><div className="section-kicker">RUNTIME CONTEXT</div><h2>Connected host</h2></div><Monitor size={17} className="heading-icon" /></div>
-              <div className="host-info-row"><span>Host system</span><strong>{telemetry?.os || (telemetryError ? "Unavailable" : "Waiting for telemetry")}</strong></div>
-              <div className="host-info-row"><span>Operator</span><strong>{telemetry?.operator || "Not reported"}</strong></div>
-              <div className="host-info-row"><span>Host sample</span><strong>{formatTime(telemetry?.timestamp)}</strong></div>
-              <div className="host-info-row"><span>Health response</span><strong className={`metric-state ${statusTone(String(health?.status ?? ""))}`}>{String(health?.status ?? "UNKNOWN")}</strong></div>
-              <div className="host-note"><AlertCircle size={14} />Telemetry describes the machine running the FRIDAY API. When connected to Render, this is the cloud host—not this laptop.</div>
-            </article>
-            <article className="surface actions-surface">
-              <div className="section-heading"><div><div className="section-kicker">CONTROL</div><h2>Task controls</h2></div><Radio size={17} className="heading-icon" /></div>
-              <p className="actions-copy">These controls call the connected FRIDAY API. The dashboard mints a short-lived control session automatically; no key needs to be pasted.</p>
-              <div className="action-buttons"><button className="danger-button" onClick={() => void cancelTasks()} disabled={busy}><Square size={14} />Cancel active tasks</button><button className="subtle-button" onClick={() => void triggerRepair()} disabled={busy}><Zap size={14} />Self-repair sweep</button><button className="subtle-button" onClick={openSettings}><Settings2 size={14} />Connection settings</button></div>
-              <div className="control-foot"><LockKeyhole size={13} />{controlReady || autonomy ? "Control session active" : "Control session unavailable"} · expires automatically</div>
-            </article>
           </section>
 
-          <footer className="page-footer"><span>FRIDAY · PERSONAL AI CONTROL ROOM</span><span>Fleet sample: {fleet?.scope || "not available"}</span><a href="/api/health" target="_blank" rel="noreferrer">API health <ExternalLink size={12} /></a></footer>
+          {/* CONTROL ACTIONS */}
+          <section className="section" id="controls">
+            <div className="section-header">
+              <div className="section-title">
+                <div className="eyebrow"><span className="eyebrow-line" />CONTROL</div>
+                <h2>Task Controls</h2>
+              </div>
+            </div>
+            <div className="control-grid">
+              <article className="card control-card">
+                <div className="card-head">
+                  <div className="card-title">
+                    <div className="title-icon"><Square size={18} /></div>
+                    <div>
+                      <h3>Cancel Tasks</h3>
+                      <span className="subtitle">Stop all active autonomous tasks</span>
+                    </div>
+                  </div>
+                </div>
+                <button className="btn btn-danger full-width" onClick={cancelTasks} disabled={busy}>
+                  <Square size={15} /> Cancel Active Tasks
+                </button>
+              </article>
+              <article className="card control-card">
+                <div className="card-head">
+                  <div className="card-title">
+                    <div className="title-icon"><Zap size={18} /></div>
+                    <div>
+                      <h3>Self-Repair</h3>
+                      <span className="subtitle">Run autonomous repair sweep</span>
+                    </div>
+                  </div>
+                </div>
+                <button className="btn btn-primary full-width" onClick={triggerRepair} disabled={busy}>
+                  <Zap size={15} /> Self-Repair Sweep
+                </button>
+              </article>
+              <article className="card control-card">
+                <div className="card-head">
+                  <div className="card-title">
+                    <div className="title-icon"><Settings2 size={18} /></div>
+                    <div>
+                      <h3>Connection</h3>
+                      <span className="subtitle">Configure API endpoint and key</span>
+                    </div>
+                  </div>
+                </div>
+                <button className="btn btn-ghost full-width" onClick={openSettings}>
+                  <Settings2 size={15} /> Connection Settings
+                </button>
+              </article>
+            </div>
+            <div className="control-foot">
+              <LockKeyhole size={12} />
+              <span>{controlReady || autonomy?.autonomous_mode ? "Control session active" : "Control session unavailable"} · expires automatically</span>
+            </div>
+          </section>
+
+          <footer className="footer">
+            <span>FRIDAY · PERSONAL AI CONTROL ROOM</span>
+            <span>Fleet scope: {fleet?.scope || "not available"}</span>
+            <a href="/api/health" target="_blank" rel="noreferrer">API health <ExternalLink size={12} /></a>
+          </footer>
         </div>
       </section>
 
-      {showSettings && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowSettings(false); }}>
-        <section className="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-          <div className="modal-heading"><div><span className="section-kicker">API CONNECTION</span><h2 id="settings-title">Connect to FRIDAY</h2></div><button className="icon-button compact" onClick={() => setShowSettings(false)} aria-label="Close settings"><X size={16} /></button></div>
-          <p>Use your local FRIDAY API for laptop control, or enter a remote service URL. A remote control API key is required by the server. The key is held only for this browser tab.</p>
-          <form onSubmit={saveConnection} className="settings-form">
-            <label>FRIDAY API URL<input value={draftBase} onChange={(event) => setDraftBase(event.target.value)} placeholder="https://friday-universe.duckdns.org" inputMode="url" /></label>
-            <label>Control API key <span className="optional-label">optional for localhost</span><input type="password" autoComplete="off" value={draftToken} onChange={(event) => setDraftToken(event.target.value)} placeholder="Paste key from your private service configuration" /></label>
-            <div className="modal-warning"><LockKeyhole size={15} /><span>Never paste a key into a shared device. This UI does not send the key anywhere except the configured FRIDAY API.</span></div>
-            <div className="modal-actions"><button type="button" className="subtle-button" onClick={() => { window.localStorage.removeItem(API_BASE_SESSION_KEY); window.localStorage.removeItem(API_TOKEN_SESSION_KEY); setDraftBase(apiBase()); setDraftToken(""); }}>Reset</button><button type="button" className="subtle-button" onClick={() => { setDraftBase("http://localhost:10000"); }}>Use local laptop</button><button type="submit" className="send-button"><Check size={15} />Save and reconnect</button></div>
-          </form>
-        </section>
-      </div>}
+      {showSettings && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeSettings(); }}>
+          <section className="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+            <div className="modal-head">
+              <div className="modal-title">
+                <div className="eyebrow"><span className="eyebrow-line" />API CONNECTION</div>
+                <h2 id="settings-title">Connect to FRIDAY</h2>
+              </div>
+              <button className="icon-btn" onClick={closeSettings} aria-label="Close settings"><X size={16} /></button>
+            </div>
+            <p className="modal-desc">Use your local FRIDAY API for laptop control, or enter a remote service URL. A remote control API key is required by the server. The key is held only for this browser tab.</p>
+            <form onSubmit={saveConnection} className="modal-form">
+              <label>FRIDAY API URL<input value={draftBase} onChange={(event) => setDraftBase(event.target.value)} placeholder="https://friday-universe.duckdns.org" inputMode="url" /></label>
+              <label>Control API key <span className="optional">optional for localhost</span><input type="password" autoComplete="off" value={draftToken} onChange={(event) => setDraftToken(event.target.value)} placeholder="Paste key from your private service configuration" /></label>
+              <div className="modal-warning"><LockKeyhole size={14} /><span>Never paste a key into a shared device. This UI does not send the key anywhere except the configured FRIDAY API.</span></div>
+              <div className="modal-actions">
+                <button type="button" className="btn btn-ghost" onClick={() => { window.localStorage.removeItem(API_BASE_SESSION_KEY); window.localStorage.removeItem(API_TOKEN_SESSION_KEY); setDraftBase(apiBase()); setDraftToken(""); }}>Reset</button>
+                <button type="button" className="btn btn-ghost" onClick={() => { setDraftBase("http://localhost:10000"); }}>Use local laptop</button>
+                <button type="submit" className="btn btn-primary"><Check size={15} /> Save and reconnect</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
     </main>
   );
-}
-
-function MetricUnavailable({ message }: { message: string }) {
-  return <div className="metric-unavailable"><Circle size={14} />{message}</div>;
-}
-
-function ErrorState({ title, detail, action }: { title: string; detail: string; action: () => void }) {
-  return <div className="state-block error-block"><AlertCircle size={18} /><div><strong>{title}</strong><p>{detail}</p></div><button className="subtle-button" onClick={action}>Retry</button></div>;
-}
-
-function EmptyState({ title, detail }: { title: string; detail: string }) {
-  return <div className="state-block"><Globe2 size={18} /><div><strong>{title}</strong><p>{detail}</p></div></div>;
-}
-
-function LoadingGrid() {
-  return <div className="agent-grid loading-grid" aria-label="Loading agent network">{Array.from({ length: 4 }).map((_, index) => <div className="agent-skeleton" key={index}><i /><i /><i /></div>)}</div>;
 }
