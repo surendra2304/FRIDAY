@@ -394,17 +394,23 @@ export default function FridayCommandCenter() {
   const [agentDirective, setAgentDirective] = useState("");
   const [agentResult, setAgentResult] = useState("");
   const [agentBusy, setAgentBusy] = useState(false);
+  const [laptops, setLaptops] = useState<Array<{ laptop_id: string; online?: boolean; connected_at?: string; last_seen?: string }>>([]);
+  const [laptopError, setLaptopError] = useState("");
+  const [laptopOutput, setLaptopOutput] = useState("");
+  const [laptopBusy, setLaptopBusy] = useState("");
+  const [laptopUrl, setLaptopUrl] = useState("https://friday-universe.duckdns.org/friday/");
   const [controlReady, setControlReady] = useState(false);
   const [now, setNow] = useState(new Date());
   const [hydrated, setHydrated] = useState(false);
 
   const refresh = useCallback(async (manual = false) => {
     if (manual) setRefreshing(true);
-    const [fleetResult, telemetryResult, autonomyResult, healthResult] = await Promise.allSettled([
+    const [fleetResult, telemetryResult, autonomyResult, healthResult, laptopResult] = await Promise.allSettled([
       requestJson<FleetSnapshot>("/api/agents/status"),
       requestJson<HostTelemetry>("/api/system_telemetry"),
       requestJson<AutonomySnapshot>("/api/autonomous/status"),
       requestJson<Record<string, unknown>>("/api/health"),
+      requestJson<{ devices?: Array<{ laptop_id: string; online?: boolean; connected_at?: string; last_seen?: string }> }>("/api/laptop/devices"),
     ]);
 
     if (fleetResult.status === "fulfilled") {
@@ -431,6 +437,12 @@ export default function FridayCommandCenter() {
     }
     if (autonomyResult.status === "fulfilled") setAutonomy(autonomyResult.value);
     if (healthResult.status === "fulfilled") setHealth(healthResult.value);
+    if (laptopResult.status === "fulfilled") {
+      setLaptops(Array.isArray(laptopResult.value.devices) ? laptopResult.value.devices! : []);
+      setLaptopError("");
+    } else {
+      setLaptopError(laptopResult.reason instanceof Error ? laptopResult.reason.message : "Could not list connected laptops.");
+    }
     if (manual) setRefreshing(false);
   }, []);
 
@@ -574,6 +586,39 @@ export default function FridayCommandCenter() {
     }
   }
 
+  async function refreshLaptops() {
+    try {
+      const result = await requestJson<{ devices?: Array<{ laptop_id: string; online?: boolean; connected_at?: string; last_seen?: string }> }>("/api/laptop/devices");
+      setLaptops(Array.isArray(result.devices) ? result.devices : []);
+      setLaptopError("");
+    } catch (error) {
+      setLaptopError(error instanceof Error ? error.message : "Could not list connected laptops.");
+    }
+  }
+
+  async function runLaptopCommand(command: string, args: Record<string, unknown> = {}) {
+    if (!laptops.length) {
+      setLaptopError("No laptop is connected yet. Start the bridge on your laptop first.");
+      return;
+    }
+    const device = laptops.find((item) => item.online !== false) ?? laptops[0];
+    setLaptopBusy(command);
+    setLaptopOutput("");
+    setLaptopError("");
+    try {
+      const result = await requestJson<Record<string, unknown>>(
+        `/api/laptop/${encodeURIComponent(device.laptop_id)}/command`,
+        { method: "POST", body: JSON.stringify({ command, args, timeout: 30 }) },
+      );
+      const output = result.output ?? result.error ?? result;
+      setLaptopOutput(typeof output === "string" ? output : JSON.stringify(output, null, 2));
+    } catch (error) {
+      setLaptopError(error instanceof Error ? error.message : "The laptop command failed.");
+    } finally {
+      setLaptopBusy("");
+    }
+  }
+
   async function triggerRepair() {
     if (busy) return;
     setBusy(true);
@@ -612,8 +657,9 @@ export default function FridayCommandCenter() {
         <div className="sidebar-label">WORKSPACE</div>
         <nav className="side-nav" aria-label="Main navigation">
           <a className="nav-link active" href="#home"><Command size={17} />Command center</a>
-          <a className="nav-link" href="#fleet"><Globe2 size={17} />Agent network<span className="nav-count">{fleet?.agent_count ?? "—"}</span></a>
-          <a className="nav-link" href="#host"><Monitor size={17} />Host telemetry</a>
+          <a className="nav-link" href="#apartment"><Globe2 size={17} />Agent apartment<span className="nav-count">{fleet?.agent_count ?? "—"}</span></a>
+          <a className="nav-link" href="#laptop"><Monitor size={17} />Laptop control</a>
+          <a className="nav-link" href="#host"><Cpu size={17} />Host telemetry</a>
           <a className="nav-link" href="#activity"><Activity size={17} />This session<span className="nav-count">{activity.length}</span></a>
         </nav>
         <div className="sidebar-spacer" />
@@ -702,7 +748,7 @@ export default function FridayCommandCenter() {
               <div className="metric-heading"><span className="metric-icon fleet"><Globe2 size={17} /></span><span>AGENT REACHABILITY</span><span className={`metric-state ${statusTone(fleet?.status)}`}>{fleet?.status ?? "UNKNOWN"}</span></div>
               {fleet ? <>
                 <div className="metric-value">{onlineCount}<small> / {fleet.agent_count ?? agents.length}</small></div>
-                <div className="metric-bottom"><span>HTTP health responses only</span><a href="#fleet">Inspect fleet <ArrowUpRight size={13} /></a></div>
+                <div className="metric-bottom"><span>HTTP health responses only</span><a href="#apartment">Inspect apartment <ArrowUpRight size={13} /></a></div>
               </> : <MetricUnavailable message={fleetError || "Waiting for network check"} />}
             </article>
             <article className="metric-card autonomy-metric">
@@ -752,38 +798,60 @@ export default function FridayCommandCenter() {
               })}
             </div>
           </section>
-          <section className="workspace-grid">
-            <article className="surface fleet-surface" id="fleet">
-              <div className="section-heading">
-                <div><div className="section-kicker">CONNECTED SERVICES</div><h2>Agent network</h2></div>
-                <div className="section-heading-right"><span className="updated-at">{fleet?.timestamp ? `Checked ${formatTime(fleet.timestamp)}` : "No check yet"}</span><button className="subtle-button" onClick={() => void refresh(true)} disabled={refreshing}><RefreshCw size={14} className={refreshing ? "spin" : ""} />Refresh</button></div>
+          {selected && <article className="surface agent-detail-surface" id="agent-detail">
+            <div className="agent-detail-title"><div><span className="section-kicker">SERVICE DETAIL</span><h3>{selected.name}</h3></div><button className="icon-button compact" onClick={() => setSelectedAgent(null)} aria-label="Close agent detail"><X size={15} /></button></div>
+            <p>{selected.details || selected.desc || "No additional description was returned by the service."}</p>
+            <div className="agent-detail-meta"><span>Role <strong>{selected.role || "—"}</strong></span><span>Endpoint <strong>{selected.endpoint || "not exposed"}</strong></span><span>Latency <strong>{typeof selected.latency_ms === "number" ? `${Math.round(selected.latency_ms)} ms` : "not reported"}</strong></span></div>
+            <div className="agent-detail-actions"><a className="subtle-button" href={`https://friday-universe.duckdns.org/${selected.id}`} target="_blank" rel="noreferrer"><ArrowUpRight size={14} />Open {selected.name} site</a></div>
+            <form className="agent-task-form" onSubmit={runAgentTask}>
+              <label htmlFor="agent-directive">Send {selected.name} a task</label>
+              <div className="agent-task-row">
+                <input
+                  id="agent-directive"
+                  value={agentDirective}
+                  onChange={(event) => setAgentDirective(event.target.value)}
+                  placeholder={`e.g. ${selected.id === "forge" ? "run the test suite and report failures" : selected.id === "intelx" ? "research this week's macro news" : "report status and current workload"}`}
+                  disabled={agentBusy}
+                />
+                <button className="send-button" type="submit" disabled={agentBusy || !agentDirective.trim()}>
+                  {agentBusy ? <LoaderCircle size={15} className="spin" /> : <Send size={14} />}
+                  {agentBusy ? "Dispatching" : "Dispatch"}
+                </button>
               </div>
-              {fleetError ? <ErrorState title="Could not load the agent network" detail={fleetError} action={() => void refresh(true)} /> : !fleet ? <LoadingGrid /> : agents.length === 0 ? <EmptyState title="No agent status returned" detail="The FRIDAY API responded, but it did not return any agents." /> : <>
-                <div className="fleet-disclaimer"><ShieldCheck size={15} /><span>{fleet.note || "Reachability does not prove task execution, shared memory, or event delivery."}</span></div>
+            </form>
+            {agentResult && <div className="reply-card compact"><div className="reply-label"><span className="reply-dot" />{selected.name.toUpperCase()} RESPONSE</div><p>{agentResult}</p></div>}
+          </article>}
+
+          <section className="workspace-grid">
+            <article className="surface laptop-surface" id="laptop">
+              <div className="section-heading">
+                <div><div className="section-kicker">DEVICE CONTROL</div><h2>Laptop control</h2></div>
+                <div className="section-heading-right"><span className="updated-at">{laptops.length ? `${laptops.filter((item) => item.online !== false).length} connected` : "No laptop connected"}</span><button className="subtle-button" onClick={() => void refreshLaptops()} disabled={refreshing}><RefreshCw size={14} className={refreshing ? "spin" : ""} />Refresh</button></div>
+              </div>
+              {laptopError && <div className="inline-error"><AlertCircle size={15} />{laptopError}</div>}
+              {laptops.length === 0 ? <div className="laptop-empty">
+                <div className="laptop-empty-icon"><Monitor size={18} /></div>
+                <strong>Your laptop is not connected</strong>
+                <p>Run the bridge on your laptop once. It dials out to FRIDAY, so no ports or router changes are needed.</p>
+                <code className="laptop-cmd">python scripts/laptop_bridge_client.py</code>
+                <p className="laptop-hint">Set <code>FRIDAY_API_KEY</code> and <code>FRIDAY_BRIDGE_URL</code> first. The same control session that powers this page authorises the tunnel.</p>
+              </div> : <>
+                <div className="laptop-devices">
+                  {laptops.map((device) => <div className="laptop-device" key={device.laptop_id}>
+                    <span className={`status-dot ${device.online === false ? "offline" : "online"}`} />
+                    <strong>{device.laptop_id}</strong>
+                    <span className="laptop-device-state">{device.online === false ? "offline" : "online"}</span>
+                  </div>)}
+                </div>
+                <div className="laptop-actions">
+                  <button className="subtle-button" onClick={() => void runLaptopCommand("system_info")} disabled={Boolean(laptopBusy)}>{laptopBusy === "system_info" ? <LoaderCircle size={14} className="spin" /> : <Cpu size={14} />} System info</button>
+                  <button className="subtle-button" onClick={() => void runLaptopCommand("screenshot")} disabled={Boolean(laptopBusy)}>{laptopBusy === "screenshot" ? <LoaderCircle size={14} className="spin" /> : <Monitor size={14} />} Screenshot</button>
+                  <button className="subtle-button" onClick={() => void runLaptopCommand("notify", { title: "FRIDAY", message: "Laptop control is working." })} disabled={Boolean(laptopBusy)}>{laptopBusy === "notify" ? <LoaderCircle size={14} className="spin" /> : <Zap size={14} />} Notify</button>
+                  <button className="subtle-button" onClick={() => void runLaptopCommand("open_url", { url: laptopUrl })} disabled={Boolean(laptopBusy)}>{laptopBusy === "open_url" ? <LoaderCircle size={14} className="spin" /> : <ArrowUpRight size={14} />} Open URL</button>
+                </div>
+                <label className="laptop-url-field">URL to open<input value={laptopUrl} onChange={(event) => setLaptopUrl(event.target.value)} inputMode="url" /></label>
               </>}
-              {selected && <div className="agent-detail">
-                <div className="agent-detail-title"><div><span className="section-kicker">SERVICE DETAIL</span><h3>{selected.name}</h3></div><button className="icon-button compact" onClick={() => setSelectedAgent(null)} aria-label="Close agent detail"><X size={15} /></button></div>
-                <p>{selected.details || selected.desc || "No additional description was returned by the service."}</p>
-                <div className="agent-detail-meta"><span>Role <strong>{selected.role || "—"}</strong></span><span>Endpoint <strong>{selected.endpoint || "not exposed"}</strong></span><span>Latency <strong>{typeof selected.latency_ms === "number" ? `${Math.round(selected.latency_ms)} ms` : "not reported"}</strong></span></div>
-                <div className="agent-detail-actions"><a className="subtle-button" href={`https://friday-universe.duckdns.org/${selected.id}`} target="_blank" rel="noreferrer"><ArrowUpRight size={14} />Open {selected.name} site</a></div>
-                <form className="agent-task-form" onSubmit={runAgentTask}>
-                  <label htmlFor="agent-directive">Send {selected.name} a task</label>
-                  <div className="agent-task-row">
-                    <input
-                      id="agent-directive"
-                      value={agentDirective}
-                      onChange={(event) => setAgentDirective(event.target.value)}
-                      placeholder={`e.g. ${selected.id === "forge" ? "run the test suite and report failures" : selected.id === "intelx" ? "research this week's macro news" : "report status and current workload"}`}
-                      disabled={agentBusy}
-                    />
-                    <button className="send-button" type="submit" disabled={agentBusy || !agentDirective.trim()}>
-                      {agentBusy ? <LoaderCircle size={15} className="spin" /> : <Send size={14} />}
-                      {agentBusy ? "Dispatching" : "Dispatch"}
-                    </button>
-                  </div>
-                </form>
-                {agentResult && <div className="reply-card compact"><div className="reply-label"><span className="reply-dot" />{selected.name.toUpperCase()} RESPONSE</div><p>{agentResult}</p></div>}
-              </div>}
+              {laptopOutput && <pre className="laptop-output">{laptopOutput}</pre>}
             </article>
 
             <article className="surface activity-surface" id="activity">
