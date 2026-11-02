@@ -91,6 +91,9 @@ class PeerContract:
         elif self.auth_style == "cortex":
             headers["X-Friday-Api-Key"] = self.api_key
         elif self.auth_style == "bearer" and self.api_key:
+            # Memora resolves the tenant from X-Agent-Name even when a bearer
+            # token is present; omitting it produced a 401 on /v1/task/execute.
+            headers["X-Agent-Name"] = agent
             headers["Authorization"] = f"Bearer {self.api_key}"
         elif self.auth_style == "bearer":
             headers["X-Agent-Name"] = agent
@@ -209,7 +212,11 @@ def build_contracts(fleet: Any | None = None, settings: Any | None = None) -> di
             role="Zero-Trust Cybersecurity",
             base_url=fleet.sentinel_url,
             api_key=fleet.sentinel_key,
-            task_path="/api/v1/friday/delegate",
+            # Sentinel's /friday/delegate runs an authorized, long-running
+            # assessment and correctly refuses to start without a complete
+            # explicit scope, which no generic dispatch carries. Status actions
+            # are served by /friday/status with a verification receipt.
+            task_path="/api/v1/friday/status",
             health_path="/health",
             auth_style="x-api-key",
             capability_prefix="sentinel",
@@ -219,7 +226,7 @@ def build_contracts(fleet: Any | None = None, settings: Any | None = None) -> di
             role="Autonomous Video Production & Governed Distribution",
             base_url=fleet.vyralx_url,
             api_key=fleet.vyralx_key,
-            task_path="/api/v1/tasks",
+            task_path="/v1/task/execute",
             health_path="/health",
             auth_style="x-api-key",
             capability_prefix="vyralx",

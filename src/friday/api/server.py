@@ -12,6 +12,8 @@ from __future__ import annotations
 import asyncio
 import base64
 import ctypes
+import hashlib
+import hmac
 import json
 import ipaddress
 import logging
@@ -19,6 +21,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -45,7 +48,7 @@ from friday.core.config import get_settings
 from friday.core.logging import get_logger
 from friday.devices.android_controller import AndroidDeviceController
 from friday.devices.app_launcher import launch_desktop_app
-from friday.ecosystem.fleet_client import fleet_client
+from friday.ecosystem.fleet_client import fleet_client, CANONICAL_INTERNAL_MESH_URLS
 from friday.memory.event_consumer import MemoraEventConsumer
 from friday.memory.memora_client import memora_client
 from friday.api.companion_ws import companion_multiplexer
@@ -350,6 +353,66 @@ def _origin_allowed(origin: str, request: Request) -> bool:
     return origin.rstrip("/") in allowed
 
 
+_CONTROL_TOKEN_TTL_SECONDS = 20 * 60
+_CONTROL_TOKEN_PREFIX = "fcs1"
+
+
+def _control_secret() -> str:
+    """The control API key in force now, or ``""`` when none is configured.
+
+    The environment variable is consulted before the cached Settings object for
+    the same reason :func:`_require_control_access` does it: authorisation must
+    reflect the configuration in force now.
+    """
+    live = _live_settings()
+    return (
+        os.getenv("FRIDAY_API_KEY")
+        or getattr(live, "api_key", None)
+        or os.getenv("FRIDAY_UNIVERSE_API_KEY")
+        or ""
+    ).strip()
+
+
+def _control_secret_is_usable(secret: str) -> bool:
+    return bool(secret) and secret.lower() not in {
+        "friday_universe_api",
+        "changeme",
+        "change-me",
+        "your_api_key",
+    }
+
+
+def _mint_control_token(secret: str) -> tuple[str, int]:
+    """Mint a short-lived, origin-scoped control token.
+
+    The owner's browser cannot read the server-side API key, and asking them to
+    paste it into the dashboard is both hostile and error-prone. Instead the
+    dashboard asks this same API for a token over the already-authenticated
+    same-origin channel; the token is an HMAC over an expiry, so it can only have
+    been produced by a process holding the key, and it stops working when the
+    key rotates or the TTL elapses.
+    """
+    expires = int(time.time()) + _CONTROL_TOKEN_TTL_SECONDS
+    payload = f"{_CONTROL_TOKEN_PREFIX}.{expires}"
+    signature = hmac.new(secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{payload}.{signature}", expires
+
+
+def _control_token_valid(token: str, secret: str) -> bool:
+    parts = (token or "").strip().split(".")
+    if len(parts) != 3 or parts[0] != _CONTROL_TOKEN_PREFIX:
+        return False
+    try:
+        expires = int(parts[1])
+    except ValueError:
+        return False
+    if expires < int(time.time()):
+        return False
+    payload = f"{parts[0]}.{parts[1]}"
+    expected = hmac.new(secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(parts[2], expected)
+
+
 async def _require_control_access(request: Request) -> None:
     """Authorise a control request.
 
@@ -395,22 +458,25 @@ async def _require_control_access(request: Request) -> None:
     # at construction time. An operator (or a test) that (re)sets the variable
     # after the process built its Settings must be honoured, and on Render the
     # two agree anyway, so this order changes nothing in production.
-    expected = (
-        os.getenv("FRIDAY_API_KEY")
-        or getattr(live, "api_key", None)
-        or os.getenv("FRIDAY_UNIVERSE_API_KEY")
-        or ""
-    ).strip()
-    if not expected or expected.lower() in {"friday_universe_api", "changeme", "change-me", "your_api_key"}:
+    expected = _control_secret()
+    if not _control_secret_is_usable(expected):
         raise HTTPException(status_code=503, detail="Remote control is disabled until a non-example FRIDAY_API_KEY is configured.")
 
     provided = request.headers.get("x-friday-api-key", "")
     authorization = request.headers.get("authorization", "")
     if not provided and authorization.lower().startswith("bearer "):
         provided = authorization[7:].strip()
-    import hmac
-    if not provided or not hmac.compare_digest(provided, expected):
-        raise HTTPException(status_code=401, detail="A valid FRIDAY control API key is required.")
+    if provided and hmac.compare_digest(provided, expected):
+        return
+
+    session_token = (
+        request.headers.get("x-friday-control-token", "")
+        or request.cookies.get("friday_control_token", "")
+    )
+    if session_token and _control_token_valid(session_token, expected):
+        return
+
+    raise HTTPException(status_code=401, detail="A valid FRIDAY control API key is required.")
 
 
 def _websocket_origin_allowed(websocket: WebSocket) -> bool:
@@ -427,6 +493,52 @@ agent = FridayAgent(
     authorizer=CLIAuthorizer() if CLIAuthorizer._has_a_terminal() else DefaultSecureAuthorizer(),
 )
 android = AndroidDeviceController()
+
+
+@app.get("/api/control/session")
+async def control_session(request: Request) -> JSONResponse:
+    """Mint a short-lived control token for the owner's dashboard.
+
+    This is the only control surface that answers without a credential, and it is
+    deliberately constrained:
+
+    * the browser origin must already be allowed (:func:`_origin_allowed`), so a
+      third-party page cannot read the token even if it calls the endpoint;
+    * it fails closed with 503 when no usable ``FRIDAY_API_KEY`` is configured;
+    * tokens expire, are HMAC-signed with the key, and are useless once the key
+      rotates.
+
+    The token is a control *capability*, not the key itself, so it never has to
+    be pasted into a browser by the owner.
+    """
+    if not _origin_allowed(request.headers.get("origin", "").strip(), request):
+        raise HTTPException(
+            status_code=403,
+            detail="This browser origin is not permitted to request a FRIDAY control session.",
+        )
+    secret = _control_secret()
+    if not _control_secret_is_usable(secret):
+        raise HTTPException(
+            status_code=503,
+            detail="Remote control is disabled until a non-example FRIDAY_API_KEY is configured.",
+        )
+    token, expires = _mint_control_token(secret)
+    response = JSONResponse(
+        {
+            "status": "ok",
+            "token": token,
+            "expires_at": datetime.fromtimestamp(expires, tz=timezone.utc).isoformat(),
+            "ttl_seconds": _CONTROL_TOKEN_TTL_SECONDS,
+            "header": "X-FRIDAY-Control-Token",
+        }
+    )
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
+class AgentTaskRequest(BaseModel):
+    directive: str
 
 
 class CommandRequest(BaseModel):
@@ -725,7 +837,7 @@ async def livekit_token(
 
 @app.get("/api/agents")
 async def list_agents() -> list[dict[str, Any]]:
-    """Expose the 8 FRIDAY Universe specialist agents with live health and latency."""
+    """Expose the FRIDAY Universe specialist agents with live health and latency."""
     statuses = await fleet_client.get_all_statuses()
     return [
         {
@@ -742,16 +854,50 @@ async def list_agents() -> list[dict[str, Any]]:
     ]
 
 
+@app.post("/api/agents/{agent_id}/task")
+async def run_agent_task(
+    agent_id: str,
+    req: AgentTaskRequest,
+    _: None = Depends(_require_control_access),
+) -> dict[str, Any]:
+    """Dispatch one typed task to one specialist and report receipt-verified state.
+
+    This is the dashboard's per-agent control path. It delegates to the same
+    autonomous controller entry point that a "tell <agent> to …" command uses, so
+    both routes share one set of contracts, circuit breakers and evidence rules.
+    """
+    from friday.autonomous.controller import FLEET_AGENTS
+
+    target = (agent_id or "").strip().lower()
+    if target not in FLEET_AGENTS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown agent '{agent_id}'. Known agents: {', '.join(sorted(FLEET_AGENTS))}.",
+        )
+    directive = (req.directive or "").strip()
+    if not directive:
+        raise HTTPException(status_code=422, detail="A directive is required.")
+    result = await autonomous_controller.execute_agent_control(target, directive)
+    meta = result.get("metadata") or {}
+    if meta.get("refused"):
+        return JSONResponse(status_code=403, content=result)
+    return result
+
+
 @app.get("/api/agents/status")
 async def get_agents_status() -> dict[str, Any]:
     """Return a fresh peer endpoint reachability snapshot, not task-level verification."""
     statuses = await fleet_client.get_all_statuses(force_refresh=True)
     status_counts = {
         status: sum(1 for agent_status in statuses if agent_status.status == status)
-        for status in ("ONLINE", "DEGRADED", "OFFLINE")
+        for status in ("ONLINE", "REACHABLE", "DEGRADED", "UNREACHABLE", "OFFLINE")
     }
-    all_agents_reported = len(statuses) == 8
-    overall_ok = all_agents_reported and status_counts["ONLINE"] == 8
+    # Nine specialists are expected (Inference, Memora, Stratex, IntelX, Futuris,
+    # Cortex, Forge, Sentinel, VyralX). The count used to be hard-coded to eight,
+    # so a fully reachable fleet still reported "degraded".
+    expected_agents = len(CANONICAL_INTERNAL_MESH_URLS)
+    all_agents_reported = len(statuses) == expected_agents
+    overall_ok = all_agents_reported and status_counts["ONLINE"] == expected_agents
     return {
         "status": "ok" if overall_ok else "degraded",
         "scope": "peer_endpoint_reachability_only",
@@ -781,12 +927,13 @@ async def get_agents_supervision() -> dict[str, Any]:
         for status in ("ONLINE", "DEGRADED", "OFFLINE")
     }
     snapshot_is_fresh = age_seconds is not None and age_seconds <= FLEET_SUPERVISION_INTERVAL_SECONDS * 2
-    all_agents_reported = len(agents) == 8
+    expected_agents = len(CANONICAL_INTERNAL_MESH_URLS)
+    all_agents_reported = len(agents) == expected_agents
     overall_ok = (
         fleet_supervision_state.get("running")
         and snapshot_is_fresh
         and all_agents_reported
-        and status_counts["ONLINE"] == 8
+        and status_counts["ONLINE"] == expected_agents
         and fleet_supervision_state.get("last_error") is None
     )
     return {

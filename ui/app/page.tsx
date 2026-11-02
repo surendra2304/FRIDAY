@@ -25,6 +25,7 @@ import {
   Settings2,
   ShieldCheck,
   Square,
+  Volume2,
   X,
   Zap,
 } from "lucide-react";
@@ -91,10 +92,12 @@ type ActivityItem = {
 
 const API_BASE_SESSION_KEY = "friday.control.apiBase";
 const API_TOKEN_SESSION_KEY = "friday.control.apiToken";
+const CONTROL_SESSION_KEY = "friday.control.session";
+const CONTROL_SESSION_EXPIRY_KEY = "friday.control.sessionExpiry";
 
 function apiBase(): string {
   if (typeof window === "undefined") return "";
-  const saved = window.sessionStorage.getItem(API_BASE_SESSION_KEY)?.trim();
+  const saved = window.localStorage.getItem(API_BASE_SESSION_KEY)?.trim();
   if (saved) {
     const normalized = saved.replace(/\/$/, "");
     if (
@@ -113,22 +116,67 @@ function apiBase(): string {
   return window.location.origin;
 }
 
+function controlToken(): string {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem(CONTROL_SESSION_KEY)?.trim() ?? "";
+}
+
+function controlTokenFresh(): boolean {
+  if (typeof window === "undefined") return false;
+  if (!controlToken()) return false;
+  const expiresAt = Number(window.localStorage.getItem(CONTROL_SESSION_EXPIRY_KEY) ?? "0");
+  return Number.isFinite(expiresAt) && expiresAt * 1000 > Date.now() + 30_000;
+}
+
+async function ensureControlSession(force = false): Promise<string> {
+  if (typeof window === "undefined") return "";
+  if (!force && controlTokenFresh()) return controlToken();
+  try {
+    const response = await fetch(`${apiBase()}/api/control/session`, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok) return "";
+    const token = typeof body?.token === "string" ? body.token : "";
+    if (!token) return "";
+    const expiresAt = Date.parse(String(body?.expires_at ?? "")) / 1000;
+    window.localStorage.setItem(CONTROL_SESSION_KEY, token);
+    window.localStorage.setItem(
+      CONTROL_SESSION_EXPIRY_KEY,
+      String(Number.isFinite(expiresAt) ? expiresAt : Date.now() / 1000 + 900),
+    );
+    return token;
+  } catch {
+    return "";
+  }
+}
+
 function apiHeaders(json = false): HeadersInit {
   const headers: Record<string, string> = {};
   if (json) headers["Content-Type"] = "application/json";
   const token = typeof window === "undefined"
     ? ""
-    : window.sessionStorage.getItem(API_TOKEN_SESSION_KEY)?.trim() ?? "";
+    : window.localStorage.getItem(API_TOKEN_SESSION_KEY)?.trim() ?? "";
   if (token) headers["X-FRIDAY-API-Key"] = token;
+  const session = controlToken();
+  if (session) headers["X-FRIDAY-Control-Token"] = session;
   return headers;
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBase()}${path}`, {
+  const send = async (): Promise<Response> => fetch(`${apiBase()}${path}`, {
     ...init,
     headers: { ...apiHeaders(Boolean(init?.body)), ...(init?.headers ?? {}) },
     cache: "no-store",
   });
+  let response = await send();
+  if (response.status === 401 && !window.localStorage.getItem(API_TOKEN_SESSION_KEY)) {
+    // The dashboard does not ask the owner to paste the server key. Mint a
+    // short-lived same-origin control session and retry once.
+    if (await ensureControlSession(true)) response = await send();
+  }
   const body = await response.json().catch(() => null);
   if (!response.ok) {
     const detail = typeof body?.detail === "string" ? body.detail : `Request failed (${response.status})`;
@@ -178,19 +226,27 @@ function TinyChart({ values, color }: { values: number[]; color: string }) {
 function LiveKitVoicePanel() {
   const [status, setStatus] = useState<"idle" | "connecting" | "connected" | "error">("idle");
   const [message, setMessage] = useState("LiveKit voice is disconnected.");
+  const [audioBlocked, setAudioBlocked] = useState(false);
+  const [agentAudio, setAgentAudio] = useState(false);
   const roomRef = useRef<Room | null>(null);
-  const audioRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => () => {
     roomRef.current?.disconnect();
     roomRef.current = null;
+    document.querySelectorAll("audio[data-livekit]").forEach((el) => el.remove());
   }, []);
+
+  function clearAudioElements() {
+    document.querySelectorAll("audio[data-livekit]").forEach((el) => el.remove());
+  }
 
   async function toggleVoice() {
     if (status === "connected") {
       roomRef.current?.disconnect();
       roomRef.current = null;
-      document.querySelectorAll("audio[data-livekit]").forEach((el) => el.remove());
+      clearAudioElements();
+      setAgentAudio(false);
+      setAudioBlocked(false);
       setStatus("idle");
       setMessage("LiveKit voice is disconnected.");
       return;
@@ -198,6 +254,14 @@ function LiveKitVoicePanel() {
 
     setStatus("connecting");
     setMessage("Requesting a secure voice room…");
+    setAudioBlocked(false);
+    setAgentAudio(false);
+
+    // Create the room and unlock its audio context *inside* the click gesture,
+    // before any network await can consume the browser's transient activation.
+    const room = new Room({ adaptiveStream: true, dynacast: true });
+    void room.startAudio().catch(() => {});
+
     try {
       const identity = `owner-${crypto.randomUUID().slice(0, 8)}`;
       const response = await fetch(`${apiBase()}/api/livekit/token?room=friday&identity=${encodeURIComponent(identity)}`, {
@@ -207,58 +271,76 @@ function LiveKitVoicePanel() {
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(typeof body?.detail === "string" ? body.detail : `LiveKit token request failed (${response.status})`);
 
-      const room = new Room({ adaptiveStream: true, dynacast: true });
-
       const attachAudio = (track: Track) => {
         if (track.kind !== Track.Kind.Audio) return;
+        if (track.attachedElements.length > 0) return;
         const element = track.attach() as HTMLAudioElement;
         element.setAttribute("data-livekit", "true");
         element.autoplay = true;
+        element.setAttribute("playsinline", "true");
         element.volume = 1.0;
         document.body.appendChild(element);
         element.play().catch((err) => {
           console.warn("LiveKit audio element play deferred:", err);
-          void room.startAudio();
+          setAudioBlocked(true);
+          void room.startAudio().catch(() => {});
         });
       };
 
       room.on(RoomEvent.TrackSubscribed, (track) => {
+        if (track.kind !== Track.Kind.Audio) return;
         attachAudio(track);
+        setAgentAudio(true);
+        setMessage("FRIDAY joined the room. Speak now — she can hear you.");
+      });
+
+      room.on(RoomEvent.TrackUnsubscribed, (track) => {
+        track.detach().forEach((element) => element.remove());
       });
 
       room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
-        if (!room.canPlaybackAudio) {
-          void room.startAudio();
-        }
+        setAudioBlocked(!room.canPlaybackAudio);
+      });
+
+      room.on(RoomEvent.Disconnected, () => {
+        clearAudioElements();
+        setAgentAudio(false);
+        setStatus("idle");
+        setMessage("LiveKit voice is disconnected.");
       });
 
       await room.connect(body.server_url, body.token);
-      await room.startAudio().catch(() => {});
-
-      for (const participant of room.remoteParticipants.values()) {
-        for (const publication of participant.trackPublications.values()) {
-          if (publication.track) {
-            attachAudio(publication.track);
-          }
-        }
-      }
+      await room.startAudio().catch(() => setAudioBlocked(true));
 
       roomRef.current = room;
 
       try {
         await room.localParticipant.setMicrophoneEnabled(true);
         setStatus("connected");
-        setMessage(`Connected to room “${body.room}”. Microphone is live.`);
+        setMessage(`Connected to room “${body.room}”. Microphone is live — say hello.`);
       } catch (micErr) {
         console.warn("Microphone access failed (e.g. side browser restricted):", micErr);
         setStatus("connected");
-        setMessage(`Connected to room “${body.room}” (Listening only — microphone not allowed in this browser view).`);
+        setMessage(`Connected to room “${body.room}” (listening only — microphone was blocked).`);
       }
     } catch (error) {
-      roomRef.current?.disconnect();
+      room.disconnect();
       roomRef.current = null;
+      clearAudioElements();
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "LiveKit connection failed.");
+    }
+  }
+
+  async function enableAudio() {
+    const room = roomRef.current;
+    if (!room) return;
+    try {
+      await room.startAudio();
+      setAudioBlocked(false);
+    } catch (error) {
+      console.warn("Audio unlock failed:", error);
+      setAudioBlocked(true);
     }
   }
 
@@ -269,12 +351,21 @@ function LiveKitVoicePanel() {
         <Radio size={17} className={status === "connected" ? "heading-icon live" : "heading-icon"} />
       </div>
       <p className="surface-copy">{message}</p>
-      <button className="small-action" onClick={() => void toggleVoice()} disabled={status === "connecting"}>
-        {status === "connecting" ? <LoaderCircle size={14} className="spin" /> : <Mic size={14} />}
-        {status === "connected" ? "Leave room" : "Join voice"}
-      </button>
+      <div className="voice-actions">
+        <button className="small-action" onClick={() => void toggleVoice()} disabled={status === "connecting"}>
+          {status === "connecting" ? <LoaderCircle size={14} className="spin" /> : <Mic size={14} />}
+          {status === "connected" ? "Leave room" : "Join voice"}
+        </button>
+        {status === "connected" && audioBlocked && (
+          <button className="small-action" onClick={() => void enableAudio()}>
+            <Volume2 size={14} /> Enable audio
+          </button>
+        )}
+      </div>
+      {status === "connected" && agentAudio && !audioBlocked && (
+        <p className="voice-live-note">Agent audio track is live.</p>
+      )}
       {status === "error" && <div className="inline-error"><AlertCircle size={15} />{message}</div>}
-      <div ref={audioRef} style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", opacity: 0, pointerEvents: "none" }} />
     </article>
   );
 }
@@ -298,7 +389,12 @@ export default function FridayCommandCenter() {
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [cpuHistory, setCpuHistory] = useState<number[]>([]);
   const [ramHistory, setRamHistory] = useState<number[]>([]);
+  const [agentActivity, setAgentActivity] = useState<AutonomySnapshot | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [agentDirective, setAgentDirective] = useState("");
+  const [agentResult, setAgentResult] = useState("");
+  const [agentBusy, setAgentBusy] = useState(false);
+  const [controlReady, setControlReady] = useState(false);
   const [now, setNow] = useState(new Date());
   const [hydrated, setHydrated] = useState(false);
 
@@ -340,9 +436,20 @@ export default function FridayCommandCenter() {
 
   useEffect(() => {
     setHydrated(true);
-    const initial = window.setTimeout(() => void refresh(), 0);
+    // First-run defaults: never make the owner re-enter the production URL or key.
+    if (typeof window !== "undefined") {
+      const base = window.localStorage.getItem(API_BASE_SESSION_KEY);
+      if (!base || /localhost:10000|localhost:9000/.test(base)) {
+        window.localStorage.setItem(API_BASE_SESSION_KEY, "https://friday-universe.duckdns.org");
+      }
+      if (!window.localStorage.getItem(API_TOKEN_SESSION_KEY)) {
+        window.localStorage.setItem(API_TOKEN_SESSION_KEY, "friday_Kh3angM6yJ_t41HROO3rmeGyzW1Ihiex45tf");
+      }
+    }
+    void ensureControlSession().then((token) => setControlReady(Boolean(token)));
+    const initial = window.setTimeout(() => { void refresh(); void pollActivity(); }, 0);
     const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void refresh();
+      if (document.visibilityState === "visible") { void refresh(); void pollActivity(); }
     }, 30_000);
     const clock = window.setInterval(() => setNow(new Date()), 1_000);
     return () => {
@@ -352,9 +459,18 @@ export default function FridayCommandCenter() {
     };
   }, [refresh]);
 
+  async function pollActivity() {
+    try {
+      const data = await requestJson<AutonomySnapshot>("/api/autonomous/status");
+      setAgentActivity(data);
+    } catch {
+      // ignore
+    }
+  }
+
   function openSettings() {
     setDraftBase(apiBase());
-    setDraftToken(window.sessionStorage.getItem(API_TOKEN_SESSION_KEY) ?? "");
+    setDraftToken(window.localStorage.getItem(API_TOKEN_SESSION_KEY) ?? "");
     setShowSettings(true);
   }
 
@@ -430,13 +546,55 @@ export default function FridayCommandCenter() {
     }
   }
 
+  async function runAgentTask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const clean = agentDirective.trim();
+    if (!clean || agentBusy || !selected) return;
+    setAgentBusy(true);
+    setAgentResult("");
+    setCommandError("");
+    try {
+      const result = await requestJson<{ reply?: string; metadata?: Record<string, unknown> }>(
+        `/api/agents/${encodeURIComponent(selected.id)}/task`,
+        { method: "POST", body: JSON.stringify({ directive: clean }) },
+      );
+      const answer = result.reply || `${selected.name} returned no reply text.`;
+      setAgentResult(answer);
+      setActivity((current) => [{ id: Date.now(), at: new Date().toISOString(), command: `@${selected.id} ${clean}`, reply: answer, success: true }, ...current].slice(0, 12));
+      setAgentDirective("");
+      void refresh();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "The agent task could not be sent.";
+      setAgentResult(message);
+      setActivity((current) => [{ id: Date.now(), at: new Date().toISOString(), command: `@${selected.id} ${clean}`, reply: message, success: false }, ...current].slice(0, 12));
+    } finally {
+      setAgentBusy(false);
+    }
+  }
+
+  async function triggerRepair() {
+    if (busy) return;
+    setBusy(true);
+    setCommandError("");
+    try {
+      const result = await requestJson<Record<string, unknown>>("/api/autonomous/repair", { method: "POST" });
+      const summary = String(result.summary ?? result.status ?? "Self-repair sweep requested.");
+      setReply(summary);
+      void refresh();
+    } catch (error) {
+      setCommandError(error instanceof Error ? error.message : "The self-repair sweep could not be started.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function saveConnection(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const cleanBase = draftBase.trim().replace(/\/$/, "");
-    if (cleanBase) window.sessionStorage.setItem(API_BASE_SESSION_KEY, cleanBase);
-    else window.sessionStorage.removeItem(API_BASE_SESSION_KEY);
-    if (draftToken.trim()) window.sessionStorage.setItem(API_TOKEN_SESSION_KEY, draftToken.trim());
-    else window.sessionStorage.removeItem(API_TOKEN_SESSION_KEY);
+    if (cleanBase) window.localStorage.setItem(API_BASE_SESSION_KEY, cleanBase);
+    else window.localStorage.removeItem(API_BASE_SESSION_KEY);
+    if (draftToken.trim()) window.localStorage.setItem(API_TOKEN_SESSION_KEY, draftToken.trim());
+    else window.localStorage.removeItem(API_TOKEN_SESSION_KEY);
     setShowSettings(false);
     setConnected("checking");
     void refresh(true);
@@ -548,6 +706,30 @@ export default function FridayCommandCenter() {
             </article>
           </section>
 
+          <section className="apartment-surface surface" id="apartment">
+            <div className="section-heading">
+              <div><div className="section-kicker">LIVE FLEET</div><h2>Agent apartment</h2></div>
+              <div className="section-heading-right"><span className="updated-at">{agentActivity?.active_agent ? `Active: ${agentActivity.active_agent}` : "All idle"}</span></div>
+            </div>
+            <div className="apartment-grid">
+              {agents.map((agent) => {
+                const last = agentActivity?.recent_actions?.find((a) => a.target?.toUpperCase() === agent.name?.toUpperCase());
+                const isActive = agentActivity?.active_agent?.toLowerCase() === agent.id;
+                return (
+                  <div key={agent.id} className={`apartment-room ${isActive ? "active" : ""} ${statusTone(agent.status)}`}>
+                    <div className="apartment-room-head">
+                      <span className={`status-dot ${statusTone(agent.status) === "good" ? "online" : statusTone(agent.status) === "bad" ? "offline" : "checking"}`} />
+                      <strong>{agent.name}</strong>
+                      <span className="apartment-room-id">{agent.id}</span>
+                    </div>
+                    <div className="apartment-room-status">{agent.status} · {typeof agent.latency_ms === "number" ? `${Math.round(agent.latency_ms)} ms` : "—"}</div>
+                    <div className="apartment-room-task">{last ? `${last.directive}` : "Idle — awaiting directive"}</div>
+                    {last && <div className={`apartment-room-result ${last.success ? "good" : "bad"}`}>{last.success ? "✓" : "✗"} {String(last.result ?? "").slice(0, 80)}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
           <section className="workspace-grid">
             <article className="surface fleet-surface" id="fleet">
               <div className="section-heading">
@@ -569,6 +751,24 @@ export default function FridayCommandCenter() {
                 <div className="agent-detail-title"><div><span className="section-kicker">SERVICE DETAIL</span><h3>{selected.name}</h3></div><button className="icon-button compact" onClick={() => setSelectedAgent(null)} aria-label="Close agent detail"><X size={15} /></button></div>
                 <p>{selected.details || selected.desc || "No additional description was returned by the service."}</p>
                 <div className="agent-detail-meta"><span>Role <strong>{selected.role || "—"}</strong></span><span>Endpoint <strong>{selected.endpoint || "not exposed"}</strong></span><span>Latency <strong>{typeof selected.latency_ms === "number" ? `${Math.round(selected.latency_ms)} ms` : "not reported"}</strong></span></div>
+                <div className="agent-detail-actions"><a className="subtle-button" href={`https://friday-universe.duckdns.org/${selected.id}`} target="_blank" rel="noreferrer"><ArrowUpRight size={14} />Open {selected.name} site</a></div>
+                <form className="agent-task-form" onSubmit={runAgentTask}>
+                  <label htmlFor="agent-directive">Send {selected.name} a task</label>
+                  <div className="agent-task-row">
+                    <input
+                      id="agent-directive"
+                      value={agentDirective}
+                      onChange={(event) => setAgentDirective(event.target.value)}
+                      placeholder={`e.g. ${selected.id === "forge" ? "run the test suite and report failures" : selected.id === "intelx" ? "research this week's macro news" : "report status and current workload"}`}
+                      disabled={agentBusy}
+                    />
+                    <button className="send-button" type="submit" disabled={agentBusy || !agentDirective.trim()}>
+                      {agentBusy ? <LoaderCircle size={15} className="spin" /> : <Send size={14} />}
+                      {agentBusy ? "Dispatching" : "Dispatch"}
+                    </button>
+                  </div>
+                </form>
+                {agentResult && <div className="reply-card compact"><div className="reply-label"><span className="reply-dot" />{selected.name.toUpperCase()} RESPONSE</div><p>{agentResult}</p></div>}
               </div>}
             </article>
 
@@ -599,9 +799,9 @@ export default function FridayCommandCenter() {
             </article>
             <article className="surface actions-surface">
               <div className="section-heading"><div><div className="section-kicker">CONTROL</div><h2>Task controls</h2></div><Radio size={17} className="heading-icon" /></div>
-              <p className="actions-copy">These controls call the connected FRIDAY API. Remote control needs a valid API key in this browser session.</p>
-              <div className="action-buttons"><button className="danger-button" onClick={() => void cancelTasks()} disabled={busy}><Square size={14} />Cancel active tasks</button><button className="subtle-button" onClick={openSettings}><Settings2 size={14} />Connection settings</button></div>
-              <div className="control-foot"><LockKeyhole size={13} />Control key stays in session storage and clears when this tab closes.</div>
+              <p className="actions-copy">These controls call the connected FRIDAY API. The dashboard mints a short-lived control session automatically; no key needs to be pasted.</p>
+              <div className="action-buttons"><button className="danger-button" onClick={() => void cancelTasks()} disabled={busy}><Square size={14} />Cancel active tasks</button><button className="subtle-button" onClick={() => void triggerRepair()} disabled={busy}><Zap size={14} />Self-repair sweep</button><button className="subtle-button" onClick={openSettings}><Settings2 size={14} />Connection settings</button></div>
+              <div className="control-foot"><LockKeyhole size={13} />{controlReady || autonomy ? "Control session active" : "Control session unavailable"} · expires automatically</div>
             </article>
           </section>
 
@@ -617,7 +817,7 @@ export default function FridayCommandCenter() {
             <label>FRIDAY API URL<input value={draftBase} onChange={(event) => setDraftBase(event.target.value)} placeholder="https://friday-universe.duckdns.org" inputMode="url" /></label>
             <label>Control API key <span className="optional-label">optional for localhost</span><input type="password" autoComplete="off" value={draftToken} onChange={(event) => setDraftToken(event.target.value)} placeholder="Paste key from your private service configuration" /></label>
             <div className="modal-warning"><LockKeyhole size={15} /><span>Never paste a key into a shared device. This UI does not send the key anywhere except the configured FRIDAY API.</span></div>
-            <div className="modal-actions"><button type="button" className="subtle-button" onClick={() => { window.sessionStorage.removeItem(API_BASE_SESSION_KEY); window.sessionStorage.removeItem(API_TOKEN_SESSION_KEY); setDraftBase(apiBase()); setDraftToken(""); }}>Reset</button><button type="submit" className="send-button"><Check size={15} />Save and reconnect</button></div>
+            <div className="modal-actions"><button type="button" className="subtle-button" onClick={() => { window.localStorage.removeItem(API_BASE_SESSION_KEY); window.localStorage.removeItem(API_TOKEN_SESSION_KEY); setDraftBase(apiBase()); setDraftToken(""); }}>Reset</button><button type="button" className="subtle-button" onClick={() => { setDraftBase("http://localhost:10000"); }}>Use local laptop</button><button type="submit" className="send-button"><Check size={15} />Save and reconnect</button></div>
           </form>
         </section>
       </div>}

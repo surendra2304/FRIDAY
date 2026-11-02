@@ -2,7 +2,9 @@
 FRIDAY Sovereign Voice Agent Worker for LiveKit.
 Connects to LiveKit Cloud and participates in voice rooms with low-latency Gemini Live audio.
 """
+import logging
 import os
+import ssl
 import sys
 from pathlib import Path
 
@@ -12,11 +14,47 @@ if str(FRIDAY_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(FRIDAY_ROOT / "src"))
 
 from dotenv import load_dotenv
+
 load_dotenv(FRIDAY_ROOT / ".env")
+
+# Gemini Live performs its own server-side VAD. LiveKit's local VAD/end-of-turn
+# models cost ~244 MB and ~6 seconds of job startup, so keep them out of this
+# worker entirely; on a 1 GB host that preload is what pushes audio into swap.
+os.environ["LIVEKIT_AGENTS_PRELOAD_LOCAL_INFERENCE"] = "0"
+
+# Preload the heavy, blocking modules before the worker accepts any job.
+# Without this, the first turn stalls for seconds on SSL/numpy/client setup,
+# which is audible as chopped, delayed or missing speech.
+import aiohttp  # noqa: F401
+import certifi
+import httpx  # noqa: F401
+import numpy  # noqa: F401
+from google import genai  # noqa: F401
+from google.genai import types as genai_types
+
+_SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 
 from livekit.agents import AutoSubscribe, JobContext, JobExecutorType, WorkerOptions, cli
 from livekit.agents.voice import Agent, AgentSession
+from livekit.agents.voice.room_io import RoomInputOptions, RoomOutputOptions
 from livekit.plugins import google
+
+# The loop monitor emits multi-kilobyte JSON warnings that themselves block
+# the audio loop. Keep genuine errors, drop the repetitive stall reports.
+logging.getLogger("livekit.agents.telemetry.loop_monitor").setLevel(logging.ERROR)
+
+logger = logging.getLogger("friday.voice")
+if not logger.handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+
+# Warm the URL/regex/httpx code paths that otherwise stall the job loop for
+# seconds the first time the Gemini client is built inside a live session.
+_ = httpx.Client(base_url="https://generativelanguage.googleapis.com")
+_ = httpx.AsyncClient(base_url="https://generativelanguage.googleapis.com")
+
 
 FRIDAY_INSTRUCTIONS = (
     "You are FRIDAY, the central intelligence and sovereign AI operating system of the FRIDAY Universe. "
@@ -27,22 +65,130 @@ FRIDAY_INSTRUCTIONS = (
     "Keep replies brief, conversational, and voice-friendly."
 )
 
+
+def _voice_model() -> str:
+    return (os.getenv("FRIDAY_VOICE_LIVE_MODEL") or "gemini-3.8-live").strip()
+
+
+def _voice_name() -> str:
+    return (os.getenv("FRIDAY_VOICE_NAME") or "Aoede").strip()
+
+
 async def entrypoint(ctx: JobContext):
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
-    api_key = os.getenv("FRIDAY_GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY") or ""
+    def _on_track_subscribed(track, publication, participant):
+        logger.info(
+            "VOICE track_subscribed kind=%s source=%s sid=%s participant=%s",
+            track.kind,
+            publication.source,
+            publication.sid,
+            participant.identity,
+        )
+
+    def _on_track_published(publication, participant):
+        logger.info(
+            "VOICE track_published kind=%s source=%s sid=%s participant=%s subscribed=%s",
+            publication.kind,
+            publication.source,
+            publication.sid,
+            participant.identity,
+            publication.subscribed,
+        )
+
+    def _on_participant_connected(participant):
+        logger.info("VOICE participant_connected %s", participant.identity)
+
+    def _on_participant_disconnected(participant):
+        logger.info("VOICE participant_disconnected %s", participant.identity)
+
+    ctx.room.on("track_subscribed", _on_track_subscribed)
+    ctx.room.on("track_published", _on_track_published)
+    ctx.room.on("participant_connected", _on_participant_connected)
+    ctx.room.on("participant_disconnected", _on_participant_disconnected)
+
+    api_key = (os.getenv("FRIDAY_GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY") or "").strip()
+    if not api_key:
+        raise RuntimeError("FRIDAY_GEMINI_API_KEY is not configured")
+
     model = google.realtime.RealtimeModel(
         api_key=api_key,
-        voice="Aoede",
+        model=_voice_model(),
+        voice=_voice_name(),
+        temperature=0.6,
+        # Put the system prompt in the connect config. If it is only set on the
+        # Agent, LiveKit sends it as a mid-session `turn_complete=False` model
+        # turn after connecting, which can leave Gemini waiting instead of
+        # running VAD on the user's microphone audio.
+        instructions=FRIDAY_INSTRUCTIONS,
+        # Reuse the process-wide SSL context. Creating a fresh context inside
+        # the live session blocks the event loop for 1-4 seconds on this host.
+        http_options=genai_types.HttpOptions(
+            client_args={"verify": _SSL_CONTEXT},
+            async_client_args={"ssl": _SSL_CONTEXT},
+        ),
     )
 
     agent = Agent(instructions=FRIDAY_INSTRUCTIONS)
-    session = AgentSession(llm=model)
-
-    await session.start(agent, room=ctx.room)
-    session.generate_reply(
-        user_input="Greet the user warmly as FRIDAY. State that systems are online, all 10 agents in the FRIDAY Universe are active, and ask how you can help."
+    session = AgentSession(
+        llm=model,
+        turn_detection="realtime_llm",
+        min_endpointing_delay=0.5,
+        max_endpointing_delay=3.0,
+        allow_interruptions=True,
+        min_interruption_duration=0.8,
+        resume_false_interruption=True,
+        false_interruption_timeout=1.0,
     )
+
+    @session.on("user_input_transcribed")
+    def _on_user_transcribed(ev):
+        logger.info(
+            "VOICE user_input_transcribed final=%s text=%r",
+            getattr(ev, "is_final", None),
+            getattr(ev, "transcript", None),
+        )
+
+    @session.on("conversation_item_added")
+    def _on_item_added(ev):
+        item = getattr(ev, "item", None)
+        logger.info(
+            "VOICE conversation_item_added role=%s text=%r",
+            getattr(item, "role", None),
+            (getattr(item, "text_content", None) or "")[:400],
+        )
+
+    @session.on("agent_state_changed")
+    def _on_state(ev):
+        logger.info(
+            "VOICE agent_state %s -> %s",
+            getattr(ev, "old_state", None),
+            getattr(ev, "new_state", None),
+        )
+
+    @session.on("error")
+    def _on_error(ev):
+        logger.error("VOICE session error: %s", getattr(ev, "error", ev))
+
+    await session.start(
+        agent,
+        room=ctx.room,
+        record=False,
+        room_input_options=RoomInputOptions(
+            audio_sample_rate=24000,
+            pre_connect_audio=True,
+            pre_connect_audio_timeout=3.0,
+        ),
+        room_output_options=RoomOutputOptions(
+            transcription_enabled=False,
+            audio_sample_rate=24000,
+        ),
+    )
+    if (os.getenv("FRIDAY_VOICE_GREETING") or "1").strip() not in ("0", "false", "no"):
+        session.generate_reply(
+            user_input="Greet the user warmly as FRIDAY. State that systems are online, all 10 agents in the FRIDAY Universe are active, and ask how you can help."
+        )
+
 
 if __name__ == "__main__":
     cli.run_app(

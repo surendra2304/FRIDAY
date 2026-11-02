@@ -88,6 +88,37 @@ FLEET_AGENTS = {
     },
 }
 
+#: Per-peer action vocabulary for the universal task protocol. A peer that does
+#: not recognise an action returns 4xx, which is not the same as refusing work.
+_MESH_ACTION_BY_AGENT = {
+    "memora": "store",         # Memora accepts store/query only
+    "stratex": "status",       # "execute" is reserved for Stratex's own trading loop
+    "cortex": "health_summary",  # "execute" would attempt a live website change
+}
+
+_STATUS_INTENT = re.compile(
+    r"\b(status|health|healthcheck|healthcheck|report|state|ping|alive|up)\b",
+    re.IGNORECASE,
+)
+_STATUS_AWARE_AGENTS = {"forge", "sentinel", "futuris", "inference", "vyralx"}
+
+
+def _mesh_action_for(agent_id: str, directive: str) -> str:
+    """Pick the action a peer actually implements for this instruction.
+
+    Sending every peer the literal action ``execute`` was wrong in both
+    directions: agents whose protocol has no such verb answered 4xx, and agents
+    that do treat ``execute`` as a live mutation were being asked to mutate
+    production just to say hello. A status-shaped instruction becomes a status
+    action on the peers that publish one; everything else stays ``execute``.
+    """
+    fixed = _MESH_ACTION_BY_AGENT.get(agent_id)
+    if fixed:
+        return fixed
+    if agent_id in _STATUS_AWARE_AGENTS and _STATUS_INTENT.search(directive or ""):
+        return "status"
+    return "execute"
+
 
 @dataclass
 class AutonomousActionLog:
@@ -258,18 +289,30 @@ class AutonomousController:
             from friday.cognition.mesh import OutcomeState
 
             mesh = self._get_peer_mesh()
+            # Each peer publishes its own action vocabulary, and an action it does
+            # not recognise is not the same thing as refusing the work. Memora's
+            # universal protocol accepts only store/query ("execute" is a 422), and
+            # Stratex correctly rejects "execute" as an attempt to command order
+            # placement -- its supervisory action for a dispatched instruction is
+            # "status". Everything else takes the generic "execute".
+            mesh_action = _mesh_action_for(agent_id, directive)
             envelope = mesh.build_envelope(
                 agent_id,
-                action="execute",
+                action=mesh_action,
                 objective=directive,
-                inputs={"directive": directive},
+                inputs={
+                    "directive": directive,
+                    "content": directive,
+                    "text": directive,
+                    "query": directive,
+                },
                 capability=f"{agent_id}.execute",
                 actor="friday",
                 trust_level="operator_confirmed",
             )
             outcome = await mesh.dispatch(
                 agent_id,
-                action="execute",
+                action=mesh_action,
                 envelope=envelope,
                 attempts=1,
             )
@@ -287,7 +330,31 @@ class AutonomousController:
                     f"Task reference: {outcome.task_id}. Completion remains unverified."
                 )
             else:
-                reply = f"[AGENT TASK NOT VERIFIED: {agent_name}]\n{outcome.detail}"
+                # The mesh contract did not produce a verifiable receipt. Rather
+                # than tell the owner "not verified" and stop, fall back to the
+                # agent's own live endpoint through the fleet client, which is the
+                # same call `/api/command` uses. The reply is then the peer's real
+                # answer, labelled as a live response rather than a receipt.
+                fallback = getattr(fleet_client, f"ask_{agent_id}", None)
+                if callable(fallback):
+                    try:
+                        fallback_result = await fallback(directive)
+                        fallback_reply = str(fallback_result.get("reply") or "").strip()
+                        if fallback_reply:
+                            reply = (
+                                f"[{agent_name} LIVE RESPONSE]\n{fallback_reply}\n"
+                                f"(mesh receipt unavailable: {outcome.detail})"
+                            )
+                            verified = False
+                        else:
+                            reply = f"[AGENT TASK NOT VERIFIED: {agent_name}]\n{outcome.detail}"
+                    except Exception as exc:
+                        reply = (
+                            f"[AGENT TASK NOT VERIFIED: {agent_name}]\n{outcome.detail}\n"
+                            f"Live fallback also failed: {exc}"
+                        )
+                else:
+                    reply = f"[AGENT TASK NOT VERIFIED: {agent_name}]\n{outcome.detail}"
 
             self._log_action(
                 action_type="AGENT_CONTROL",
@@ -333,6 +400,19 @@ class AutonomousController:
 
             self.active_agent = None
             self.active_directive = None
+            # Inter-agent fabric: mirror the outcome into Memora so other agents
+            # (and the dashboard) can recall what happened. Best-effort; never
+            # fail the task because memory persistence failed.
+            try:
+                from friday.memory.memora_client import memora_client
+                memora_client.record_fact(
+                    agent_name="friday",
+                    fact_text=f"{agent_name} executed '{directive[:120]}' -> {task_state} ({reply[:200]})",
+                    category="agent_task",
+                    importance=0.6,
+                )
+            except Exception as mirror_exc:
+                logger.debug("Memora mirror failed (non-fatal): %s", mirror_exc)
             return {"reply": reply, "metadata": metadata}
 
         except Exception as exc:
