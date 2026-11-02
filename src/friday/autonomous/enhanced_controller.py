@@ -24,6 +24,7 @@ from typing import Any
 
 from friday.core.logging import get_logger
 from friday.ecosystem.fleet_client import fleet_client
+from friday.autonomous.controller import _mesh_action_for
 
 logger = get_logger("autonomous.enhanced_controller")
 
@@ -347,26 +348,53 @@ class EnhancedAutonomousController:
             return False
 
     async def _dispatch_to_agent(self, agent: str, directive: str) -> Any:
-        """Dispatch a directive to a specific agent."""
+        """Dispatch a directive to a specific agent using the verified mesh."""
         try:
-            # Use fleet_client to dispatch to agent
-            result = await fleet_client.dispatch(
-                agent=agent,
-                directive=directive,
-                timeout=30.0,
+            from friday.cognition.mesh import Mesh, build_contracts, OutcomeState
+            from friday.ecosystem.fleet_client import fleet_client
+
+            mesh = Mesh(contracts=build_contracts(fleet_client))
+            mesh_action = _mesh_action_for(agent.lower(), directive)
+            envelope = mesh.build_envelope(
+                agent.lower(),
+                action=mesh_action,
+                objective=directive,
+                inputs={"directive": directive, "content": directive, "text": directive, "query": directive},
+                capability=f"{agent.lower()}.execute",
+                actor="friday",
+                trust_level="operator_confirmed",
             )
-            return result
+            outcome = await mesh.dispatch(
+                agent.lower(),
+                action=mesh_action,
+                envelope=envelope,
+                attempts=1,
+            )
+            if outcome.state is OutcomeState.COMPLETED:
+                return outcome.result
+            elif outcome.state is OutcomeState.PENDING:
+                return {"status": "PENDING", "task_id": outcome.task_id, "detail": outcome.detail}
+            else:
+                logger.warning("Mesh dispatch for %s returned %s: %s", agent, outcome.state, outcome.detail)
+                return outcome.result
         except Exception as e:
             logger.error(f"Failed to dispatch to {agent}: {e}")
             return None
 
     async def execute_plan(self, plan: ExecutionPlan) -> ExecutionPlan:
         """Execute a complete plan with dependency resolution."""
-        logger.info(f"Executing plan: {plan.goal[:80]}")
+        logger.info(f"Executing plan: {plan.goal[:80]} (subtasks: {len(plan.subtasks)})")
+        for st in plan.subtasks:
+            logger.info(f"  Subtask: {st.id} deps={st.dependencies} status={st.status}")
         plan.status = "RUNNING"
 
         # Execute sub-tasks in dependency order
+        iteration = 0
         while plan.get_pending_subtasks():
+            iteration += 1
+            if iteration > 100:
+                logger.error("Plan execution exceeded max iterations")
+                break
             # Find sub-tasks with all dependencies satisfied
             ready_subtasks = []
             for subtask in plan.get_pending_subtasks():
@@ -379,7 +407,9 @@ class EnhancedAutonomousController:
                     ready_subtasks.append(subtask)
 
             if not ready_subtasks:
-                logger.warning("No ready subtasks, waiting for dependencies...")
+                logger.warning("No ready subtasks, waiting for dependencies... (iteration %d, pending=%d)", iteration, len(plan.get_pending_subtasks()))
+                for st in plan.get_pending_subtasks():
+                    logger.warning("  Pending: %s deps=%s", st.id, st.dependencies)
                 await asyncio.sleep(1)
                 continue
 
@@ -403,8 +433,9 @@ class EnhancedAutonomousController:
         plan.completed_at = time.time()
 
         # Record execution history
+        plan_id = getattr(plan, "plan_id", "") or f"plan_{int(plan.created_at * 1000)}"
         self.execution_history.append({
-            "plan_id": plan_id if 'plan_id' in locals() else "",
+            "plan_id": plan_id,
             "goal": plan.goal,
             "status": plan.status,
             "completed": plan.completed_subtasks,

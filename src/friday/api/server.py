@@ -61,7 +61,7 @@ from friday.remote.laptop_bridge import (
     normalise_laptop_id,
     shell_execution_enabled,
 )
-from friday.autonomous import autonomous_controller
+from friday.autonomous import autonomous_controller, autonomous_daemon, enhanced_controller
 from friday.autonomous.repair_loop import repair_loop
 from friday.cognition.reflex import get_reflex_brain, parse_incident_scope
 from friday.cognition.mesh import get_mesh
@@ -991,6 +991,11 @@ async def toggle_autonomous_mode(_: None = Depends(_require_control_access)) -> 
     """Toggle runtime-only Autonomous Mode and expose the active authorization settings."""
     new_state = autonomous_controller.toggle()
     current = autonomous_controller.get_status()
+    # Start/stop the autonomous daemon
+    if new_state:
+        await autonomous_daemon.start()
+    else:
+        await autonomous_daemon.stop()
     return {
         "status": "ok",
         "autonomous_mode": new_state,
@@ -1004,6 +1009,94 @@ async def toggle_autonomous_mode(_: None = Depends(_require_control_access)) -> 
 async def trigger_autonomous_repair(_: None = Depends(_require_control_access)) -> dict[str, Any]:
     """Trigger an immediate autonomous self-healing and diagnostic sweep."""
     return await autonomous_controller.execute_self_repair()
+
+
+class AutonomousGoalRequest(BaseModel):
+    """Submit a goal for autonomous execution."""
+    goal: str
+    priority: int = 0
+    metadata: dict[str, Any] | None = None
+
+
+@app.post("/api/autonomous/goals")
+async def submit_autonomous_goal(
+    req: AutonomousGoalRequest,
+    _: None = Depends(_require_control_access),
+) -> dict[str, Any]:
+    """Submit a new goal for autonomous execution."""
+    goal = autonomous_daemon.submit_goal(req.goal, req.priority, req.metadata)
+    return {
+        "status": "ok",
+        "goal_id": goal.id,
+        "goal": goal.goal,
+        "priority": goal.priority,
+        "status": goal.status,
+    }
+
+
+@app.get("/api/autonomous/daemon")
+async def get_autonomous_daemon_status(
+    _: None = Depends(_require_control_access),
+) -> dict[str, Any]:
+    """Get the autonomous daemon status and goal queue."""
+    return autonomous_daemon.get_status()
+
+
+@app.post("/api/autonomous/decompose")
+async def decompose_goal_autonomous(
+    goal: str,
+    _: None = Depends(_require_control_access),
+) -> dict[str, Any]:
+    """Decompose a complex goal into executable sub-tasks without executing."""
+    plan = enhanced_controller.decompose_goal(goal)
+    return {
+        "status": "ok",
+        "plan_id": id(plan),
+        "goal": plan.goal,
+        "subtasks": [
+            {
+                "id": st.id,
+                "description": st.description,
+                "agent": st.agent,
+                "dependencies": st.dependencies,
+            }
+            for st in plan.subtasks
+        ],
+    }
+
+
+@app.get("/api/autonomous/plans")
+async def get_autonomous_plans(
+    _: None = Depends(_require_control_access),
+) -> dict[str, Any]:
+    """Get active and recent execution plans."""
+    active = enhanced_controller.get_active_plan()
+    history = enhanced_controller.get_execution_history(10)
+    return {
+        "active_plan": {
+            "goal": active.goal,
+            "status": active.status,
+            "progress": active.get_progress(),
+            "subtasks": [
+                {
+                    "id": st.id,
+                    "description": st.description,
+                    "agent": st.agent,
+                    "status": st.status,
+                }
+                for st in active.subtasks
+            ],
+        } if active else None,
+        "history": history,
+    }
+
+
+@app.post("/api/autonomous/agent-health")
+async def check_autonomous_agent_health(
+    _: None = Depends(_require_control_access),
+) -> dict[str, Any]:
+    """Check health of all agents in the fleet."""
+    return await enhanced_controller.check_agent_health()
 
 
 # ── Gated self-repair pipeline (Phase E1) ────────────────────────────────
