@@ -2,6 +2,7 @@
 FRIDAY Sovereign Voice Agent Worker for LiveKit.
 Connects to LiveKit Cloud and participates in voice rooms with low-latency Gemini Live audio.
 """
+import asyncio
 import logging
 import os
 import ssl
@@ -141,6 +142,11 @@ async def entrypoint(ctx: JobContext):
         false_interruption_timeout=1.0,
     )
 
+    # Tracks whether the agent has actually produced speech. The realtime model
+    # can accept a generate_reply() and then drop the audio, which is silent to
+    # the user and invisible in the logs unless something watches for it.
+    _speech_state = {"spoke": False}
+
     @session.on("user_input_transcribed")
     def _on_user_transcribed(ev):
         logger.info(
@@ -160,6 +166,8 @@ async def entrypoint(ctx: JobContext):
 
     @session.on("agent_state_changed")
     def _on_state(ev):
+        if getattr(ev, "new_state", None) == "speaking":
+            _speech_state["spoke"] = True
         logger.info(
             "VOICE agent_state %s -> %s",
             getattr(ev, "old_state", None),
@@ -184,10 +192,61 @@ async def entrypoint(ctx: JobContext):
             audio_sample_rate=24000,
         ),
     )
-    if (os.getenv("FRIDAY_VOICE_GREETING") or "1").strip() not in ("0", "false", "no"):
-        session.generate_reply(
-            user_input="Greet the user warmly as FRIDAY. State that systems are online, all 10 agents in the FRIDAY Universe are active, and ask how you can help."
-        )
+    greeting_enabled = (os.getenv("FRIDAY_VOICE_GREETING") or "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+    )
+    greeting_text = (
+        "Systems are online and all agents are standing by. What can I do for you?"
+    )
+
+    async def _greet_when_ready() -> None:
+        """Greet only once a real generation can be attached.
+
+        Calling generate_reply() immediately after session.start() races the
+        realtime model's turn registration: Gemini streams content, the plugin
+        logs "received server content but no active generation", and the audio is
+        discarded -- the participant then hears nothing at all. Waiting for the
+        human to actually join and giving the session a beat to arm fixes that.
+        """
+        if not greeting_enabled:
+            return
+        for _ in range(50):  # up to ~10s for the participant to join
+            try:
+                if len(ctx.room.remote_participants) > 0:
+                    break
+            except Exception:  # room state is best-effort, never fatal
+                break
+            await asyncio.sleep(0.2)
+        await asyncio.sleep(0.9)
+        logger.info("VOICE greeting requested")
+        try:
+            session.generate_reply(
+                user_input=(
+                    "Greet the user warmly as FRIDAY in one or two short sentences. "
+                    "Say that systems are online and the agents are standing by, "
+                    "then invite them to speak."
+                )
+            )
+        except Exception as exc:
+            logger.error("VOICE greeting generation failed: %s", exc)
+
+        # If the model swallowed the turn, speak a fixed line rather than leaving
+        # dead air. This is the difference between "voice is broken" and "voice
+        # answered but said something pre-scripted".
+        for _ in range(30):  # ~6s
+            if _speech_state["spoke"]:
+                return
+            await asyncio.sleep(0.2)
+        if not _speech_state["spoke"]:
+            logger.warning("VOICE no speech after greeting; using spoken fallback")
+            try:
+                session.say(greeting_text, allow_interruptions=True)
+            except Exception as exc:
+                logger.error("VOICE fallback speech failed: %s", exc)
+
+    asyncio.create_task(_greet_when_ready())
 
 
 if __name__ == "__main__":
