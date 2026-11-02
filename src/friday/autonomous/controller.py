@@ -13,6 +13,7 @@ Provides:
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import re
 import shutil
@@ -20,6 +21,7 @@ import subprocess
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import psutil
@@ -151,8 +153,66 @@ class AutonomousController:
         self.active_agent: str | None = None
         self._max_history: int = 50
         self._repair_lock: asyncio.Lock = asyncio.Lock()
+        # The dashboard's agent apartment renders per-agent activity from this
+        # history, and the process is restarted on every deploy. Keeping it only
+        # in memory meant the apartment was guaranteed to look empty right after
+        # a release, which is exactly when someone looks at it.
+        default_path = Path(__file__).resolve().parents[3] / ".data" / "autonomous_action_history.json"
+        self._history_path = Path(os.getenv("FRIDAY_ACTION_HISTORY", str(default_path)))
+        self._agent_activity: dict[str, dict[str, Any]] = {}
+        self._load_history()
         self._initialized = True
         logger.info("FRIDAY AutonomousController initialized.")
+
+    def _load_history(self) -> None:
+        """Rehydrate the action log and per-agent activity from disk."""
+        try:
+            if not self._history_path.is_file():
+                return
+            with self._history_path.open("r", encoding="utf-8") as fh:
+                payload = json.load(fh)
+        except Exception as exc:  # a corrupt log must never block startup
+            logger.warning("Could not load action history from %s: %s", self._history_path, exc)
+            return
+        for raw in payload.get("actions", [])[-self._max_history:]:
+            try:
+                entry = AutonomousActionLog(
+                    timestamp=str(raw.get("timestamp", "")),
+                    action_type=str(raw.get("action_type", "")),
+                    target=str(raw.get("target", "")),
+                    directive=str(raw.get("directive", "")),
+                    result=str(raw.get("result", "")),
+                    success=bool(raw.get("success", False)),
+                    details=raw.get("details") or {},
+                )
+            except Exception:
+                continue
+            self.action_history.append(entry)
+        activity = payload.get("agent_activity")
+        if isinstance(activity, dict):
+            self._agent_activity = {
+                str(k).lower(): v for k, v in activity.items() if isinstance(v, dict)
+            }
+        logger.info(
+            "Restored %d autonomous actions and %d agent activity records",
+            len(self.action_history),
+            len(self._agent_activity),
+        )
+
+    def _persist_history(self) -> None:
+        """Write the log atomically so a crash cannot truncate it."""
+        try:
+            self._history_path.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "actions": [entry.__dict__ for entry in self.action_history],
+                "agent_activity": self._agent_activity,
+            }
+            tmp = self._history_path.with_suffix(".json.tmp")
+            with tmp.open("w", encoding="utf-8") as fh:
+                json.dump(payload, fh, default=str)
+            os.replace(tmp, self._history_path)
+        except Exception as exc:
+            logger.warning("Could not persist action history: %s", exc)
 
     @property
     def enabled(self) -> bool:
@@ -193,6 +253,7 @@ class AutonomousController:
             "active_agent": self.active_agent,
             "active_directive": self.active_directive,
             "history_count": len(self.action_history),
+            "agent_activity": self._agent_activity,
             "recent_actions": [
                 {
                     "timestamp": l.timestamp,
@@ -228,6 +289,17 @@ class AutonomousController:
         self.action_history.append(entry)
         if len(self.action_history) > self._max_history:
             self.action_history.pop(0)
+        target_key = (target or "").strip().lower()
+        if target_key:
+            self._agent_activity[target_key] = {
+                "timestamp": entry.timestamp,
+                "recorded_at": datetime.now(timezone.utc).isoformat(),
+                "directive": directive[:400],
+                "result": result[:400],
+                "success": success,
+                "action_type": action_type,
+            }
+        self._persist_history()
 
     # =========================================================================
     # 1. Multi-Agent Autonomous Delegation & Control

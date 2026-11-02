@@ -19,3 +19,5 @@
 
 .panel-tag.granted{color:#8ff0bb;border-color:#2f6a4c;background:#12241b}
 .panel-tag.granted svg{color:#74e0a5}
+
+.apartment-room{position:relative}.apartment-room-open{position:absolute;top:10px;right:10px;width:26px;height:26px;display:grid;place-items:center;border:1px solid var(--line);border-radius:7px;background:#10171f;color:#9ba9b5;cursor:pointer}.apartment-room-open:hover{color:#d9f7e8;border-color:#2f6a4c;background:#12241b}.apartment-room-body{display:grid;gap:6px;width:100%;text-align:left;background:transparent;border:0;color:inherit;cursor:pointer;padding:0}.apartment-room-body:focus-visible{outline:2px solid #74e0a5;outline-offset:2px;border-radius:8px}

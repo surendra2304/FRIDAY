@@ -720,16 +720,33 @@ export default function FridayCommandCenter() {
               {agents.map((agent) => {
                 const last = agentActivity?.recent_actions?.find((a) => a.target?.toUpperCase() === agent.name?.toUpperCase());
                 const isActive = agentActivity?.active_agent?.toLowerCase() === agent.id;
+                const siteUrl = `https://friday-universe.duckdns.org/${agent.id}`;
                 return (
                   <div key={agent.id} className={`apartment-room ${isActive ? "active" : ""} ${statusTone(agent.status)}`}>
-                    <div className="apartment-room-head">
-                      <span className={`status-dot ${statusTone(agent.status) === "good" ? "online" : statusTone(agent.status) === "bad" ? "offline" : "checking"}`} />
-                      <strong>{agent.name}</strong>
-                      <span className="apartment-room-id">{agent.id}</span>
-                    </div>
-                    <div className="apartment-room-status">{agent.status} · {typeof agent.latency_ms === "number" ? `${Math.round(agent.latency_ms)} ms` : "—"}</div>
-                    <div className="apartment-room-task">{last ? `${last.directive}` : "Idle — awaiting directive"}</div>
-                    {last && <div className={`apartment-room-result ${last.success ? "good" : "bad"}`}>{last.success ? "✓" : "✗"} {String(last.result ?? "").slice(0, 80)}</div>}
+                    <button
+                      type="button"
+                      className="apartment-room-open"
+                      onClick={() => window.open(siteUrl, "_blank", "noopener,noreferrer")}
+                      aria-label={`Open ${agent.name} site`}
+                      title={`Open ${agent.name} site`}
+                    >
+                      <ArrowUpRight size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      className="apartment-room-body"
+                      onClick={() => setSelectedAgent(selectedAgent === agent.id ? null : agent.id)}
+                      aria-label={`Show ${agent.name} details and send a task`}
+                    >
+                      <div className="apartment-room-head">
+                        <span className={`status-dot ${statusTone(agent.status) === "good" ? "online" : statusTone(agent.status) === "bad" ? "offline" : "checking"}`} />
+                        <strong>{agent.name}</strong>
+                        <span className="apartment-room-id">{agent.id}</span>
+                      </div>
+                      <div className="apartment-room-status">{agent.status} · {typeof agent.latency_ms === "number" ? `${Math.round(agent.latency_ms)} ms` : "—"}</div>
+                      <div className="apartment-room-task">{last ? `${last.directive}` : "Idle — awaiting directive"}</div>
+                      {last && <div className={`apartment-room-result ${last.success ? "good" : "bad"}`}>{last.success ? "✓" : "✗"} {String(last.result ?? "").slice(0, 80)}</div>}
+                    </button>
                   </div>
                 );
               })}
@@ -742,14 +759,6 @@ export default function FridayCommandCenter() {
                 <div className="section-heading-right"><span className="updated-at">{fleet?.timestamp ? `Checked ${formatTime(fleet.timestamp)}` : "No check yet"}</span><button className="subtle-button" onClick={() => void refresh(true)} disabled={refreshing}><RefreshCw size={14} className={refreshing ? "spin" : ""} />Refresh</button></div>
               </div>
               {fleetError ? <ErrorState title="Could not load the agent network" detail={fleetError} action={() => void refresh(true)} /> : !fleet ? <LoadingGrid /> : agents.length === 0 ? <EmptyState title="No agent status returned" detail="The FRIDAY API responded, but it did not return any agents." /> : <>
-                <div className="agent-grid">
-                  {agents.map((agent) => <button key={agent.id} className={`agent-card ${selectedAgent === agent.id ? "selected" : ""}`} onClick={() => setSelectedAgent(selectedAgent === agent.id ? null : agent.id)}>
-                    <div className="agent-card-top"><span className={`agent-status ${statusTone(agent.status)}`}><span className="status-dot" />{agent.status}</span><ArrowUpRight size={15} className="agent-open-icon" /></div>
-                    <div className="agent-name">{agent.name}</div>
-                    <div className="agent-role">{agent.role || "Connected service"}</div>
-                    <div className="agent-card-foot"><span>{typeof agent.latency_ms === "number" ? `${Math.round(agent.latency_ms)} ms` : "Latency —"}</span><span className="agent-id">{agent.id}</span></div>
-                  </button>)}
-                </div>
                 <div className="fleet-disclaimer"><ShieldCheck size={15} /><span>{fleet.note || "Reachability does not prove task execution, shared memory, or event delivery."}</span></div>
               </>}
               {selected && <div className="agent-detail">

@@ -52,6 +52,15 @@ from friday.ecosystem.fleet_client import fleet_client, CANONICAL_INTERNAL_MESH_
 from friday.memory.event_consumer import MemoraEventConsumer
 from friday.memory.memora_client import memora_client
 from friday.api.companion_ws import companion_multiplexer
+from friday.remote.laptop_bridge import (
+    ALLOWED_LAPTOP_COMMANDS,
+    LaptopBridgeTimeout,
+    LaptopDisconnected,
+    LaptopNotConnected,
+    laptop_bridge,
+    normalise_laptop_id,
+    shell_execution_enabled,
+)
 from friday.autonomous import autonomous_controller
 from friday.autonomous.repair_loop import repair_loop
 from friday.cognition.reflex import get_reflex_brain, parse_incident_scope
@@ -321,6 +330,26 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def _dashboard_cache_headers(request: Request, call_next):
+    """Make a redeploy impossible to miss.
+
+    The dashboard is a static export whose chunk names are content-stable but not
+    content-addressed. Without an explicit policy the browser is free to reuse a
+    previously cached ``index.html``, which keeps pointing at the old chunk list
+    -- the user then "does not see" changes that are live on the server. HTML is
+    therefore always revalidated, while the immutable chunks keep a long cache.
+    """
+    response = await call_next(request)
+    path = request.url.path
+    if "/_next/static/" in path:
+        response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
+    elif response.headers.get("content-type", "").startswith("text/html"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
 
 settings = get_settings()
 memora_client.base_url = str(getattr(settings, "memora_url", memora_client.base_url)).rstrip("/")
@@ -2097,6 +2126,159 @@ async def mcp_messages_endpoint(request: Request, _: None = Depends(_require_con
             "jsonrpc": "2.0",
             "error": {"code": -32000, "message": str(e)},
         })
+
+
+# =========================================================================
+# Laptop Reverse Tunnel (cloud FRIDAY -> owner's laptop)
+# =========================================================================
+#
+# The laptop dials out; the cloud never listens on the laptop's network. The
+# tunnel authenticates with the same control secret as the rest of this API and
+# only dispatches the allowlist enforced in `friday.remote.laptop_bridge`.
+
+
+class LaptopCommandRequest(BaseModel):
+    command: str
+    args: dict[str, Any] = {}
+    timeout: float = 30.0
+
+
+def _laptop_tunnel_authorised(websocket: WebSocket) -> bool:
+    """Authorise a laptop tunnel upgrade.
+
+    Browsers cannot be trusted to drive this route, so the origin policy applies
+    first. A non-browser client (the laptop bridge) presents either the control
+    API key or a short-lived control token, checked with the same helpers as
+    :func:`_require_control_access`. The query parameter exists because a
+    WebSocket client cannot always set custom headers.
+    """
+    if not _websocket_origin_allowed(websocket):
+        return False
+    expected = _control_secret()
+    if not _control_secret_is_usable(expected):
+        return False
+
+    provided = websocket.headers.get("x-friday-api-key", "")
+    authorization = websocket.headers.get("authorization", "")
+    if not provided and authorization.lower().startswith("bearer "):
+        provided = authorization[7:].strip()
+    if provided and hmac.compare_digest(provided, expected):
+        return True
+
+    candidates = (
+        websocket.query_params.get("token", ""),
+        websocket.headers.get("x-friday-control-token", ""),
+    )
+    return any(token and _control_token_valid(token, expected) for token in candidates)
+
+
+@app.get("/api/laptop/devices")
+async def laptop_devices_endpoint(_: None = Depends(_require_control_access)) -> dict[str, Any]:
+    """List every laptop that has ever connected, with current tunnel state."""
+    return {"devices": await laptop_bridge.list_devices()}
+
+
+@app.post("/api/laptop/{laptop_id}/command")
+async def laptop_command_endpoint(
+    laptop_id: str,
+    req: LaptopCommandRequest,
+    _: None = Depends(_require_control_access),
+) -> Any:
+    """Dispatch one allowlisted command to a connected laptop.
+
+    A missing tunnel is 404, a deadline is 504 and a tunnel that dies in flight
+    is 502. The evidence record is returned in every one of those cases so the
+    caller can see what actually happened.
+    """
+    try:
+        evidence = await laptop_bridge.execute(laptop_id, req.command, req.timeout, req.args)
+    except LaptopNotConnected as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except LaptopBridgeTimeout as exc:
+        return JSONResponse(status_code=504, content=exc.evidence)
+    except LaptopDisconnected as exc:
+        return JSONResponse(status_code=502, content=exc.evidence)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return evidence
+
+
+@app.websocket("/api/laptop/connect/{laptop_id}")
+async def laptop_connect_endpoint(websocket: WebSocket, laptop_id: str) -> None:
+    """Laptop-side reverse tunnel.
+
+    The socket is accepted before the 1008 close is sent because an ASGI server
+    turns a pre-accept close into an HTTP 403 handshake rejection, which hides
+    the authentication reason from the client.
+    """
+    if not _laptop_tunnel_authorised(websocket):
+        logger.warning("Rejected laptop tunnel: control authentication failed")
+        await websocket.accept()
+        await websocket.close(code=1008, reason="FRIDAY control authentication required")
+        return
+
+    try:
+        laptop_id = normalise_laptop_id(laptop_id)
+    except ValueError as exc:
+        await websocket.accept()
+        await websocket.close(code=1008, reason=str(exc))
+        return
+
+    await websocket.accept()
+    replaced = await laptop_bridge.register(laptop_id, websocket)
+    if replaced is not None:
+        try:
+            await replaced.websocket.close(code=1012, reason="Replaced by a newer laptop tunnel")
+        except Exception:
+            logger.debug("Previous laptop tunnel for %s was already closed", laptop_id)
+
+    try:
+        await websocket.send_json(
+            {
+                "type": "welcome",
+                "laptop_id": laptop_id,
+                "heartbeat_interval": 20.0,
+                "commands": sorted(ALLOWED_LAPTOP_COMMANDS),
+                "shell_enabled": shell_execution_enabled(),
+                "server_time": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+    except Exception as exc:
+        logger.warning("Laptop tunnel %s failed during welcome: %s", laptop_id, exc)
+        await laptop_bridge.unregister(laptop_id, websocket)
+        return
+
+    try:
+        while True:
+            try:
+                message = await websocket.receive_json()
+            except json.JSONDecodeError:
+                logger.warning("Laptop tunnel %s sent invalid JSON", laptop_id)
+                continue
+            if not isinstance(message, dict):
+                logger.warning("Laptop tunnel %s sent a non-object frame", laptop_id)
+                continue
+
+            kind = str(message.get("type") or "").strip().lower()
+            if kind in {"result", "command_result"}:
+                if not await laptop_bridge.resolve_result(laptop_id, message):
+                    logger.warning(
+                        "Laptop tunnel %s returned an unknown or expired request", laptop_id
+                    )
+            elif kind in {"ping", "heartbeat"}:
+                await laptop_bridge.touch(laptop_id)
+                await websocket.send_json(
+                    {"type": "pong", "server_time": datetime.now(timezone.utc).isoformat()}
+                )
+            else:
+                # `hello` and any future informational frame only refresh liveness.
+                await laptop_bridge.touch(laptop_id)
+    except WebSocketDisconnect:
+        logger.info("Laptop tunnel disconnected: %s", laptop_id)
+    except Exception as exc:
+        logger.warning("Laptop tunnel error for %s: %s", laptop_id, exc)
+    finally:
+        await laptop_bridge.unregister(laptop_id, websocket)
 
 
 # Mount the static command center after API routes so it never shadows the API.
