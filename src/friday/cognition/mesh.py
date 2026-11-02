@@ -127,7 +127,7 @@ def build_contracts(fleet: Any | None = None, settings: Any | None = None) -> di
 
         fleet = FleetClient(settings=settings) if settings is not None else FleetClient()
 
-    stratex_health = os.getenv("FRIDAY_STRATEX_HEALTH_PATH", "/api/status")
+    stratex_health = os.getenv("FRIDAY_STRATEX_HEALTH_PATH", "/health")
     return {
         "inference": PeerContract(
             name="inference",

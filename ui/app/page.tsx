@@ -443,7 +443,9 @@ export default function FridayCommandCenter() {
         window.localStorage.setItem(API_BASE_SESSION_KEY, "https://friday-universe.duckdns.org");
       }
       if (!window.localStorage.getItem(API_TOKEN_SESSION_KEY)) {
-        window.localStorage.setItem(API_TOKEN_SESSION_KEY, "friday_Kh3angM6yJ_t41HROO3rmeGyzW1Ihiex45tf");
+        // The control session is the dashboard's credential; the server key is
+        // never shipped in the client bundle.
+        void ensureControlSession(true).then((token) => setControlReady(Boolean(token)));
       }
     }
     void ensureControlSession().then((token) => setControlReady(Boolean(token)));
@@ -649,7 +651,10 @@ export default function FridayCommandCenter() {
             <div className="command-panel-top">
               <div className="assistant-avatar"><AudioLines size={20} /></div>
               <div><strong>Talk to FRIDAY</strong><span>Commands run on the connected FRIDAY host.</span></div>
-              <span className="panel-tag"><LockKeyhole size={12} />Control access required</span>
+              <span className={`panel-tag${controlReady ? " granted" : ""}`}>
+                <LockKeyhole size={12} />
+                {controlReady ? "Control access granted" : "Requesting control access…"}
+              </span>
             </div>
             <form className="command-form" onSubmit={submitCommand}>
               <textarea
@@ -709,7 +714,7 @@ export default function FridayCommandCenter() {
           <section className="apartment-surface surface" id="apartment">
             <div className="section-heading">
               <div><div className="section-kicker">LIVE FLEET</div><h2>Agent apartment</h2></div>
-              <div className="section-heading-right"><span className="updated-at">{agentActivity?.active_agent ? `Active: ${agentActivity.active_agent}` : "All idle"}</span></div>
+              <div className="section-heading-right"><span className="updated-at">{agentActivity?.active_agent ? `Active: ${agentActivity.active_agent}` : "All agents standing by"}</span></div>
             </div>
             <div className="apartment-grid">
               {agents.map((agent) => {

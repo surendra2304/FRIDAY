@@ -236,7 +236,7 @@ class FleetClient:
             headers = {}
             if self.stratex_key:
                 headers = {"X-API-Key": self.stratex_key, "Authorization": f"Bearer {self.stratex_key}"}
-            health_path = os.getenv("FRIDAY_STRATEX_HEALTH_PATH", "/api/status")
+            health_path = os.getenv("FRIDAY_STRATEX_HEALTH_PATH", "/health")
             r = await client.get(f"{self.stratex_url}{health_path}", headers=headers, timeout=3.5)
             lat = int((time.time() - t0) * 1000)
             status = _classify_health_response(r)

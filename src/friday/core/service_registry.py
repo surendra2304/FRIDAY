@@ -137,7 +137,10 @@ class ServiceRegistry:
                 api_key=stratex_key,
                 enabled=True,
                 required=False,
-                health_path=os.getenv("FRIDAY_STRATEX_HEALTH_PATH", "/api/status"),
+                # Stratex's /api/status blocks (measured >10s) while /health
+                # answers in ~140ms. A liveness probe must not wait on a
+                # reporting endpoint that can hang.
+                health_path=os.getenv("FRIDAY_STRATEX_HEALTH_PATH", "/health"),
                 timeout_sec=4.0,
             ),
             "intelx": ServiceConfig(
