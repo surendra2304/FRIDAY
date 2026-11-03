@@ -114,7 +114,9 @@ class EnhancedAutonomousController:
 
         # Real multi-agent plan template: chains specialists so that a single
         # high-level goal results in actual work being performed by each agent
-        # instead of repeated status probes.
+        # instead of repeated status probes. Stratex is deliberately not in the
+        # research chain: its task protocol only accepts supervision verbs, so a
+        # research "trading implications" step would be padded work.
         _research_kw = ("research", "investigate", "analyze", "study", "learn", "explore")
         _followup_kw = ("store", "save", "memory", "report", "trading", "market",
                         "crypto", "findings", "results")
@@ -127,21 +129,15 @@ class EnhancedAutonomousController:
             ))
             plan.add_subtask(SubTask(
                 id="st_2",
-                description=f"Evaluate trading implications and market impact of the research findings: {goal}",
-                agent="STRATEX",
+                description=f"Store the research findings and analysis in persistent memory: {goal}",
+                agent="MEMORA",
                 dependencies=["st_1"],
             ))
             plan.add_subtask(SubTask(
                 id="st_3",
-                description=f"Store the research findings and analysis in persistent memory: {goal}",
-                agent="MEMORA",
-                dependencies=["st_2"],
-            ))
-            plan.add_subtask(SubTask(
-                id="st_4",
-                description=f"Generate a report summarizing the research findings: {goal}",
+                description="Report website health and operational status for the public site",
                 agent="CORTEX",
-                dependencies=["st_3"],
+                dependencies=["st_2"],
             ))
 
         # Check for trading-related goals
@@ -346,6 +342,31 @@ class EnhancedAutonomousController:
         logger.info(f"Created plan {plan_id} with {len(plan.subtasks)} subtasks")
         return plan
 
+    _FAILED_PAYLOAD_STATES = {
+        "REFUSED", "FORBIDDEN", "BLOCKED", "DENIED", "FAILED", "ERROR",
+        "UNVERIFIED", "PENDING", "TIMEOUT",
+    }
+
+    @classmethod
+    def _payload_failure(cls, result: Any) -> str:
+        """Return the peer's failure status, or "" when the work really ran.
+
+        A mesh dispatch can return a normal dict whose status is REFUSED or
+        FORBIDDEN (403). Treating any non-empty dict as success marked those
+        subtasks COMPLETED and made the dashboard claim work that never happened.
+        """
+        if not isinstance(result, dict):
+            return ""
+        status = str(result.get("status") or "").strip().upper()
+        if status in cls._FAILED_PAYLOAD_STATES:
+            return status
+        if result.get("success") is False:
+            return "FAILED"
+        error = str(result.get("error") or "").strip()
+        if error and error.upper() not in ("NONE", "NULL"):
+            return "FAILED"
+        return ""
+
     async def execute_subtask(self, subtask: SubTask) -> bool:
         """Execute a single sub-task."""
         subtask.status = "RUNNING"
@@ -360,9 +381,13 @@ class EnhancedAutonomousController:
             result = await self._dispatch_to_agent(subtask.agent, subtask.description)
 
             if result:
+                failure = self._payload_failure(result)
+                if failure:
+                    raise RuntimeError(f"Agent returned {failure}")
                 subtask.status = "COMPLETED"
                 subtask.result = result
                 subtask.completed_at = time.time()
+                self._record_action(subtask, result, True)
                 logger.info(f"Subtask {subtask.id} completed successfully")
                 return True
             else:
@@ -375,12 +400,67 @@ class EnhancedAutonomousController:
             if subtask.attempts >= subtask.max_attempts:
                 subtask.status = "FAILED"
                 subtask.completed_at = time.time()
+                self._record_action(subtask, str(e), False)
             else:
                 subtask.status = "PENDING"
                 # Exponential backoff retry
                 await asyncio.sleep(2 ** subtask.attempts)
 
             return False
+
+    @staticmethod
+    def _summarise_result(result: Any, limit: int = 300) -> str:
+        """Turn an agent envelope into one honest line for the activity log."""
+        if isinstance(result, dict):
+            for key in ("summary", "spoken_summary", "stage", "status", "error"):
+                value = result.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()[:limit]
+            payload = result.get("result")
+            if isinstance(payload, dict):
+                for key in ("spoken_summary", "text_response", "summary", "stage"):
+                    value = payload.get(key)
+                    if isinstance(value, str) and value.strip():
+                        return value.strip()[:limit]
+            return json.dumps(result, default=str)[:limit]
+        return str(result)[:limit]
+
+    def _record_action(self, subtask: "SubTask", result: Any, success: bool) -> None:
+        """Mirror daemon work into the shared activity history and live stream.
+
+        The daemon dispatches through the mesh, bypassing the controller's own
+        action log. Without this the dashboard shows idle rooms while agents are
+        actually working, which reads as fake progress.
+        """
+        try:
+            from friday.autonomous.controller import autonomous_controller
+
+            summary = self._summarise_result(result)
+            autonomous_controller.record_agent_action(
+                agent=subtask.agent,
+                directive=subtask.description,
+                result=summary,
+                success=bool(success) and self._result_is_success(summary, result),
+            )
+        except Exception as exc:  # never let logging break execution
+            logger.debug("Could not record agent action for %s: %s", subtask.agent, exc)
+
+    @staticmethod
+    def _result_is_success(summary: str, result: Any) -> bool:
+        """A dispatch that returned a refusal is not a successful task.
+
+        Agents such as Stratex answer out-of-domain asks with a REFUSED status.
+        Recording that as success would make the activity feed lie.
+        """
+        head = (summary or "").strip().upper()
+        if head.startswith(("REFUSED", "DENIED", "FAILED", "ERROR", "UNVERIFIED")):
+            return False
+        if isinstance(result, dict):
+            if result.get("success") is False:
+                return False
+            if str(result.get("error") or "").strip():
+                return False
+        return True
 
     def _get_peer_mesh(self) -> Any:
         """Lazily build (or reuse a monkeypatched) verified task mesh."""
@@ -454,6 +534,23 @@ class EnhancedAutonomousController:
     async def execute_plan(self, plan: ExecutionPlan) -> ExecutionPlan:
         """Execute a complete plan with dependency resolution."""
         logger.info(f"Executing plan: {plan.goal[:80]} (subtasks: {len(plan.subtasks)})")
+        if not plan.subtasks:
+            # An empty plan means no agent did anything. Reporting COMPLETED here
+            # is the fake-success path: the goal returns in under a second with
+            # zero work. Fail loudly instead.
+            logger.error("Plan %s produced no subtasks; refusing to report success", plan.goal[:80])
+            plan.status = "FAILED"
+            plan.completed_at = time.time()
+            self.execution_history.append({
+                "plan_id": getattr(plan, "plan_id", "") or f"plan_{int(plan.created_at * 1000)}",
+                "goal": plan.goal,
+                "status": plan.status,
+                "completed": 0,
+                "failed": 0,
+                "error": "No subtasks were generated for this goal",
+            })
+            return plan
+
         for st in plan.subtasks:
             logger.info(f"  Subtask: {st.id} deps={st.dependencies} status={st.status}")
         plan.status = "RUNNING"

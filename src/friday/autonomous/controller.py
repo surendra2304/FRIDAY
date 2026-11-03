@@ -320,6 +320,30 @@ class AutonomousController:
         except Exception:
             pass
 
+    def record_agent_action(
+        self,
+        agent: str,
+        directive: str,
+        result: str,
+        success: bool,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        """Public hook for work performed outside the controller's own dispatch.
+
+        The autonomous daemon talks to specialists through the mesh directly, so
+        without this its work never reaches the shared activity history, the live
+        WebSocket stream, or the dashboard. Recording it here keeps the agent
+        rooms honest.
+        """
+        self._log_action(
+            action_type="AGENT_CONTROL",
+            target=str(agent or "").strip().upper(),
+            directive=str(directive or ""),
+            result=str(result or ""),
+            success=bool(success),
+            details=details,
+        )
+
     # =========================================================================
     # 1. Multi-Agent Autonomous Delegation & Control
     # =========================================================================

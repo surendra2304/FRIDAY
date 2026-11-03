@@ -1,0 +1,1207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark" />
+<title>FRIDAY — Command Center</title>
+<style>
+  :root{
+    --bg:#06090d;
+    --bg-elev:#0a1016;
+    --panel:#0c1319;
+    --panel-2:#0f1820;
+    --line:#1b2833;
+    --line-soft:#152029;
+    --text:#e9f0f6;
+    --muted:#7f93a3;
+    --muted-2:#5d7080;
+    --mint:#7cf0b8;
+    --mint-dim:#2f7a5b;
+    --cyan:#6bc9e8;
+    --warn:#f3c46a;
+    --danger:#ff7d7d;
+    --violet:#b6a4ff;
+    --r-sm:8px; --r-md:12px; --r-lg:16px;
+    --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px; --sp-8:32px;
+    --mono:ui-monospace,SFMono-Regular,"Cascadia Mono",Menlo,Consolas,monospace;
+    --shadow:0 18px 48px rgba(0,0,0,.45);
+  }
+  *{box-sizing:border-box;min-width:0}
+  html{background:var(--bg)}
+  body{
+    margin:0;min-height:100vh;color:var(--text);
+    font:14px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background:
+      radial-gradient(1100px 520px at 50% -260px, rgba(58,170,132,.20), transparent 70%),
+      radial-gradient(800px 400px at 100% 0, rgba(70,140,190,.10), transparent 60%),
+      var(--bg);
+  }
+  a{color:inherit}
+  button{font:inherit;color:inherit}
+  button,input,textarea,select{font:inherit}
+  :focus-visible{outline:2px solid var(--mint);outline-offset:2px}
+  ::selection{background:rgba(124,240,184,.28)}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:#22323f;border-radius:99px;border:2px solid var(--bg)}
+  ::-webkit-scrollbar-track{background:transparent}
+  .wrap{max-width:1440px;margin:0 auto;padding:0 24px 40px}
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    position:sticky;top:0;z-index:40;
+    border-bottom:1px solid var(--line);
+    background:rgba(6,9,13,.86);
+    backdrop-filter:blur(14px);
+  }
+  .topbar-in{max-width:1440px;margin:0 auto;padding:12px 24px;display:flex;align-items:center;gap:16px}
+  .brand{display:flex;align-items:center;gap:12px;text-decoration:none;flex:0 0 auto}
+  .brand-mark{
+    width:40px;height:40px;border-radius:12px;display:grid;place-items:center;
+    border:1px solid #2c6a55;color:var(--mint);font-weight:800;letter-spacing:.04em;
+    background:linear-gradient(150deg,#0f2b25,#091a16);
+    box-shadow:inset 0 0 24px rgba(124,240,184,.16), 0 0 0 1px rgba(124,240,184,.05);
+  }
+  .brand-text strong{display:block;font-size:15px;letter-spacing:.22em;font-weight:750;line-height:1.1}
+  .brand-text small{display:block;color:var(--muted);font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;margin-top:3px}
+  .top-nav{display:flex;align-items:center;gap:4px;margin-left:8px;flex-wrap:wrap}
+  .top-nav a{
+    text-decoration:none;color:var(--muted);font-size:12.5px;padding:7px 11px;border-radius:8px;
+    border:1px solid transparent;transition:.15s
+  }
+  .top-nav a:hover{color:var(--text);background:#0d151c;border-color:var(--line)}
+  .top-right{margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .chip{
+    display:inline-flex;align-items:center;gap:7px;padding:6px 11px;border-radius:99px;
+    border:1px solid var(--line);background:#0b1218;font-size:11.5px;white-space:nowrap
+  }
+  .chip .dot{width:7px;height:7px;border-radius:99px;background:var(--muted-2)}
+  .chip.good .dot{background:var(--mint);box-shadow:0 0 9px rgba(124,240,184,.7)}
+  .chip.warn .dot{background:var(--warn)}
+  .chip.bad .dot{background:var(--danger)}
+  .clock{font-family:var(--mono);font-size:11.5px;color:var(--muted);white-space:nowrap}
+  .lang-switch{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:#0b1218}
+  .mode-switch{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:#0b1218}
+  .mode-switch button{border:0;background:transparent;color:var(--muted);padding:8px 12px;font-size:11.5px;font-weight:600;cursor:pointer}
+  .mode-switch button[aria-pressed="true"]{background:#12241f;color:var(--mint)}
+  .lang-switch button{
+    border:0;background:transparent;color:var(--muted);padding:6px 10px;font-size:11.5px;cursor:pointer
+  }
+  .lang-switch button[aria-pressed="true"]{background:#12241f;color:var(--mint)}
+
+  /* ---------- hero ---------- */
+  .hero{margin:24px 0 20px}
+  .hero-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+  .eyebrow{display:flex;align-items:center;gap:8px;color:var(--mint);font-size:10.5px;font-weight:700;letter-spacing:.18em;text-transform:uppercase}
+  .eyebrow::before{content:"";width:16px;height:2px;background:currentColor;border-radius:2px}
+  h1{margin:6px 0 0;font-size:clamp(26px,3.6vw,40px);line-height:1.08;letter-spacing:-.04em;font-weight:700}
+  h1 span{color:var(--mint)}
+  .hero-sub{margin:8px 0 0;color:var(--muted);font-size:13.5px;max-width:62ch}
+
+  .console{
+    border:1px solid var(--line);border-radius:var(--r-lg);background:linear-gradient(180deg,#0b141a,#080e13);
+    box-shadow:var(--shadow);overflow:hidden
+  }
+  .console-grid{display:grid;grid-template-columns:minmax(0,1fr) 190px;gap:0}
+  .console-main{padding:18px;display:flex;flex-direction:column;gap:12px;border-right:1px solid var(--line)}
+  .console-main textarea{
+    width:100%;min-height:86px;resize:vertical;border:1px solid var(--line);border-radius:var(--r-md);
+    background:#070d12;color:var(--text);padding:14px 15px;line-height:1.55;font-size:14.5px
+  }
+  .console-main textarea::placeholder{color:#5a6d7c}
+  .console-main textarea:focus{outline:none;border-color:#356e5b;box-shadow:0 0 0 3px rgba(124,240,184,.12)}
+  .console-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .hint{color:var(--muted-2);font-size:11.5px}
+  .kbd{
+    font-family:var(--mono);font-size:10.5px;border:1px solid var(--line);background:#101a22;
+    border-radius:5px;padding:1px 5px;color:#9db3c2
+  }
+  .quick{display:flex;gap:8px;flex-wrap:wrap}
+  .quick button{
+    border:1px solid var(--line);background:#0b1319;color:#a9bdca;border-radius:99px;
+    padding:6px 11px;font-size:11.5px;cursor:pointer;transition:.15s
+  }
+  .quick button:hover{color:var(--mint);border-color:#2f6a55;background:#0d1a18}
+
+  .voice-orb{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+    padding:18px 14px;background:radial-gradient(220px 160px at 50% 45%, rgba(124,240,184,.10), transparent 70%)
+  }
+  .mic-btn{
+    width:84px;height:84px;border-radius:50%;border:1px solid #2f6a55;cursor:pointer;
+    background:radial-gradient(circle at 35% 30%,#14352b,#0a1a15 70%);
+    color:var(--mint);display:grid;place-items:center;position:relative;transition:.2s
+  }
+  .mic-btn:hover{transform:translateY(-1px);border-color:#4b9c7c}
+  .mic-btn svg{width:30px;height:30px}
+  .mic-btn.listening{border-color:var(--mint);box-shadow:0 0 0 6px rgba(124,240,184,.10)}
+  .mic-btn.listening::after{
+    content:"";position:absolute;inset:-6px;border-radius:50%;border:1px solid rgba(124,240,184,.5);
+    animation:pulse 1.6s ease-out infinite
+  }
+  @keyframes pulse{0%{transform:scale(.92);opacity:.9}100%{transform:scale(1.18);opacity:0}}
+  .voice-state{font-size:11.5px;color:var(--muted);text-align:center;line-height:1.4}
+  .voice-state strong{display:block;color:var(--text);font-size:12.5px;font-weight:600}
+  .speak-toggle{
+    display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted);cursor:pointer;user-select:none
+  }
+  .speak-toggle input{accent-color:#7cf0b8}
+
+  .reply{
+    display:none;margin-top:14px;border:1px solid #24483b;border-radius:var(--r-md);
+    background:linear-gradient(180deg,#0b1a16,#0a1411);padding:14px 16px
+  }
+  .reply.show{display:block}
+  .reply-label{display:flex;align-items:center;gap:7px;font-size:10px;font-weight:700;letter-spacing:.16em;color:var(--mint);text-transform:uppercase;margin-bottom:6px}
+  .reply-body{margin:0;font-size:13.5px;line-height:1.62;white-space:pre-wrap;overflow-wrap:anywhere}
+  .reply-meta{margin-top:8px;color:var(--muted-2);font-size:11px;font-family:var(--mono)}
+
+  /* ---------- section ---------- */
+  section{margin-top:28px}
+  .sec-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:12px}
+  .sec-title{display:flex;align-items:center;gap:10px}
+  .sec-title h2{margin:0;font-size:16px;letter-spacing:-.01em;font-weight:650}
+  .sec-title .count{font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--line);padding:1px 7px;border-radius:99px}
+  .sec-sub{color:var(--muted);font-size:12px}
+  .sec-actions{display:flex;align-items:center;gap:8px}
+
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:10px;
+    border:1px solid var(--line);background:#0c141a;color:#c4d6e2;padding:9px 13px;
+    font-size:12.5px;font-weight:600;cursor:pointer;transition:.15s;white-space:nowrap
+  }
+  .btn:hover:not(:disabled){border-color:#31465a;background:#111c24;color:#e6f2fa}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn.primary{border-color:#2f6a55;background:#10241d;color:#c9f7e3}
+  .btn.primary:hover:not(:disabled){background:#143025;border-color:#4b9c7c}
+  .btn.danger{border-color:#5c2c2c;background:#1d1010;color:#ffc9c9}
+  .btn.danger:hover:not(:disabled){background:#281414}
+  .btn.sm{padding:6px 10px;font-size:11.5px;border-radius:8px}
+  .btn.icon{padding:8px;width:34px;height:34px}
+
+  /* ---------- agents ---------- */
+  .agent-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:1fr;gap:12px}
+  @media(max-width:1240px){.agent-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+  @media(max-width:900px){.agent-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media(max-width:560px){.agent-grid{grid-template-columns:1fr}}
+
+  .agent{
+    position:relative;display:flex;flex-direction:column;gap:10px;
+    border:1px solid var(--line);border-radius:var(--r-md);background:var(--panel);
+    padding:14px;transition:.18s
+  }
+  .agent:hover{border-color:#2a3e4e;background:var(--panel-2)}
+  .agent.active{border-color:#3f8a6c;box-shadow:0 0 0 1px rgba(124,240,184,.25),0 10px 30px rgba(0,0,0,.35)}
+  .agent-top{display:flex;align-items:flex-start;gap:10px}
+  .agent-icon{
+    width:36px;height:36px;flex:0 0 auto;border-radius:10px;display:grid;place-items:center;
+    border:1px solid var(--line);background:#0a1218;color:var(--mint)
+  }
+  .agent-id{min-width:0;flex:1}
+  .agent-name{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:650;line-height:1.2}
+  .agent-role{color:var(--muted);font-size:11px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .status-dot{width:8px;height:8px;border-radius:99px;background:var(--muted-2);flex:0 0 auto}
+  .status-dot.on{background:var(--mint);box-shadow:0 0 8px rgba(124,240,184,.7)}
+  .status-dot.off{background:var(--danger)}
+  .agent-body{display:flex;flex-direction:column;gap:6px;flex:1}
+  .agent-task{
+    font-size:11.5px;color:#b9cdd9;line-height:1.45;min-height:34px;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere
+  }
+  .agent-task.idle{color:var(--muted-2);font-style:italic}
+  .agent-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;border-top:1px solid var(--line-soft);padding-top:9px}
+  .pill{font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;padding:3px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+  .pill.on{color:var(--mint);border-color:#2b5f4b;background:#0c1f19}
+  .pill.off{color:var(--danger);border-color:#532c2c;background:#1b1010}
+  .pill.warn{color:var(--warn);border-color:#4d4026;background:#191509}
+  .lat{font-family:var(--mono);font-size:10.5px;color:var(--muted-2)}
+  .agent-actions{display:flex;gap:6px}
+
+  /* ---------- panels ---------- */
+  .cols{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:14px}
+  @media(max-width:980px){.cols{grid-template-columns:1fr}}
+  .panel{border:1px solid var(--line);border-radius:var(--r-md);background:var(--panel);overflow:hidden}
+  .panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 15px;border-bottom:1px solid var(--line-soft)}
+  .panel-title{display:flex;align-items:center;gap:9px;font-size:12.5px;font-weight:650}
+  .panel-title svg{color:var(--muted)}
+  .panel-body{padding:14px 15px}
+  .panel-body.tight{padding:0}
+
+  .feed{max-height:400px;overflow:auto}
+  .feed-item{display:grid;grid-template-columns:26px minmax(0,1fr);gap:10px;padding:11px 15px;border-bottom:1px solid var(--line-soft)}
+  .feed-item:last-child{border-bottom:0}
+  .feed-ico{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;border:1px solid var(--line);color:var(--muted);background:#0a1218}
+  .feed-item.ok .feed-ico{color:var(--mint);border-color:#2b5f4b;background:#0b1a15}
+  .feed-item.err .feed-ico{color:var(--danger);border-color:#532c2c;background:#1a1010}
+  .feed-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .feed-agent{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mint)}
+  .feed-time{font-family:var(--mono);font-size:10px;color:var(--muted-2)}
+  .feed-text{font-size:11.5px;color:#b9cdd9;line-height:1.5;margin-top:3px;overflow-wrap:anywhere;
+    display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .empty{padding:26px 16px;text-align:center;color:var(--muted-2);font-size:12px}
+
+  .kv{display:grid;gap:10px}
+  .kv-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .kv-row span{color:var(--muted);font-size:12px}
+  .kv-row strong{font-family:var(--mono);font-size:13px;font-weight:600}
+  .bar{height:6px;border-radius:99px;background:#101a22;overflow:hidden;margin-top:5px}
+  .bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#3fbf8d,#7cf0b8)}
+  .bar.warn i{background:linear-gradient(90deg,#c9963f,#f3c46a)}
+  .stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px}
+  .stat{border:1px solid var(--line);border-radius:10px;background:#0a1218;padding:10px 11px}
+  .stat b{display:block;font-family:var(--mono);font-size:18px;font-weight:650;line-height:1.2}
+  .stat small{display:block;color:var(--muted);font-size:10.5px;margin-top:3px;letter-spacing:.04em}
+
+  /* ---------- forms ---------- */
+  .form-row{display:flex;gap:8px;flex-wrap:wrap}
+  .input{
+    flex:1 1 220px;border:1px solid var(--line);border-radius:9px;background:#070d12;color:var(--text);
+    padding:10px 12px;font-size:12.5px
+  }
+  .input:focus{outline:none;border-color:#356e5b;box-shadow:0 0 0 3px rgba(124,240,184,.10)}
+  select.input{flex:0 0 auto;min-width:140px}
+  label.field{display:grid;gap:6px;font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted-2)}
+  .out{
+    margin:12px 0 0;border:1px solid var(--line);border-radius:9px;background:#070d12;
+    padding:12px;font-family:var(--mono);font-size:11.5px;line-height:1.55;color:#c6dbe6;
+    max-height:260px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere
+  }
+  .device{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-soft)}
+  .device:last-child{border-bottom:0}
+  .device-id{font-family:var(--mono);font-size:12px}
+  .device small{color:var(--muted);font-size:10.5px}
+
+  /* ---------- modal ---------- */
+  .modal-back{position:fixed;inset:0;z-index:80;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(2,5,8,.72);backdrop-filter:blur(4px)}
+  .modal-back.show{display:flex}
+  .modal{width:min(560px,100%);border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel);box-shadow:var(--shadow);overflow:hidden}
+  .modal-head{display:flex;align-items:flex-start;gap:12px;padding:16px 18px;border-bottom:1px solid var(--line)}
+  .modal-head h3{margin:0;font-size:16px}
+  .modal-head p{margin:3px 0 0;color:var(--muted);font-size:12px}
+  .modal-body{padding:16px 18px;display:grid;gap:12px}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px;padding:0 18px 16px}
+
+  .footer{margin-top:34px;padding-top:16px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;color:var(--muted-2);font-size:11px}
+  .dotline{display:flex;align-items:center;gap:7px}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+  }
+  @media (max-width:760px){
+    .wrap{padding:0 14px 32px}
+    .topbar-in{padding:10px 14px}
+    .top-nav{display:none}
+    .console-grid{grid-template-columns:1fr}
+    .console-main{border-right:0;border-bottom:1px solid var(--line)}
+    .voice-orb{flex-direction:row;justify-content:flex-start;gap:16px;padding:14px 18px}
+    .mic-btn{width:60px;height:60px}
+    .mic-btn svg{width:24px;height:24px}
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-in">
+    <a class="brand" href="./">
+      <span class="brand-mark">F</span>
+      <span class="brand-text">
+        <strong>FRIDAY</strong>
+        <small data-i18n="brand.sub">Sovereign command</small>
+      </span>
+    </a>
+    <nav class="top-nav">
+      <a href="#console" data-i18n="nav.command">Command</a>
+      <a href="#agents" data-i18n="nav.agents">Agents</a>
+      <a href="#laptop" data-i18n="nav.laptop">Laptop</a>
+      <a href="#system" data-i18n="nav.system">System</a>
+      <a href="#voice" data-i18n="nav.voice">Voice</a>
+    </nav>
+    <div class="top-right">
+      <span class="chip" id="fleetChip"><span class="dot"></span><span id="fleetChipText">Connecting</span></span>
+      <span class="chip" id="autonomyChip"><span class="dot"></span><span id="autonomyChipText">Autonomy</span></span>
+      <span class="clock" id="clock">--:--:--</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div class="hero" id="console">
+    <div class="hero-head">
+      <div>
+        <div class="eyebrow" data-i18n="hero.eyebrow">Personal command center</div>
+        <h1 data-i18n-html="hero.title">Talk to <span>FRIDAY</span></h1>
+        <p class="hero-sub" data-i18n="hero.sub">Speak or type a goal. FRIDAY plans it, dispatches the right specialists, and shows you exactly what each one did.</p>
+      </div>
+      <div class="sec-actions">
+        <button class="btn" type="button" id="repairBtn" data-i18n="hero.repair">Run diagnostics</button>
+      </div>
+    </div>
+
+    <div class="console">
+      <div class="console-grid">
+        <div class="console-main">
+          <textarea id="commandInput" rows="3" data-i18n-placeholder="command.placeholder" placeholder="e.g. Research crypto market conditions, store the findings in memory, and give me a short report"></textarea>
+          <div class="console-actions">
+            <div class="mode-switch" role="group" aria-label="Execution mode">
+              <button type="button" data-mode="execute" aria-pressed="true">Execute</button>
+              <button type="button" data-mode="ask" aria-pressed="false">Ask</button>
+            </div>
+            <button class="btn primary" type="button" id="sendBtn">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+              <span data-i18n="command.send">Send to FRIDAY</span>
+            </button>
+            <span class="hint"><span class="kbd">Ctrl</span> + <span class="kbd">Enter</span></span>
+            <div class="quick">
+              <button type="button" data-quick="Research the current crypto market and store the findings in memory">Crypto research</button>
+              <button type="button" data-quick="Check every agent and report which ones are actually working">Fleet check</button>
+              <button type="button" data-quick="Give me a status report on the trading book and open positions">Trading status</button>
+            </div>
+          </div>
+        </div>
+        <div class="voice-orb">
+          <button class="mic-btn" type="button" id="micBtn" aria-label="Talk to FRIDAY">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+              <rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v4"/><path d="M8 22h8"/>
+            </svg>
+          </button>
+          <div class="voice-state" id="voiceState">
+            <strong data-i18n="voice.talk">Talk to FRIDAY</strong>
+            <span data-i18n="voice.tap">Tap the mic and speak</span>
+          </div>
+          <label class="speak-toggle"><input type="checkbox" id="speakReplies" checked /> <span data-i18n="voice.speakReplies">Speak replies</span></label>
+        </div>
+      </div>
+    </div>
+
+    <div class="reply" id="replyBox">
+      <div class="reply-label"><span>FRIDAY</span><span id="replyAgent"></span></div>
+      <p class="reply-body" id="replyText"></p>
+      <div class="reply-meta" id="replyMeta"></div>
+    </div>
+  </div>
+
+  <section id="agents">
+    <div class="sec-head">
+      <div class="sec-title">
+        <h2 data-i18n="agents.title">Agent apartment</h2>
+        <span class="count" id="agentCount">9</span>
+        <span class="sec-sub" data-i18n="agents.sub">Live rooms — click one to send it a task</span>
+      </div>
+      <div class="sec-actions">
+        <button class="btn sm" type="button" id="refreshBtn" data-i18n="common.refresh">Refresh</button>
+      </div>
+    </div>
+    <div class="agent-grid" id="agentGrid"></div>
+  </section>
+
+  <section id="ops">
+    <div class="cols">
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            <span data-i18n="activity.title">Live activity</span>
+          </div>
+          <span class="sec-sub" id="activityState">disconnected</span>
+        </div>
+        <div class="panel-body tight">
+          <div class="feed" id="feed"><div class="empty" data-i18n="activity.empty">No activity yet. Send a command to start.</div></div>
+        </div>
+      </div>
+
+      <div class="panel" id="system">
+        <div class="panel-head">
+          <div class="panel-title">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+            <span data-i18n="system.title">Host &amp; autonomy</span>
+          </div>
+          <button class="btn sm" type="button" id="toggleAutonomy" data-i18n="system.toggle">Toggle</button>
+        </div>
+        <div class="panel-body">
+          <div class="stat-grid">
+            <div class="stat"><b id="cpuVal">—</b><small data-i18n="system.cpu">CPU</small></div>
+            <div class="stat"><b id="ramVal">—</b><small data-i18n="system.ram">RAM</small></div>
+            <div class="stat"><b id="queueVal">0</b><small data-i18n="system.queue">Queue</small></div>
+          </div>
+          <div class="kv">
+            <div>
+              <div class="kv-row"><span>CPU</span><strong id="cpuTxt">—</strong></div>
+              <div class="bar" id="cpuBar"><i style="width:0%"></i></div>
+            </div>
+            <div>
+              <div class="kv-row"><span>RAM</span><strong id="ramTxt">—</strong></div>
+              <div class="bar" id="ramBar"><i style="width:0%"></i></div>
+            </div>
+            <div class="kv-row"><span data-i18n="system.agentsOnline">Agents online</span><strong id="onlineVal">—</strong></div>
+            <div class="kv-row"><span data-i18n="system.autonomy">Autonomous mode</span><strong id="autonomyVal">—</strong></div>
+            <div class="kv-row"><span data-i18n="system.host">Host</span><strong id="hostVal">—</strong></div>
+            <div class="kv-row"><span data-i18n="system.history">Recorded actions</span><strong id="historyVal">—</strong></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="laptop">
+    <div class="sec-head">
+      <div class="sec-title">
+        <h2 data-i18n="laptop.title">Laptop control</h2>
+        <span class="sec-sub" data-i18n="laptop.sub">Outbound tunnel only — no inbound ports</span>
+      </div>
+      <div class="sec-actions"><span class="pill" id="laptopPill">no device</span></div>
+    </div>
+    <div class="panel">
+      <div class="panel-body">
+        <div id="deviceList"><div class="empty" data-i18n="laptop.none">No laptop connected. Start the bridge on your machine, then refresh.</div></div>
+        <div class="form-row" style="margin-top:12px">
+          <button class="btn" type="button" data-laptop="system_info" data-i18n="laptop.info">System info</button>
+          <button class="btn" type="button" data-laptop="screenshot">Screenshot</button>
+          <button class="btn" type="button" data-laptop="list_files">List files</button>
+          <button class="btn" type="button" data-laptop="notify">Notify</button>
+        </div>
+        <div class="form-row" style="margin-top:8px">
+          <input class="input" id="urlInput" placeholder="https://example.com" />
+          <button class="btn" type="button" id="openUrlBtn" data-i18n="laptop.openUrl">Open URL</button>
+        </div>
+        <pre class="out" id="laptopOut" hidden></pre>
+      </div>
+    </div>
+  </section>
+
+  <section id="voice">
+    <div class="sec-head">
+      <div class="sec-title">
+        <h2 data-i18n="voice.title">Voice</h2>
+        <span class="sec-sub" data-i18n="voice.sub">Speech recognition plus FRIDAY's spoken replies</span>
+      </div>
+    </div>
+    <div class="cols">
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v4"/></svg>
+            <span data-i18n="voice.input">Microphone</span>
+          </div>
+          <span class="pill" id="speechPill">checking</span>
+        </div>
+        <div class="panel-body">
+          <p class="sec-sub" style="margin:0 0 10px">FRIDAY understands both English and Telugu. Choose the language you will speak, and the voice it answers with. The dashboard itself stays in English.</p>
+          <div class="out" id="transcript" style="min-height:88px">—</div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H2v6h4l5 4Z"/><path d="M15 9a4 4 0 0 1 0 6"/><path d="M18 6a8 8 0 0 1 0 12"/></svg>
+            <span data-i18n="voice.output">Speech output</span>
+          </div>
+          <span class="pill on" id="ttsPill">edge-tts</span>
+        </div>
+        <div class="panel-body">
+          <label class="field" for="sttLang">You speak
+            <select class="input" id="sttLang">
+              <option value="en-IN">English (India)</option>
+              <option value="te-IN">Telugu</option>
+            </select>
+          </label>
+          <label class="field" for="ttsVoice" style="margin-top:12px">FRIDAY speaks
+            <select class="input" id="ttsVoice">
+              <option value="en-IN-NeerjaNeural">English — Neerja (India)</option>
+              <option value="te-IN-ShrutiNeural">Telugu — Shruti</option>
+              <option value="te-IN-MohanNeural">Telugu — Mohan</option>
+            </select>
+          </label>
+          <div class="form-row" style="margin-top:12px">
+            <button class="btn primary" type="button" id="testVoice" data-i18n="voice.test">Test voice</button>
+            <button class="btn" type="button" id="stopVoice" data-i18n="voice.stop">Stop</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="footer">
+    <span class="dotline"><span class="status-dot on"></span> <span id="sessionState">control session</span></span>
+    <span id="baseLabel">—</span>
+    <span>FRIDAY Universe</span>
+  </div>
+</main>
+
+<div class="modal-back" id="modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-head">
+      <div>
+        <h3 id="modalTitle">Agent</h3>
+        <p id="modalSub">Dispatch a task</p>
+      </div>
+      <button class="btn icon" type="button" id="modalClose" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="field"><span data-i18n="modal.directive">Directive</span>
+        <textarea class="input" id="modalInput" rows="3" placeholder="What should this agent do?"></textarea>
+      </label>
+      <pre class="out" id="modalOut" hidden></pre>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" type="button" id="modalCancel" data-i18n="common.cancel">Cancel</button>
+      <button class="btn primary" type="button" id="modalDispatch" data-i18n="modal.dispatch">Dispatch</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ------------------------------------------------------------------ setup */
+  var BASE = (function () {
+    var p = window.location.pathname;
+    if (p === "/friday" || p.indexOf("/friday/") === 0) return "/friday";
+    return "";
+  })();
+
+  var AGENT_META = {
+    inference: { icon: "◈", role: "Cloud AI gateway" },
+    memora:    { icon: "◉", role: "Persistent memory" },
+    stratex:   { icon: "▲", role: "Algorithmic trading" },
+    intelx:    { icon: "◎", role: "Macro research" },
+    futuris:   { icon: "◇", role: "Predictive forecasting" },
+    cortex:    { icon: "▣", role: "Web operations" },
+    forge:     { icon: "⬢", role: "Software engineering" },
+    sentinel:  { icon: "⛨", role: "Cybersecurity" },
+    vyralx:    { icon: "▶", role: "Video production" }
+  };
+
+  var VOICE_KEY = "friday.voice";
+  var STT_KEY = "friday.sttLang";
+
+  /* ------------------------------------------------------------ api helpers */
+  var token = null;
+  var tokenExpiry = 0;
+
+  function api(path, options) {
+    options = options || {};
+    var headers = Object.assign({ "Content-Type": "application/json" }, options.headers || {});
+    if (token) headers["X-FRIDAY-Control-Token"] = token;
+    return fetch(BASE + path, Object.assign({}, options, { headers: headers, cache: "no-store" }))
+      .then(function (res) {
+        if (res.status === 401 || res.status === 403) { token = null; tokenExpiry = 0; }
+        return res.text().then(function (text) {
+          var body = null;
+          try { body = text ? JSON.parse(text) : null; } catch (e) { body = { raw: text }; }
+          if (!res.ok) {
+            var detail = body && (body.detail || body.error || body.message || body.reply);
+            var err = new Error(typeof detail === "string" ? detail : (res.status + " " + res.statusText));
+            err.payload = body;
+            err.status = res.status;
+            throw err;
+          }
+          return body;
+        });
+      });
+  }
+
+  function ensureToken() {
+    if (token && Date.now() / 1000 < tokenExpiry - 30) return Promise.resolve(token);
+    return fetch(BASE + "/api/control/session", { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error("control session " + r.status); return r.json(); })
+      .then(function (d) {
+        token = d.token;
+        tokenExpiry = Number(d.expires_at || 0) || (Date.now() / 1000 + 600);
+        setSession(true);
+        return token;
+      })
+      .catch(function (e) { setSession(false); throw e; });
+  }
+
+  function setSession(ok) {
+    var el = document.getElementById("sessionState");
+    if (el) el.textContent = ok ? "control session active" : "control session unavailable";
+  }
+
+  /* --------------------------------------------------------------- elements */
+  function $(id) { return document.getElementById(id); }
+
+  var feedEl = $("feed");
+  var gridEl = $("agentGrid");
+  var replyBox = $("replyBox");
+  var replyText = $("replyText");
+  var replyMeta = $("replyMeta");
+  var replyAgent = $("replyAgent");
+
+  function showReply(text, agent, meta) {
+    replyAgent.textContent = agent ? String(agent).toUpperCase() : "";
+    replyText.textContent = text || "(empty reply)";
+    replyMeta.textContent = meta || new Date().toLocaleTimeString();
+    replyBox.classList.add("show");
+  }
+
+  function voiceLang(voice) {
+    return String(voice || "").indexOf("te-") === 0 ? "te" : (String(voice || "").indexOf("hi-") === 0 ? "hi" : "en");
+  }
+
+  function speak(text) {
+    if (!$("speakReplies").checked) return;
+    var clean = String(text || "").replace(/\s+/g, " ").trim();
+    if (!clean) return;
+    if (clean.length > 900) clean = clean.slice(0, 900);
+    var voice = $("ttsVoice").value || "";
+    ensureToken().then(function () {
+      return fetch(BASE + "/api/voice/speak", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-FRIDAY-Control-Token": token },
+        body: JSON.stringify({ text: clean, voice: voice, lang: voiceLang(voice) })
+      });
+    }).then(function (res) {
+      if (!res.ok) throw new Error("tts " + res.status);
+      return res.blob();
+    }).then(function (blob) {
+      var url = URL.createObjectURL(blob);
+      var audio = new Audio(url);
+      audio.onended = function () { URL.revokeObjectURL(url); };
+      audio.play().catch(function () { URL.revokeObjectURL(url); });
+    }).catch(function (e) {
+      console.warn("speech output failed:", e.message);
+    });
+  }
+
+  /* -------------------------------------------------------------- agents UI */
+  var lastAgents = [];
+  var activityByAgent = {};
+
+  function renderAgents(agents) {
+    lastAgents = agents || [];
+    $("agentCount").textContent = String(lastAgents.length || 9);
+    gridEl.innerHTML = "";
+    lastAgents.forEach(function (a) {
+      var meta = AGENT_META[a.id] || { icon: "◇", role: a.role || "" };
+      var act = activityByAgent[a.id];
+      var online = String(a.status || "").toUpperCase() === "ONLINE";
+      var card = document.createElement("article");
+      card.className = "agent" + (act ? " active" : "");
+      card.setAttribute("data-agent", a.id);
+
+      var task = act && act.directive ? act.directive : "Idle — awaiting a directive";
+      var ok = act ? Boolean(act.success) : true;
+
+      card.innerHTML =
+        '<div class="agent-top">' +
+          '<span class="agent-icon">' + meta.icon + '</span>' +
+          '<div class="agent-id">' +
+            '<div class="agent-name"><span class="status-dot ' + (online ? "on" : "off") + '"></span>' + escapeHtml(a.name || a.id) + '</div>' +
+            '<div class="agent-role">' + escapeHtml(meta.role || a.role || "") + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="agent-body">' +
+          '<div class="agent-task' + (act && act.directive ? "" : " idle") + '">' + escapeHtml(task) + '</div>' +
+        '</div>' +
+        '<div class="agent-foot">' +
+          '<span class="pill ' + (online ? "on" : "off") + '">' + (online ? "online" : "offline") + '</span>' +
+          '<span class="lat">' + (a.latency_ms != null ? a.latency_ms + " ms" : "—") + '</span>' +
+          '<button class="btn sm" type="button" data-dispatch="' + a.id + '">Task</button>' +
+        '</div>' +
+        (act && act.directive
+          ? '<div class="agent-role" style="border-top:1px solid var(--line-soft);padding-top:7px;white-space:normal">' +
+              '<span class="pill ' + (ok ? "on" : "off") + '" style="margin-right:6px">' + (ok ? "done" : "failed") + '</span>' +
+              escapeHtml(String(act.result || "").replace(/\[AGENT TASK VERIFIED:[^\]]+\]\s*/i, "").slice(0, 90)) +
+            '</div>'
+          : "");
+
+      gridEl.appendChild(card);
+    });
+
+    gridEl.querySelectorAll("[data-dispatch]").forEach(function (btn) {
+      btn.addEventListener("click", function () { openModal(btn.getAttribute("data-dispatch")); });
+    });
+    gridEl.querySelectorAll(".agent").forEach(function (card) {
+      card.addEventListener("click", function (ev) {
+        if (ev.target.closest("button")) return;
+        openModal(card.getAttribute("data-agent"));
+      });
+    });
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  function fmtTime(value) {
+    if (!value) return new Date().toLocaleTimeString();
+    var d = new Date(value);
+    return isNaN(d.getTime()) ? String(value) : d.toLocaleTimeString();
+  }
+
+  /* -------------------------------------------------------------- data poll */
+  function refreshFleet() {
+    return api("/api/agents/status").then(function (data) {
+      var agents = (data && data.agents) || [];
+      var online = agents.filter(function (a) { return String(a.status).toUpperCase() === "ONLINE"; }).length;
+      $("fleetChip").className = "chip " + (online === agents.length && agents.length ? "good" : "warn");
+      $("fleetChipText").textContent = online + "/" + agents.length + " agents online";
+      $("onlineVal").textContent = online + " / " + agents.length;
+      $("hostVal").textContent = (data && data.scope) ? "friday-universe" : "—";
+      renderAgents(agents);
+    }).catch(function () {
+      $("fleetChip").className = "chip bad";
+      $("fleetChipText").textContent = "fleet unreachable";
+    });
+  }
+
+  function refreshTelemetry() {
+    return api("/api/system_telemetry").then(function (d) {
+      if (!d) return;
+      var cpu = Number(d.cpu_percent || 0);
+      var ram = Number(d.ram_percent || 0);
+      $("cpuVal").textContent = cpu.toFixed(1) + "%";
+      $("ramVal").textContent = ram.toFixed(1) + "%";
+      $("cpuTxt").textContent = cpu.toFixed(1) + "%";
+      $("ramTxt").textContent = ram.toFixed(1) + "% of " + (d.ram_total_gb || 0) + " GB";
+      $("cpuBar").firstElementChild.style.width = Math.min(100, cpu) + "%";
+      $("ramBar").firstElementChild.style.width = Math.min(100, ram) + "%";
+      $("ramBar").className = "bar" + (ram > 85 ? " warn" : "");
+      $("hostVal").textContent = d.os ? String(d.os).split(" ")[0] + " · " + (d.cpu_cores || "?") + " cores" : "—";
+    }).catch(function () {});
+  }
+
+  function refreshAutonomy() {
+    return api("/api/autonomous/status").then(function (d) {
+      if (!d) return;
+      var on = Boolean(d.autonomous_mode);
+      $("autonomyChip").className = "chip " + (on ? "good" : "");
+      $("autonomyChipText").textContent = on ? "Autonomy on" : "Autonomy off";
+      $("autonomyVal").textContent = on ? "ON" : "OFF";
+      $("historyVal").textContent = String(d.history_count || 0);
+      $("toggleAutonomy").className = "btn sm " + (on ? "danger" : "primary");
+      $("toggleAutonomy").textContent = on ? "Disable" : "Enable";
+      activityByAgent = d.agent_activity || {};
+      renderAgents(lastAgents);
+      renderFeedFromHistory(d.recent_actions || []);
+    }).catch(function () {});
+  }
+
+  function refreshDaemon() {
+    return api("/api/autonomous/daemon").then(function (d) {
+      if (!d) return;
+      $("queueVal").textContent = String(d.queued != null ? d.queued : (d.pending || 0));
+    }).catch(function () {});
+  }
+
+  function refreshLaptops() {
+    return api("/api/laptop/devices").then(function (d) {
+      var devices = (d && d.devices) || [];
+      var online = devices.filter(function (x) { return x.online !== false; });
+      var list = $("deviceList");
+      $("laptopPill").textContent = online.length ? online.length + " online" : (devices.length ? "offline" : "no device");
+      $("laptopPill").className = "pill " + (online.length ? "on" : "off");
+      if (!devices.length) { list.innerHTML = '<div class="empty">No laptop connected. Start the bridge on your machine, then refresh.</div>'; return; }
+      list.innerHTML = devices.map(function (dev) {
+        return '<div class="device"><span class="status-dot ' + (dev.online === false ? "off" : "on") + '"></span>' +
+          '<span class="device-id">' + escapeHtml(dev.laptop_id) + '</span>' +
+          '<small style="margin-left:auto">' + escapeHtml(dev.last_seen || dev.connected_at || "") + '</small></div>';
+      }).join("");
+    }).catch(function () {});
+  }
+
+  /* -------------------------------------------------------------- feed / ws */
+  var feedItems = [];
+
+  function renderFeedFromHistory(actions) {
+    if (feedItems.length) return; // live feed wins
+    if (!actions.length) return;
+    feedEl.innerHTML = "";
+    actions.slice(0, 12).reverse().forEach(function (a) {
+      addFeed({
+        agent: a.target || a.agent || "FRIDAY",
+        text: (a.directive ? a.directive + " — " : "") + (a.result || ""),
+        success: a.success !== false,
+        timestamp: a.timestamp
+      });
+    });
+  }
+
+  function addFeed(item) {
+    feedItems.unshift(item);
+    if (feedItems.length > 60) feedItems.pop();
+    feedEl.innerHTML = "";
+    feedItems.forEach(function (it) {
+      var div = document.createElement("div");
+      div.className = "feed-item " + (it.success === false ? "err" : "ok");
+      div.innerHTML =
+        '<span class="feed-ico">' + (it.success === false ? "✕" : "✓") + '</span>' +
+        '<div><div class="feed-head"><span class="feed-agent">' + escapeHtml(it.agent || "FRIDAY") + '</span>' +
+        '<span class="feed-time">' + escapeHtml(fmtTime(it.timestamp)) + '</span></div>' +
+        '<div class="feed-text">' + escapeHtml(it.text || "") + '</div></div>';
+      feedEl.appendChild(div);
+    });
+  }
+
+  var ws = null;
+  var wsRetry = null;
+
+  function connectActivity() {
+    if (ws && ws.readyState <= 1) return;
+    ensureToken().then(function () {
+      var proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+      var url = proto + "//" + window.location.host + BASE + "/api/ws/activity?token=" + encodeURIComponent(token);
+      ws = new WebSocket(url);
+      ws.onopen = function () { $("activityState").textContent = "live"; };
+      ws.onmessage = function (ev) {
+        var data;
+        try { data = JSON.parse(ev.data); } catch (e) { return; }
+        if (!data || data.type !== "activity") return;
+        addFeed({
+          agent: data.agent || data.target || "FRIDAY",
+          text: (data.directive || data.action || "") + (data.result ? " — " + data.result : ""),
+          success: data.success !== false,
+          timestamp: fmtTime(data.timestamp)
+        });
+        if (data.agent) activityByAgent[String(data.agent).toLowerCase()] = data;
+        renderAgents(lastAgents);
+      };
+      ws.onclose = function () {
+        $("activityState").textContent = "reconnecting";
+        ws = null;
+        clearTimeout(wsRetry);
+        wsRetry = setTimeout(connectActivity, 2500);
+      };
+      ws.onerror = function () { try { ws.close(); } catch (e) {} };
+    }).catch(function () { $("activityState").textContent = "offline"; });
+  }
+
+  /* ---------------------------------------------------------------- command */
+  var busy = false;
+  var MODE_KEY = "friday.mode";
+  var mode = localStorage.getItem(MODE_KEY) === "ask" ? "ask" : "execute";
+  var planTimer = null;
+
+  function setMode(next) {
+    mode = next === "ask" ? "ask" : "execute";
+    localStorage.setItem(MODE_KEY, mode);
+    document.querySelectorAll(".mode-switch button").forEach(function (b) {
+      b.setAttribute("aria-pressed", String(b.getAttribute("data-mode") === mode));
+    });
+  }
+
+  function trackGoal(goalId, goalText) {
+    var ticks = 0;
+    clearInterval(planTimer);
+    planTimer = setInterval(function () {
+      ticks += 1;
+      refreshAutonomy(); refreshFleet(); refreshDaemon();
+      if (ticks > 80) { clearInterval(planTimer); return; }
+      api("/api/autonomous/daemon").then(function (d) {
+        var goals = (d && d.goals) || {};
+        var done = (goals.recent_completed || []).filter(function (g) { return g.id === goalId; })[0];
+        var running = (goals.running || []).some(function (g) { return g.id === goalId; });
+        var queued = (goals.queued || []).some(function (g) { return g.id === goalId; });
+        var status = done ? String(done.status || "COMPLETED") : (running ? "RUNNING" : (queued ? "QUEUED" : "PENDING"));
+        var dur = done && done.duration ? " · " + Number(done.duration).toFixed(1) + "s" : "";
+        showReply(goalText + "\n\nStatus: " + status, "FRIDAY", "goal " + goalId + dur);
+        if (done) clearInterval(planTimer);
+      }).catch(function () {});
+    }, 3000);
+  }
+
+  function sendCommand(text) {
+    var clean = String(text || "").trim();
+    if (!clean || busy) return;
+    busy = true;
+    $("sendBtn").disabled = true;
+    $("commandInput").value = "";
+
+    if (mode === "execute") {
+      showReply("Planning: " + clean, "FRIDAY", "queuing");
+      ensureToken().then(function () {
+        return api("/api/autonomous/goals", {
+          method: "POST",
+          body: JSON.stringify({ goal: clean, priority: 10 })
+        });
+      }).then(function (d) {
+        var goalId = (d && d.goal_id) || "";
+        showReply("Plan queued for autonomous execution.\n\n" + clean, "FRIDAY", "goal " + goalId);
+        addFeed({ agent: "FRIDAY", text: "Queued goal: " + clean, success: true });
+        speak("Working on it.");
+        trackGoal(goalId, clean);
+      }).catch(function (e) {
+        var answer = (e.payload && (e.payload.reply || e.payload.detail)) || e.message;
+        showReply(String(answer), "FRIDAY", "error · HTTP " + (e.status || "?"));
+        addFeed({ agent: "FRIDAY", text: clean + " — " + answer, success: false });
+      }).finally(function () {
+        busy = false;
+        $("sendBtn").disabled = false;
+      });
+      return;
+    }
+
+    showReply("Thinking…", "FRIDAY", "asking");
+    ensureToken().then(function () {
+      return api("/api/command", { method: "POST", body: JSON.stringify({ command: clean }) });
+    }).then(function (d) {
+      var answer = (d && (d.reply || d.mode || d.status)) || "FRIDAY accepted the command.";
+      showReply(answer, "FRIDAY");
+      addFeed({ agent: "FRIDAY", text: clean + " — " + answer, success: true });
+      speak(answer);
+      refreshFleet(); refreshAutonomy(); refreshDaemon();
+    }).catch(function (e) {
+      var answer = (e.payload && (e.payload.reply || e.payload.detail)) || e.message;
+      showReply(String(answer), "FRIDAY", "error · HTTP " + (e.status || "?"));
+      addFeed({ agent: "FRIDAY", text: clean + " — " + answer, success: false });
+    }).finally(function () {
+      busy = false;
+      $("sendBtn").disabled = false;
+    });
+  }
+
+  /* ------------------------------------------------------------------ modal */
+  var modal = $("modal");
+  var modalAgent = null;
+
+  function openModal(agentId) {
+    modalAgent = agentId;
+    var name = (lastAgents.find(function (a) { return a.id === agentId; }) || {}).name || agentId;
+    $("modalTitle").textContent = name;
+    $("modalSub").textContent = "Dispatch a task to " + name;
+    $("modalInput").value = "";
+    $("modalOut").hidden = true;
+    modal.classList.add("show");
+    setTimeout(function () { $("modalInput").focus(); }, 30);
+  }
+  function closeModal() { modal.classList.remove("show"); modalAgent = null; }
+
+  $("modalClose").addEventListener("click", closeModal);
+  $("modalCancel").addEventListener("click", closeModal);
+  modal.addEventListener("click", function (e) { if (e.target === modal) closeModal(); });
+
+  $("modalDispatch").addEventListener("click", function () {
+    var directive = $("modalInput").value.trim();
+    if (!directive || !modalAgent) return;
+    var btn = $("modalDispatch");
+    btn.disabled = true;
+    $("modalOut").hidden = false;
+    $("modalOut").textContent = "Dispatching to " + modalAgent + "…";
+    ensureToken().then(function () {
+      return api("/api/agents/" + encodeURIComponent(modalAgent) + "/task", {
+        method: "POST", body: JSON.stringify({ directive: directive })
+      });
+    }).then(function (d) {
+      var answer = (d && d.reply) || "No reply text returned.";
+      $("modalOut").textContent = answer;
+      addFeed({ agent: modalAgent, text: directive + " — " + answer, success: true });
+      showReply(answer, modalAgent);
+      speak(answer);
+      refreshFleet(); refreshAutonomy();
+    }).catch(function (e) {
+      $("modalOut").textContent = "Failed: " + e.message;
+      addFeed({ agent: modalAgent, text: directive + " — " + e.message, success: false });
+    }).finally(function () { btn.disabled = false; });
+  });
+
+  /* ----------------------------------------------------------------- laptop */
+  var laptopBusy = false;
+
+  function runLaptop(command, args) {
+    if (laptopBusy) return;
+    laptopBusy = true;
+    var out = $("laptopOut");
+    out.hidden = false;
+    out.textContent = "Running " + command + "…";
+    ensureToken().then(function () {
+      return api("/api/laptop/devices");
+    }).then(function (d) {
+      var devices = (d && d.devices) || [];
+      var device = devices.find(function (x) { return x.online !== false; }) || devices[0];
+      if (!device) throw new Error("No laptop connected.");
+      return api("/api/laptop/" + encodeURIComponent(device.laptop_id) + "/command", {
+        method: "POST", body: JSON.stringify({ command: command, args: args || {}, timeout: 30 })
+      });
+    }).then(function (r) {
+      var value = (r && (r.output != null ? r.output : (r.error != null ? r.error : r)));
+      out.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+      addFeed({ agent: "laptop", text: command + " → ok", success: true });
+    }).catch(function (e) {
+      out.textContent = "Failed: " + e.message;
+      addFeed({ agent: "laptop", text: command + " — " + e.message, success: false });
+    }).finally(function () { laptopBusy = false; });
+  }
+
+  document.querySelectorAll("[data-laptop]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var cmd = btn.getAttribute("data-laptop");
+      var args = {};
+      if (cmd === "notify") { args = { title: "FRIDAY", message: "Command center is connected." }; }
+      if (cmd === "list_files") { args = { path: "." }; }
+      if (cmd === "screenshot") { args = { save: false }; }
+      runLaptop(cmd, args);
+    });
+  });
+  $("openUrlBtn").addEventListener("click", function () {
+    var url = $("urlInput").value.trim();
+    if (!url) return;
+    runLaptop("open_url", { url: url });
+  });
+
+  /* --------------------------------------------------------------- autonomy */
+  $("toggleAutonomy").addEventListener("click", function () {
+    ensureToken().then(function () {
+      return api("/api/autonomous/toggle", { method: "POST" });
+    }).then(function (d) {
+      var on = Boolean(d && d.autonomous_mode);
+      showReply("Autonomous mode is now " + (on ? "on" : "off") + ".", "FRIDAY");
+      refreshAutonomy();
+    }).catch(function (e) { showReply("Toggle failed: " + e.message, "FRIDAY", "error"); });
+  });
+
+  $("repairBtn").addEventListener("click", function () {
+    ensureToken().then(function () {
+      return api("/api/autonomous/repair", { method: "POST" });
+    }).then(function (d) {
+      showReply(String((d && (d.summary || d.status)) || "Diagnostic sweep requested."), "FRIDAY");
+      refreshFleet();
+    }).catch(function (e) { showReply("Diagnostics failed: " + e.message, "FRIDAY", "error"); });
+  });
+
+  /* ------------------------------------------------------------------ voice */
+  var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var recognition = null;
+  var listening = false;
+
+  if (SpeechRec) {
+    recognition = new SpeechRec();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = localStorage.getItem(STT_KEY) || "en-IN";
+
+    recognition.onresult = function (ev) {
+      var interim = "";
+      for (var i = ev.resultIndex; i < ev.results.length; i++) {
+        var res = ev.results[i];
+        if (res.isFinal) {
+          var finalText = res[0].transcript.trim();
+          $("transcript").textContent = finalText;
+          $("commandInput").value = finalText;
+          sendCommand(finalText);
+        } else {
+          interim += res[0].transcript;
+        }
+      }
+      if (interim) $("transcript").textContent = interim;
+      $("voiceState").querySelector("span").textContent = "Listening…";
+    };
+    recognition.onend = function () {
+      if (listening) { try { recognition.start(); } catch (e) {} }
+      else { $("voiceState").querySelector("span").textContent = "Tap the mic and speak"; }
+    };
+    recognition.onerror = function (ev) {
+      if (ev.error === "not-allowed") { listening = false; $("speechPill").textContent = "blocked"; }
+    };
+    $("speechPill").textContent = "ready";
+    $("speechPill").className = "pill on";
+  } else {
+    $("speechPill").textContent = "unsupported";
+    $("speechPill").className = "pill off";
+  }
+
+  $("micBtn").addEventListener("click", function () {
+    if (!recognition) { showReply("This browser does not support speech recognition. Use Chrome or Edge.", "FRIDAY", "error"); return; }
+    listening = !listening;
+    $("micBtn").classList.toggle("listening", listening);
+    if (listening) {
+      try { recognition.start(); } catch (e) {}
+      $("voiceState").querySelector("strong").textContent = "Listening";
+      $("voiceState").querySelector("span").textContent = "Speak now…";
+    } else {
+      try { recognition.stop(); } catch (e) {}
+      $("voiceState").querySelector("strong").textContent = "Talk to FRIDAY";
+      $("voiceState").querySelector("span").textContent = "Tap the mic and speak";
+    }
+  });
+
+  $("ttsVoice").value = localStorage.getItem(VOICE_KEY) || $("ttsVoice").value;
+  $("ttsVoice").addEventListener("change", function () {
+    localStorage.setItem(VOICE_KEY, $("ttsVoice").value);
+  });
+  $("sttLang").value = localStorage.getItem(STT_KEY) || "en-IN";
+  $("sttLang").addEventListener("change", function () {
+    localStorage.setItem(STT_KEY, $("sttLang").value);
+    if (recognition) {
+      try { recognition.lang = $("sttLang").value; } catch (e) {}
+      if (listening) { try { recognition.stop(); recognition.start(); } catch (e) {} }
+    }
+  });
+
+  $("testVoice").addEventListener("click", function () {
+    var voice = $("ttsVoice").value || "";
+    var text = voice.indexOf("te-") === 0
+      ? "నమస్కారం. ఫ్రైడే సిద్ధంగా ఉంది. మీరు ఏమి చేయాలనుకుంటున్నారు?"
+      : "Good evening. FRIDAY is online and every agent is standing by.";
+    ensureToken().then(function () {
+      return fetch(BASE + "/api/voice/speak", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-FRIDAY-Control-Token": token },
+        body: JSON.stringify({ text: text, voice: voice, lang: voiceLang(voice) })
+      });
+    }).then(function (res) {
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.blob();
+    }).then(function (blob) {
+      var url = URL.createObjectURL(blob);
+      var audio = new Audio(url);
+      audio.onended = function () { URL.revokeObjectURL(url); };
+      audio.play();
+      showReply(text, "FRIDAY", "voice test");
+    }).catch(function (e) {
+      showReply("Voice test failed: " + e.message, "FRIDAY", "error");
+    });
+  });
+
+  $("stopVoice").addEventListener("click", function () {
+    document.querySelectorAll("audio").forEach(function (a) { a.pause(); });
+    if (listening) $("micBtn").click();
+  });
+
+  /* ---------------------------------------------------------------- wiring */
+  $("sendBtn").addEventListener("click", function () { sendCommand($("commandInput").value); });
+  $("commandInput").addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); sendCommand($("commandInput").value); }
+  });
+  document.querySelectorAll("[data-quick]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      $("commandInput").value = btn.getAttribute("data-quick");
+      $("commandInput").focus();
+    });
+  });
+  $("refreshBtn").addEventListener("click", function () { refreshFleet(); refreshAutonomy(); refreshLaptops(); });
+  document.querySelectorAll(".mode-switch button").forEach(function (b) {
+    b.addEventListener("click", function () { setMode(b.getAttribute("data-mode")); });
+  });
+
+  function tickClock() {
+    $("clock").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  }
+
+  tickClock();
+  setMode(mode);
+  setInterval(tickClock, 1000);
+  $("baseLabel").textContent = (BASE || "/") + " · " + window.location.host;
+
+  ensureToken().then(function () {
+    refreshFleet(); refreshTelemetry(); refreshAutonomy(); refreshDaemon(); refreshLaptops();
+    connectActivity();
+  }).catch(function () {
+    showReply("Control session is unavailable. The API key may not be configured on the server.", "FRIDAY", "error");
+    refreshFleet(); refreshTelemetry();
+  });
+
+  setInterval(function () { if (!document.hidden) refreshFleet(); }, 15000);
+  setInterval(function () { if (!document.hidden) refreshTelemetry(); }, 8000);
+  setInterval(function () { if (!document.hidden) refreshAutonomy(); }, 12000);
+  setInterval(function () { if (!document.hidden) refreshLaptops(); }, 20000);
+})();
+</script>
+</body>
+</html>

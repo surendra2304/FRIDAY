@@ -127,6 +127,11 @@ class AutonomousDaemon:
         except Exception as exc:
             logger.warning("Could not persist autonomous goals: %s", exc)
 
+    @property
+    def is_running(self) -> bool:
+        """True while the background worker loop is alive."""
+        return self._running
+
     def submit_goal(self, goal_text: str, priority: int = 0, metadata: dict[str, Any] | None = None) -> AutonomousGoal:
         """Submit a new goal for autonomous execution."""
         goal = AutonomousGoal(
@@ -145,7 +150,7 @@ class AutonomousDaemon:
     def get_status(self) -> dict[str, Any]:
         """Get current daemon status."""
         return {
-            "running": self._running,
+            "daemon_running": self._running,
             "queued": len(self._goal_queue),
             "running": len(self._running_goals),
             "completed": len(self._completed_goals),
@@ -250,8 +255,20 @@ class AutonomousDaemon:
         """Execute a goal's plan, dispatching real work to each specialist."""
         logger.info("Daemon executing real multi-agent plan for goal %s: %s", goal.id, goal.goal)
         try:
+            if not plan.subtasks:
+                goal.status = "FAILED"
+                goal.error = "Planner produced no agent tasks for this goal"
+                logger.error("Goal %s has an empty plan; marking FAILED", goal.id)
+                return
             await self.controller.execute_plan(plan)
-            goal.status = "COMPLETED" if plan.status == "COMPLETED" else "FAILED"
+            # Carry the plan's real outcome through. A PARTIAL plan is not a
+            # completed goal, and calling it FAILED hides the work that did run.
+            goal.status = plan.status if plan.status in ("COMPLETED", "PARTIAL") else "FAILED"
+            if goal.status != "COMPLETED":
+                goal.error = (
+                    f"Plan ended {plan.status} "
+                    f"({plan.completed_subtasks}/{plan.total_subtasks} subtasks completed)"
+                )
             logger.info("Daemon goal %s finished: %s (%d/%d subtasks)",
                         goal.id, plan.status, plan.completed_subtasks, plan.total_subtasks)
         except Exception as exc:

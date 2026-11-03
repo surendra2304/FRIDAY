@@ -33,7 +33,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -444,7 +444,7 @@ def _control_token_valid(token: str, secret: str) -> bool:
 
 
 async def _require_control_access(request: Request) -> None:
-    """Authorise a control request.
+    """Authorise a control HTTP request.
 
     Three independent gates, cheapest first:
 
@@ -458,7 +458,9 @@ async def _require_control_access(request: Request) -> None:
     3. **Opt-in loopback hardening.** With `require_api_key_on_loopback`, the key
        is demanded for state-changing calls from this machine as well.
     """
-    if not _origin_allowed(request.headers.get("origin", "").strip(), request):
+    # Origin check
+    origin = request.headers.get("origin", "").strip()
+    if not _origin_allowed(origin, request):
         raise HTTPException(
             status_code=403,
             detail=(
@@ -467,6 +469,7 @@ async def _require_control_access(request: Request) -> None:
             ),
         )
 
+    # Client IP check
     client_host = request.client.host if request.client else ""
     client_is_remote = False
     try:
@@ -475,9 +478,10 @@ async def _require_control_access(request: Request) -> None:
         pass
     remotely_exposed = bool(os.getenv("RENDER") or client_is_remote)
     live = _live_settings()
+    http_method = request.method.upper()
     loopback_hardening = bool(
         getattr(live, "require_api_key_on_loopback", False)
-        and getattr(request, "method", "GET").upper() not in _IDEMPOTENT_METHODS
+        and http_method not in _IDEMPOTENT_METHODS
     )
     if not remotely_exposed and not loopback_hardening:
         return
@@ -492,6 +496,7 @@ async def _require_control_access(request: Request) -> None:
     if not _control_secret_is_usable(expected):
         raise HTTPException(status_code=503, detail="Remote control is disabled until a non-example FRIDAY_API_KEY is configured.")
 
+    # Check for API key in headers
     provided = request.headers.get("x-friday-api-key", "")
     authorization = request.headers.get("authorization", "")
     if not provided and authorization.lower().startswith("bearer "):
@@ -499,10 +504,79 @@ async def _require_control_access(request: Request) -> None:
     if provided and hmac.compare_digest(provided, expected):
         return
 
-    session_token = (
-        request.headers.get("x-friday-control-token", "")
-        or request.cookies.get("friday_control_token", "")
+    # Check for session token: header or cookie
+    session_token = request.headers.get("x-friday-control-token", "")
+    if not session_token:
+        cookies = getattr(request, "cookies", {})
+        if isinstance(cookies, dict):
+            session_token = cookies.get("friday_control_token", "")
+
+    if session_token and _control_token_valid(session_token, expected):
+        return
+
+    raise HTTPException(status_code=401, detail="A valid FRIDAY control API key is required.")
+
+
+async def _require_control_access_ws(websocket: WebSocket) -> None:
+    """Authorise a control WebSocket upgrade.
+
+    For WebSocket upgrades, the token must be passed as a query parameter
+    `?token=<control_token>` since browsers cannot send custom headers during
+    the WebSocket handshake.
+    """
+    # Origin check
+    origin = websocket.headers.get("origin", "").strip()
+    if not _origin_allowed(origin, websocket):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "This browser origin is not permitted to reach the FRIDAY control API. "
+                "Add it to FRIDAY_ALLOWED_ORIGINS if it is a trusted frontend."
+            ),
+        )
+
+    # Client IP check
+    client_host = websocket.client.host if websocket.client else ""
+    client_is_remote = False
+    try:
+        client_is_remote = not ipaddress.ip_address(client_host).is_loopback
+    except ValueError:
+        pass
+    remotely_exposed = bool(os.getenv("RENDER") or client_is_remote)
+    live = _live_settings()
+    # WebSocket doesn't have HTTP method; default to GET (idempotent) so loopback hardening doesn't apply
+    loopback_hardening = bool(
+        getattr(live, "require_api_key_on_loopback", False)
+        and "GET" not in _IDEMPOTENT_METHODS
     )
+    if not remotely_exposed and not loopback_hardening:
+        return
+
+    expected = _control_secret()
+    if not _control_secret_is_usable(expected):
+        raise HTTPException(status_code=503, detail="Remote control is disabled until a non-example FRIDAY_API_KEY is configured.")
+
+    # Check for API key in headers
+    provided = websocket.headers.get("x-friday-api-key", "")
+    authorization = websocket.headers.get("authorization", "")
+    if not provided and authorization.lower().startswith("bearer "):
+        provided = authorization[7:].strip()
+    if provided and hmac.compare_digest(provided, expected):
+        return
+
+    # Check for session token: header, cookie, or query parameter (critical for WebSocket)
+    session_token = websocket.headers.get("x-friday-control-token", "")
+    if not session_token:
+        cookies = getattr(websocket, "cookies", {})
+        if isinstance(cookies, dict):
+            session_token = cookies.get("friday_control_token", "")
+    if not session_token and hasattr(websocket, "query_params"):
+        query_params = websocket.query_params
+        if hasattr(query_params, "get"):
+            session_token = query_params.get("token", "")
+        elif isinstance(query_params, dict):
+            session_token = query_params.get("token", "")
+
     if session_token and _control_token_valid(session_token, expected):
         return
 
@@ -1026,6 +1100,11 @@ async def submit_autonomous_goal(
 ) -> dict[str, Any]:
     """Submit a new goal for autonomous execution."""
     goal = autonomous_daemon.submit_goal(req.goal, req.priority, req.metadata)
+    # An explicitly submitted goal is the owner asking for work now. If the
+    # daemon worker is not alive (fresh restart, autonomy toggled off), start it
+    # so the goal cannot sit in the queue forever.
+    if not autonomous_daemon.is_running:
+        await autonomous_daemon.start()
     return {
         "status": "ok",
         "goal_id": goal.id,
@@ -1930,13 +2009,13 @@ async def screenshot_endpoint(_: None = Depends(_require_control_access)) -> dic
 
 
 @app.websocket("/api/ws/voice")
-async def voice_endpoint(websocket: WebSocket):
+async def voice_endpoint(websocket: WebSocket) -> None:
     """
     WebSocket endpoint for bidirectional audio, waveform telemetry, and MediaPipe hand gestures.
     Supports real-time gesture control and instant desktop/mobile actions.
     """
     try:
-        await _require_control_access(websocket)
+        await _require_control_access_ws(websocket)
     except HTTPException:
         await websocket.close(code=1008, reason="FRIDAY control authentication required")
         return
@@ -2016,7 +2095,7 @@ async def voice_endpoint(websocket: WebSocket):
 async def companion_ws_endpoint(websocket: WebSocket) -> None:
     """Real-time companion event multiplexer and desktop telemetry stream."""
     try:
-        await _require_control_access(websocket)
+        await _require_control_access_ws(websocket)
     except HTTPException:
         await websocket.close(code=1008, reason="FRIDAY control authentication required")
         return
@@ -2068,7 +2147,7 @@ async def companion_status_endpoint(_: None = Depends(_require_control_access)) 
 async def activity_ws_endpoint(websocket: WebSocket) -> None:
     """Stream autonomous agent activity events to dashboard clients in real time."""
     try:
-        await _require_control_access(websocket)
+        await _require_control_access_ws(websocket)
     except HTTPException:
         await websocket.close(code=1008, reason="FRIDAY control authentication required")
         return
@@ -2416,6 +2495,134 @@ async def laptop_connect_endpoint(websocket: WebSocket, laptop_id: str) -> None:
         logger.warning("Laptop tunnel error for %s: %s", laptop_id, exc)
     finally:
         await laptop_bridge.unregister(laptop_id, websocket)
+
+
+# --- Self-contained command center (server-rendered) ------------------------
+# The dashboard is a single HTML document with inline CSS/JS. Serving it from
+# the API removes the whole class of failures that a client-only bundle has on
+# this host: no chunk 404s, no basePath mismatch, no hydration crash that leaves
+# the owner staring at a spinner. The markup is real HTML, so something useful
+# is visible before a single byte of JavaScript runs.
+
+_DASHBOARD_FILE = Path(__file__).with_name("dashboard.html")
+_dashboard_cache: dict[str, Any] = {"mtime": -1.0, "html": ""}
+
+
+def _dashboard_html() -> str:
+    try:
+        mtime = _DASHBOARD_FILE.stat().st_mtime
+    except OSError:
+        return (
+            "<!doctype html><meta charset='utf-8'><title>FRIDAY</title>"
+            "<body style='background:#06090d;color:#e9f0f6;font-family:system-ui;padding:40px'>"
+            "<h1>FRIDAY</h1><p>The dashboard file is missing on this host.</p></body>"
+        )
+    if _dashboard_cache["mtime"] != mtime or not _dashboard_cache["html"]:
+        _dashboard_cache["html"] = _DASHBOARD_FILE.read_text(encoding="utf-8")
+        _dashboard_cache["mtime"] = mtime
+    return _dashboard_cache["html"]
+
+
+@app.get("/", include_in_schema=False)
+async def dashboard_root() -> Response:
+    return Response(
+        content=_dashboard_html(),
+        media_type="text/html",
+        headers={"Cache-Control": "no-store, max-age=0", "X-FRIDAY-Surface": "command-center"},
+    )
+
+
+@app.get("/dashboard", include_in_schema=False)
+async def dashboard_alias() -> Response:
+    return await dashboard_root()
+
+
+class VoiceSpeakRequest(BaseModel):
+    text: str
+    voice: str | None = None
+    lang: str | None = None
+
+
+_VOICE_CATALOGUE = [
+    {"id": "en-IN-NeerjaNeural", "language": "en-IN", "label": "English (India) — Neerja", "gender": "Female"},
+    {"id": "en-IN-PrabhatNeural", "language": "en-IN", "label": "English (India) — Prabhat", "gender": "Male"},
+    {"id": "te-IN-ShrutiNeural", "language": "te-IN", "label": "Telugu — Shruti", "gender": "Female"},
+    {"id": "te-IN-MohanNeural", "language": "te-IN", "label": "Telugu — Mohan", "gender": "Male"},
+    {"id": "hi-IN-SwaraNeural", "language": "hi-IN", "label": "Hindi — Swara", "gender": "Female"},
+]
+_VOICE_BY_ID = {entry["id"]: entry for entry in _VOICE_CATALOGUE}
+_DEFAULT_VOICE_FOR_LANG = {"en": "en-IN-NeerjaNeural", "te": "te-IN-ShrutiNeural", "hi": "hi-IN-SwaraNeural"}
+_voice_cache: dict[str, bytes] = {}
+_voice_cache_order: list[str] = []
+_voice_lock = asyncio.Semaphore(2)
+
+
+@app.get("/api/voice/languages")
+async def voice_languages() -> Any:
+    """Languages FRIDAY can actually speak on this host."""
+    return {
+        "languages": _VOICE_CATALOGUE,
+        "default": _DEFAULT_VOICE_FOR_LANG,
+        "telugu_installed": True,
+        "engine": "edge-tts",
+    }
+
+
+@app.post("/api/voice/speak")
+async def voice_speak(
+    req: VoiceSpeakRequest,
+    _: None = Depends(_require_control_access),
+) -> Response:
+    """Synthesise speech (English or Telugu) and return audio/mpeg.
+
+    Telugu voices are Microsoft neural voices streamed through edge-tts, so no
+    Windows language pack and no per-token model download is needed.
+    """
+    text = (req.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+    if len(text) > 1800:
+        text = text[:1800]
+
+    requested = (req.voice or "").strip()
+    lang = (req.lang or "en").strip().lower()[:2]
+    voice = requested if requested in _VOICE_BY_ID else _DEFAULT_VOICE_FOR_LANG.get(lang, "en-IN-NeerjaNeural")
+
+    key = hashlib.sha256(f"{voice}\x00{text}".encode("utf-8")).hexdigest()
+    cached = _voice_cache.get(key)
+    if cached is not None:
+        return Response(content=cached, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
+
+    try:
+        import edge_tts  # imported lazily: the API host is memory constrained
+    except Exception as exc:  # pragma: no cover - dependency guard
+        raise HTTPException(status_code=503, detail=f"Speech engine unavailable: {exc}") from exc
+
+    audio = bytearray()
+    try:
+        async with _voice_lock:
+            communicate = edge_tts.Communicate(text, voice)
+            async for chunk in communicate.stream():
+                if chunk.get("type") == "audio" and chunk.get("data"):
+                    audio.extend(chunk["data"])
+    except Exception as exc:
+        logger.warning("Voice synthesis failed for %s: %s", voice, exc)
+        raise HTTPException(status_code=502, detail=f"Speech synthesis failed: {exc}") from exc
+
+    if not audio:
+        raise HTTPException(status_code=502, detail="Speech engine produced no audio")
+
+    payload = bytes(audio)
+    _voice_cache[key] = payload
+    _voice_cache_order.append(key)
+    while len(_voice_cache_order) > 24:
+        _voice_cache.pop(_voice_cache_order.pop(0), None)
+
+    return Response(
+        content=payload,
+        media_type="audio/mpeg",
+        headers={"Cache-Control": "no-store", "X-FRIDAY-Voice": voice},
+    )
 
 
 # Mount the static command center after API routes so it never shadows the API.
