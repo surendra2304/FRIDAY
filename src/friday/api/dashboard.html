@@ -510,6 +510,7 @@
           <label class="field" for="ttsVoice" style="margin-top:12px">FRIDAY speaks
             <select class="input" id="ttsVoice">
               <option value="en-IN-NeerjaNeural">English — Neerja (India)</option>
+              <option value="en-IN-PrabhatNeural">English — Prabhat (India)</option>
               <option value="te-IN-ShrutiNeural">Telugu — Shruti</option>
               <option value="te-IN-MohanNeural">Telugu — Mohan</option>
             </select>
@@ -643,12 +644,24 @@
     return String(voice || "").indexOf("te-") === 0 ? "te" : (String(voice || "").indexOf("hi-") === 0 ? "hi" : "en");
   }
 
+  function isTeluguText(text) {
+    return /[\u0C00-\u0C7F]/.test(text);
+  }
+
   function speak(text) {
     if (!$("speakReplies").checked) return;
     var clean = String(text || "").replace(/\s+/g, " ").trim();
     if (!clean) return;
     if (clean.length > 900) clean = clean.slice(0, 900);
     var voice = $("ttsVoice").value || "";
+    // Auto-pick voice matching text language to avoid synthesis failures
+    var textIsTelugu = isTeluguText(clean);
+    var voiceIsTelugu = voice.indexOf("te-") === 0;
+    if (textIsTelugu && !voiceIsTelugu) {
+      voice = "te-IN-ShrutiNeural";
+    } else if (!textIsTelugu && voiceIsTelugu) {
+      voice = "en-IN-NeerjaNeural";
+    }
     ensureToken().then(function () {
       return fetch(BASE + "/api/voice/speak", {
         method: "POST",
@@ -902,7 +915,10 @@
         var status = done ? String(done.status || "COMPLETED") : (running ? "RUNNING" : (queued ? "QUEUED" : "PENDING"));
         var dur = done && done.duration ? " · " + Number(done.duration).toFixed(1) + "s" : "";
         showReply(goalText + "\n\nStatus: " + status, "FRIDAY", "goal " + goalId + dur);
-        if (done) clearInterval(planTimer);
+        if (done) {
+          speak("Goal completed in " + (done.duration ? Number(done.duration).toFixed(1) + " seconds" : "a moment") + ".");
+          clearInterval(planTimer);
+        }
       }).catch(function () {});
     }, 3000);
   }

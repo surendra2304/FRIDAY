@@ -118,7 +118,7 @@ class EnhancedAutonomousController:
         # research chain: its task protocol only accepts supervision verbs, so a
         # research "trading implications" step would be padded work.
         _research_kw = ("research", "investigate", "analyze", "study", "learn", "explore")
-        _followup_kw = ("store", "save", "memory", "report", "trading", "market",
+        _followup_kw = ("store", "save", "memory", "report", "trading", "market", "portfolio", "positions",
                         "crypto", "findings", "results")
         if any(kw in lower_goal for kw in _research_kw) and any(kw in lower_goal for kw in _followup_kw):
             plan.add_subtask(SubTask(
@@ -127,17 +127,33 @@ class EnhancedAutonomousController:
                 agent="INTELX",
                 dependencies=[],
             ))
+
+            # Add Stratex status check for trading/market/crypto/portfolio/positions goals
+            _trading_kw = ("trading", "market", "crypto", "portfolio", "positions")
+            if any(kw in lower_goal for kw in _trading_kw):
+                plan.add_subtask(SubTask(
+                    id="st_2",
+                    description="Check current trading positions, balance, and portfolio exposure",
+                    agent="STRATEX",
+                    dependencies=["st_1"],
+                ))
+                memora_id = "st_3"
+                cortex_id = "st_4"
+            else:
+                memora_id = "st_2"
+                cortex_id = "st_3"
+
             plan.add_subtask(SubTask(
-                id="st_2",
+                id=memora_id,
                 description=f"Store the research findings and analysis in persistent memory: {goal}",
                 agent="MEMORA",
                 dependencies=["st_1"],
             ))
             plan.add_subtask(SubTask(
-                id="st_3",
+                id=cortex_id,
                 description="Report website health and operational status for the public site",
                 agent="CORTEX",
-                dependencies=["st_2"],
+                dependencies=[memora_id],
             ))
 
         # Check for trading-related goals

@@ -2548,10 +2548,9 @@ _VOICE_CATALOGUE = [
     {"id": "en-IN-PrabhatNeural", "language": "en-IN", "label": "English (India) — Prabhat", "gender": "Male"},
     {"id": "te-IN-ShrutiNeural", "language": "te-IN", "label": "Telugu — Shruti", "gender": "Female"},
     {"id": "te-IN-MohanNeural", "language": "te-IN", "label": "Telugu — Mohan", "gender": "Male"},
-    {"id": "hi-IN-SwaraNeural", "language": "hi-IN", "label": "Hindi — Swara", "gender": "Female"},
 ]
 _VOICE_BY_ID = {entry["id"]: entry for entry in _VOICE_CATALOGUE}
-_DEFAULT_VOICE_FOR_LANG = {"en": "en-IN-NeerjaNeural", "te": "te-IN-ShrutiNeural", "hi": "hi-IN-SwaraNeural"}
+_DEFAULT_VOICE_FOR_LANG = {"en": "en-IN-NeerjaNeural", "te": "te-IN-ShrutiNeural"}
 _voice_cache: dict[str, bytes] = {}
 _voice_cache_order: list[str] = []
 _voice_lock = asyncio.Semaphore(2)
