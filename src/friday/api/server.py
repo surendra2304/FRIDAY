@@ -52,6 +52,7 @@ from friday.ecosystem.fleet_client import fleet_client, CANONICAL_INTERNAL_MESH_
 from friday.memory.event_consumer import MemoraEventConsumer
 from friday.memory.memora_client import memora_client
 from friday.api.companion_ws import companion_multiplexer
+from friday.api.activity_stream import register as register_activity_client, unregister as unregister_activity_client
 from friday.remote.laptop_bridge import (
     ALLOWED_LAPTOP_COMMANDS,
     LaptopBridgeTimeout,
@@ -2058,6 +2059,49 @@ async def companion_ws_endpoint(websocket: WebSocket) -> None:
 async def companion_status_endpoint(_: None = Depends(_require_control_access)) -> dict[str, Any]:
     """Return status and subscriber diagnostics for the real-time companion multiplexer."""
     return {"status": "ok", **companion_multiplexer.get_status()}
+
+
+# =========================================================================
+# Real-Time Activity Stream WebSocket
+# =========================================================================
+@app.websocket("/api/ws/activity")
+async def activity_ws_endpoint(websocket: WebSocket) -> None:
+    """Stream autonomous agent activity events to dashboard clients in real time."""
+    try:
+        await _require_control_access(websocket)
+    except HTTPException:
+        await websocket.close(code=1008, reason="FRIDAY control authentication required")
+        return
+    await websocket.accept()
+    register_activity_client(websocket)
+    # Send a short backlog so a freshly connected dashboard reflects recent work.
+    try:
+        from friday.autonomous.controller import autonomous_controller
+
+        for entry in list(autonomous_controller.action_history)[-20:]:
+            await websocket.send_json({
+                "type": "activity",
+                "agent": entry.target,
+                "action": entry.action_type,
+                "target": entry.target,
+                "directive": entry.directive,
+                "result": entry.result,
+                "success": entry.success,
+                "timestamp": getattr(entry, "recorded_at", None) or entry.timestamp,
+            })
+    except Exception as exc:  # pragma: no cover - best effort
+        logger.debug("Activity backlog send failed: %s", exc)
+    try:
+        while True:
+            msg = await websocket.receive_json()
+            if isinstance(msg, dict) and msg.get("type") == "ping":
+                await websocket.send_json({"type": "pong", "timestamp": datetime.now(timezone.utc).isoformat()})
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:
+        logger.debug("Activity WS session error: %s", exc)
+    finally:
+        unregister_activity_client(websocket)
 
 
 # =========================================================================

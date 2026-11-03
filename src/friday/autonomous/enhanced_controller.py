@@ -49,6 +49,7 @@ class SubTask:
 class ExecutionPlan:
     """A complete execution plan for a complex goal."""
     goal: str
+    plan_id: str = ""
     subtasks: list[SubTask] = field(default_factory=list)
     status: str = "PENDING"  # PENDING, RUNNING, COMPLETED, FAILED, PARTIAL
     created_at: float = field(default_factory=time.time)
@@ -105,13 +106,46 @@ class EnhancedAutonomousController:
 
         plan = ExecutionPlan(goal=goal)
         plan_id = f"plan_{int(time.time() * 1000)}"
+        plan.plan_id = plan_id
 
         # Simple goal decomposition based on keywords
         # In production, this would use LLM-based decomposition
         lower_goal = goal.lower()
 
+        # Real multi-agent plan template: chains specialists so that a single
+        # high-level goal results in actual work being performed by each agent
+        # instead of repeated status probes.
+        _research_kw = ("research", "investigate", "analyze", "study", "learn", "explore")
+        _followup_kw = ("store", "save", "memory", "report", "trading", "market",
+                        "crypto", "findings", "results")
+        if any(kw in lower_goal for kw in _research_kw) and any(kw in lower_goal for kw in _followup_kw):
+            plan.add_subtask(SubTask(
+                id="st_1",
+                description=f"Research the topic and gather evidence from multiple sources: {goal}",
+                agent="INTELX",
+                dependencies=[],
+            ))
+            plan.add_subtask(SubTask(
+                id="st_2",
+                description=f"Evaluate trading implications and market impact of the research findings: {goal}",
+                agent="STRATEX",
+                dependencies=["st_1"],
+            ))
+            plan.add_subtask(SubTask(
+                id="st_3",
+                description=f"Store the research findings and analysis in persistent memory: {goal}",
+                agent="MEMORA",
+                dependencies=["st_2"],
+            ))
+            plan.add_subtask(SubTask(
+                id="st_4",
+                description=f"Generate a report summarizing the research findings: {goal}",
+                agent="CORTEX",
+                dependencies=["st_3"],
+            ))
+
         # Check for trading-related goals
-        if any(kw in lower_goal for kw in ["trade", "trading", "crypto", "market", "position"]):
+        elif any(kw in lower_goal for kw in ["trade", "trading", "crypto", "market", "position"]):
             plan.add_subtask(SubTask(
                 id="st_1",
                 description="Analyze market conditions and current positions",
@@ -319,9 +353,10 @@ class EnhancedAutonomousController:
         subtask.attempts += 1
 
         logger.info(f"Executing subtask {subtask.id}: {subtask.description} (agent: {subtask.agent})")
+        logger.info("Agent %s is now performing work: %s", subtask.agent, subtask.description)
 
         try:
-            # Route to appropriate agent
+            # Route to appropriate agent, passing the subtask description as the directive
             result = await self._dispatch_to_agent(subtask.agent, subtask.description)
 
             if result:
@@ -347,36 +382,71 @@ class EnhancedAutonomousController:
 
             return False
 
-    async def _dispatch_to_agent(self, agent: str, directive: str) -> Any:
-        """Dispatch a directive to a specific agent using the verified mesh."""
-        try:
-            from friday.cognition.mesh import Mesh, build_contracts, OutcomeState
+    def _get_peer_mesh(self) -> Any:
+        """Lazily build (or reuse a monkeypatched) verified task mesh."""
+        mesh = getattr(self, "_peer_mesh", None)
+        if mesh is None:
+            from friday.cognition.mesh import Mesh, build_contracts
             from friday.ecosystem.fleet_client import fleet_client
 
             mesh = Mesh(contracts=build_contracts(fleet_client))
-            mesh_action = _mesh_action_for(agent.lower(), directive)
+            self._peer_mesh = mesh
+        return mesh
+
+    async def _dispatch_to_agent(self, agent: str, directive: str) -> Any:
+        """Dispatch a directive to a specific agent using the verified mesh.
+
+        The subtask description is forwarded as the actual objective/directive.
+        The mesh action is derived from the description (via the shared helper)
+        rather than being hardcoded to a status probe.
+        """
+        agent_id = agent.lower().strip()
+        logger.info("Dispatching real work to %s: %s", agent.upper(), directive)
+        try:
+            from friday.cognition.mesh import OutcomeState
+            from friday.autonomous import controller as controller_module
+
+            mesh = self._get_peer_mesh()
+            mesh_action = controller_module._mesh_action_for(agent_id, directive)
+            # A status/health probe action is only appropriate for an explicit
+            # status request. For any real work directive, upgrade to "execute"
+            # so the peer performs the task instead of returning a status probe.
+            status_intent = getattr(controller_module, "_STATUS_INTENT", None)
+            is_status_request = bool(status_intent and status_intent.search(directive or ""))
+            if mesh_action in ("status", "health_summary") and not is_status_request:
+                mesh_action = "execute"
+            # Memora only accepts store/query; keep store for write directives.
+            if agent_id == "memora" and mesh_action == "execute":
+                mesh_action = "store"
+
             envelope = mesh.build_envelope(
-                agent.lower(),
+                agent_id,
                 action=mesh_action,
                 objective=directive,
                 inputs={"directive": directive, "content": directive, "text": directive, "query": directive},
-                capability=f"{agent.lower()}.execute",
+                capability=f"{agent_id}.execute",
                 actor="friday",
                 trust_level="operator_confirmed",
             )
             outcome = await mesh.dispatch(
-                agent.lower(),
+                agent_id,
                 action=mesh_action,
                 envelope=envelope,
                 attempts=1,
             )
             if outcome.state is OutcomeState.COMPLETED:
-                return outcome.result
+                return outcome.result if outcome.result is not None else {
+                    "status": "COMPLETED",
+                    "detail": outcome.detail,
+                }
             elif outcome.state is OutcomeState.PENDING:
                 return {"status": "PENDING", "task_id": outcome.task_id, "detail": outcome.detail}
             else:
                 logger.warning("Mesh dispatch for %s returned %s: %s", agent, outcome.state, outcome.detail)
-                return outcome.result
+                return outcome.result if outcome.result is not None else {
+                    "status": outcome.state.value,
+                    "detail": outcome.detail,
+                }
         except Exception as e:
             logger.error(f"Failed to dispatch to {agent}: {e}")
             return None

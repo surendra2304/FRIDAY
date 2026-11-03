@@ -110,6 +110,17 @@ type ActivityItem = {
   success: boolean;
 };
 
+type LiveActivityEvent = {
+  type?: string;
+  agent?: string;
+  action?: string;
+  target?: string;
+  directive?: string;
+  result?: string;
+  success?: boolean;
+  timestamp?: string;
+};
+
 const API_BASE_SESSION_KEY = "friday.control.apiBase";
 const API_TOKEN_SESSION_KEY = "friday.control.apiToken";
 const CONTROL_SESSION_KEY = "friday.control.session";
@@ -400,6 +411,7 @@ export default function Page() {
   const [health, setHealth] = useState<Record<string, unknown> | null>(null);
   const [connected, setConnected] = useState<"checking" | "online" | "offline">("checking");
   const [activity, setActivity] = useState<ActivityItem[]>([]);
+  const [liveAgentActivity, setLiveAgentActivity] = useState<Record<string, LiveActivityEvent>>({});
   const [cpuHistory, setCpuHistory] = useState<number[]>([]);
   const [ramHistory, setRamHistory] = useState<number[]>([]);
   const [laptops, setLaptops] = useState<Array<{ laptop_id: string; online?: boolean; connected_at?: string; last_seen?: string }>>([]);
@@ -501,6 +513,56 @@ export default function Page() {
       // ignore
     }
   }
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let socket: WebSocket | null = null;
+    let reconnectTimer: number | null = null;
+    let cancelled = false;
+
+    function connect() {
+      if (cancelled) return;
+      const base = apiBase().replace(/^http/, "ws");
+      try {
+        socket = new WebSocket(`${base}/api/ws/activity`);
+      } catch {
+        scheduleReconnect();
+        return;
+      }
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(String(event.data)) as LiveActivityEvent & { type?: string };
+          if (data.type === "activity" && data.agent) {
+            const key = String(data.agent).toLowerCase();
+            setLiveAgentActivity((current) => ({ ...current, [key]: data }));
+          }
+        } catch {
+          // ignore malformed frames
+        }
+      };
+      socket.onclose = () => {
+        if (!cancelled) scheduleReconnect();
+      };
+      socket.onerror = () => {
+        try { socket?.close(); } catch { /* ignore */ }
+      };
+    }
+
+    function scheduleReconnect() {
+      if (cancelled || reconnectTimer !== null) return;
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null;
+        connect();
+      }, 3000);
+    }
+
+    connect();
+    return () => {
+      cancelled = true;
+      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+      try { socket?.close(); } catch { /* ignore */ }
+    };
+  }, []);
 
   async function submitCommand(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -854,7 +916,10 @@ export default function Page() {
             <div className="apartment-grid">
               {sortedAgents.map((agent) => {
                 const last = autonomy?.recent_actions?.find((a) => a.target?.toUpperCase() === agent.name?.toUpperCase());
-                const activityRecord = agentActivity[agent.id];
+                const live = liveAgentActivity[agent.id];
+                const activityRecord = live
+                  ? { directive: live.directive || `${live.action ?? "activity"} ${live.target ?? ""}`.trim(), result: live.result, success: Boolean(live.success), recorded_at: live.timestamp }
+                  : agentActivity[agent.id];
                 const isActive = autonomy?.active_agent?.toLowerCase() === agent.id;
                 const siteUrl = `https://friday-universe.duckdns.org/${agent.id}`;
                 const Icon = AGENT_ICONS[agent.id] || <Database size={16} />;

@@ -233,7 +233,9 @@ class AutonomousDaemon:
         # Decompose goal into execution plan
         try:
             plan = self.controller.decompose_goal(goal.goal)
-            goal.plan_id = plan.subtasks[0].id.replace("_1", "") if plan.subtasks else ""
+            goal.plan_id = getattr(plan, "plan_id", "") or (plan.subtasks[0].id if plan.subtasks else "")
+            logger.info("Daemon decomposed goal %s into %d subtasks: %s", goal.id, len(plan.subtasks),
+                        " -> ".join(st.agent for st in plan.subtasks))
             # Execute plan in background
             asyncio.create_task(self._execute_goal(goal, plan), name=f"autonomous-goal-{goal.id}")
             logger.info("Started autonomous goal %s with %d subtasks", goal.id, len(plan.subtasks))
@@ -245,10 +247,13 @@ class AutonomousDaemon:
             await self._finish_goal(goal)
 
     async def _execute_goal(self, goal: AutonomousGoal, plan: ExecutionPlan) -> None:
-        """Execute a goal's plan."""
+        """Execute a goal's plan, dispatching real work to each specialist."""
+        logger.info("Daemon executing real multi-agent plan for goal %s: %s", goal.id, goal.goal)
         try:
             await self.controller.execute_plan(plan)
             goal.status = "COMPLETED" if plan.status == "COMPLETED" else "FAILED"
+            logger.info("Daemon goal %s finished: %s (%d/%d subtasks)",
+                        goal.id, plan.status, plan.completed_subtasks, plan.total_subtasks)
         except Exception as exc:
             goal.status = "FAILED"
             goal.error = str(exc)

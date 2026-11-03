@@ -29,6 +29,12 @@ import psutil
 from friday.core.logging import get_logger
 from friday.ecosystem.fleet_client import fleet_client
 
+try:
+    from friday.api.activity_stream import emit as _emit_activity
+except Exception:  # pragma: no cover - optional dependency
+    def _emit_activity(event: dict[str, Any]) -> None:
+        return None
+
 logger = get_logger("autonomous.controller")
 
 FLEET_AGENTS = {
@@ -300,6 +306,19 @@ class AutonomousController:
                 "action_type": action_type,
             }
         self._persist_history()
+        try:
+            _emit_activity({
+                "type": "activity",
+                "agent": target,
+                "action": action_type,
+                "target": target,
+                "directive": directive,
+                "result": result,
+                "success": success,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception:
+            pass
 
     # =========================================================================
     # 1. Multi-Agent Autonomous Delegation & Control
