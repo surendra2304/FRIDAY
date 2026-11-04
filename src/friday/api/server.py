@@ -1122,6 +1122,22 @@ async def get_autonomous_daemon_status(
     return autonomous_daemon.get_status()
 
 
+@app.get("/api/autonomous/goals/{goal_id}")
+async def get_autonomous_goal(
+    goal_id: str,
+    _: None = Depends(_require_control_access),
+) -> dict[str, Any]:
+    """Return one goal with its human summary and per-agent step pipeline.
+
+    The dashboard polls this while work runs so the owner can watch each
+    specialist move from pending to running to finished.
+    """
+    payload = autonomous_daemon.get_goal(goal_id)
+    if payload is None:
+        raise HTTPException(status_code=404, detail="No goal with that reference is on record.")
+    return payload
+
+
 @app.post("/api/autonomous/decompose")
 async def decompose_goal_autonomous(
     goal: str,
@@ -2504,7 +2520,7 @@ async def laptop_connect_endpoint(websocket: WebSocket, laptop_id: str) -> None:
 # the owner staring at a spinner. The markup is real HTML, so something useful
 # is visible before a single byte of JavaScript runs.
 
-_DASHBOARD_FILE = Path(__file__).with_name("dashboard.html")
+_DASHBOARD_FILE = Path(__file__).with_name("dashboard_new.html")
 _dashboard_cache: dict[str, Any] = {"mtime": -1.0, "html": ""}
 
 
@@ -2622,13 +2638,6 @@ async def voice_speak(
         media_type="audio/mpeg",
         headers={"Cache-Control": "no-store", "X-FRIDAY-Voice": voice},
     )
-
-
-# Mount the static command center after API routes so it never shadows the API.
-# Local source checkouts may omit the exported UI; the API remains usable there.
-_ui_directory = Path(os.getenv("FRIDAY_UI_DIR", "")).expanduser() if os.getenv("FRIDAY_UI_DIR") else None
-if _ui_directory and (_ui_directory / "index.html").is_file():
-    app.mount("/", StaticFiles(directory=str(_ui_directory), html=True), name="friday-ui")
 
 
 # --- Enhanced Autonomous Controller Integration ---

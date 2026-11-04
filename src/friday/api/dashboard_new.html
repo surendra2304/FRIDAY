@@ -32,9 +32,9 @@
     --edge-active:#7cf0b8;
   }
   *{box-sizing:border-box;min-width:0}
-  html{background:var(--bg);scroll-behavior:smooth}
+  html{background:var(--bg);scroll-behavior:smooth;overflow:hidden}
   body{
-    margin:0;min-height:100vh;color:var(--text);
+    margin:0;min-height:100vh;color:var(--text);max-width:100%;
     font:14px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
     background:
       radial-gradient(1100px 620px at 12% -8%, rgba(124,240,184,.075), transparent 62%),
@@ -92,12 +92,13 @@
   .voice-orb select:focus,.voice-orb .voice-select:focus{border-color:#31465a}
   .voice-orb .speaking{color:var(--mint);font-weight:700}
   .voice-orb .idle{color:var(--muted);font-weight:600}
+  .mode-switch button{border:0;background:transparent;font-size:10px;font-weight:650;padding:5px 10px;border-radius:7px;cursor:pointer;color:var(--muted-2)}
+  .mode-switch button:not(.active):hover{color:var(--text);background:rgba(255,255,255,.06)}
   .mode-switch button.active{
     background:var(--mint);
     color:#06090d;
-    border-color:var(--mint)
+    box-shadow:0 0 12px rgba(124,240,184,.35)
   }
-  .mode-switch button:not(.active):hover{color:var(--text)}
 
   .main{display:grid;grid-template-columns:1fr 380px;grid-template-rows:1fr auto;min-height:0;overflow:hidden}
   .canvas-wrap{position:relative;overflow:hidden;background:var(--bg)}
@@ -183,7 +184,7 @@
   @keyframes nodePulse{0%,100%{stroke-width:2;opacity:.6}50%{stroke-width:4;opacity:1}}
   @keyframes nodeGlow{0%,100%{stroke-width:2;opacity:.8}50%{stroke-width:5;opacity:1;filter:drop-shadow(0 0 8px var(--cyan))}}
   .node-ring{fill:none;stroke-width:2;transition:stroke .2s}
-  .node-body{fill:#0a1218;stroke:var(--line);stroke-width:1;rx:12;ry:12}
+  .node-body{fill:#101a24;stroke:var(--line);stroke-width:1;rx:12;ry:12}
   .node-header{fill:rgba(124,240,184,.08)}
   .node-icon{font-size:20px;dominant-baseline:central;text-anchor:middle}
   .node-name{font-size:12px;font-weight:650;fill:var(--text)}
@@ -210,10 +211,12 @@
 
   /* ============================================================ REDUCED MOTION */
   @media (prefers-reduced-motion: reduce){
-    *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
-    .friday-node.queued .node-ring,.friday-node.running .node-ring{animation:none}
-    .node-spinner{animation:none}
-    .timeline-track i{transition:none}
+    html{scroll-behavior:auto!important}
+    *,*::before,*::after{animation:none!important;transition:none!important}
+    .voice-orb .listening{animation:none!important}
+    .friday-node.queued .node-ring,.friday-node.running .node-ring{animation:none!important}
+    .node-spinner{animation:none!important}
+    .timeline-track i{transition:none!important}
   }
 
   /* ============================================================ RESPONSIVE */
@@ -258,29 +261,29 @@
       <div class="top-right">
         <span class="chip" id="wsChip"><span class="dot"></span><span id="wsChipText">WS: connecting</span></span>
         <span class="chip" id="goalChip"><span class="dot"></span><span id="goalChipText">No active goal</span></span>
-        <div class="voice-orb" id="voiceOrb" style="display:flex;align-items:center;gap:12px;margin-left:12px">
+        <div class="voice-orb" id="voiceOrb" role="group" aria-label="Voice controls" style="display:flex;align-items:center;gap:12px;margin-left:12px">
           <button class="mic-btn" type="button" id="micBtn" aria-label="Talk to FRIDAY" style="width:56px;height:56px;border-radius:50%;border:1px solid #2f6a55;cursor:pointer;background:radial-gradient(circle at 35% 30%,#14352b,#0a1a15 70%);color:var(--mint);display:grid;place-items:center;position:relative;transition:.2s">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" style="width:24px;height:24px">
               <rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v4"/><path d="M8 22h8"/>
             </svg>
           </button>
-          <div class="voice-state" id="voiceState" style="font-size:11px;color:var(--muted);text-align:left;line-height:1.4;min-width:160px">
+          <div class="voice-state" id="voiceState" aria-live="polite" style="font-size:11px;color:var(--muted);text-align:left;line-height:1.4;min-width:160px">
             <strong id="voiceStateTitle">Talk to FRIDAY</strong>
             <span id="voiceStateSub">Click mic, speak in English or Telugu</span>
           </div>
-          <select id="sttLang" class="voice-select" style="background:#0b1319;border:1px solid var(--line);border-radius:8px;padding:6px 10px;color:var(--text);font-size:11px">
+          <select id="sttLang" class="voice-select" aria-label="Speech recognition language" style="background:#0b1319;border:1px solid var(--line);border-radius:8px;padding:6px 10px;color:var(--text);font-size:11px">
             <option value="en-IN">English (India)</option>
             <option value="te-IN">తెలుగు (Telugu)</option>
           </select>
-          <select id="ttsVoice" class="voice-select" style="margin-left:6px">
+          <select id="ttsVoice" class="voice-select" aria-label="Text-to-speech voice" style="margin-left:6px">
             <option value="en-IN-NeerjaNeural">English — Neerja</option>
             <option value="en-IN-PrabhatNeural">English — Prabhat</option>
             <option value="te-IN-ShrutiNeural">తెలుగు — Shruti</option>
             <option value="te-IN-MohanNeural">తెలుగు — Mohan</option>
           </select>
-          <div class="mode-switch" style="display:inline-flex;border:1px solid var(--line);border-radius:99px;overflow:hidden;background:#0a1117;padding:2px;margin-left:8px">
-            <button type="button" data-voice-mode="execute" class="active" style="border:0;background:transparent;color:var(--muted);font-size:10px;font-weight:650;padding:5px 10px;border-radius:7px;cursor:pointer">Execute</button>
-            <button type="button" data-voice-mode="ask" style="border:0;background:transparent;color:var(--muted);font-size:10px;font-weight:650;padding:5px 10px;border-radius:7px;cursor:pointer">Ask</button>
+          <div class="mode-switch" role="radiogroup" aria-label="Voice mode" style="display:inline-flex;border:1px solid var(--line);border-radius:99px;overflow:hidden;background:#0a1117;padding:2px;margin-left:8px">
+            <button type="button" data-voice-mode="execute" class="active" aria-pressed="true" style="border:0;background:transparent;font-size:10px;font-weight:650;padding:5px 10px;border-radius:7px;cursor:pointer">Execute</button>
+            <button type="button" data-voice-mode="ask" aria-pressed="false" style="border:0;background:transparent;font-size:10px;font-weight:650;padding:5px 10px;border-radius:7px;cursor:pointer">Ask</button>
           </div>
         </div>
         <span class="clock" id="clock">--:--:--</span>
@@ -512,16 +515,23 @@
     });
 
     // Voice mode switch
-    document.querySelectorAll("[data-voice-mode]").forEach(btn => {
+    const modeBtns = document.querySelectorAll("[data-voice-mode]");
+    function syncModeUI(){
+      modeBtns.forEach(b => {
+        const isActive = b.dataset.voiceMode === voiceMode;
+        b.classList.toggle("active", isActive);
+        b.setAttribute("aria-pressed", String(isActive));
+      });
+    }
+    modeBtns.forEach(btn => {
       btn.addEventListener("click", () => {
-        document.querySelectorAll("[data-voice-mode]").forEach(b => b.classList.remove("active"));
-        btn.classList.add("active");
         voiceMode = btn.dataset.voiceMode;
         localStorage.setItem(MODE_KEY, voiceMode);
+        syncModeUI();
       });
     });
     voiceMode = localStorage.getItem(MODE_KEY) || "execute";
-    document.querySelector('[data-voice-mode="' + voiceMode + '"]')?.classList.add("active");
+    syncModeUI();
 
     $("micBtn").addEventListener("click", toggleListening);
   }

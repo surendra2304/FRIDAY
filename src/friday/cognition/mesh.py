@@ -48,7 +48,7 @@ logger = get_logger("cognition.mesh")
 # ─── Inference & Memora Routing Helpers ───────────────────────────────────────
 
 class InferenceRouter:
-    """Route all LLM calls through Inference gateway (/v1/chat/completions)."""
+    """Route all LLM calls through Inference gateway (/inference/v1/chat/completions)."""
     
     def __init__(self, base_url: str, api_key: str):
         self.base_url = base_url.rstrip("/")
@@ -108,7 +108,7 @@ class InferenceRouter:
 
 
 class MemoraFabric:
-    """Route all memory operations through Memora (/v1/context, /v1/memories)."""
+    """Route all memory operations through Memora (/api/v1/memora/context)."""
     
     def __init__(self, base_url: str, api_key: str, agent_name: str = "friday"):
         self.base_url = base_url.rstrip("/")
