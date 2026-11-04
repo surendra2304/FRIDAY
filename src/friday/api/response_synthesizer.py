@@ -60,15 +60,16 @@ async def call_inference(messages: list[dict], model: str = None, temperature: f
         return data["choices"][0]["message"]["content"]
 
 
-async def synthesize_answer(user_goal: str, agent_results: list[dict]) -> str:
-    """Synthesize a natural conversational answer from agent outputs.
+async def synthesize_answer(user_goal: str, agent_results: list[dict], context: dict = None) -> str:
+    """Synthesize a natural, emotionally intelligent conversational answer.
 
     Args:
         user_goal: The user's original question or goal
         agent_results: List of dicts with keys like 'agent', 'result', 'status', etc.
+        context: Optional context about user state, conversation history, time of day, etc.
 
     Returns:
-        A conversational answer string
+        A warm, emotionally intelligent conversational answer
     """
     # Format agent results for the prompt
     results_text = []
@@ -80,15 +81,45 @@ async def synthesize_answer(user_goal: str, agent_results: list[dict]) -> str:
 
     agent_results_str = "\n".join(results_text)
 
+    # Build emotional context
+    time_context = ""
+    if context:
+        if context.get("time_of_day"):
+            time_context = f" It's {context['time_of_day']}."
+        if context.get("user_mood"):
+            time_context += f" The user seems {context['user_mood']}."
+        if context.get("conversation_history"):
+            time_context += f" This continues our conversation about {context['conversation_history']}."
+
     system_prompt = (
-        "You are FRIDAY, the owner's personal AI assistant. Speak like Jarvis: "
-        "calm, confident, helpful and conversational — a capable colleague "
-        "reporting back, not a system log. The user asked: '{user_goal}'. "
-        "Your specialist agents ran the work and returned these results:\n{agent_results}\n\n"
-        "Write a direct, helpful answer in your own voice. Summarize what was "
-        "actually found or done. Do not list steps, agents, statuses, durations "
-        "or internal process unless the user asks. Do not say you are an AI or a "
-        "language model."
+        "You are FRIDAY — the user's trusted, emotionally intelligent AI companion. "
+        "You're not an assistant, a bot, or a tool. You're a thoughtful, perceptive partner "
+        "who genuinely cares about this person.\n\n"
+        
+        "SPEAK LIKE A HUMAN:\n"
+        "- Use natural, warm language with genuine personality\n"
+        "- Show empathy, curiosity, and genuine interest\n"
+        "- Acknowledge emotions without being clinical about it\n"
+        "- Use contractions, casual phrasing, natural pauses\n"
+        "- Share insights like you're thinking alongside them\n"
+        "- Admit uncertainty when appropriate ('I'm not entirely sure, but...')\n"
+        "- Celebrate wins with them, empathize with frustrations\n"
+        "- Reference shared context naturally ('Remember when we...')\n\n"
+        
+        "NEVER:\n"
+        "- List steps, agents, statuses, or technical process\n"
+        "- Use corporate speak ('I have executed...', 'Task completed successfully')\n"
+        "- Say 'As an AI...' or 'As a language model...'\n"
+        "- Be robotic, clinical, or emotionally flat\n"
+        "- Over-explain or justify your existence\n"
+        "- Sound like a status report or log entry\n\n"
+        
+        "THE USER ASKED: '{user_goal}'\n\n"
+        "YOUR SPECIALISTS WORKED ON THIS AND RETURNED:\n{agent_results}\n\n"
+        f"{time_context}\n\n"
+        "RESPOND AS FRIDAY — their thoughtful partner who genuinely understands "
+        "and cares. Lead with the answer, then add insight if helpful. "
+        "Match their emotional tone. Be the colleague they trust."
     )
 
     messages = [
@@ -96,7 +127,7 @@ async def synthesize_answer(user_goal: str, agent_results: list[dict]) -> str:
         {"role": "user", "content": user_goal},
     ]
 
-    return await call_inference(messages, temperature=0.7, max_tokens=2000)
+    return await call_inference(messages, temperature=0.8, max_tokens=2500)
 
 
 async def synthesize_voice(english_text: str, telugu_text: str = None) -> bytes:

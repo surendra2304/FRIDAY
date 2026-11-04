@@ -1540,15 +1540,40 @@ async def execute_command(req: CommandRequest, _: None = Depends(_require_contro
     """Execute a text command with PC, Android, and live 8-Agent execution."""
     result = await _dispatch_command(req.command)
     meta = result.get("metadata") or {}
+    
+    # Determine status for logging
     authorization = str(meta.get("authorization", "")).upper()
     authorization_denied = authorization in {"DENIED", "EXPIRED", "CANCELLED"}
-    if (
+    is_refused = (
         meta.get("security_blocked")
         or meta.get("refused")
         or meta.get("destructive_refused")
         or meta.get("authorization_denied")
         or authorization_denied
-    ):
+    )
+    is_error = meta.get("execution_failed") or meta.get("error") or meta.get("success") is False
+    status = "failed" if (is_refused or is_error) else "success"
+    
+    # Extract agents involved from metadata
+    agents_involved = []
+    if meta.get("agent_id"):
+        agents_involved.append(meta["agent_id"])
+    elif meta.get("fast_path") and meta.get("device"):
+        agents_involved.append(f"friday-{meta['device']}")
+    elif meta.get("peer_name"):
+        agents_involved.append(meta["peer_name"])
+    
+    # Log conversation
+    await _log_conversation(
+        user_input=req.command,
+        friday_reply=result.get("reply", ""),
+        input_type="text",
+        status=status,
+        agents_involved=agents_involved,
+        metadata=meta,
+    )
+    
+    if is_refused:
         return _refusal(result, 403)
     if meta.get("execution_failed"):
         return JSONResponse(status_code=500, content=result)
@@ -1558,23 +1583,13 @@ async def execute_command(req: CommandRequest, _: None = Depends(_require_contro
         and isinstance(receipt, dict)
         and receipt.get("status") == "DISPATCH_UNCONFIRMED"
     ):
-        # The compose page opened, but the async UI worker has no result channel.
-        # 202 means the attempt is pending/unconfirmed, not that the message sent.
         return JSONResponse(status_code=202, content=result)
     if str(meta.get("task_state", "")).upper() == "PENDING":
-        # The peer accepted a typed task, but no completion receipt exists yet.
-        # Preserve it as asynchronous work instead of mapping success=False to 502.
         return JSONResponse(status_code=202, content=result)
     if meta.get("direct_action") and meta.get("success") is False:
-        # An approved request that the underlying mail/browser bridge could not
-        # dispatch is an upstream failure, not a successful HTTP chat turn. A
-        # missing recipient/message is a client-side validation failure.
         status_code = 502 if meta.get("receipt") else 422
         return JSONResponse(status_code=status_code, content=result)
     if meta.get("error") or meta.get("success") is False:
-        # Fast paths and peer adapters may report an explicit failure without a
-        # refusal flag. Preserve the reply/body while giving HTTP clients a
-        # failure status rather than a false success.
         return JSONResponse(status_code=502, content=result)
     return result
 
@@ -2275,6 +2290,239 @@ def start_proactive_monitoring() -> None:
 start_proactive_monitoring()
 
 
+# =========================================================================
+# Conversation History Endpoints
+# =========================================================================
+
+from collections import deque
+from datetime import datetime, timezone
+import uuid as _uuid
+
+# In-memory conversation history store (max 10000 entries)
+_conversation_history: deque = deque(maxlen=10000)
+_conversation_lock = asyncio.Lock()
+
+
+class ConversationEntry(BaseModel):
+    """Conversation history entry model."""
+    id: str | None = None
+    timestamp: str | None = None
+    user_input: str
+    friday_reply: str
+    input_type: str = "text"  # "text" or "voice"
+    status: str = "success"   # "success", "failed", "pending", "running", "cancelled"
+    agents_involved: list[str] = []
+    metadata: dict[str, Any] = {}
+
+
+@app.get("/api/v1/conversation/history")
+async def get_conversation_history(
+    limit: int = 50,
+    offset: int = 0,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    agent: str | None = None,
+    status: str | None = None,
+    search: str | None = None,
+) -> dict[str, Any]:
+    """Get conversation history with pagination and filtering."""
+    async with _conversation_lock:
+        entries = list(_conversation_history)
+
+    # Apply filters
+    filtered = entries
+    if date_from:
+        try:
+            from_dt = datetime.fromisoformat(date_from.replace('Z', '+00:00'))
+            filtered = [e for e in filtered if datetime.fromisoformat(e.timestamp.replace('Z', '+00:00')) >= from_dt]
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            to_dt = datetime.fromisoformat(date_to.replace('Z', '+00:00'))
+            filtered = [e for e in filtered if datetime.fromisoformat(e.timestamp.replace('Z', '+00:00')) <= to_dt]
+        except ValueError:
+            pass
+    if agent:
+        filtered = [e for e in filtered if agent in e.agents_involved]
+    if status:
+        filtered = [e for e in filtered if e.status == status]
+    if search:
+        search_lower = search.lower()
+        filtered = [e for e in filtered 
+                   if search_lower in e.user_input.lower() or search_lower in e.friday_reply.lower()]
+
+    # Sort by timestamp descending (newest first)
+    filtered.sort(key=lambda e: e.timestamp, reverse=True)
+
+    # Pagination
+    total = len(filtered)
+    paginated = filtered[offset:offset + limit]
+
+    return {
+        "status": "ok",
+        "entries": [e.model_dump() for e in paginated],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "has_more": offset + limit < total,
+    }
+
+
+@app.get("/api/v1/conversation/export")
+async def export_conversation_history(
+    format: str = "json",
+    date_from: str | None = None,
+    date_to: str | None = None,
+    agent: str | None = None,
+    status: str | None = None,
+    search: str | None = None,
+) -> Any:
+    """Export conversation history as JSON or Markdown."""
+    async with _conversation_lock:
+        entries = list(_conversation_history)
+
+    # Apply same filters as history endpoint
+    filtered = entries
+    if date_from:
+        try:
+            from_dt = datetime.fromisoformat(date_from.replace('Z', '+00:00'))
+            filtered = [e for e in filtered if datetime.fromisoformat(e.timestamp.replace('Z', '+00:00')) >= from_dt]
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            to_dt = datetime.fromisoformat(date_to.replace('Z', '+00:00'))
+            filtered = [e for e in filtered if datetime.fromisoformat(e.timestamp.replace('Z', '+00:00')) <= to_dt]
+        except ValueError:
+            pass
+    if agent:
+        filtered = [e for e in filtered if agent in e.agents_involved]
+    if status:
+        filtered = [e for e in filtered if e.status == status]
+    if search:
+        search_lower = search.lower()
+        filtered = [e for e in filtered 
+                   if search_lower in e.user_input.lower() or search_lower in e.friday_reply.lower()]
+
+    filtered.sort(key=lambda e: e.timestamp, reverse=True)
+
+    if format.lower() == "markdown" or format.lower() == "md":
+        lines = [
+            "# FRIDAY Conversation History Export",
+            f"Generated: {datetime.now(timezone.utc).isoformat()}",
+            f"Total Entries: {len(filtered)}",
+            "",
+            "---",
+            ""
+        ]
+        for entry in filtered:
+            timestamp = entry.timestamp
+            input_type = entry.input_type
+            status_str = entry.status
+            agents = ", ".join(entry.agents_involved) if entry.agents_involved else "None"
+            lines.extend([
+                f"## {timestamp} [{input_type}] [{status_str}]",
+                f"**Agents:** {agents}",
+                "",
+                f"**You:** {entry.user_input}",
+                "",
+                f"**FRIDAY:** {entry.friday_reply}",
+                "",
+                "---",
+                ""
+            ])
+        if entry.metadata:
+            lines.extend([
+                "**Metadata:**",
+                "```json",
+                json.dumps(entry.metadata, indent=2),
+                "```",
+                ""
+            ])
+        return Response(
+            content="\n".join(lines),
+            media_type="text/markdown",
+            headers={"Content-Disposition": f'attachment; filename="friday-conversation-{datetime.now().strftime("%Y%m%d-%H%M%S")}.md"'}
+        )
+
+    # Default to JSON
+    return JSONResponse(
+        content={"entries": [e.model_dump() for e in filtered]},
+        headers={"Content-Disposition": f'attachment; filename="friday-conversation-{datetime.now().strftime("%Y%m%d-%H%M%S")}.json"'}
+    )
+
+
+@app.post("/api/v1/conversation/entry")
+async def add_conversation_entry(entry: ConversationEntry, _: None = Depends(_require_control_access)) -> dict[str, Any]:
+    """Add a new conversation entry (for real-time logging)."""
+    now = datetime.now(timezone.utc).isoformat()
+    entry_id = entry.id or str(_uuid.uuid4())
+    timestamp = entry.timestamp or now
+
+    new_entry = ConversationEntry(
+        id=entry_id,
+        timestamp=timestamp,
+        user_input=entry.user_input,
+        friday_reply=entry.friday_reply,
+        input_type=entry.input_type,
+        status=entry.status,
+        agents_involved=entry.agents_involved,
+        metadata=entry.metadata,
+    )
+
+    async with _conversation_lock:
+        _conversation_history.appendleft(new_entry)
+
+    # Broadcast to activity stream if available
+    try:
+        from friday.api.activity_stream import broadcast_activity
+        await broadcast_activity({
+            "type": "conversation",
+            "entry_id": entry_id,
+            "timestamp": timestamp,
+            "user_input": entry.user_input[:100],
+            "status": entry.status,
+            "agents": entry.agents_involved,
+        })
+    except Exception:
+        pass
+
+    return {"status": "ok", "entry_id": entry_id, "timestamp": timestamp}
+
+
+@app.delete("/api/v1/conversation/history")
+async def clear_conversation_history(_: None = Depends(_require_control_access)) -> dict[str, Any]:
+    """Clear all conversation history."""
+    async with _conversation_lock:
+        _conversation_history.clear()
+    return {"status": "ok", "cleared": True}
+
+
+# Helper function to log conversations from the command endpoint
+async def _log_conversation(
+    user_input: str,
+    friday_reply: str,
+    input_type: str = "text",
+    status: str = "success",
+    agents_involved: list[str] | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    """Internal helper to log a conversation entry."""
+    entry = ConversationEntry(
+        id=str(_uuid.uuid4()),
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        user_input=user_input,
+        friday_reply=friday_reply,
+        input_type=input_type,
+        status=status,
+        agents_involved=agents_involved or [],
+        metadata=metadata or {},
+    )
+    async with _conversation_lock:
+        _conversation_history.appendleft(entry)
+
+
 @app.post("/v1/events")
 @app.post("/api/events")
 async def receive_peer_event(request: Request) -> dict[str, Any]:
@@ -2520,37 +2768,37 @@ async def laptop_connect_endpoint(websocket: WebSocket, laptop_id: str) -> None:
 # the owner staring at a spinner. The markup is real HTML, so something useful
 # is visible before a single byte of JavaScript runs.
 
-_DASHBOARD_FILE = Path(__file__).with_name("dashboard_new.html")
-_dashboard_cache: dict[str, Any] = {"mtime": -1.0, "html": ""}
+_INDEX_FILE = Path(__file__).with_name("index.html")
+_index_cache: dict[str, Any] = {"mtime": -1.0, "html": ""}
 
 
-def _dashboard_html() -> str:
+def _index_html() -> str:
     try:
-        mtime = _DASHBOARD_FILE.stat().st_mtime
+        mtime = _INDEX_FILE.stat().st_mtime
     except OSError:
         return (
             "<!doctype html><meta charset='utf-8'><title>FRIDAY</title>"
-            "<body style='background:#06090d;color:#e9f0f6;font-family:system-ui;padding:40px'>"
-            "<h1>FRIDAY</h1><p>The dashboard file is missing on this host.</p></body>"
+            "<body style='background:#050508;color:#f0f0f5;font-family:system-ui;padding:40px'>"
+            "<h1>FRIDAY</h1><p>The index file is missing on this host.</p></body>"
         )
-    if _dashboard_cache["mtime"] != mtime or not _dashboard_cache["html"]:
-        _dashboard_cache["html"] = _DASHBOARD_FILE.read_text(encoding="utf-8")
-        _dashboard_cache["mtime"] = mtime
-    return _dashboard_cache["html"]
+    if _index_cache["mtime"] != mtime or not _index_cache["html"]:
+        _index_cache["html"] = _INDEX_FILE.read_text(encoding="utf-8")
+        _index_cache["mtime"] = mtime
+    return _index_cache["html"]
 
 
 @app.get("/", include_in_schema=False)
-async def dashboard_root() -> Response:
+async def index_root() -> Response:
     return Response(
-        content=_dashboard_html(),
+        content=_index_html(),
         media_type="text/html",
-        headers={"Cache-Control": "no-store, max-age=0", "X-FRIDAY-Surface": "command-center"},
+        headers={"Cache-Control": "no-store, max-age=0", "X-FRIDAY-Surface": "friday-ai"},
     )
 
 
 @app.get("/dashboard", include_in_schema=False)
 async def dashboard_alias() -> Response:
-    return await dashboard_root()
+    return await index_root()
 
 
 class VoiceSpeakRequest(BaseModel):

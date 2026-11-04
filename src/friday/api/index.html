@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark" />
+<meta name="theme-color" content="#0a0a0f" />
+<meta name="description" content="FRIDAY - Your AI Companion" />
+<title>FRIDAY</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<style>
+  :root {
+    --bg: #050508;
+    --bg-deep: #030305;
+    --panel: rgba(20,20,30,0.85);
+    --panel-strong: rgba(30,30,45,0.95);
+    --line: rgba(100,100,120,0.3);
+    --line-strong: rgba(140,140,160,0.5);
+    --text: #f0f0f5;
+    --text-dim: #a0a0b0;
+    --text-muted: #707085;
+    --mint: #10b981;
+    --mint-glow: rgba(16,185,129,0.6);
+    --cyan: #06b6d4;
+    --cyan-glow: rgba(6,182,212,0.6);
+    --violet: #a855f7;
+    --violet-glow: rgba(168,85,247,0.6);
+    --amber: #f59e0b;
+    --amber-glow: rgba(245,158,11,0.6);
+    --rose: #f43f5e;
+    --rose-glow: rgba(244,63,94,0.6);
+    --font-ui: "Space Grotesk", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", monospace;
+    --radius-sm: 8px;
+    --radius-md: 16px;
+    --radius-lg: 24px;
+    --radius-full: 9999px;
+    --shadow-sm: 0 4px 12px rgba(0,0,0,0.4);
+    --shadow-md: 0 8px 32px rgba(0,0,0,0.5);
+    --shadow-lg: 0 16px 64px rgba(0,0,0,0.6);
+    --shadow-glow: 0 0 40px rgba(16,185,129,0.3);
+    --transition-fast: 150ms cubic-bezier(0.2,0.8,0.2,1);
+    --transition-normal: 300ms cubic-bezier(0.16,1,0.3,1);
+    --transition-slow: 500ms cubic-bezier(0.16,1,0.3,1);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 16px; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  body {
+    margin: 0; min-height: 100vh; font-family: var(--font-ui);
+    color: var(--text); background: var(--bg);
+    overflow-x: hidden;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(16,185,129,0.08), transparent 60%),
+      radial-gradient(ellipse 60% 40% at 80% 80%, rgba(168,85,247,0.06), transparent 50%),
+      radial-gradient(ellipse 40% 30% at 10% 20%, rgba(6,182,212,0.05), transparent 40%),
+      var(--bg);
+  }
+  ::selection { background: rgba(16,185,129,0.3); color: var(--text); }
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; background: none; border: none; cursor: pointer; }
+  input, select { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 0.75rem 1rem; outline: none; }
+  input:focus, select:focus { border-color: var(--mint); box-shadow: 0 0 0 3px var(--mint-glow); }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: var(--bg-deep); }
+  ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--mint); }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+</style>
+</head>
+<body>
+<div id="three-container" aria-hidden="true"></div>
+
+<header class="top-bar" role="banner">
+  <div class="top-left">
+    <svg class="logo" viewBox="0 0 32 32" width="32" height="32" aria-hidden="true">
+      <defs>
+        <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#10b981" />
+          <stop offset="100%" stop-color="#06b6d4" />
+        </linearGradient>
+      </defs>
+      <circle cx="16" cy="16" r="14" fill="url(#logoGrad)" opacity="0.15" />
+      <path d="M16 6 L16 26 M6 16 L26 16" stroke="url(#logoGrad)" stroke-width="2.5" stroke-linecap="round" />
+      <circle cx="16" cy="16" r="4" fill="url(#logoGrad)" />
+    </svg>
+    <span class="logo-text">FRIDAY</span>
+  </div>
+  <div class="top-center" aria-live="polite" aria-atomic="true">
+    <span class="connection-status" id="connStatus">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">Connecting...</span>
+    </span>
+  </div>
+  <div class="top-right">
+    <button class="icon-btn" id="settingsBtn" aria-label="Settings" aria-expanded="false">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.62-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.54-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.44.17-.48.41l-.36 2.54c-.51.24-1.04.56-1.54.94l-2.39-.96c-.22-.07-.47 0-.59.22L2.74 8.87c-.12.21-.07.47.12.61l2.03 1.58c-.04.32-.06.64-.06.94s.02.62.06.94l-2.03 1.58c-.12.22-.07.47.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.54.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.48-.41l.36-2.54c.51-.24 1.04-.56 1.54-.94l2.39.96c.22.07.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.03-1.58c.04-.32.06-.64.06-.94zm-7.14 5.06a3 3 0 1 1 0-6 3 3 0 0 1 0 6z" fill="currentColor"/></svg>
+    </button>
+  </div>
+</header>
+
+<main id="app" class="app-layout">
+  <aside class="sidebar sidebar-left" id="fleetSidebar" aria-label="Agent fleet">
+    <div class="sidebar-header">
+      <h2>Agent Fleet</h2>
+      <button class="icon-btn" id="fleetToggle" aria-label="Toggle fleet panel" aria-expanded="true">
+        <svg viewBox="0 0 24 24" width="20" height="20"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+      </button>
+    </div>
+    <div class="sidebar-content">
+      <div class="agent-list" id="agentList" role="list"></div>
+    </div>
+  </aside>
+
+  <section class="main-stage" aria-label="Friday">
+    <div id="fridayCanvas" class="friday-canvas"></div>
+    
+    <div class="voice-bar" role="region" aria-label="Voice interaction">
+      <div class="waveform" id="waveform" aria-hidden="true"></div>
+      <div class="voice-input-group">
+        <button class="mic-btn" id="micBtn" aria-label="Talk to Friday" aria-pressed="false">
+          <svg class="mic-icon" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
+            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" fill="currentColor"/>
+            <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.94 6-3.86 6-6.92h-2z" fill="currentColor"/>
+          </svg>
+          <svg class="stop-icon" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" style="display:none">
+            <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/>
+          </svg>
+        </button>
+        <div class="voice-text" id="voiceText" aria-live="polite">
+          <span id="voicePlaceholder">Press and hold to talk, or type below</span>
+          <span id="interimText" class="interim" aria-hidden="true"></span>
+        </div>
+        <input type="text" id="textInput" placeholder="Type to Friday..." aria-label="Type a message" autocomplete="off">
+        <button class="send-btn" id="sendBtn" aria-label="Send">
+          <svg viewBox="0 0 24 24" width="22" height="22"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" fill="currentColor"/></svg>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <aside class="sidebar sidebar-right" id="workflowSidebar" aria-label="Workflow">
+    <div class="sidebar-header">
+      <h2>Workflow</h2>
+      <button class="icon-btn" id="workflowToggle" aria-label="Toggle workflow panel" aria-expanded="false">
+        <svg viewBox="0 0 24 24" width="20" height="20"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+      </button>
+    </div>
+    <div class="sidebar-content">
+      <div id="workflowCanvas" class="workflow-canvas"></div>
+    </div>
+  </aside>
+</main>
+
+<aside class="sidebar sidebar-settings" id="settingsPanel" aria-label="Settings" aria-hidden="true">
+  <div class="sidebar-header">
+    <h2>Settings</h2>
+    <button class="icon-btn" id="settingsClose" aria-label="Close settings">
+      <svg viewBox="0 0 24 24" width="22" height="22"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+  <div class="sidebar-content">
+    <nav class="settings-nav" role="tablist">
+      <button role="tab" aria-selected="true" data-tab="voice">Voice</button>
+      <button role="tab" data-tab="theme">Theme</button>
+      <button role="tab" data-tab="agents">Agents</button>
+      <button role="tab" data-tab="advanced">Advanced</button>
+    </nav>
+    <div class="tab-panels">
+      <div role="tabpanel" id="tab-voice">
+        <fieldset>
+          <legend>Speech Recognition</legend>
+          <label>Language
+            <select id="sttLang">
+              <option value="en-IN">English (India)</option>
+              <option value="te-IN">తెలుగు (Telugu)</option>
+            </select>
+          </label>
+          <label class="toggle"><input type="checkbox" id="autoLangDetect" checked> Auto-detect language</label>
+        </fieldset>
+        <fieldset>
+          <legend>Text-to-Speech</legend>
+          <label>Voice
+            <select id="ttsVoice">
+              <option value="en-IN-NeerjaNeural">English — Neerja (Female)</option>
+              <option value="en-IN-PrabhatNeural">English — Prabhat (Male)</option>
+              <option value="te-IN-ShrutiNeural">Telugu — Shruti (Female)</option>
+              <option value="te-IN-MohanNeural">Telugu — Mohan (Male)</option>
+            </select>
+          </label>
+          <label class="toggle"><input type="checkbox" id="speakReplies" checked> Speak replies</label>
+          <label class="toggle"><input type="checkbox" id="autoVoiceMatch" checked> Match voice to text language</label>
+        </fieldset>
+      </div>
+      <div role="tabpanel" id="tab-theme" hidden>
+        <fieldset>
+          <legend>Appearance</legend>
+          <label>Theme
+            <select id="themeMode">
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+              <option value="auto">Auto</option>
+            </select>
+          </label>
+          <label>Accent Color
+            <div class="color-picker">
+              <button style="--color:#10b981" data-color="mint" aria-label="Mint"></button>
+              <button style="--color:#06b6d4" data-color="cyan" aria-label="Cyan"></button>
+              <button style="--color:#a855f7" data-color="violet" aria-label="Violet"></button>
+              <button style="--color:#f59e0b" data-color="amber" aria-label="Amber"></button>
+            </div>
+          </label>
+        </fieldset>
+      </div>
+      <div role="tabpanel" id="tab-agents" hidden>
+        <fieldset>
+          <legend>Agent Preferences</legend>
+          <p class="hint">Toggle agent visibility in the fleet panel</p>
+          <div id="agentToggles"></div>
+        </fieldset>
+      </div>
+      <div role="tabpanel" id="tab-advanced" hidden>
+        <fieldset>
+          <legend>Advanced</legend>
+          <label class="toggle"><input type="checkbox" id="reducedMotion"> Reduced motion</label>
+          <label class="toggle"><input type="checkbox" id="debugMode"> Debug mode</label>
+          <button class="btn btn-danger" id="resetDefaults">Reset to defaults</button>
+        </fieldset>
+      </div>
+    </div>
+  </aside>
+
+  <footer class="footer" role="contentinfo">
+    <span>FRIDAY</span>
+    <span class="version">v2.0</span>
+  </footer>
+
+<script type="module">
+// ============================================================
+// FRIDAY - Main Application Entry Point
+// ============================================================
+
+import { FridayCharacter } from './friday_character.js';
+import { FridayVoice } from './voice_system.js';
+import { AgentFleet } from './agent_fleet.js';
+import { WorkflowCanvas } from './workflow_canvas.js';
+import { FridayAPI } from './api_client.js';
+import { SettingsPanel } from './settings_panel.js';
+import { MemoryPanel } from './memory_panel.js';
+import { TaskCards } from './task_card.js';
+import { ConversationHistory } from './conversation_history.js';
+import { PerformancePanel } from './performance_panel.js';
+
+const BASE = (() => {
+  const p = window.location.pathname;
+  if (p === "/friday" || p.startsWith("/friday/")) return "/friday";
+  return "";
+})();
+
+const $ = (id) => document.getElementById(id);
+const $$ = (sel) => document.querySelectorAll(sel);
+
+function escapeHtml(v) {
+  return String(v ?? "").replace(/&/g,"&").replace(/</g,"<").replace(/>/g,">").replace(/"/g,""").replace(/'/g,"'");
+}
+
+function formatTime(ts) {
+  if (!ts) return "—";
+  const d = new Date(typeof ts === "number" && ts < 1e12 ? ts * 1000 : ts);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+// ============================================================
+// Global State
+// ============================================================
+let friday = null;
+let voice = null;
+let fleet = null;
+let workflow = null;
+let api = null;
+let settings = null;
+let memory = null;
+let tasks = null;
+let history = null;
+let performance = null;
+let token = null;
+let ws = null;
+let currentGoalId = null;
+let currentMode = "execute";
+let isProcessing = false;
+
+// ============================================================
+// Token Management
+// ============================================================
+async function getToken() {
+  if (token && Date.now() / 1000 < (token.expires_at || 0) - 30) return token.token;
+  try {
+    const res = await fetch(BASE + "/api/control/session", { cache: "no-store" });
+    if (!res.ok) throw new Error("token " + res.status);
+    const data = await res.json();
+    token = { token: data.token, expires_at: data.expires_at || Date.now()/1000 + 1200 };
+    return token.token;
+  } catch (e) {
+    console.warn("Token fetch failed:", e);
+    return null;
+  }
+}
+
+function authHeaders() {
+  const h = { "Content-Type": "application/json" };
+  if (token) h["X-FRIDAY-Control-Token"] = token.token;
+  return h;
+}
+
+// ============================================================
+// UI Helpers
+// ============================================================
+function toast(msg, type = "info") {
+  const el = document.createElement("div");
+  el.className = `toast toast-${type}`;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add("show"));
+  setTimeout(() => { el.classList.remove("show"); setTimeout(() => el.remove(), 300); }, 4000);
+}
+
+function setStatus(text, state = "info") {
+  const dot = $("#statusDot");
+  const txt = $("#statusText");
+  txt.textContent = text;
+  dot.className = "status-dot " + state;
+}
+
+function showPanel(id) {
+  const panel = $(id);
+  panel.classList.add("open");
+  panel.setAttribute("aria-hidden", "false");
+  document.body.style.overflow = "hidden";
+}
+
+function hidePanel(id) {
+  const panel = $(id);
+  panel.classList.remove("open");
+  panel.setAttribute("aria-hidden", "true");
+  document.body.style.overflow = "";
+}
+
+function togglePanel(id) {
+  const panel = $(id);
+  if (panel.classList.contains("open")) hidePanel(id); else showPanel(id);
+}
+
+// ============================================================
+// Friday Character Integration
+// ============================================================
+let fridayCharacter = null;
+
+async function initFridayCharacter() {
+  const container = $("#fridayCanvas");
+  fridayCharacter = new FridayCharacter();
+  await fridayCharacter.init(container);
+  fridayCharacter.setState("idle");
+  return fridayCharacter;
+}
+
+function setFridayState(state) {
+  if (fridayCharacter) fridayCharacter.setState(state);
+}
+
+// ============================================================
+// Voice System Integration
+// ============================================================
+let voiceSystem = null;
+
+async function initVoiceSystem() {
+  voiceSystem = new FridayVoice();
+  await voiceSystem.init({
+    basePath: BASE,
+    getToken,
+    onResult: handleVoiceResult,
+    onInterim: handleVoiceInterim,
+    onStateChange: handleVoiceStateChange,
+    onError: handleVoiceError,
+    onSpeaking: (speaking) => {
+      if (speaking) {
+        setFridayState("speaking");
+        $("#micBtn").classList.add("speaking");
+      } else {
+        $("#micBtn").classList.remove("speaking");
+        setFridayState("idle");
+      }
+    }
+  });
+  return voiceSystem;
+}
+
+function handleVoiceResult(text) {
+  if (!text.trim()) return;
+  $("#interimText").textContent = "";
+  processUserInput(text);
+}
+
+function handleVoiceInterim(text) {
+  $("#interimText").textContent = text;
+}
+
+function handleVoiceStateChange(state) {
+  const btn = $("#micBtn");
+  const placeholder = $("#voicePlaceholder");
+  const interim = $("#interimText");
+  
+  btn.classList.toggle("listening", state === "listening");
+  
+  if (state === "listening") {
+    placeholder.textContent = "Listening...";
+  } else if (state === "processing") {
+    placeholder.textContent = "Thinking...";
+    setFridayState("thinking");
+  } else if (state === "speaking") {
+    placeholder.textContent = "Friday is speaking...";
+  } else {
+    placeholder.textContent = "Press and hold to talk, or type below";
+    interim.textContent = "";
+    setFridayState("idle");
+  }
+}
+
+function handleVoiceError(err) {
+  console.warn("Voice error:", err);
+  toast("Voice error: " + err.message, "error");
+}
+
+let currentAbortController = null;
+
+async function processUserInput(text) {
+  if (isProcessing) return;
+  isProcessing = true;
+  setFridayState("thinking");
+  setStatus("Processing...", "processing");
+  
+  try {
+    if (currentMode === "execute") {
+      const res = await fetch(BASE + "/api/autonomous/goals", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ goal: text, priority: 10 })
+      });
+      const data = await res.json();
+      currentGoalId = data.goal_id;
+      toast("Mission started. I'll let you know when it's done.");
+      pollGoal(currentGoalId);
+    } else {
+      const res = await fetch(BASE + "/api/command", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ command: text })
+      });
+      const data = await res.json();
+      const reply = data.reply || "I heard you, but I don't have an answer yet.";
+      addToHistory({ user: text, friday: reply, agents: [], status: "completed" });
+      if (voiceSystem) await voiceSystem.speak(reply);
+    }
+  } catch (e) {
+    console.error("Input processing error:", e);
+    toast("Something went wrong: " + e.message, "error");
+    setFridayState("idle");
+  } finally {
+    isProcessing = false;
+    if (!isProcessing) setStatus("Ready", "ready");
+  }
+}
+
+async function pollGoal(goalId) {
+  let attempts = 0;
+  while (attempts < 60) {
+    await new Promise(r => setTimeout(r, 3000));
+    try {
+      const res = await fetch(BASE + "/api/autonomous/goals/" + goalId, { headers: authHeaders() });
+      const goal = await res.json();
+      if (goal.status === "COMPLETED" || goal.status === "PARTIAL" || goal.status === "FAILED") {
+        currentGoalId = null;
+        const summary = goal.summary || "Done.";
+        addToHistory({ user: "Goal: " + goal.goal, friday: summary, agents: goal.steps?.map(s => s.agent) || [], status: goal.status });
+        if (voiceSystem) await voiceSystem.speak(summary);
+        break;
+      }
+      attempts++;
+    } catch (e) {
+      console.warn("Goal poll error:", e);
+      attempts++;
+    }
+  }
+}
+
+// ============================================================
+// Conversation History
+// ============================================================
+const historyLog = [];
+
+function addToHistory(entry) {
+  entry.timestamp = Date.now();
+  entry.id = "entry_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+  historyLog.unshift(entry);
+  if (history) history.addEntry(entry);
+  renderRecentHistory();
+}
+
+function renderRecentHistory() {
+  const container = $("#historyList");
+  if (!container) return;
+  container.innerHTML = historyLog.slice(0, 10).map(e => `
+    <div class="history-item">
+      <div class="history-meta">
+        <span class="history-time">${formatTime(e.timestamp)}</span>
+        <span class="history-status status-${e.status?.toLowerCase() || "completed"}">${e.status || "completed"}</span>
+      </div>
+      <div class="history-user">${escapeHtml(e.user)}</div>
+      <div class="history-friday">${escapeHtml(e.friday?.slice(0, 120))}${e.friday?.length > 120 ? "..." : ""}</div>
+    </div>
+  `).join("");
+}
+
+// ============================================================
+// Agent Fleet Integration
+// ============================================================
+let agentFleet = null;
+
+async function initAgentFleet() {
+  const container = $("#fleetSidebar .sidebar-content");
+  agentFleet = new AgentFleet({
+    basePath: BASE,
+    wsEndpoint: BASE + "/ws/agents",
+    onAgentFocus: (id, agent) => {
+      if (workflow) workflow.centerOnNode(id);
+      if (workflow) workflow.open();
+    },
+    onStatusChange: (id, status) => {
+      if (workflow) workflow.updateNodeState(id, status);
+    }
+  });
+  await agentFleet.init($("#agentList"));
+  return agentFleet;
+}
+
+// ============================================================
+// Workflow Canvas
+// ============================================================
+let workflowCanvas = null;
+
+async function initWorkflowCanvas() {
+  workflowCanvas = new WorkflowCanvas();
+  await workflowCanvas.init(document.body, {
+    onNodeClick: (agentId) => {
+      if (agentFleet) agentFleet.expandAgent(agentId);
+    },
+    onNodeDetails: (agentId, agent) => {
+      if (agentFleet) agentFleet.expandAgent(agentId);
+    }
+  });
+  return workflowCanvas;
+}
+
+// ============================================================
+// API Client & WebSocket
+// ============================================================
+let apiClient = null;
+
+async function initApiClient() {
+  apiClient = new FridayAPI();
+  await apiClient.init({ basePath: BASE, getToken });
+  return apiClient;
+}
+
+function connectWS() {
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+  getToken().then(token => {
+    if (!token) return;
+    ws = new WebSocket((location.protocol === "https:" ? "wss:" : "ws:") + "//" + location.host + BASE + "/ws/activity?token=" + encodeURIComponent(token));
+    ws.onopen = () => setStatus("Connected", "ready");
+    ws.onmessage = (ev) => {
+      try {
+        const msg = JSON.parse(ev.data);
+        handleWSMessage(msg);
+      } catch (e) { console.warn("WS parse error:", e); }
+    };
+    ws.onclose = () => {
+      setStatus("Disconnected", "error");
+      setTimeout(connectWS, 3000);
+    };
+    ws.onerror = () => ws.close();
+  });
+}
+
+function handleWSMessage(msg) {
+  if (msg.type === "agent_status" && agentFleet) {
+    agentFleet.updateAgent(msg.agent_id, msg);
+    if (workflowCanvas) workflowCanvas.updateNodeState(msg.agent_id, msg.status?.toLowerCase() || "idle");
+  }
+  if (msg.type === "agent_batch" && agentFleet) {
+    Object.entries(msg.agents || {}).forEach(([id, data]) => agentFleet.updateAgent(id, data));
+  }
+  if (msg.type === "task_update" && tasks) {
+    tasks.updateStatus(msg.task_id, msg.status, msg.data);
+  }
+  if (msg.type === "goal_update" && currentGoalId === msg.goal_id) {
+    // Handled by pollGoal
+  }
+}
+
+// ============================================================
+// Sidebar & Panel Toggle
+// ============================================================
+function initSidebarToggles() {
+  $("#fleetToggle").addEventListener("click", () => {
+    $("#fleetSidebar").classList.toggle("collapsed");
+    $("#fleetToggle").setAttribute("aria-expanded", !$("#fleetSidebar").classList.contains("collapsed"));
+  });
+  $("#workflowToggle").addEventListener("click", () => {
+    $("#workflowSidebar").classList.toggle("collapsed");
+    $("#workflowToggle").setAttribute("aria-expanded", !$("#workflowSidebar").classList.contains("collapsed"));
+  });
+  $("#settingsBtn").addEventListener("click", () => showPanel("settingsPanel"));
+  $("#settingsClose").addEventListener("click", () => hidePanel("settingsPanel"));
+  $("#settingsPanel").addEventListener("click", (e) => { if (e.target === $("#settingsPanel")) hidePanel("settingsPanel"); });
+  $("#fleetSidebar").addEventListener("click", (e) => { if (e.target === $("#fleetSidebar")) $("#fleetSidebar").classList.toggle("collapsed"); });
+  $("#workflowSidebar").addEventListener("click", (e) => { if (e.target === $("#workflowSidebar")) $("#workflowSidebar").classList.toggle("collapsed"); });
+}
+
+// ============================================================
+// Settings Panel
+// ============================================================
+function initSettings() {
+  $$("#settingsNav button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      $$("#settingsNav button").forEach(b => b.setAttribute("aria-selected", "false"));
+      btn.setAttribute("aria-selected", "true");
+      $$(".tab-panels > div").forEach(p => p.hidden = true);
+      $("#tab-" + btn.dataset.tab).hidden = false;
+    });
+  });
+  
+  // Load settings from localStorage
+  const saved = JSON.parse(localStorage.getItem("friday_settings") || "{}");
+  
+  // Voice settings
+  $("#sttLang").value = saved.sttLang || "en-IN";
+  $("#autoLangDetect").checked = saved.autoLangDetect !== false;
+  $("#ttsVoice").value = saved.ttsVoice || "en-IN-NeerjaNeural";
+  $("#speakReplies").checked = saved.speakReplies !== false;
+  $("#autoVoiceMatch").checked = saved.autoVoiceMatch !== false;
+  
+  // Theme settings
+  $("#themeMode").value = saved.themeMode || "dark";
+  if (saved.accentColor) {
+    document.documentElement.style.setProperty("--mint", getAccentColor(saved.accentColor));
+  }
+  
+  // Apply theme
+  applyTheme(saved.themeMode || "dark", saved.accentColor || "mint");
+  
+  // Event listeners
+  $("#sttLang").addEventListener("change", () => saveSetting("sttLang", $("#sttLang").value));
+  $("#autoLangDetect").addEventListener("change", () => saveSetting("autoLangDetect", $("#autoLangDetect").checked));
+  $("#ttsVoice").addEventListener("change", () => saveSetting("ttsVoice", $("#ttsVoice").value));
+  $("#speakReplies").addEventListener("change", () => saveSetting("speakReplies", $("#speakReplies").checked));
+  $("#autoVoiceMatch").addEventListener("change", () => saveSetting("autoVoiceMatch", $("#autoVoiceMatch").checked));
+  
+  $("#themeMode").addEventListener("change", () => {
+    saveSetting("themeMode", $("#themeMode").value);
+    applyTheme($("#themeMode").value, getComputedStyle(document.documentElement).getPropertyValue("--mint").trim());
+  });
+  
+  $$(".color-picker button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const color = btn.dataset.color;
+      saveSetting("accentColor", color);
+      applyTheme($("#themeMode").value, color);
+    });
+  });
+  
+  $("#reducedMotion").checked = saved.reducedMotion || false;
+  $("#reducedMotion").addEventListener("change", () => saveSetting("reducedMotion", $("#reducedMotion").checked));
+  $("#debugMode").checked = saved.debugMode || false;
+  $("#debugMode").addEventListener("change", () => saveSetting("debugMode", $("#debugMode").checked));
+  
+  $("#resetDefaults").addEventListener("click", () => {
+    localStorage.removeItem("friday_settings");
+    location.reload();
+  });
+}
+
+function saveSetting(key, value) {
+  const saved = JSON.parse(localStorage.getItem("friday_settings") || "{}");
+  saved[key] = value;
+  localStorage.setItem("friday_settings", JSON.stringify(saved));
+}
+
+function getAccentColor(name) {
+  const colors = {
+    mint: "#10b981",
+    cyan: "#06b6d4",
+    violet: "#a855f7",
+    amber: "#f59e0b"
+  };
+  return colors[name] || colors.mint;
+}
+
+function applyTheme(mode, accent) {
+  const root = document.documentElement;
+  if (mode === "auto") {
+    mode = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  root.setProperty("--bg", mode === "dark" ? "#050508" : "#fafafa");
+  root.setProperty("--bg-deep", mode === "dark" ? "#030305" : "#f0f0f0");
+  root.setProperty("--panel", mode === "dark" ? "rgba(20,20,30,0.85)" : "rgba(255,255,255,0.9)");
+  root.setProperty("--panel-strong", mode === "dark" ? "rgba(30,30,45,0.95)" : "rgba(255,255,255,0.95)");
+  root.setProperty("--line", mode === "dark" ? "rgba(100,100,120,0.3)" : "rgba(0,0,0,0.1)");
+  root.setProperty("--line-strong", mode === "dark" ? "rgba(140,140,160,0.5)" : "rgba(0,0,0,0.2)");
+  root.setProperty("--text", mode === "dark" ? "#f0f0f5" : "#101015");
+  root.setProperty("--text-dim", mode === "dark" ? "#a0a0b0" : "#606070");
+  root.setProperty("--text-muted", mode === "dark" ? "#707085" : "#9090a0");
+  root.setProperty("--mint", getAccentColor(accent));
+  
+  document.body.classList.toggle("light", mode === "light");
+  document.body.classList.toggle("dark", mode === "dark");
+}
+
+// ============================================================
+// Agent Toggles
+// ============================================================
+function initAgentToggles() {
+  const agents = ["friday","inference","memora","stratex","intelx","futuris","cortex","forge","sentinel","vyralx"];
+  const container = $("#agentToggles");
+  const saved = JSON.parse(localStorage.getItem("friday_agent_visibility") || "{}");
+  container.innerHTML = agents.map(id => `
+    <label class="agent-toggle">
+      <input type="checkbox" ${saved[id] !== false ? "checked" : ""} data-agent="${id}">
+      <span>${id}</span>
+    </label>
+  `).join("");
+  $$("#agentToggles input").forEach(cb => {
+    cb.addEventListener("change", () => {
+      const saved = JSON.parse(localStorage.getItem("friday_agent_visibility") || "{}");
+      saved[cb.dataset.agent] = cb.checked;
+      localStorage.setItem("friday_agent_visibility", JSON.stringify(saved));
+      if (agentFleet) agentFleet.setAgentVisible(cb.dataset.agent, cb.checked);
+    });
+  });
+}
+
+// ============================================================
+// Mic Button Interaction
+// ============================================================
+function initMicButton() {
+  const btn = $("#micBtn");
+  let isHolding = false;
+  let holdTimer = null;
+  
+  const startListening = () => {
+    if (isProcessing) return;
+    isHolding = true;
+    btn.classList.add("holding");
+    voiceSystem?.startListening();
+    holdTimer = setTimeout(() => {
+      if (isHolding) {
+        // Long press - keep listening until release
+      }
+    }, 300);
+  };
+  
+  const stopListening = () => {
+    if (!isHolding) return;
+    isHolding = false;
+    clearTimeout(holdTimer);
+    btn.classList.remove("holding");
+    voiceSystem?.stopListening();
+  };
+  
+  btn.addEventListener("mousedown", (e) => { e.preventDefault(); startListening(); });
+  btn.addEventListener("mouseup", stopListening);
+  btn.addEventListener("mouseleave", stopListening);
+  btn.addEventListener("touchstart", (e) => { e.preventDefault(); startListening(); }, { passive: true });
+  btn.addEventListener("touchend", stopListening);
+  btn.addEventListener("click", () => {
+    if (!isHolding) voiceSystem?.toggleListening();
+  });
+  
+  // Keyboard
+  document.addEventListener("keydown", (e) => {
+    if (e.code === "Space" && document.activeElement === document.body) {
+      e.preventDefault();
+      if (!isHolding) startListening();
+    }
+  });
+  document.addEventListener("keyup", (e) => {
+    if (e.code === "Space") stopListening();
+  });
+}
+
+// ============================================================
+// Text Input
+// ============================================================
+function initTextInput() {
+  const input = $("#textInput");
+  const sendBtn = $("#sendBtn");
+  
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendText();
+    }
+  });
+  sendBtn.addEventListener("click", sendText);
+  
+  function sendText() {
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = "";
+    processUserInput(text);
+  }
+}
+
+// ============================================================
+// Main Initialization
+// ============================================================
+async function init() {
+  try {
+    // Set initial status
+    setStatus("Initializing...", "processing");
+    
+    // Get token
+    await getToken();
+    
+    // Initialize core components
+    await initFridayCharacter();
+    await initVoiceSystem();
+    await initAgentFleet();
+    await initWorkflowCanvas();
+    await initApiClient();
+    
+    // Initialize UI
+    initSidebarToggles();
+    initSettings();
+    initAgentToggles();
+    initMicButton();
+    initTextInput();
+    
+    // Connect WebSocket
+    connectWS();
+    
+    // Start clock
+    setInterval(() => $("#clock").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), 1000);
+    
+    // Mark ready
+    setStatus("Ready", "ready");
+    toast("Friday is ready. How can I help you?");
+    
+    // Welcome message
+    if (voiceSystem) {
+      setTimeout(() => voiceSystem.speak("Hello. I'm Friday. How can I help you today?"), 500);
+    }
+    
+    console.log("Friday initialized successfully");
+  } catch (e) {
+    console.error("Initialization failed:", e);
+    setStatus("Error", "error");
+    toast("Initialization failed: " + e.message, "error");
+  }
+}
+
+// Start when DOM ready
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", init);
+} else {
+  init();
+}
+</script>
+</body>
+</html>
