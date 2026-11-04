@@ -360,7 +360,7 @@ class EnhancedAutonomousController:
 
     _FAILED_PAYLOAD_STATES = {
         "REFUSED", "FORBIDDEN", "BLOCKED", "DENIED", "FAILED", "ERROR",
-        "UNVERIFIED", "PENDING", "TIMEOUT",
+        "UNVERIFIED", "PENDING", "TIMEOUT", "UNREACHABLE",
     }
 
     @classmethod
@@ -383,18 +383,24 @@ class EnhancedAutonomousController:
             return "FAILED"
         return ""
 
-    async def execute_subtask(self, subtask: SubTask) -> bool:
+    async def execute_subtask(self, subtask: SubTask, plan: "ExecutionPlan | None" = None) -> bool:
         """Execute a single sub-task."""
         subtask.status = "RUNNING"
         subtask.started_at = time.time()
         subtask.attempts += 1
 
+        directive = subtask.description
+        context = self._dependency_context(subtask, plan)
+        if context:
+            directive = f"{directive}{context}"
+
         logger.info(f"Executing subtask {subtask.id}: {subtask.description} (agent: {subtask.agent})")
         logger.info("Agent %s is now performing work: %s", subtask.agent, subtask.description)
 
         try:
-            # Route to appropriate agent, passing the subtask description as the directive
-            result = await self._dispatch_to_agent(subtask.agent, subtask.description)
+            # Route to appropriate agent, passing the subtask description plus any
+            # completed upstream findings as the actual objective/directive.
+            result = await self._dispatch_to_agent(subtask.agent, directive)
 
             if result:
                 failure = self._payload_failure(result)
@@ -423,6 +429,32 @@ class EnhancedAutonomousController:
                 await asyncio.sleep(2 ** subtask.attempts)
 
             return False
+
+    def _dependency_context(self, subtask: SubTask, plan: "ExecutionPlan | None") -> str:
+        """Carry completed upstream findings into the next agent's directive.
+
+        Plan steps are ordered by dependency, but a peer only receives its own
+        description. Adding the upstream summaries makes the handoff real: the
+        memory write stores what IntelX actually found, and later steps reason
+        over it instead of starting from nothing.
+        """
+        if plan is None or not subtask.dependencies:
+            return ""
+        parts: list[str] = []
+        for dep_id in subtask.dependencies:
+            dep = next((st for st in plan.subtasks if st.id == dep_id), None)
+            if dep is None or dep.status != "COMPLETED":
+                continue
+            summary = self._summarise_result(dep.result, 500).strip()
+            if summary:
+                parts.append(f"{dep.agent} reported: {summary}")
+        if not parts:
+            return ""
+        joined = "\n".join(parts)
+        return (
+            "\n\nUpstream findings from the previous step, use this as context "
+            f"for your work:\n{joined}"
+        )
 
     @staticmethod
     def _summarise_result(result: Any, limit: int = 300) -> str:
@@ -490,14 +522,14 @@ class EnhancedAutonomousController:
         return mesh
 
     async def _dispatch_to_agent(self, agent: str, directive: str) -> Any:
-        """Dispatch a directive to a specific agent using the verified mesh.
+        """Dispatch a directive to a specific agent using the verified mesh with Inference/Memora routing.
 
         The subtask description is forwarded as the actual objective/directive.
         The mesh action is derived from the description (via the shared helper)
         rather than being hardcoded to a status probe.
         """
         agent_id = agent.lower().strip()
-        logger.info("Dispatching real work to %s: %s", agent.upper(), directive)
+        logger.info("Dispatching real work to %s via Mesh routing: %s", agent.upper(), directive)
         try:
             from friday.cognition.mesh import OutcomeState
             from friday.autonomous import controller as controller_module
@@ -514,6 +546,12 @@ class EnhancedAutonomousController:
             # Memora only accepts store/query; keep store for write directives.
             if agent_id == "memora" and mesh_action == "execute":
                 mesh_action = "store"
+            # Stratex: "execute" requires live trading auth (6 gates). For any
+            # mesh request from FRIDAY, keep "status" which provides read-only
+            # access to positions, supervision, and portfolio state without
+            # triggering the live trading authorization gates.
+            if agent_id == "stratex" and mesh_action == "execute":
+                mesh_action = "status"
 
             envelope = mesh.build_envelope(
                 agent_id,
@@ -590,6 +628,32 @@ class EnhancedAutonomousController:
                     ready_subtasks.append(subtask)
 
             if not ready_subtasks:
+                # No subtask can run right now. Pending subtasks whose
+                # dependencies have failed (or been blocked) can never become
+                # ready — mark them FAILED so the plan finishes with an honest
+                # PARTIAL/FAILED status instead of waiting forever.
+                skipped = []
+                for st in list(plan.get_pending_subtasks()):
+                    for dep_id in st.dependencies:
+                        dep = next((s for s in plan.subtasks if s.id == dep_id), None)
+                        if dep is not None and dep.status in ("FAILED", "BLOCKED"):
+                            st.status = "FAILED"
+                            st.error = "Skipped: dependency did not complete"
+                            st.completed_at = time.time()
+                            self._record_action(st, st.error, False)
+                            skipped.append(st)
+                            break
+                if skipped:
+                    plan.completed_subtasks = len(plan.get_completed_subtasks())
+                    plan.failed_subtasks = len(plan.get_failed_subtasks())
+                    logger.warning(
+                        "Plan %s: skipped %d subtasks with failed dependencies",
+                        plan.plan_id,
+                        len(skipped),
+                    )
+                    continue
+                # All remaining pending subtasks wait on dependencies that are
+                # still running or retryable; poll and re-check.
                 logger.warning("No ready subtasks, waiting for dependencies... (iteration %d, pending=%d)", iteration, len(plan.get_pending_subtasks()))
                 for st in plan.get_pending_subtasks():
                     logger.warning("  Pending: %s deps=%s", st.id, st.dependencies)
@@ -598,7 +662,7 @@ class EnhancedAutonomousController:
 
             # Execute ready sub-tasks (can be parallelized)
             results = await asyncio.gather(
-                *[self.execute_subtask(st) for st in ready_subtasks]
+                *[self.execute_subtask(st, plan) for st in ready_subtasks]
             )
 
             # Update plan progress

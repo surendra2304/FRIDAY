@@ -15,6 +15,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -28,8 +29,98 @@ from friday.autonomous.enhanced_controller import (
     ExecutionPlan,
     SubTask,
 )
+from friday.api.response_synthesizer import synthesize_answer
 
 logger = get_logger("autonomous.daemon")
+
+_AGENT_NAMES = {
+    "inference": "Inference",
+    "stratex": "Stratex",
+    "intelx": "IntelX",
+    "futuris": "Futuris",
+    "cortex": "Cortex",
+    "forge": "Forge",
+    "sentinel": "Sentinel",
+    "memora": "Memora",
+    "vyralx": "VyralX",
+}
+
+# One honest verb per specialist so a finished goal reads like a report from a
+# colleague instead of a table of status tokens.
+_STEP_VERBS = {
+    "intelx": "took the research step",
+    "memora": "wrote the findings into persistent memory",
+    "cortex": "checked the public site",
+    "stratex": "reviewed the trading book",
+    "forge": "worked the code change",
+    "sentinel": "ran the security review",
+    "vyralx": "handled the video work",
+    "futuris": "ran the forecast",
+    "inference": "worked through the reasoning",
+}
+
+_MACHINE_TAG_RE = re.compile(r"\[[A-Z][A-Z0-9 _-]{2,}:[^\]]*\]")
+_REFERENCE_RE = re.compile(r"\b(?:goal|plan|task|st|trace|run)_[0-9a-zA-Z_-]{4,}\b")
+_RESULT_KEYS = ("spoken_summary", "summary", "message", "text_response", "reply", "detail", "stage", "output")
+
+
+def _clean_text(value: Any, limit: int = 240) -> str:
+    """Strip machine tags, goal references and raw JSON from owner-facing text."""
+    text = str(value or "")
+    if not text:
+        return ""
+    text = _MACHINE_TAG_RE.sub(" ", text)
+    text = _REFERENCE_RE.sub(" ", text)
+    text = re.sub(r"\s+([.,;:])", r"\1", text)
+    text = re.sub(r"\s+", " ", text).strip(" -–—:;\t\r\n")
+    if not text or text[0] in "{[<":
+        return ""
+    text = re.sub(r"^(status|state)\s*[:=]\s*\w+\s*", "", text, flags=re.IGNORECASE)
+    if len(text) > limit:
+        cut = text[:limit]
+        stop = max(cut.rfind(". "), cut.rfind("; "))
+        text = (cut[: stop + 1] if stop > limit * 0.45 else cut.rstrip(" ,;") + "…")
+    return text.strip()
+
+
+def _human_result(result: Any, limit: int = 200) -> str:
+    """Reduce an agent envelope to one sentence the owner can read."""
+    if result is None:
+        return ""
+    if isinstance(result, str):
+        return _clean_text(result, limit)
+    if isinstance(result, dict):
+        for key in _RESULT_KEYS:
+            value = result.get(key)
+            if isinstance(value, str) and value.strip():
+                return _clean_text(value, limit)
+        nested = result.get("result")
+        if nested is not None and nested is not result:
+            text = _human_result(nested, limit)
+            if text:
+                return text
+        status = str(result.get("status") or "").strip().lower()
+        if status in {"completed", "complete", "ok", "success", "stored", "saved", "done"}:
+            return "It confirmed the work was done."
+        return ""
+    return _clean_text(result, limit)
+
+
+def _with_period(text: str) -> str:
+    """End a fragment with punctuation so joined prose reads cleanly."""
+    cleaned = str(text or "").strip()
+    if cleaned and cleaned[-1] not in ".!?…":
+        cleaned += "."
+    return cleaned
+
+
+def _short_action(description: str, limit: int = 88) -> str:
+    """Turn a planner instruction into a short human action label."""
+    text = str(description or "").split(":")[0]
+    text = re.sub(r"\s+", " ", text).strip().rstrip(".")
+    if len(text) > limit:
+        text = text[:limit].rsplit(" ", 1)[0] + "…"
+    return text
 
 
 @dataclass
@@ -38,12 +129,14 @@ class AutonomousGoal:
     id: str
     goal: str
     priority: int = 0  # higher = more urgent
-    status: str = "QUEUED"  # QUEUED, RUNNING, COMPLETED, FAILED
+    status: str = "QUEUED"  # QUEUED, RUNNING, COMPLETED, FAILED, PARTIAL
     created_at: float = field(default_factory=time.time)
     started_at: float = 0.0
     completed_at: float = 0.0
     plan_id: str = ""
     error: str = ""
+    summary: str = ""
+    steps: list[dict[str, Any]] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -64,9 +157,11 @@ class AutonomousDaemon:
         self._goal_queue: list[AutonomousGoal] = []
         self._running_goals: dict[str, AutonomousGoal] = {}
         self._completed_goals: list[AutonomousGoal] = []
+        self._live_plans: dict[str, ExecutionPlan] = {}
         self._max_concurrent_goals = 2
         self._running = False
         self._daemon_task: asyncio.Task | None = None
+        self._wake = asyncio.Event()
         self._persistence_path = Path(__file__).resolve().parents[3] / ".data" / "autonomous_goals.json"
         self._load_state()
 
@@ -144,8 +239,125 @@ class AutonomousDaemon:
         # Sort by priority (highest first), then by creation time
         self._goal_queue.sort(key=lambda g: (-g.priority, g.created_at))
         self._persist_state()
+        self._wake.set()
         logger.info("Submitted autonomous goal %s: %s", goal.id, goal.goal[:80])
         return goal
+
+    def _step_payload(self, subtask: SubTask) -> dict[str, Any]:
+        """One planned action, with the agent, its state and its real result."""
+        duration = 0.0
+        if subtask.completed_at and subtask.started_at:
+            duration = round(subtask.completed_at - subtask.started_at, 2)
+        agent = (subtask.agent or "").strip().lower()
+        return {
+            "id": subtask.id,
+            "agent": agent,
+            "agent_name": _AGENT_NAMES.get(agent, agent.upper() or "FRIDAY"),
+            "action": _short_action(subtask.description),
+            "status": (subtask.status or "PENDING").lower(),
+            "depends_on": list(subtask.dependencies),
+            "duration": duration,
+            "result": _human_result(subtask.result) if subtask.status == "COMPLETED" else "",
+            "error": _clean_text(subtask.error, 140) if subtask.status == "FAILED" else "",
+        }
+
+    def _build_summary(self, goal: AutonomousGoal, plan: ExecutionPlan, duration: float) -> str:
+        """Turn a finished plan into a short, honest, human-readable report."""
+        subtasks = list(plan.subtasks)
+        total = len(subtasks)
+        completed = sum(1 for st in subtasks if st.status == "COMPLETED")
+        failed = sum(1 for st in subtasks if st.status == "FAILED")
+
+        if total == 0:
+            return (
+                "I could not turn that into a plan, so no agent was asked to do anything. "
+                "Try rephrasing it as a concrete task, for example: research a topic, store the findings, and report back."
+            )
+
+        seconds = max(0.0, duration)
+        if completed == total:
+            opener = f"Done. All {total} steps finished in {seconds:.1f} seconds."
+        elif completed:
+            opener = (
+                f"Partly done. {completed} of {total} steps finished in {seconds:.1f} seconds"
+                + (f"; {failed} failed." if failed else ".")
+            )
+        else:
+            opener = f"That did not go through. None of the {total} steps completed."
+
+        sentences = [opener]
+        for st in subtasks:
+            agent = (st.agent or "").strip().lower()
+            name = _AGENT_NAMES.get(agent, agent.upper() or "FRIDAY")
+            verb = _STEP_VERBS.get(agent, "handled its step")
+            if st.status == "COMPLETED":
+                line = f"{name} {verb}."
+                result = _human_result(st.result, 180)
+                if result and not result.lower().startswith(("it confirmed", "completed", "ok", "success")):
+                    line += f" {_with_period(result)}"
+                sentences.append(line)
+            elif st.status == "FAILED":
+                reason = _clean_text(st.error, 120)
+                sentences.append(
+                    f"{name} could not finish that step" + (f": {reason}." if reason else ".")
+                )
+
+        if completed == total and total > 1 and any(st.dependencies for st in subtasks):
+            sentences.append("Each step handed what it found to the next agent as the work moved forward.")
+
+        return " ".join(sentences)
+
+    def _goal_payload(self, goal: AutonomousGoal, step_limit: int = 12) -> dict[str, Any]:
+        """Serialise a goal with its live pipeline so the dashboard can show the work."""
+        plan = self._live_plans.get(goal.id)
+        if plan is not None:
+            steps = [self._step_payload(st) for st in plan.subtasks]
+        else:
+            steps = list(goal.steps)
+
+        summary = goal.summary
+        if not summary and plan is not None:
+            done = sum(1 for st in plan.subtasks if st.status == "COMPLETED")
+            total = len(plan.subtasks)
+            summary = f"Working on it — {done} of {total} steps finished so far."
+        if not summary and goal.status == "QUEUED":
+            summary = "Queued. I will start as soon as a worker slot is free."
+        if not summary and goal.status in ("COMPLETED", "PARTIAL", "FAILED"):
+            summary = (
+                "That goal finished before I started keeping detailed step reports, "
+                "so there is no breakdown to show."
+            )
+
+        duration = 0.0
+        if goal.completed_at and goal.started_at:
+            duration = round(goal.completed_at - goal.started_at, 2)
+        elif goal.started_at:
+            duration = round(time.time() - goal.started_at, 2)
+
+        return {
+            "id": goal.id,
+            "goal": goal.goal[:160],
+            "status": goal.status,
+            "summary": summary,
+            "steps": steps[:step_limit],
+            "duration": duration,
+            "created_at": goal.created_at,
+            "started_at": goal.started_at,
+            "completed_at": goal.completed_at,
+            "error": goal.error,
+            "plan_id": goal.plan_id,
+        }
+
+    def get_goal(self, goal_id: str) -> dict[str, Any] | None:
+        """Look up one goal by reference across the whole lifecycle."""
+        candidates = list(self._goal_queue) + list(self._running_goals.values())
+        for goal in candidates:
+            if goal.id == goal_id:
+                return self._goal_payload(goal)
+        for goal in reversed(self._completed_goals):
+            if goal.id == goal_id:
+                return self._goal_payload(goal)
+        return None
 
     def get_status(self) -> dict[str, Any]:
         """Get current daemon status."""
@@ -156,33 +368,9 @@ class AutonomousDaemon:
             "completed": len(self._completed_goals),
             "max_concurrent": self._max_concurrent_goals,
             "goals": {
-                "queued": [
-                    {
-                        "id": g.id,
-                        "goal": g.goal[:100],
-                        "priority": g.priority,
-                        "status": g.status,
-                    }
-                    for g in self._goal_queue[:10]
-                ],
-                "running": [
-                    {
-                        "id": g.id,
-                        "goal": g.goal[:100],
-                        "plan_id": g.plan_id,
-                        "elapsed": time.time() - g.started_at if g.started_at else 0,
-                    }
-                    for g in self._running_goals.values()
-                ],
-                "recent_completed": [
-                    {
-                        "id": g.id,
-                        "goal": g.goal[:100],
-                        "status": g.status,
-                        "duration": g.completed_at - g.started_at if g.completed_at else 0,
-                    }
-                    for g in self._completed_goals[-5:]
-                ],
+                "queued": [self._goal_payload(g) for g in self._goal_queue[:10]],
+                "running": [self._goal_payload(g) for g in self._running_goals.values()],
+                "recent_completed": [self._goal_payload(g) for g in self._completed_goals[-5:]],
             },
         }
 
@@ -226,7 +414,15 @@ class AutonomousDaemon:
             except Exception as exc:
                 logger.error("Autonomous daemon loop error: %s", exc)
 
-            await asyncio.sleep(5)  # Poll interval
+            # Wake immediately when a goal is submitted; otherwise poll every
+            # five seconds. This removes the dead pause between "send" and the
+            # first agent step appearing on the dashboard.
+            try:
+                await asyncio.wait_for(self._wake.wait(), timeout=5)
+            except asyncio.TimeoutError:
+                pass
+            finally:
+                self._wake.clear()
 
     async def _start_goal(self, goal: AutonomousGoal) -> None:
         """Start executing a goal."""
@@ -239,6 +435,8 @@ class AutonomousDaemon:
         try:
             plan = self.controller.decompose_goal(goal.goal)
             goal.plan_id = getattr(plan, "plan_id", "") or (plan.subtasks[0].id if plan.subtasks else "")
+            goal.steps = [self._step_payload(st) for st in plan.subtasks]
+            self._live_plans[goal.id] = plan
             logger.info("Daemon decomposed goal %s into %d subtasks: %s", goal.id, len(plan.subtasks),
                         " -> ".join(st.agent for st in plan.subtasks))
             # Execute plan in background
@@ -248,6 +446,10 @@ class AutonomousDaemon:
             goal.status = "FAILED"
             goal.error = str(exc)
             goal.completed_at = time.time()
+            goal.summary = (
+                "I could not put a plan together for that, so no agent ran. "
+                "Try describing the task in one clear sentence."
+            )
             logger.error("Failed to start goal %s: %s", goal.id, exc)
             await self._finish_goal(goal)
 
@@ -277,6 +479,33 @@ class AutonomousDaemon:
             logger.error("Goal %s execution failed: %s", goal.id, exc)
         finally:
             goal.completed_at = time.time()
+            # The owner reads this, so it has to be prose about real work —
+            # never a status token or a goal reference.
+            goal.steps = [self._step_payload(st) for st in plan.subtasks]
+
+            duration = goal.completed_at - (goal.started_at or goal.completed_at)
+
+            # Synthesize a conversational answer via the Inference gateway (primary path).
+            # _build_summary is only a true fallback when synthesis fails or returns nothing,
+            # so the owner never sees a raw status log unless the gateway is unreachable.
+            synthesized = ""
+            try:
+                synthesized = await synthesize_answer(goal.goal, goal.steps)
+                if synthesized:
+                    goal.summary = synthesized
+                    logger.info("Goal %s: synthesized conversational answer via Inference", goal.id)
+                else:
+                    logger.warning(
+                        "Goal %s: synthesis returned an empty answer; using summary fallback", goal.id
+                    )
+                    goal.summary = self._build_summary(goal, plan, duration)
+            except Exception as exc:
+                logger.warning(
+                    "Goal %s: answer synthesis failed (%s); using summary fallback", goal.id, exc
+                )
+                goal.summary = self._build_summary(goal, plan, duration)
+
+            self._live_plans.pop(goal.id, None)
             await self._finish_goal(goal)
 
     async def _finish_goal(self, goal: AutonomousGoal) -> None:
@@ -297,6 +526,10 @@ class AutonomousDaemon:
                 logger.warning("Goal %s timed out after 30 minutes", goal_id)
                 goal.status = "FAILED"
                 goal.error = "Execution timeout (30 minutes)"
+                goal.summary = (
+                    "I stopped this one because it ran past the thirty minute limit. "
+                    "Nothing further will run; send it again if you still want it."
+                )
                 goal.completed_at = now
                 await self._finish_goal(goal)
 

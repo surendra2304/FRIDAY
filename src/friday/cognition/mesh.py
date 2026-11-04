@@ -45,6 +45,177 @@ from friday.core.task_envelope import ActionReceipt, TaskEnvelope, TaskResult, T
 
 logger = get_logger("cognition.mesh")
 
+# ─── Inference & Memora Routing Helpers ───────────────────────────────────────
+
+class InferenceRouter:
+    """Route all LLM calls through Inference gateway (/v1/chat/completions)."""
+    
+    def __init__(self, base_url: str, api_key: str):
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+    
+    async def complete(
+        self,
+        messages: list[dict[str, str]],
+        model: str = "auto",
+        temperature: float = 0.7,
+        max_tokens: int = 1024,
+        stream: bool = False,
+    ) -> dict[str, Any]:
+        """Call Inference gateway for model completion."""
+        import httpx
+        url = f"{self.base_url}/inference/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": stream,
+        }
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+            resp.raise_for_status()
+            return resp.json()
+    
+    async def deliberate(
+        self,
+        question: str,
+        mode: str = "review",
+        require_evidence: bool = True,
+        context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Call Inference deliberation endpoint for multi-agent reasoning."""
+        import httpx
+        url = f"{self.base_url}/inference/v1/ask"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "prompt": question,
+            "mode": mode,
+            "require_evidence": require_evidence,
+            "context": context or {},
+        }
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+            resp.raise_for_status()
+            return resp.json()
+
+
+class MemoraFabric:
+    """Route all memory operations through Memora (/v1/context, /v1/memories)."""
+    
+    def __init__(self, base_url: str, api_key: str, agent_name: str = "friday"):
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.agent_name = agent_name
+    
+    def _headers(self) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self.api_key}",
+            "X-Agent-Name": self.agent_name,
+            "Content-Type": "application/json",
+        }
+    
+    async def store(
+        self,
+        content_text: str,
+        memory_type: str = "semantic",
+        importance: float = 0.8,
+        provenance: dict[str, Any] | None = None,
+        namespace_path: str | None = None,
+    ) -> dict[str, Any]:
+        """Store memory via Memora write endpoint."""
+        import httpx
+        url = f"{self.base_url}/api/v1/memora/context/store"
+        payload = {
+            "content_text": content_text,
+            "memory_type": memory_type,
+            "importance": importance,
+            "provenance": provenance or {},
+            "source": f"agent:{self.agent_name}",
+            "confidence": 1.0,
+        }
+        if namespace_path:
+            payload["target_namespace_path"] = namespace_path
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(url, json=payload, headers=self._headers())
+            resp.raise_for_status()
+            return resp.json()
+    
+    async def search(
+        self,
+        query: str,
+        limit: int = 10,
+        namespace_path: str | None = None,
+        min_score: float = 0.0,
+    ) -> list[dict[str, Any]]:
+        """Search memories via Memora hybrid search."""
+        import httpx
+        url = f"{self.base_url}/api/v1/memora/context/search"
+        params = {"q": query, "limit": limit, "min_score": min_score}
+        if namespace_path:
+            params["namespace_path"] = namespace_path
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(url, params=params, headers=self._headers())
+            resp.raise_for_status()
+            return resp.json()
+    
+    async def build_context(
+        self,
+        task_query: str,
+        token_budget: int = 4000,
+        agent_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Build curated context bundle via Memora context pipeline."""
+        import httpx
+        url = f"{self.base_url}/api/v1/memora/context"
+        payload = {
+            "task_query": task_query,
+            "token_budget": token_budget,
+            "agent_id": agent_id or self.agent_name,
+            "user_id": "default_user",
+            "workspace_id": "default_workspace",
+        }
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(url, json=payload, headers=self._headers())
+            resp.raise_for_status()
+            return resp.json()
+
+
+# Global instances (initialized by FRIDAY on startup)
+_inference_router: InferenceRouter | None = None
+_memora_fabric: MemoraFabric | None = None
+
+
+def init_inference_router(base_url: str, api_key: str) -> InferenceRouter:
+    """Initialize the global Inference router."""
+    global _inference_router
+    _inference_router = InferenceRouter(base_url, api_key)
+    return _inference_router
+
+
+def init_memora_fabric(base_url: str, api_key: str, agent_name: str = "friday") -> MemoraFabric:
+    """Initialize the global Memora fabric client."""
+    global _memora_fabric
+    _memora_fabric = MemoraFabric(base_url, api_key, agent_name)
+    return _memora_fabric
+
+
+def get_inference_router() -> InferenceRouter | None:
+    """Get the global Inference router instance."""
+    return _inference_router
+
+
+def get_memora_fabric() -> MemoraFabric | None:
+    """Get the global Memora fabric client instance."""
+    return _memora_fabric
+
 
 class OutcomeState(str, Enum):
     """What actually happened. Every value is a distinct fact."""
@@ -676,10 +847,10 @@ class Mesh:
         backoff_seconds: float = 0.25,
         breaker: CircuitBreaker | None = None,
         on_outcome: Callable[[PeerOutcome], None] | None = None,
-        request_timeout: float = 30.0,
+        request_timeout: float = 120.0,
     ) -> None:
         self.contracts = contracts if contracts is not None else build_contracts()
-        self.transport: Transport = transport or HttpTransport()
+        self.transport: Transport = transport or HttpTransport(timeout=request_timeout)
         self.attempts = max(1, attempts)
         #: A transport that never returns must not become a mesh that never
         #: returns. `HttpTransport` has its own httpx timeout; this is the bound
@@ -1273,6 +1444,185 @@ class Mesh:
             state=OutcomeState.UNREACHABLE,
             detail=f"{peer} did not answer after {attempts} attempt(s). It may be down, or blocked here.",
         )
+
+    # -- Inference & Memora routing -----------------------------------------
+
+    async def route_through_inference(
+        self,
+        prompt: str,
+        *,
+        model: str = "auto",
+        mode: str = "fast",
+        temperature: float = 0.7,
+        max_tokens: int = 1024,
+        context: dict[str, Any] | None = None,
+        require_evidence: bool = False,
+    ) -> dict[str, Any]:
+        """Route an LLM call through Inference gateway with automatic model selection."""
+        router = get_inference_router()
+        if router is None:
+            # Fallback: try to initialize from contracts
+            inf_contract = self.contracts.get("inference")
+            if not inf_contract or not inf_contract.base_url:
+                raise RuntimeError("Inference gateway not configured; cannot route LLM call")
+            router = init_inference_router(inf_contract.base_url, inf_contract.api_key)
+        
+        if mode in ("deliberative", "review", "consensus", "debate"):
+            return await router.deliberate(
+                question=prompt,
+                mode=mode if mode != "consensus" else "review",
+                require_evidence=require_evidence,
+                context=context,
+            )
+        else:
+            messages = [{"role": "user", "content": prompt}]
+            if context:
+                messages.insert(0, {"role": "system", "content": json.dumps(context)})
+            return await router.complete(
+                messages=messages,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+
+    async def route_through_memora(
+        self,
+        operation: str,
+        *,
+        content_text: str | None = None,
+        query: str | None = None,
+        task_query: str | None = None,
+        memory_type: str = "semantic",
+        importance: float = 0.8,
+        provenance: dict[str, Any] | None = None,
+        namespace_path: str | None = None,
+        limit: int = 10,
+        token_budget: int = 4000,
+        agent_id: str | None = None,
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        """Route a memory operation through Memora fabric."""
+        fabric = get_memora_fabric()
+        if fabric is None:
+            # Fallback: try to initialize from contracts
+            mem_contract = self.contracts.get("memora")
+            if not mem_contract or not mem_contract.base_url:
+                raise RuntimeError("Memora fabric not configured; cannot route memory operation")
+            fabric = init_memora_fabric(mem_contract.base_url, mem_contract.api_key)
+        
+        if operation == "store":
+            if not content_text:
+                raise ValueError("content_text required for store operation")
+            return await fabric.store(
+                content_text=content_text,
+                memory_type=memory_type,
+                importance=importance,
+                provenance=provenance,
+                namespace_path=namespace_path,
+            )
+        elif operation == "search":
+            if not query:
+                raise ValueError("query required for search operation")
+            return await fabric.search(
+                query=query,
+                limit=limit,
+                namespace_path=namespace_path,
+            )
+        elif operation == "context":
+            if not task_query:
+                raise ValueError("task_query required for context operation")
+            return await fabric.build_context(
+                task_query=task_query,
+                token_budget=token_budget,
+                agent_id=agent_id,
+            )
+        else:
+            raise ValueError(f"Unknown Memora operation: {operation}")
+
+    async def dispatch_with_routing(
+        self,
+        peer: str,
+        action: str,
+        *,
+        objective: str = "",
+        inputs: dict[str, Any] | None = None,
+        capability: str = "",
+        actor: str = "friday",
+        envelope: TaskEnvelope | None = None,
+        attempts: int | None = None,
+        route_llm: bool = True,
+        route_memory: bool = True,
+    ) -> PeerOutcome:
+        """Dispatch to a peer with automatic Inference/Memora routing.
+        
+        This is the main entry point for cross-agent work that needs:
+        - LLM calls → routed through Inference gateway
+        - Memory reads/writes → routed through Memora fabric
+        """
+        # Pre-dispatch: if the task needs LLM reasoning, route through Inference first
+        if route_llm and peer != "inference" and action in ("execute", "reason", "analyze", "decide", "plan"):
+            # Build context from Memora for the agent
+            if route_memory:
+                try:
+                    context_bundle = await self.route_through_memora(
+                        "context",
+                        task_query=objective or action,
+                        agent_id=peer,
+                    )
+                    # Merge context into inputs
+                    if inputs is None:
+                        inputs = {}
+                    inputs["memora_context"] = context_bundle
+                except Exception as e:
+                    logger.warning(f"Memora context build failed for {peer}: {e}")
+            
+            # Route the actual LLM call through Inference
+            try:
+                inference_result = await self.route_through_inference(
+                    prompt=objective or action,
+                    mode="review" if action in ("analyze", "decide", "plan") else "fast",
+                    context=inputs,
+                    require_evidence=True,
+                )
+                # Merge inference result into inputs
+                if inputs is None:
+                    inputs = {}
+                inputs["inference_result"] = inference_result
+            except Exception as e:
+                logger.warning(f"Inference routing failed for {peer}: {e}")
+        
+        # Post-dispatch: store the outcome in Memora
+        outcome = await self.dispatch(
+            peer=peer,
+            action=action,
+            objective=objective,
+            inputs=inputs,
+            capability=capability,
+            actor=actor,
+            envelope=envelope,
+            attempts=attempts,
+        )
+        
+        # Store result in Memora for future recall
+        if route_memory and outcome.verified:
+            try:
+                await self.route_through_memora(
+                    "store",
+                    content_text=f"{peer} executed '{action}': {outcome.detail}",
+                    memory_type="episodic",
+                    importance=0.7,
+                    provenance={
+                        "agent": peer,
+                        "action": action,
+                        "objective": objective,
+                        "task_id": outcome.task_id,
+                        "state": outcome.state.value,
+                    },
+                    namespace_path="memora://friday/agent_tasks",
+                )
+            except Exception as e:
+                logger.warning(f"Memora store failed for {peer} outcome: {e}")
+        
+        return outcome
 
     # -- introspection -----------------------------------------------------
 
