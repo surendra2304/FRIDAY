@@ -39,6 +39,26 @@
         "x": 1
       },
       "level": "info"
+    },
+    {
+      "entry_id": "audit_45380fde1492",
+      "timestamp": 1793699388.820971,
+      "action": "test",
+      "agent": "test",
+      "details": {
+        "x": 1
+      },
+      "level": "info"
+    },
+    {
+      "entry_id": "audit_54011d0fd941",
+      "timestamp": 1793699933.8781517,
+      "action": "test",
+      "agent": "test",
+      "details": {
+        "x": 1
+      },
+      "level": "info"
     }
   ]
 }

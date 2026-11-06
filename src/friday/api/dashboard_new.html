@@ -257,16 +257,14 @@
         <a href="#" data-view="graph">Graph</a>
         <a href="#" data-view="timeline">Timeline</a>
         <a href="#" data-view="agents">Agents</a>
+        <a href="#" data-view="history">History</a>
       </nav>
       <div class="top-right">
         <span class="chip" id="wsChip"><span class="dot"></span><span id="wsChipText">WS: connecting</span></span>
         <span class="chip" id="goalChip"><span class="dot"></span><span id="goalChipText">No active goal</span></span>
         <div class="voice-orb" id="voiceOrb" role="group" aria-label="Voice controls" style="display:flex;align-items:center;gap:12px;margin-left:12px">
-          <button class="mic-btn" type="button" id="micBtn" aria-label="Talk to FRIDAY" style="width:56px;height:56px;border-radius:50%;border:1px solid #2f6a55;cursor:pointer;background:radial-gradient(circle at 35% 30%,#14352b,#0a1a15 70%);color:var(--mint);display:grid;place-items:center;position:relative;transition:.2s">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" style="width:24px;height:24px">
-              <rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v4"/><path d="M8 22h8"/>
-            </svg>
-          </button>
+          <!-- FridayCharacter 3D Avatar Container -->
+          <div id="fridayCharacterContainer" style="width:80px;height:80px;flex-shrink:0;position:relative"></div>
           <div class="voice-state" id="voiceState" aria-live="polite" style="font-size:11px;color:var(--muted);text-align:left;line-height:1.4;min-width:160px">
             <strong id="voiceStateTitle">Talk to FRIDAY</strong>
             <span id="voiceStateSub">Click mic, speak in English or Telugu</span>
@@ -285,6 +283,10 @@
             <button type="button" data-voice-mode="execute" class="active" aria-pressed="true" style="border:0;background:transparent;font-size:10px;font-weight:650;padding:5px 10px;border-radius:7px;cursor:pointer">Execute</button>
             <button type="button" data-voice-mode="ask" aria-pressed="false" style="border:0;background:transparent;font-size:10px;font-weight:650;padding:5px 10px;border-radius:7px;cursor:pointer">Ask</button>
           </div>
+          <label class="speak-toggle" style="display:inline-flex;align-items:center;gap:6px;margin-left:8px;cursor:pointer;font-size:11px;color:var(--muted);white-space:nowrap">
+            <input type="checkbox" id="speakRepliesToggle" checked style="width:14px;height:14px;accent-color:var(--mint);cursor:pointer">
+            <span>Speak replies</span>
+          </label>
         </div>
         <span class="clock" id="clock">--:--:--</span>
       </div>
@@ -292,12 +294,16 @@
   </header>
 
   <main class="main">
-    <section class="canvas-wrap" aria-label="Agent friday canvas">
+    <section class="canvas-wrap" aria-label="Agent friday canvas" id="viewGraph">
       <svg id="fridayCanvas" viewBox="0 0 4000 3000" preserveAspectRatio="none"></svg>
       <div class="mini-map" aria-hidden="true">
         <canvas id="miniCanvas"></canvas>
         <div class="mini-viewport" id="miniViewport"></div>
       </div>
+    </section>
+
+    <section class="canvas-wrap" aria-label="Conversation history" id="viewHistory" hidden>
+      <div id="conversationHistoryPanel" style="height: 100%; display: flex; flex-direction: column;"></div>
     </section>
 
     <aside class="side-panel" id="sidePanel" role="dialog" aria-modal="true" aria-labelledby="panelTitle" aria-hidden="true">
@@ -396,7 +402,12 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite" style="position:fixed;right:20px;bottom:20px;z-index:110;max-width:min(420px,calc(100% - 40px));border:1px solid #2b5f4b;border-radius:11px;background:#0b1d17;color:#d7f6e8;padding:11px 14px;font-size:12px;line-height:1.5;box-shadow:0 18px 44px rgba(0,0,0,.45);transform:translateY(12px);opacity:0;pointer-events:none;transition:.3s var(--ease)"></div>
 
+<!-- Three.js for FridayCharacter 3D avatar -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="voice_module.js"></script>
+<script src="friday_character.js"></script>
+<script src="conversation_history.js"></script>
 <script>
 (function () {
   "use strict";
@@ -437,249 +448,17 @@
   let timelinePlaying = false;
   let timelineProgress = 0;
 
-  /* ============================================================ VOICE CONTROL */
-  let recognition = null;
-  let listening = false;
-  let currentAudio = null;
-  let voiceMode = "execute"; // "execute" or "ask"
-  const VOICE_KEY = "friday.voice";
-  const STT_KEY = "friday.sttLang";
-  const MODE_KEY = "friday.voiceMode";
+  // Voice control module instance
+  let voiceControl = null;
 
-  function initVoice() {
-    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRec) {
-      $("micBtn").disabled = true;
-      $("voiceStateTitle").textContent = "Voice not supported";
-      $("voiceStateSub").textContent = "Use Chrome or Edge for voice commands";
-      return;
-    }
+  // FridayCharacter 3D Avatar instance
+  let fridayCharacter = null;
 
-    recognition = new SpeechRec();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = localStorage.getItem(STT_KEY) || "en-IN";
-
-    recognition.onresult = (ev) => {
-      let interim = "";
-      for (let i = ev.resultIndex; i < ev.results.length; i++) {
-        const res = ev.results[i];
-        if (res.isFinal) {
-          const finalText = res[0].transcript.trim();
-          if (finalText) {
-            handleVoiceCommand(finalText);
-          }
-        } else {
-          interim += res[0].transcript;
-        }
-      }
-      if (interim) {
-        $("voiceStateSub").textContent = interim;
-      }
-    };
-
-    recognition.onend = () => {
-      if (listening) {
-        try { recognition.start(); } catch (e) {}
-      } else {
-        updateVoiceUI(false);
-      }
-    };
-
-    recognition.onerror = (ev) => {
-      listening = false;
-      updateVoiceUI(false);
-      if (ev.error === "not-allowed") {
-        showToast("Microphone access denied", "bad");
-      } else if (ev.error === "audio-capture") {
-        showToast("Microphone not available", "bad");
-      } else if (ev.error === "service-not-allowed") {
-        showToast("Speech service blocked", "bad");
-      } else {
-        console.debug("Speech recognition error:", ev.error);
-      }
-    };
-
-    // Load saved voice preference
-    $("sttLang").value = localStorage.getItem(STT_KEY) || "en-IN";
-    $("ttsVoice").value = localStorage.getItem(VOICE_KEY) || "en-IN-NeerjaNeural";
-    $("sttLang").addEventListener("change", () => {
-      localStorage.setItem(STT_KEY, $("sttLang").value);
-      if (recognition) {
-        try { recognition.lang = $("sttLang").value; } catch (e) {}
-        if (listening) { try { recognition.stop(); recognition.start(); } catch (e) {} }
-      }
-    });
-    $("ttsVoice").addEventListener("change", () => {
-      localStorage.setItem(VOICE_KEY, $("ttsVoice").value);
-    });
-
-    // Voice mode switch
-    const modeBtns = document.querySelectorAll("[data-voice-mode]");
-    function syncModeUI(){
-      modeBtns.forEach(b => {
-        const isActive = b.dataset.voiceMode === voiceMode;
-        b.classList.toggle("active", isActive);
-        b.setAttribute("aria-pressed", String(isActive));
-      });
-    }
-    modeBtns.forEach(btn => {
-      btn.addEventListener("click", () => {
-        voiceMode = btn.dataset.voiceMode;
-        localStorage.setItem(MODE_KEY, voiceMode);
-        syncModeUI();
-      });
-    });
-    voiceMode = localStorage.getItem(MODE_KEY) || "execute";
-    syncModeUI();
-
-    $("micBtn").addEventListener("click", toggleListening);
-  }
-
-  function toggleListening() {
-    if (!recognition) return;
-    listening = !listening;
-    updateVoiceUI(listening);
-    if (listening) {
-      try { recognition.start(); } catch (e) {}
-    } else {
-      try { recognition.stop(); } catch (e) {}
-    }
-  }
-
-  function updateVoiceUI(isListening) {
-    const btn = $("micBtn");
-    const title = $("voiceStateTitle");
-    const sub = $("voiceStateSub");
-    if (isListening) {
-      btn.classList.add("listening");
-      btn.style.borderColor = "var(--mint)";
-      btn.style.boxShadow = "0 0 0 6px rgba(124,240,184,.15)";
-      title.textContent = "Listening...";
-      title.className = "speaking";
-      sub.textContent = "Speak your command in English or Telugu";
-    } else {
-      btn.classList.remove("listening");
-      btn.style.borderColor = "";
-      btn.style.boxShadow = "";
-      title.textContent = "Talk to FRIDAY";
-      title.className = "idle";
-      sub.textContent = "Click mic, speak in English or Telugu";
-    }
-  }
-
-  function isTeluguText(text) {
-    return /[\u0C00-\u0C7F]/.test(text);
-  }
-
-  async function speak(text) {
-    if (!text) return;
-    try {
-      await ensureToken();
-      let voice = localStorage.getItem(VOICE_KEY) || (isTeluguText(text) ? "te-IN-ShrutiNeural" : "en-IN-NeerjaNeural");
-      if (isTeluguText(text) && !voice.startsWith("te-")) {
-        voice = "te-IN-ShrutiNeural";
-      } else if (!isTeluguText(text) && voice.startsWith("te-")) {
-        voice = "en-IN-NeerjaNeural";
-      }
-      localStorage.setItem(VOICE_KEY, voice);
-
-      const title = $("voiceStateTitle");
-      const sub = $("voiceStateSub");
-      title.textContent = "Speaking...";
-      title.className = "speaking";
-      sub.textContent = "";
-
-      const res = await fetch(BASE + "/api/voice/speak", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-FRIDAY-Control-Token": token },
-        body: JSON.stringify({ text, voice, lang: voice.startsWith("te-") ? "te" : "en" })
-      });
-      if (!res.ok) throw new Error("TTS " + res.status);
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      if (currentAudio) { currentAudio.pause(); }
-      currentAudio = new Audio(url);
-      const restoreIdle = () => {
-        URL.revokeObjectURL(url);
-        title.textContent = "Talk to FRIDAY";
-        title.className = "idle";
-        sub.textContent = "Click mic, speak in English or Telugu";
-      };
-      currentAudio.onended = restoreIdle;
-      currentAudio.onerror = restoreIdle;
-      await currentAudio.play();
-    } catch (e) {
-      console.warn("Speech output failed:", e.message);
-      const title = $("voiceStateTitle");
-      const sub = $("voiceStateSub");
-      title.textContent = "Talk to FRIDAY";
-      title.className = "idle";
-      sub.textContent = "Click mic, speak in English or Telugu";
-    }
-  }
-
-  async function handleVoiceCommand(text) {
-    const cleanText = text.trim();
-    if (!cleanText) return;
-
-    updateVoiceUI(false);
-    listening = false;
-    try { recognition.stop(); } catch (e) {}
-
-    showToast("Processing: " + cleanText.slice(0, 50) + "...");
-    speak("Working on it.");
-
-    try {
-      if (voiceMode === "execute") {
-        // Submit as autonomous goal
-        const res = await api("/api/autonomous/goals", {
-          method: "POST",
-          body: JSON.stringify({ goal: cleanText, priority: 10 })
-        });
-        const goalId = res.goal_id;
-        showToast("Mission started. Watch the graph.");
-        // Switch to graph view
-        document.querySelector('[data-view="graph"]').click();
-        // Poll for completion
-        pollGoal(goalId);
-      } else {
-        // Ask mode - direct question
-        const res = await api("/api/command", {
-          method: "POST",
-          body: JSON.stringify({ command: cleanText })
-        });
-        const answer = res.reply || "I heard you, but I don't have an answer yet.";
-        showToast(answer.slice(0, 80));
-        await speak(answer);
-      }
-    } catch (e) {
-      showToast("Voice command failed: " + e.message, "bad");
-      await speak("Sorry, that didn't work. " + e.message);
-    }
-  }
-
-  async function pollGoal(goalId) {
-    currentGoalId = goalId;
-    const poll = async () => {
-      try {
-        const goal = await api("/api/autonomous/goals/" + goalId);
-        if (goal) {
-          renderFriday(goal.steps || []);
-          if (goal.status === "COMPLETED" || goal.status === "PARTIAL" || goal.status === "FAILED") {
-            const summary = goal.summary || "Done.";
-            showToast(summary.slice(0, 100));
-            await speak(summary);
-            return;
-          }
-        }
-        setTimeout(poll, 2000);
-      } catch (e) {
-        setTimeout(poll, 2000);
-      }
-    };
-    poll();
-  }
+  // Audio analysis for lip-sync
+  let audioContext = null;
+  let analyser = null;
+  let audioSource = null;
+  let animationFrameId = null;
 
   const $ = id => document.getElementById(id);
   const svgNS = "http://www.w3.org/2000/svg";
@@ -1482,10 +1261,162 @@
     updateMinimap();
   });
 
+  /* ============================================================ VIEW SWITCHING */
+  let currentView = 'graph';
+  let conversationHistoryPanel = null;
+
+  function switchView(view) {
+    currentView = view;
+    
+    // Update nav active state
+    document.querySelectorAll('.top-nav a').forEach(a => {
+      a.style.color = a.dataset.view === view ? 'var(--mint)' : 'var(--muted)';
+      a.style.background = a.dataset.view === view ? 'rgba(124,240,184,.1)' : 'transparent';
+    });
+
+    // Toggle view visibility
+    const viewGraph = $('viewGraph');
+    const viewHistory = $('viewHistory');
+    
+    if (view === 'history') {
+      viewGraph.hidden = true;
+      viewHistory.hidden = false;
+      // Initialize conversation history panel if not already done
+      if (!conversationHistoryPanel && window.ConversationHistoryPanel) {
+        conversationHistoryPanel = new ConversationHistoryPanel();
+        conversationHistoryPanel.init($('conversationHistoryPanel'));
+      }
+    } else {
+      viewGraph.hidden = false;
+      viewHistory.hidden = true;
+    }
+  }
+
+  // Set initial active nav state
+  document.querySelector('.top-nav a[data-view="graph"]').style.color = 'var(--mint)';
+  document.querySelector('.top-nav a[data-view="graph"]').style.background = 'rgba(124,240,184,.1)';
+
+  // Navigation click handlers
+  document.querySelectorAll('.top-nav a').forEach(a => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      switchView(a.dataset.view);
+    });
+  });
+
   /* ============================================================ INIT */
   async function init() {
-    // Initialize voice control
-    initVoice();
+    // Initialize FridayCharacter 3D Avatar
+    try {
+      if (typeof FridayCharacter !== 'undefined') {
+        fridayCharacter = new FridayCharacter({
+          onStateChange: (state) => {
+            console.log('[FridayCharacter] State changed to:', state);
+          },
+          onError: (msg) => console.warn('[FridayCharacter]', msg)
+        });
+        await fridayCharacter.init(document.getElementById('fridayCharacterContainer'));
+        console.log('[FridayCharacter] Initialized successfully');
+      }
+    } catch (e) {
+      console.warn('[FridayCharacter] Failed to initialize:', e);
+    }
+
+    // Initialize voice control module
+    voiceControl = new VoiceControl({
+      basePath: BASE,
+      getToken: ensureToken,
+      onError: (msg) => showToast(msg, "bad"),
+      onTranscript: (text) => {
+        // Optional: handle interim transcript
+      }
+    });
+    voiceControl.init();
+
+    // Connect voice control to FridayCharacter
+    const originalStartListening = voiceControl.startListening.bind(voiceControl);
+    const originalStopListening = voiceControl.stopListening.bind(voiceControl);
+    const originalSpeak = voiceControl.speak.bind(voiceControl);
+    const originalSetSpeakingState = voiceControl._setSpeakingState.bind(voiceControl);
+
+    voiceControl.startListening = function() {
+      originalStartListening();
+      if (fridayCharacter) fridayCharacter.setState('listening');
+    };
+
+    voiceControl.stopListening = function() {
+      originalStopListening();
+      if (fridayCharacter && !voiceControl.isSpeaking()) {
+        fridayCharacter.setState('idle');
+      }
+    };
+
+    voiceControl.speak = async function(text, options) {
+      if (fridayCharacter) fridayCharacter.setState('speaking');
+      return await originalSpeak(text, options);
+    };
+
+    voiceControl._setSpeakingState = function(isSpeaking) {
+      originalSetSpeakingState(isSpeaking);
+      if (fridayCharacter) {
+        if (isSpeaking) {
+          fridayCharacter.setState('speaking');
+        } else if (!voiceControl.isListening()) {
+          fridayCharacter.setState('idle');
+        }
+      }
+    };
+
+    // Audio amplitude analysis for lip-sync (using Web Audio API)
+    function setupAudioAnalysis(audioElement) {
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.8;
+      }
+      if (audioSource) {
+        audioSource.disconnect();
+      }
+      audioSource = audioContext.createMediaElementSource(audioElement);
+      audioSource.connect(analyser);
+      analyser.connect(audioContext.destination);
+      
+      // Start analysis loop
+      function analyseAudio() {
+        if (fridayCharacter && analyser && voiceControl.isSpeaking()) {
+          const dataArray = new Uint8Array(analyser.frequencyBinCount);
+          analyser.getByteFrequencyData(dataArray);
+          
+          // Calculate average amplitude
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) {
+            sum += dataArray[i];
+          }
+          const average = sum / dataArray.length / 255; // Normalize to 0-1
+          
+          fridayCharacter.updateAudioLevel(average);
+        }
+        animationFrameId = requestAnimationFrame(analyseAudio);
+      }
+      analyseAudio();
+    }
+
+    // Hook into voice control's audio playback
+    const originalSpeakWithAudio = voiceControl.speak.bind(voiceControl);
+    voiceControl.speak = async function(text, options) {
+      const result = await originalSpeakWithAudio(text, options);
+      // After speak starts, set up audio analysis on the current audio element
+      setTimeout(() => {
+        if (voiceControl.currentAudio && !audioContext) {
+          setupAudioAnalysis(voiceControl.currentAudio);
+        } else if (voiceControl.currentAudio && audioContext) {
+          // Reconnect to new audio element
+          setupAudioAnalysis(voiceControl.currentAudio);
+        }
+      }, 100);
+      return result;
+    };
 
     // Get auth token first
     await ensureToken();
@@ -1543,6 +1474,25 @@
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && currentGoalId) {
       fetchGoal(currentGoalId);
+    }
+  });
+
+  // Cleanup on page unload
+  window.addEventListener('beforeunload', () => {
+    if (fridayCharacter) {
+      fridayCharacter.destroy();
+    }
+    if (animationFrameId) {
+      cancelAnimationFrame(animationFrameId);
+    }
+    if (audioContext) {
+      audioContext.close();
+    }
+    if (voiceControl) {
+      voiceControl.destroy();
+    }
+    if (ws) {
+      ws.close();
     }
   });
 

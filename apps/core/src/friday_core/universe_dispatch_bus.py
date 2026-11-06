@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import os
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -38,7 +39,7 @@ class TaskReceipt:
     """A receipt for a completed task."""
     task_id: str
     agent: str
-    status: str  # completed, failed, timeout, error
+    status: str  # accepted, completed, failed, timeout, error
     result: str = ""
     latency_ms: float = 0.0
     completed_at: float = 0.0
@@ -56,6 +57,9 @@ class AgentDispatchConfig:
     circuit_open: bool = False
     consecutive_failures: int = 0
     last_success: float = 0.0
+    api_key: str = ""
+    auth_header: str = "x-api-key"
+    action_path: str = ""
 
 
 class UniverseDispatchBus:
@@ -94,34 +98,116 @@ class UniverseDispatchBus:
 
     def _register_default_agents(self) -> None:
         """Register default agent dispatch configurations."""
+        # Docker service names are defaults; URLs and credentials are overridable.
         agents = [
-            ("Inference", "http://127.0.0.1:8005", "http://127.0.0.1:8005/health"),
-            ("Memora", "http://127.0.0.1:8007", "http://127.0.0.1:8007/health"),
-            ("Stratex", "http://127.0.0.1:8001", "http://127.0.0.1:8001/health"),
-            ("Forge", "http://127.0.0.1:8009", "http://127.0.0.1:8009/health"),
-            ("Cortex", "http://127.0.0.1:8002", "http://127.0.0.1:8002/health"),
-            ("Sentinel", "http://127.0.0.1:8008", "http://127.0.0.1:8008/health"),
-            ("IntelX", "http://127.0.0.1:8006", "http://127.0.0.1:8006/health"),
-            ("Futuris", "http://127.0.0.1:8004", "http://127.0.0.1:8004/health"),
-            ("VyralX", "http://127.0.0.1:8010", "http://127.0.0.1:8010/health"),
+            ("Inference", "inference"), ("Memora", "memora"),
+            ("Stratex", "stratex"), ("Forge", "forge"),
+            ("Cortex", "cortex"), ("Sentinel", "sentinel"),
+            ("IntelX", "intelx"), ("Futuris", "futuris"),
+            ("VyralX", "vyralx"),
         ]
-        for name, base, health in agents:
-            self.register_agent(name, base, health)
+        for name, service in agents:
+            key = name.upper()
+            base = (
+                os.getenv(f"FRIDAY_DISPATCH_{key}_URL")
+                or os.getenv(f"FRIDAY_{key}_URL")
+                or os.getenv(f"{key}_URL")
+                or f"http://{service}:8000"
+            ).rstrip("/")
+            api_key = (
+                os.getenv(f"FRIDAY_DISPATCH_{key}_API_KEY")
+                or os.getenv(f"FRIDAY_{key}_API_KEY")
+                or os.getenv(f"{key}_API_KEY")
+                or ""
+            )
+            auth_header = os.getenv(
+                f"FRIDAY_DISPATCH_{key}_AUTH_HEADER", "x-api-key"
+            ).strip() or "x-api-key"
+            default_action_path = (
+                "/api/v1/tasks" if service == "vyralx"
+                else f"/agent/{service}/{{action}}"
+            )
+            action_path = os.getenv(
+                f"FRIDAY_DISPATCH_{key}_ACTION_PATH", default_action_path,
+            )
+            self.register_agent(
+                name, base, f"{base}/health", api_key=api_key,
+                auth_header=auth_header, action_path=action_path,
+            )
 
     def register_agent(self, agent_name: str, base_url: str,
                        health_url: str = "", timeout_sec: float = 30.0,
-                       max_retries: int = 3) -> AgentDispatchConfig:
-        """Register an agent for dispatch."""
+                       max_retries: int = 3, api_key: str = "",
+                       auth_header: str = "x-api-key",
+                       action_path: str = "") -> AgentDispatchConfig:
+        """Register an agent with its endpoint and optional credential."""
         config = AgentDispatchConfig(
             agent_name=agent_name, base_url=base_url,
             health_url=health_url, timeout_sec=timeout_sec, max_retries=max_retries,
+            api_key=api_key, auth_header=auth_header, action_path=action_path,
         )
         self._configs[agent_name] = config
         return config
 
     def _build_action_url(self, config: AgentDispatchConfig, action: str) -> str:
-        """Build the full URL for an agent action."""
-        return f"{config.base_url.rstrip('/')}/agent/{config.agent_name.lower()}/{action}"
+        """Build a configured action URL."""
+        from urllib.parse import quote
+
+        path = config.action_path or f"/agent/{config.agent_name.lower()}/{{action}}"
+        return f"{config.base_url.rstrip('/')}/{path.lstrip('/').replace('{action}', quote(action, safe=''))}"
+
+    @staticmethod
+    def _headers(config: AgentDispatchConfig) -> dict[str, str]:
+        """Attach a configured service credential when present."""
+        return {config.auth_header: config.api_key} if config.api_key else {}
+
+    @staticmethod
+    def _request_payload(envelope: TaskEnvelope, config: AgentDispatchConfig) -> dict[str, Any]:
+        """Adapt FRIDAY's task envelope to VyralX's documented durable task API."""
+        if config.agent_name.lower() == "vyralx" and config.action_path.rstrip("/") == "/api/v1/tasks":
+            return {
+                "task_id": envelope.task_id,
+                "task_type": envelope.action,
+                "input": envelope.payload,
+                "correlation_id": envelope.task_id,
+            }
+        return envelope.payload
+
+    @staticmethod
+    def _receipt_for_response(envelope: TaskEnvelope, response: httpx.Response) -> TaskReceipt | None:
+        """Distinguish asynchronous acceptance from completed work."""
+        if response.status_code == 202:
+            try:
+                body = response.json()
+            except (ValueError, TypeError):
+                body = {}
+            if not isinstance(body, dict):
+                body = {}
+            return TaskReceipt(
+                task_id=envelope.task_id, agent=envelope.agent, status="accepted",
+                result=str(body.get("task_id", body.get("id", "accepted"))),
+                latency_ms=(time.time() - envelope.created_at) * 1000,
+            )
+        if response.status_code not in (200, 201, 204):
+            return None
+        try:
+            body = response.json() if response.content else {}
+        except (ValueError, TypeError):
+            body = {}
+        if isinstance(body, dict) and str(body.get("status", "")).lower() in {
+            "accepted", "queued", "pending", "running"
+        }:
+            return TaskReceipt(
+                task_id=envelope.task_id, agent=envelope.agent, status="accepted",
+                result=str(body.get("task_id", body.get("id", body.get("status")))),
+                latency_ms=(time.time() - envelope.created_at) * 1000,
+            )
+        return TaskReceipt(
+            task_id=envelope.task_id, agent=envelope.agent, status="completed",
+            result=str(body.get("result", body.get("detail", body))) if isinstance(body, dict) else str(body),
+            latency_ms=(time.time() - envelope.created_at) * 1000,
+            completed_at=time.time(),
+        )
 
     def _record_success(self, config: AgentDispatchConfig, latency_ms: float) -> None:
         """Record a successful dispatch."""
@@ -145,18 +231,13 @@ class UniverseDispatchBus:
             envelope.retry_count = attempt
             try:
                 async with httpx.AsyncClient(timeout=timeout) as client:
-                    resp = await client.post(url, json=envelope.payload)
-                    if resp.status_code == 200:
-                        result = resp.json()
-                        return TaskReceipt(
-                            task_id=envelope.task_id,
-                            agent=envelope.agent,
-                            status="completed",
-                            result=str(result.get("result", result.get("detail", result))),
-                            latency_ms=(time.time() - envelope.created_at) * 1000,
-                            completed_at=time.time(),
-                        )
-                    elif resp.status_code == 404:
+                    resp = await client.post(
+                        url, json=self._request_payload(envelope, config), headers=self._headers(config)
+                    )
+                    receipt = self._receipt_for_response(envelope, resp)
+                    if receipt is not None:
+                        return receipt
+                    if resp.status_code == 404:
                         last_error = f"Action '{envelope.action}' not found on {envelope.agent}"
                         break  # Don't retry 404s
                     else:
@@ -202,7 +283,7 @@ class UniverseDispatchBus:
         receipt = await self._dispatch_http(envelope, config)
         self._receipts[task_id] = receipt
 
-        if receipt.status == "completed":
+        if receipt.status in {"accepted", "completed"}:
             self._record_success(config, receipt.latency_ms)
         else:
             self._record_failure(config)
@@ -236,15 +317,12 @@ class UniverseDispatchBus:
         for attempt in range(envelope.max_retries + 1):
             envelope.retry_count = attempt
             try:
-                resp = httpx.post(url, json=envelope.payload, timeout=timeout)
-                if resp.status_code == 200:
-                    result = resp.json()
-                    receipt = TaskReceipt(
-                        task_id=task_id, agent=agent, status="completed",
-                        result=str(result.get("result", result.get("detail", result))),
-                        latency_ms=(time.time() - start) * 1000,
-                        completed_at=time.time(),
-                    )
+                resp = httpx.post(
+                    url, json=self._request_payload(envelope, config), timeout=timeout,
+                    headers=self._headers(config),
+                )
+                receipt = self._receipt_for_response(envelope, resp)
+                if receipt is not None:
                     self._receipts[task_id] = receipt
                     self._record_success(config, receipt.latency_ms)
                     return receipt
@@ -342,13 +420,15 @@ class UniverseDispatchBus:
         """Get dispatch bus report."""
         open_circuits = sum(1 for c in self._configs.values() if c.circuit_open)
         completed = sum(1 for r in self._receipts.values() if r.status == "completed")
+        accepted = sum(1 for r in self._receipts.values() if r.status == "accepted")
         failed = sum(1 for r in self._receipts.values() if r.status == "failed")
         total = len(self._receipts)
-        success_rate = (completed / total * 100) if total > 0 else 100
+        success_rate = ((completed + accepted) / total * 100) if total > 0 else 100
         return {
             "total_agents": len(self._configs),
             "circuit_open": open_circuits,
             "total_dispatches": total,
+            "accepted": accepted,
             "completed": completed,
             "failed": failed,
             "success_rate_pct": round(success_rate, 1),

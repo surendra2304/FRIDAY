@@ -7,6 +7,7 @@ locally and returns the evidence record.
 Usage (from the FRIDAY repo root)::
 
     set FRIDAY_API_KEY=<control key>
+    set FRIDAY_CONTROL_TOKEN=<control token from /api/control/session>
     python scripts/laptop_bridge_client.py
 
 or::
@@ -21,7 +22,12 @@ Environment:
     Defaults to ``wss://friday-universe.duckdns.org/friday/api/laptop/connect/{laptop_id}``.
 ``FRIDAY_API_KEY``
     Required. The same control key the cloud FRIDAY was configured with. It is
-    sent in the ``X-FRIDAY-Api-Key`` header and is never logged.
+    sent in the ``X-FRIDAY-Api-Key`` header (or used to validate a control token)
+    and is never logged.
+``FRIDAY_CONTROL_TOKEN``
+    Optional. A short-lived control token from ``/api/control/session``. When
+    set, it is sent as a ``token`` query parameter on the WebSocket upgrade,
+    which is the preferred authentication method for the laptop bridge.
 ``FRIDAY_LAPTOP_ID``
     Stable device name; defaults to the hostname.
 ``FRIDAY_LAPTOP_ALLOW_SHELL``
@@ -144,20 +150,35 @@ def _bridge_url(laptop_id: str, override: str | None = None) -> str:
     return template.rstrip("/") + "/" + encoded
 
 
-def _connect(uri: str, api_key: str) -> Any:
-    """Open a WebSocket across ``websockets`` 11-15 header-kwarg changes."""
+def _connect(uri: str, api_key: str, control_token: str | None = None) -> Any:
+    """Open a WebSocket across ``websockets`` 11-15 header-kwarg changes.
+
+    If ``control_token`` is provided, it is appended as a ``token`` query
+    parameter (preferred by the server for WebSocket upgrades). Otherwise the
+    raw ``api_key`` is sent in the ``X-FRIDAY-Api-Key`` header.
+    """
     params = inspect.signature(websockets.connect).parameters
     header_kwarg = "additional_headers" if "additional_headers" in params else "extra_headers"
-    return websockets.connect(
-        uri,
-        **{
+
+    if control_token:
+        # Append token as query param; avoid double-encoding if URI already has query
+        sep = "&" if "?" in uri else "?"
+        uri = f"{uri}{sep}token={quote(control_token, safe='')}"
+        connect_kwargs = {
+            "ping_interval": 20,
+            "ping_timeout": 20,
+            "open_timeout": 20,
+            "max_size": 2**20,
+        }
+    else:
+        connect_kwargs = {
             header_kwarg: {"X-FRIDAY-Api-Key": api_key},
             "ping_interval": 20,
             "ping_timeout": 20,
             "open_timeout": 20,
             "max_size": 2**20,
-        },
-    )
+        }
+    return websockets.connect(uri, **connect_kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -457,8 +478,8 @@ async def _handle_command(
         logger.warning("Could not return result for %s: %s", request_id, type(exc).__name__)
 
 
-async def _run_session(uri: str, api_key: str, laptop_id: str) -> None:
-    async with _connect(uri, api_key) as websocket:
+async def _run_session(uri: str, api_key: str, laptop_id: str, control_token: str | None = None) -> None:
+    async with _connect(uri, api_key, control_token) as websocket:
         logger.info("Tunnel open to %s as %s", _safe_url(uri), laptop_id)
         send_lock = asyncio.Lock()
         heartbeat = asyncio.create_task(_heartbeat_loop(websocket, send_lock, HEARTBEAT_SECONDS))
@@ -493,11 +514,11 @@ async def _run_session(uri: str, api_key: str, laptop_id: str) -> None:
                 await heartbeat
 
 
-async def _run_forever(uri: str, api_key: str, laptop_id: str) -> None:
+async def _run_forever(uri: str, api_key: str, laptop_id: str, control_token: str | None = None) -> None:
     attempt = 0
     while True:
         try:
-            await _run_session(uri, api_key, laptop_id)
+            await _run_session(uri, api_key, laptop_id, control_token)
             attempt = 0
             logger.info("Tunnel closed cleanly; reconnecting")
         except asyncio.CancelledError:
@@ -532,6 +553,7 @@ def main(argv: list[str] | None = None) -> int:
     if not api_key:
         logger.error("FRIDAY_API_KEY is not set; the laptop cannot authenticate to FRIDAY")
         return 2
+    control_token = (os.getenv("FRIDAY_CONTROL_TOKEN") or "").strip() or None
     laptop_id = _INVALID_ID_CHARS.sub("-", (args.laptop_id or _laptop_id()).strip()).strip("-.")
     if not laptop_id:
         logger.error("No usable laptop id; set FRIDAY_LAPTOP_ID")
@@ -539,12 +561,13 @@ def main(argv: list[str] | None = None) -> int:
     laptop_id = laptop_id[:64]
     uri = _bridge_url(laptop_id, args.url)
     logger.info(
-        "Starting laptop bridge for %s (shell_enabled=%s)",
+        "Starting laptop bridge for %s (shell_enabled=%s, token_auth=%s)",
         laptop_id,
         _shell_enabled(),
+        bool(control_token),
     )
     try:
-        asyncio.run(_run_forever(uri, api_key, laptop_id))
+        asyncio.run(_run_forever(uri, api_key, laptop_id, control_token))
     except KeyboardInterrupt:
         logger.info("Laptop bridge stopped")
     return 0
