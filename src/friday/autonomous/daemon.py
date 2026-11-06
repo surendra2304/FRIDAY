@@ -433,7 +433,13 @@ class AutonomousDaemon:
 
         # Decompose goal into execution plan
         try:
-            plan = self.controller.decompose_goal(goal.goal)
+            planner = getattr(self.controller, "plan_goal", None)
+            if callable(planner):
+                plan = await planner(goal.goal)
+            else:
+                # Compatibility for small test doubles and older controller
+                # implementations that only expose the deterministic planner.
+                plan = self.controller.decompose_goal(goal.goal)
             goal.plan_id = getattr(plan, "plan_id", "") or (plan.subtasks[0].id if plan.subtasks else "")
             goal.steps = [self._step_payload(st) for st in plan.subtasks]
             self._live_plans[goal.id] = plan

@@ -28,6 +28,17 @@ from friday.autonomous.controller import _mesh_action_for
 
 logger = get_logger("autonomous.enhanced_controller")
 
+_PLANNER_AGENT_ROLES = {
+    "intelx": "world research, current news, and evidence gathering",
+    "futuris": "forecasts from research and data, including market forecasts",
+    "stratex": "trading analysis and trading actions subject to Stratex's own safeguards",
+    "memora": "persistent memory across agent-private, team-shared, and Universe-global scopes",
+    "forge": "website and software development",
+    "cortex": "CRM and management of existing websites and business systems",
+    "vyralx": "autonomous YouTube channel and video workflow",
+    "sentinel": "security review, policy, and safety",
+}
+
 
 @dataclass
 class SubTask:
@@ -378,6 +389,158 @@ class EnhancedAutonomousController:
 
         logger.info(f"Created plan {plan_id} with {len(plan.subtasks)} subtasks")
         return plan
+
+    async def _request_inference_plan(self, goal: str) -> str:
+        """Ask FRIDAY's Inference gateway for a structured specialist plan.
+
+        The gateway receives ``model=auto`` through ``call_inference`` and
+        chooses the model; FRIDAY does not pin a provider or API key here.
+        """
+        from friday.api.response_synthesizer import call_inference
+
+        roles = "\n".join(
+            f"- {agent}: {description}"
+            for agent, description in _PLANNER_AGENT_ROLES.items()
+        )
+        system_prompt = (
+            "You are FRIDAY's internal task planner. FRIDAY is the user's central, "
+            "trusted companion and remains responsible for the whole request. "
+            "Return only one JSON object with a 'steps' array. Each step must have "
+            "'id', 'agent', 'task', and 'depends_on' (an array of step IDs). "
+            "Use only the specialist agents and roles listed below. Make the "
+            "smallest useful plan; keep each task specific and preserve the user's "
+            "constraints. Use dependencies to pass research to Futuris and forecasts "
+            "to Stratex when relevant. Do not invent results or claim work is done. "
+            "Do not include Inference as a worker: it supplies the best model for "
+            "FRIDAY's reasoning and each agent's work. Never bypass an agent's own "
+            "authorization or safety gates for a trade, publication, deployment, "
+            "or other consequential action.\n\n"
+            f"Specialists:\n{roles}"
+        )
+        return await call_inference(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Plan this user request:\n{goal}"},
+            ],
+            model="auto",
+            temperature=0.1,
+            max_tokens=1400,
+        )
+
+    @staticmethod
+    def _decode_plan_proposal(raw: Any) -> dict[str, Any]:
+        """Parse a JSON plan from the Inference gateway without trusting its shape."""
+        if isinstance(raw, dict):
+            proposal = raw
+        else:
+            text = str(raw or "").strip()
+            if text.startswith("```"):
+                text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.IGNORECASE)
+            decoder = json.JSONDecoder()
+            proposal = None
+            for offset, char in enumerate(text):
+                if char != "{":
+                    continue
+                try:
+                    candidate, _ = decoder.raw_decode(text[offset:])
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(candidate, dict):
+                    proposal = candidate
+                    break
+            if proposal is None:
+                raise ValueError("Inference did not return a JSON plan")
+
+        steps = proposal.get("steps")
+        if not isinstance(steps, list) or not 1 <= len(steps) <= 8:
+            raise ValueError("Inference plan must contain between 1 and 8 steps")
+        return proposal
+
+    def _plan_from_inference(self, goal: str, raw: Any) -> ExecutionPlan:
+        """Validate agent names and the dependency graph before execution."""
+        proposal = self._decode_plan_proposal(raw)
+        raw_steps = proposal["steps"]
+        ids: list[str] = []
+        for index, item in enumerate(raw_steps, start=1):
+            if not isinstance(item, dict):
+                raise ValueError("Each Inference plan step must be an object")
+            step_id = str(item.get("id") or f"step_{index}").strip()
+            if not re.fullmatch(r"[A-Za-z0-9_-]{1,48}", step_id):
+                raise ValueError(f"Invalid step ID: {step_id!r}")
+            if step_id in ids:
+                raise ValueError(f"Duplicate step ID: {step_id}")
+            ids.append(step_id)
+
+        id_to_subtask = {step_id: f"st_{index}" for index, step_id in enumerate(ids, start=1)}
+        plan = ExecutionPlan(
+            goal=goal,
+            plan_id=f"plan_{int(time.time() * 1000)}_{os.urandom(4).hex()}",
+        )
+        dependency_map: dict[str, list[str]] = {}
+        for index, (step_id, item) in enumerate(zip(ids, raw_steps), start=1):
+            agent = str(item.get("agent") or "").strip().lower()
+            if agent not in _PLANNER_AGENT_ROLES:
+                raise ValueError(f"Inference selected an unknown specialist: {agent!r}")
+            description = str(item.get("task") or "").strip()
+            if not description or len(description) > 700:
+                raise ValueError(f"Step {step_id} must have a task between 1 and 700 characters")
+
+            dependencies = item.get("depends_on", [])
+            if not isinstance(dependencies, list) or any(not isinstance(dep, str) for dep in dependencies):
+                raise ValueError(f"Step {step_id} has an invalid dependency list")
+            if len(set(dependencies)) != len(dependencies):
+                raise ValueError(f"Step {step_id} has duplicate dependencies")
+            if step_id in dependencies or any(dep not in id_to_subtask for dep in dependencies):
+                raise ValueError(f"Step {step_id} references an invalid dependency")
+            dependency_map[step_id] = dependencies
+            plan.add_subtask(
+                SubTask(
+                    id=id_to_subtask[step_id],
+                    description=description,
+                    agent=agent.upper(),
+                    dependencies=[id_to_subtask[dep] for dep in dependencies],
+                )
+            )
+
+        # Reject cycles here rather than letting the executor poll forever.
+        remaining = {step_id: set(deps) for step_id, deps in dependency_map.items()}
+        resolved: set[str] = set()
+        while remaining:
+            ready = {step_id for step_id, deps in remaining.items() if deps <= resolved}
+            if not ready:
+                raise ValueError("Inference plan contains a dependency cycle")
+            resolved.update(ready)
+            for step_id in ready:
+                del remaining[step_id]
+
+        plan.status = "PENDING"
+        return plan
+
+    async def plan_goal(self, goal: str) -> ExecutionPlan:
+        """Prefer Inference-based planning, with the existing planner as fallback.
+
+        A missing gateway, malformed response, or invalid plan must not strand a
+        user-submitted goal. Invalid model output is discarded in full rather
+        than partially executed.
+        """
+        cleaned_goal = (goal or "").strip()
+        try:
+            raw = await self._request_inference_plan(cleaned_goal)
+            plan = self._plan_from_inference(cleaned_goal, raw)
+            self.plans[plan.plan_id] = plan
+            self.active_plan_id = plan.plan_id
+            logger.info(
+                "Inference planned goal %s as %d specialist steps",
+                plan.plan_id,
+                len(plan.subtasks),
+            )
+            return plan
+        except Exception as exc:
+            logger.warning(
+                "Inference planning unavailable or invalid (%s); using deterministic fallback",
+                type(exc).__name__,
+            )
+            return self.decompose_goal(cleaned_goal)
 
     _FAILED_PAYLOAD_STATES = {
         "REFUSED", "FORBIDDEN", "BLOCKED", "DENIED", "FAILED", "ERROR",
