@@ -1,893 +1,867 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark" data-accent="mint">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="color-scheme" content="dark" />
-<meta name="theme-color" content="#0a0a0f" />
-<meta name="description" content="FRIDAY - Your AI Companion" />
-<title>FRIDAY</title>
-<link rel="preconnect" href="https://cdn.jsdelivr.net" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
-<script src="https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-<style>
-  :root {
-    --bg: #050508;
-    --bg-deep: #030305;
-    --panel: rgba(20,20,30,0.85);
-    --panel-strong: rgba(30,30,45,0.95);
-    --line: rgba(100,100,120,0.3);
-    --line-strong: rgba(140,140,160,0.5);
-    --text: #f0f0f5;
-    --text-dim: #a0a0b0;
-    --text-muted: #707085;
-    --mint: #10b981;
-    --mint-glow: rgba(16,185,129,0.6);
-    --cyan: #06b6d4;
-    --cyan-glow: rgba(6,182,212,0.6);
-    --violet: #a855f7;
-    --violet-glow: rgba(168,85,247,0.6);
-    --amber: #f59e0b;
-    --amber-glow: rgba(245,158,11,0.6);
-    --rose: #f43f5e;
-    --rose-glow: rgba(244,63,94,0.6);
-    --font-ui: "Space Grotesk", system-ui, sans-serif;
-    --font-mono: "JetBrains Mono", monospace;
-    --radius-sm: 8px;
-    --radius-md: 16px;
-    --radius-lg: 24px;
-    --radius-full: 9999px;
-    --shadow-sm: 0 4px 12px rgba(0,0,0,0.4);
-    --shadow-md: 0 8px 32px rgba(0,0,0,0.5);
-    --shadow-lg: 0 16px 64px rgba(0,0,0,0.6);
-    --shadow-glow: 0 0 40px rgba(16,185,129,0.3);
-    --transition-fast: 150ms cubic-bezier(0.2,0.8,0.2,1);
-    --transition-normal: 300ms cubic-bezier(0.16,1,0.3,1);
-    --transition-slow: 500ms cubic-bezier(0.16,1,0.3,1);
-  }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#050508" />
+  <meta name="description" content="FRIDAY — a voice-first companion that runs a fleet of specialist agents." />
+  <title>FRIDAY</title>
 
-  @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after {
-      animation-duration: 0.01ms !important;
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%2310b981' opacity='0.2'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%2310b981'/%3E%3C/svg%3E" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/agent_fleet.css" />
+
+  <style>
+    /* ============================================================
+       Tokens
+       ============================================================ */
+    :root {
+      --bg: #050508;
+      --panel: rgba(20, 20, 30, 0.72);
+      --line: rgba(120, 120, 145, 0.22);
+      --line-strong: rgba(150, 150, 175, 0.4);
+      --text: #f2f2f7;
+      --text-dim: #a3a3b8;
+      --text-muted: #6f6f86;
+
+      --mint: #10b981;
+      --mint-bright: #34e0a1;
+      --mint-glow: rgba(16, 185, 129, 0.55);
+      --cyan: #06b6d4;
+      --violet: #a855f7;
+      --amber: #f59e0b;
+      --rose: #f43f5e;
+
+      --font-ui: "Space Grotesk", system-ui, -apple-system, sans-serif;
+      --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+      --radius-sm: 9px;
+      --radius-md: 15px;
+      --radius-lg: 22px;
+      --radius-full: 999px;
+
+      --ease: cubic-bezier(0.16, 1, 0.3, 1);
+      --fast: 160ms var(--ease);
+      --normal: 320ms var(--ease);
+    }
+
+    html[data-accent="cyan"]   { --mint: #06b6d4; --mint-bright: #38bdf8; --mint-glow: rgba(6, 182, 212, 0.55); }
+    html[data-accent="violet"] { --mint: #a855f7; --mint-bright: #c084fc; --mint-glow: rgba(168, 85, 247, 0.55); }
+    html[data-accent="amber"]  { --mint: #f59e0b; --mint-bright: #fbbf24; --mint-glow: rgba(245, 158, 11, 0.55); }
+
+    html[data-theme="light"] {
+      --bg: #f6f7fb;
+      --panel: rgba(255, 255, 255, 0.82);
+      --line: rgba(20, 20, 40, 0.1);
+      --line-strong: rgba(20, 20, 40, 0.22);
+      --text: #12121a;
+      --text-dim: #4a4a5e;
+      --text-muted: #82829a;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body { height: 100%; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-ui);
+      font-size: 15px;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    /* fine grain + vignette */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 50% -10%, rgba(16, 185, 129, 0.10), transparent 60%),
+        radial-gradient(ellipse 60% 50% at 85% 110%, rgba(6, 182, 212, 0.08), transparent 60%);
+    }
+
+    button, input, select { font: inherit; color: inherit; }
+    button { background: none; border: none; cursor: pointer; }
+    a { color: inherit; }
+    :focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+    }
+
+    /* ============================================================
+       Header
+       ============================================================ */
+    .top-bar {
+      position: relative;
+      z-index: 40;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 22px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(5, 5, 8, 0.9), rgba(5, 5, 8, 0.4));
+      backdrop-filter: blur(18px) saturate(1.2);
+      -webkit-backdrop-filter: blur(18px) saturate(1.2);
+    }
+
+    .top-left { display: flex; align-items: center; gap: 11px; }
+    .logo { filter: drop-shadow(0 0 12px var(--mint-glow)); }
+    .logo-text {
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+      background: linear-gradient(92deg, var(--text) 10%, var(--mint) 60%, var(--cyan));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    .top-center { flex: 1; display: flex; justify-content: center; }
+
+    .connection-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-full);
+      background: rgba(255, 255, 255, 0.02);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      color: var(--text-dim);
+      white-space: nowrap;
+    }
+
+    .status-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--text-muted);
+      transition: background var(--fast), box-shadow var(--fast);
+    }
+    .status-dot.ready      { background: var(--mint); box-shadow: 0 0 10px var(--mint-glow); }
+    .status-dot.processing { background: var(--amber); box-shadow: 0 0 10px rgba(245, 158, 11, 0.6); animation: dotPulse 1.4s ease-in-out infinite; }
+    .status-dot.error      { background: var(--rose); box-shadow: 0 0 10px rgba(244, 63, 94, 0.6); }
+    .status-dot.listening  { background: var(--cyan); box-shadow: 0 0 10px rgba(6, 182, 212, 0.65); animation: dotPulse 1s ease-in-out infinite; }
+
+    @keyframes dotPulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%      { opacity: 0.4; transform: scale(0.8); }
+    }
+
+    .top-right { display: flex; align-items: center; gap: 8px; }
+
+    .icon-btn {
+      width: 38px; height: 38px;
+      display: grid; place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      color: var(--text-dim);
+      background: rgba(255, 255, 255, 0.02);
+      transition: color var(--fast), border-color var(--fast), background var(--fast), transform var(--fast);
+    }
+    .icon-btn:hover {
+      color: var(--mint);
+      border-color: color-mix(in srgb, var(--mint) 50%, transparent);
+      background: color-mix(in srgb, var(--mint) 10%, transparent);
+    }
+    .icon-btn:active { transform: scale(0.94); }
+    .icon-btn[aria-expanded="true"] {
+      color: var(--mint);
+      border-color: color-mix(in srgb, var(--mint) 55%, transparent);
+    }
+
+    /* ============================================================
+       Stage
+       ============================================================ */
+    .stage {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+      z-index: 1;
+    }
+
+    #orbCanvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .stage::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse 62% 48% at 50% 46%, transparent 42%, rgba(5, 5, 8, 0.5) 82%, rgba(5, 5, 8, 0.9) 100%),
+        linear-gradient(180deg, transparent 58%, rgba(5, 5, 8, 0.86) 92%);
+    }
+
+    .orb-caption {
+      position: absolute;
+      left: 50%;
+      top: calc(46% + 15vh);
+      transform: translate(-50%, 8px);
+      z-index: 12;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      opacity: 0;
+      transition: opacity var(--normal), transform var(--normal);
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    .orb-caption.visible { opacity: 1; transform: translate(-50%, 0); }
+
+    /* ============================================================
+       Transcript
+       ============================================================ */
+    .transcript {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 172px;
+      width: min(740px, 90vw);
+      max-height: 38vh;
+      z-index: 12;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow-y: auto;
+      padding: 10px 4px 14px;
+      scrollbar-width: none;
+      -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 14%, #000 100%);
+      mask-image: linear-gradient(180deg, transparent 0, #000 14%, #000 100%);
+    }
+    .transcript::-webkit-scrollbar { display: none; }
+
+    .msg {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      max-width: 86%;
+      animation: msgIn 380ms var(--ease) both;
+    }
+    .msg-user   { align-self: flex-end; align-items: flex-end; }
+    .msg-friday { align-self: flex-start; align-items: flex-start; }
+
+    .msg-label {
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      padding: 0 4px;
+    }
+
+    .msg-body {
+      padding: 12px 16px;
+      border-radius: 17px;
+      font-size: 14.5px;
+      line-height: 1.6;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      color: var(--text);
+      overflow-wrap: anywhere;
+    }
+    .msg-user .msg-body {
+      background: linear-gradient(135deg, color-mix(in srgb, var(--mint) 20%, transparent), rgba(6, 182, 212, 0.10));
+      border-color: color-mix(in srgb, var(--mint) 40%, transparent);
+      border-bottom-right-radius: 6px;
+    }
+    .msg-friday .msg-body {
+      border-bottom-left-radius: 6px;
+      box-shadow: 0 16px 44px rgba(0, 0, 0, 0.34);
+    }
+
+    .msg-agents { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 1px; }
+    .agent-chip {
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      letter-spacing: 0.08em;
+      padding: 3px 8px;
+      border-radius: var(--radius-full);
+      border: 1px solid color-mix(in srgb, var(--mint) 32%, transparent);
+      color: var(--mint);
+      background: color-mix(in srgb, var(--mint) 8%, transparent);
+      text-transform: uppercase;
+    }
+
+    .msg-typing .msg-body { display: inline-flex; align-items: center; gap: 5px; padding: 15px 17px; }
+    .typing-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--mint);
+      opacity: 0.35;
+      animation: typing 1.25s ease-in-out infinite;
+    }
+    .typing-dot:nth-child(2) { animation-delay: 0.16s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.32s; }
+
+    @keyframes typing {
+      0%, 60%, 100% { opacity: 0.28; transform: translateY(0); }
+      30%           { opacity: 1;    transform: translateY(-4px); }
+    }
+    @keyframes msgIn {
+      from { opacity: 0; transform: translateY(10px) scale(0.985); }
+      to   { opacity: 1; transform: none; }
+    }
+
+    /* ============================================================
+       Voice bar
+       ============================================================ */
+    .voice-bar {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      z-index: 30;
+      padding: 16px 20px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      pointer-events: none;
+      background: linear-gradient(180deg, transparent, rgba(5, 5, 8, 0.55) 45%, rgba(5, 5, 8, 0.9));
+    }
+
+    .voice-input-group {
+      pointer-events: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: min(720px, 94vw);
+      padding: 8px 10px;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius-full);
+      background: rgba(14, 14, 22, 0.74);
+      backdrop-filter: blur(24px) saturate(1.3);
+      -webkit-backdrop-filter: blur(24px) saturate(1.3);
+      box-shadow: 0 22px 60px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      transition: border-color var(--normal), box-shadow var(--normal);
+    }
+    .voice-input-group:focus-within {
+      border-color: color-mix(in srgb, var(--mint) 55%, transparent);
+      box-shadow: 0 22px 60px rgba(0, 0, 0, 0.55), 0 0 0 4px color-mix(in srgb, var(--mint) 12%, transparent);
+    }
+
+    .mic-btn {
+      position: relative;
+      flex-shrink: 0;
+      width: 52px; height: 52px;
+      display: grid; place-items: center;
+      border-radius: 50%;
+      color: #04110c;
+      background: linear-gradient(145deg, var(--mint-bright), var(--mint) 48%, #0891b2);
+      box-shadow: 0 10px 26px var(--mint-glow), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+      transition: transform var(--fast), box-shadow var(--normal), background var(--normal);
+    }
+    .mic-btn:hover { transform: scale(1.045); }
+    .mic-btn:active { transform: scale(0.95); }
+    .mic-btn .stop-icon { display: none; }
+    .mic-btn.listening {
+      background: linear-gradient(145deg, #67e8f9, var(--cyan) 50%, #0284c7);
+      box-shadow: 0 10px 30px rgba(6, 182, 212, 0.5);
+    }
+    .mic-btn.listening .mic-icon { display: none; }
+    .mic-btn.listening .stop-icon { display: block; }
+    .mic-btn.listening::after {
+      content: "";
+      position: absolute;
+      inset: -6px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(6, 182, 212, 0.6);
+      animation: ring 1.6s ease-out infinite;
+    }
+    @keyframes ring {
+      0%   { transform: scale(0.92); opacity: 0.9; }
+      100% { transform: scale(1.45); opacity: 0; }
+    }
+
+    #textInput {
+      flex: 1;
+      min-width: 0;
+      background: transparent;
+      border: none;
+      padding: 10px 12px;
+      font-size: 14px;
+      color: var(--text);
+      outline: none;
+    }
+    #textInput::placeholder { color: var(--text-muted); }
+
+    .send-btn {
+      flex-shrink: 0;
+      width: 42px; height: 42px;
+      display: grid; place-items: center;
+      border-radius: 50%;
+      color: var(--text-dim);
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.03);
+      transition: color var(--fast), border-color var(--fast), background var(--fast), transform var(--fast);
+    }
+    .send-btn:hover {
+      color: var(--mint);
+      border-color: color-mix(in srgb, var(--mint) 50%, transparent);
+      background: color-mix(in srgb, var(--mint) 10%, transparent);
+    }
+    .send-btn:active { transform: scale(0.93); }
+
+    .hint-line {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      min-height: 14px;
+      text-align: center;
+      transition: color var(--fast);
+    }
+    .hint-line.active { color: var(--mint); }
+
+    /* ============================================================
+       Settings drawer
+       ============================================================ */
+    .settings-panel {
+      position: fixed;
+      top: 0; right: 0; bottom: 0;
+      width: min(400px, 94vw);
+      z-index: 150;
+      display: flex;
+      flex-direction: column;
+      border-left: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(17, 17, 26, 0.985), rgba(6, 6, 10, 0.995));
+      backdrop-filter: blur(30px);
+      -webkit-backdrop-filter: blur(30px);
+      box-shadow: -30px 0 80px rgba(0, 0, 0, 0.6);
+      transform: translateX(102%);
+      transition: transform var(--normal);
+      visibility: hidden;
+    }
+    .settings-panel.open { transform: none; visibility: visible; }
+
+    .sidebar-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+      flex-shrink: 0;
+    }
+    .sidebar-header h2 {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+    }
+    .sidebar-content { flex: 1; overflow-y: auto; padding: 16px 18px 28px; }
+
+    .settings-nav {
+      display: flex;
+      gap: 4px;
+      padding: 4px;
+      margin-bottom: 18px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .settings-nav button {
+      flex: 1;
+      padding: 8px 6px;
+      border-radius: 9px;
+      font-size: 11.5px;
+      color: var(--text-muted);
+      transition: color var(--fast), background var(--fast);
+    }
+    .settings-nav button:hover { color: var(--text-dim); }
+    .settings-nav button[aria-selected="true"] {
+      color: var(--mint);
+      background: color-mix(in srgb, var(--mint) 13%, transparent);
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mint) 30%, transparent);
+    }
+
+    fieldset {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px 15px 16px;
+      margin: 0 0 14px;
+      background: rgba(255, 255, 255, 0.014);
+    }
+    legend {
+      padding: 0 7px;
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--mint);
+    }
+    fieldset label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 12px;
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+    fieldset label:first-of-type { margin-top: 4px; }
+    fieldset select {
+      max-width: 62%;
+      padding: 8px 10px;
+      font-size: 12.5px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: rgba(255, 255, 255, 0.04);
+    }
+    fieldset label.toggle { justify-content: flex-start; gap: 10px; cursor: pointer; }
+
+    fieldset input[type="checkbox"] {
+      appearance: none;
+      width: 34px; height: 19px;
+      border-radius: var(--radius-full);
+      border: 1px solid var(--line-strong);
+      background: rgba(255, 255, 255, 0.05);
+      position: relative;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background var(--fast), border-color var(--fast);
+    }
+    fieldset input[type="checkbox"]::after {
+      content: "";
+      position: absolute;
+      top: 2px; left: 2px;
+      width: 13px; height: 13px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      transition: transform var(--fast), background var(--fast);
+    }
+    fieldset input[type="checkbox"]:checked {
+      background: color-mix(in srgb, var(--mint) 30%, transparent);
+      border-color: color-mix(in srgb, var(--mint) 65%, transparent);
+    }
+    fieldset input[type="checkbox"]:checked::after {
+      transform: translateX(15px);
+      background: var(--mint);
+    }
+
+    .color-picker { display: flex; gap: 8px; }
+    .color-picker button {
+      width: 24px; height: 24px;
+      border-radius: 50%;
+      background: var(--color);
+      border: 2px solid transparent;
+      box-shadow: 0 0 0 1px var(--line-strong);
+      transition: transform var(--fast), box-shadow var(--fast);
+    }
+    .color-picker button:hover { transform: scale(1.12); }
+    .color-picker button[aria-pressed="true"] {
+      border-color: var(--bg);
+      box-shadow: 0 0 0 2px var(--color);
+    }
+
+    .hint { font-size: 11.5px; color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
+
+    #agentToggles {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7px 10px;
+      margin-top: 12px;
+    }
+    .agent-toggle {
+      display: flex !important;
+      align-items: center;
+      gap: 8px;
+      margin: 0 !important;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-dim);
+    }
+    .agent-toggle input[type="checkbox"] { width: 15px; height: 15px; border-radius: 4px; }
+    .agent-toggle input[type="checkbox"]::after { display: none; }
+    .agent-toggle input[type="checkbox"]:checked { background: var(--mint); border-color: var(--mint); }
+
+    .btn {
+      width: 100%;
+      margin-top: 6px;
+      padding: 11px 14px;
+      border-radius: 11px;
+      font-size: 12.5px;
+      font-weight: 500;
+      border: 1px solid var(--line);
+      color: var(--text-dim);
+      background: rgba(255, 255, 255, 0.03);
+      transition: color var(--fast), border-color var(--fast), background var(--fast);
+    }
+    .btn:hover { color: var(--text); border-color: var(--line-strong); }
+
+    /* ============================================================
+       Toasts
+       ============================================================ */
+    .toast {
+      position: fixed;
+      top: 74px;
+      left: 50%;
+      transform: translate(-50%, -12px);
+      z-index: 300;
+      max-width: min(520px, 90vw);
+      padding: 10px 18px;
+      border-radius: var(--radius-full);
+      border: 1px solid var(--line-strong);
+      background: rgba(16, 16, 24, 0.96);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      color: var(--text);
+      font-size: 12.5px;
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+      opacity: 0;
+      transition: opacity var(--normal), transform var(--normal);
+    }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .toast-error { border-color: rgba(244, 63, 94, 0.55); color: #fecdd3; }
+    .toast-info  { border-color: color-mix(in srgb, var(--mint) 45%, transparent); }
+
+    /* ============================================================
+       Reduced motion
+       ============================================================ */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+      }
+    }
+    html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after {
+      animation-duration: 0.001ms !important;
       animation-iteration-count: 1 !important;
-      transition-duration: 0.01ms !important;
-      scroll-behavior: auto !important;
+      transition-duration: 0.001ms !important;
     }
-  }
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html { font-size: 16px; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
-  body {
-    margin: 0; min-height: 100vh; font-family: var(--font-ui);
-    color: var(--text); background: var(--bg);
-    overflow-x: hidden;
-    background-image:
-      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(16,185,129,0.08), transparent 60%),
-      radial-gradient(ellipse 60% 40% at 80% 80%, rgba(168,85,247,0.06), transparent 50%),
-      radial-gradient(ellipse 40% 30% at 10% 20%, rgba(6,182,212,0.05), transparent 40%),
-      var(--bg);
-  }
-  ::selection { background: rgba(16,185,129,0.3); color: var(--text); }
-  a { color: inherit; text-decoration: none; }
-  button { font: inherit; background: none; border: none; cursor: pointer; }
-  input, select { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 0.75rem 1rem; outline: none; }
-  input:focus, select:focus { border-color: var(--mint); box-shadow: 0 0 0 3px var(--mint-glow); }
-  ::-webkit-scrollbar { width: 8px; height: 8px; }
-  ::-webkit-scrollbar-track { background: var(--bg-deep); }
-  ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 4px; }
-  ::-webkit-scrollbar-thumb:hover { background: var(--mint); }
-  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
-</style>
+    /* ============================================================
+       Responsive
+       ============================================================ */
+    @media (max-width: 900px) {
+      .top-bar { padding: 12px 14px; }
+      .logo-text { font-size: 13px; letter-spacing: 0.18em; }
+      .transcript { bottom: 156px; width: 92vw; max-height: 34vh; }
+      .msg { max-width: 94%; }
+      .voice-bar { padding: 12px 12px 16px; }
+      .voice-input-group { padding: 6px 8px; gap: 8px; }
+      .mic-btn { width: 46px; height: 46px; }
+      #textInput { padding: 9px 8px; }
+      .orb-caption { top: calc(46% + 13vh); font-size: 10px; }
+    }
+
+    @media (max-width: 560px) {
+      .top-center { display: none; }
+      .transcript { bottom: 142px; }
+      .hint-line { display: none; }
+    }
+  </style>
 </head>
+
 <body>
-<div id="three-container" aria-hidden="true"></div>
+  <header class="top-bar" role="banner">
+    <div class="top-left">
+      <svg class="logo" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true">
+        <defs>
+          <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="var(--mint-bright)" />
+            <stop offset="100%" stop-color="var(--cyan)" />
+          </linearGradient>
+        </defs>
+        <circle cx="16" cy="16" r="14" fill="url(#logoGrad)" opacity="0.16" />
+        <path d="M16 6 L16 26 M6 16 L26 16" stroke="url(#logoGrad)" stroke-width="2.4" stroke-linecap="round" />
+        <circle cx="16" cy="16" r="4.2" fill="url(#logoGrad)" />
+      </svg>
+      <span class="logo-text">FRIDAY</span>
+    </div>
 
-<header class="top-bar" role="banner">
-  <div class="top-left">
-    <svg class="logo" viewBox="0 0 32 32" width="32" height="32" aria-hidden="true">
-      <defs>
-        <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="#10b981" />
-          <stop offset="100%" stop-color="#06b6d4" />
-        </linearGradient>
-      </defs>
-      <circle cx="16" cy="16" r="14" fill="url(#logoGrad)" opacity="0.15" />
-      <path d="M16 6 L16 26 M6 16 L26 16" stroke="url(#logoGrad)" stroke-width="2.5" stroke-linecap="round" />
-      <circle cx="16" cy="16" r="4" fill="url(#logoGrad)" />
-    </svg>
-    <span class="logo-text">FRIDAY</span>
-  </div>
-  <div class="top-center" aria-live="polite" aria-atomic="true">
-    <span class="connection-status" id="connStatus">
-      <span class="status-dot" id="statusDot"></span>
-      <span id="statusText">Connecting...</span>
-    </span>
-  </div>
-  <div class="top-right">
-    <button class="icon-btn" id="settingsBtn" aria-label="Settings" aria-expanded="false">
-      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.62-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.54-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.44.17-.48.41l-.36 2.54c-.51.24-1.04.56-1.54.94l-2.39-.96c-.22-.07-.47 0-.59.22L2.74 8.87c-.12.21-.07.47.12.61l2.03 1.58c-.04.32-.06.64-.06.94s.02.62.06.94l-2.03 1.58c-.12.22-.07.47.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.54.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.48-.41l.36-2.54c.51-.24 1.04-.56 1.54-.94l2.39.96c.22.07.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.03-1.58c.04-.32.06-.64.06-.94zm-7.14 5.06a3 3 0 1 1 0-6 3 3 0 0 1 0 6z" fill="currentColor"/></svg>
-    </button>
-  </div>
-</header>
+    <div class="top-center" aria-live="polite" aria-atomic="true">
+      <span class="connection-status">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">Connecting</span>
+      </span>
+    </div>
 
-<main id="app" class="app-layout">
-  <aside class="sidebar sidebar-left" id="fleetSidebar" aria-label="Agent fleet">
-    <div class="sidebar-header">
-      <h2>Agent Fleet</h2>
-      <button class="icon-btn" id="fleetToggle" aria-label="Toggle fleet panel" aria-expanded="true">
-        <svg viewBox="0 0 24 24" width="20" height="20"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+    <div class="top-right">
+      <button class="icon-btn" id="fleetToggle" aria-label="Agent fleet" aria-expanded="false" title="Agent fleet">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+          <circle cx="9" cy="8" r="3" /><circle cx="17" cy="10" r="2.2" />
+          <path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5" /><path d="M16 14.2c2.4.3 4.2 2 4.2 4.3" />
+        </svg>
+      </button>
+
+      <button class="icon-btn" id="flowToggle" aria-label="Agent flow" aria-expanded="false" title="Agent flow">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="3" width="6" height="6" rx="1.6" />
+          <rect x="15" y="15" width="6" height="6" rx="1.6" />
+          <rect x="15" y="3" width="6" height="6" rx="1.6" opacity="0.45" />
+          <path d="M9 6h6M6 9v6a3 3 0 0 0 3 3h6" />
+        </svg>
+      </button>
+
+      <button class="icon-btn" id="settingsBtn" aria-label="Settings" aria-expanded="false" title="Settings">
+        <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor" aria-hidden="true">
+          <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.62-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.61l-1.92-3.32a.5.5 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.54-.94l-.36-2.54a.5.5 0 0 0-.48-.41h-3.84a.5.5 0 0 0-.48.41l-.36 2.54c-.51.24-1.04.56-1.54.94l-2.39-.96a.5.5 0 0 0-.59.22L2.74 8.87a.5.5 0 0 0 .12.61l2.03 1.58c-.04.32-.06.64-.06.94s.02.62.06.94l-2.03 1.58a.5.5 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.54.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.48-.41l.36-2.54c.51-.24 1.04-.56 1.54-.94l2.39.96c.22.07.47 0 .59-.22l1.92-3.32a.5.5 0 0 0-.12-.61zM12 15.6a3.6 3.6 0 1 1 0-7.2 3.6 3.6 0 0 1 0 7.2z" />
+        </svg>
       </button>
     </div>
-    <div class="sidebar-content">
-      <div class="agent-list" id="agentList" role="list"></div>
-    </div>
-  </aside>
+  </header>
 
-  <section class="main-stage" aria-label="Friday">
-    <div id="fridayCanvas" class="friday-canvas"></div>
-    
-    <div class="voice-bar" role="region" aria-label="Voice interaction">
-      <div class="waveform" id="waveform" aria-hidden="true"></div>
+  <main class="stage" id="app">
+    <canvas id="orbCanvas" aria-hidden="true"></canvas>
+    <div class="orb-caption" id="orbCaption" aria-hidden="true"></div>
+
+    <section class="transcript" id="transcript" aria-live="polite" aria-label="Conversation"></section>
+
+    <div class="voice-bar">
       <div class="voice-input-group">
-        <button class="mic-btn" id="micBtn" aria-label="Talk to Friday" aria-pressed="false">
-          <svg class="mic-icon" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
-            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" fill="currentColor"/>
-            <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.94 6-3.86 6-6.92h-2z" fill="currentColor"/>
+        <button class="mic-btn" id="micBtn" aria-label="Talk to FRIDAY" aria-pressed="false">
+          <svg class="mic-icon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <rect x="9" y="2.5" width="6" height="11" rx="3" />
+            <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7" />
           </svg>
-          <svg class="stop-icon" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" style="display:none">
-            <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/>
+          <svg class="stop-icon" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+            <rect x="6" y="6" width="12" height="12" rx="2.5" />
           </svg>
         </button>
-        <div class="voice-text" id="voiceText" aria-live="polite">
-          <span id="voicePlaceholder">Press and hold to talk, or type below</span>
-          <span id="interimText" class="interim" aria-hidden="true"></span>
-        </div>
-        <input type="text" id="textInput" placeholder="Type to Friday..." aria-label="Type a message" autocomplete="off">
-        <button class="send-btn" id="sendBtn" aria-label="Send">
-          <svg viewBox="0 0 24 24" width="22" height="22"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" fill="currentColor"/></svg>
+
+        <input
+          id="textInput"
+          type="text"
+          placeholder="Ask me anything, or just talk…"
+          autocomplete="off"
+          spellcheck="false"
+          aria-label="Message FRIDAY"
+        />
+
+        <button class="send-btn" id="sendBtn" aria-label="Send message">
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 12h15M13 6l6 6-6 6" />
+          </svg>
         </button>
       </div>
+      <p class="hint-line" id="hintLine">Tap the mic and talk — Telugu or English.</p>
     </div>
-  </section>
 
-  <aside class="sidebar sidebar-right" id="workflowSidebar" aria-label="Workflow">
+    <footer class="sr-only"><span id="clock"></span></footer>
+  </main>
+
+  <aside class="settings-panel" id="settingsPanel" aria-label="Settings" aria-hidden="true">
     <div class="sidebar-header">
-      <h2>Workflow</h2>
-      <button class="icon-btn" id="workflowToggle" aria-label="Toggle workflow panel" aria-expanded="false">
-        <svg viewBox="0 0 24 24" width="20" height="20"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+      <h2>Settings</h2>
+      <button class="icon-btn" id="settingsClose" aria-label="Close settings">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18" />
+        </svg>
       </button>
     </div>
+
     <div class="sidebar-content">
-      <div id="workflowCanvas" class="workflow-canvas"></div>
-    </div>
-  </aside>
-</main>
+      <nav class="settings-nav" role="tablist" aria-label="Settings sections">
+        <button role="tab" data-tab="voice" aria-selected="true">Voice</button>
+        <button role="tab" data-tab="theme" aria-selected="false">Look</button>
+        <button role="tab" data-tab="agents" aria-selected="false">Agents</button>
+        <button role="tab" data-tab="advanced" aria-selected="false">System</button>
+      </nav>
 
-<aside class="sidebar sidebar-settings" id="settingsPanel" aria-label="Settings" aria-hidden="true">
-  <div class="sidebar-header">
-    <h2>Settings</h2>
-    <button class="icon-btn" id="settingsClose" aria-label="Close settings">
-      <svg viewBox="0 0 24 24" width="22" height="22"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-    </button>
-  </div>
-  <div class="sidebar-content">
-    <nav class="settings-nav" role="tablist">
-      <button role="tab" aria-selected="true" data-tab="voice">Voice</button>
-      <button role="tab" data-tab="theme">Theme</button>
-      <button role="tab" data-tab="agents">Agents</button>
-      <button role="tab" data-tab="advanced">Advanced</button>
-    </nav>
-    <div class="tab-panels">
-      <div role="tabpanel" id="tab-voice">
-        <fieldset>
-          <legend>Speech Recognition</legend>
-          <label>Language
-            <select id="sttLang">
-              <option value="en-IN">English (India)</option>
-              <option value="te-IN">తెలుగు (Telugu)</option>
-            </select>
-          </label>
-          <label class="toggle"><input type="checkbox" id="autoLangDetect" checked> Auto-detect language</label>
-        </fieldset>
-        <fieldset>
-          <legend>Text-to-Speech</legend>
-          <label>Voice
-            <select id="ttsVoice">
-              <option value="en-IN-NeerjaNeural">English — Neerja (Female)</option>
-              <option value="en-IN-PrabhatNeural">English — Prabhat (Male)</option>
-              <option value="te-IN-ShrutiNeural">Telugu — Shruti (Female)</option>
-              <option value="te-IN-MohanNeural">Telugu — Mohan (Male)</option>
-            </select>
-          </label>
-          <label class="toggle"><input type="checkbox" id="speakReplies" checked> Speak replies</label>
-          <label class="toggle"><input type="checkbox" id="autoVoiceMatch" checked> Match voice to text language</label>
-        </fieldset>
-      </div>
-      <div role="tabpanel" id="tab-theme" hidden>
-        <fieldset>
-          <legend>Appearance</legend>
-          <label>Theme
-            <select id="themeMode">
-              <option value="dark">Dark</option>
-              <option value="light">Light</option>
-              <option value="auto">Auto</option>
-            </select>
-          </label>
-          <label>Accent Color
-            <div class="color-picker">
-              <button style="--color:#10b981" data-color="mint" aria-label="Mint"></button>
-              <button style="--color:#06b6d4" data-color="cyan" aria-label="Cyan"></button>
-              <button style="--color:#a855f7" data-color="violet" aria-label="Violet"></button>
-              <button style="--color:#f59e0b" data-color="amber" aria-label="Amber"></button>
-            </div>
-          </label>
-        </fieldset>
-      </div>
-      <div role="tabpanel" id="tab-agents" hidden>
-        <fieldset>
-          <legend>Agent Preferences</legend>
-          <p class="hint">Toggle agent visibility in the fleet panel</p>
-          <div id="agentToggles"></div>
-        </fieldset>
-      </div>
-      <div role="tabpanel" id="tab-advanced" hidden>
-        <fieldset>
-          <legend>Advanced</legend>
-          <label class="toggle"><input type="checkbox" id="reducedMotion"> Reduced motion</label>
-          <label class="toggle"><input type="checkbox" id="debugMode"> Debug mode</label>
-          <button class="btn btn-danger" id="resetDefaults">Reset to defaults</button>
-        </fieldset>
+      <div class="tab-panels">
+        <div role="tabpanel" id="tab-voice">
+          <fieldset>
+            <legend>Listening</legend>
+            <label>Speech language
+              <select id="sttLang">
+                <option value="en-IN">English (India)</option>
+                <option value="te-IN">తెలుగు</option>
+                <option value="en-US">English (US)</option>
+              </select>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" id="autoLangDetect" />
+              <span>Auto-detect Telugu in replies</span>
+            </label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Speaking</legend>
+            <label>Voice
+              <select id="ttsVoice"></select>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" id="speakReplies" />
+              <span>Read replies aloud</span>
+            </label>
+            <p class="hint">Telugu replies use a neural Telugu voice automatically.</p>
+          </fieldset>
+        </div>
+
+        <div role="tabpanel" id="tab-theme" hidden>
+          <fieldset>
+            <legend>Appearance</legend>
+            <label>Theme
+              <select id="themeMode">
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+              </select>
+            </label>
+            <label>Accent
+              <div class="color-picker">
+                <button style="--color:#10b981" data-color="mint" aria-label="Mint" aria-pressed="true"></button>
+                <button style="--color:#06b6d4" data-color="cyan" aria-label="Cyan" aria-pressed="false"></button>
+                <button style="--color:#a855f7" data-color="violet" aria-label="Violet" aria-pressed="false"></button>
+                <button style="--color:#f59e0b" data-color="amber" aria-label="Amber" aria-pressed="false"></button>
+              </div>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" id="reducedMotion" />
+              <span>Reduce motion</span>
+            </label>
+          </fieldset>
+        </div>
+
+        <div role="tabpanel" id="tab-agents" hidden>
+          <fieldset>
+            <legend>Fleet visibility</legend>
+            <p class="hint">Choose which agents appear in the fleet panel.</p>
+            <div id="agentToggles"></div>
+          </fieldset>
+        </div>
+
+        <div role="tabpanel" id="tab-advanced" hidden>
+          <fieldset>
+            <legend>Session</legend>
+            <p class="hint">FRIDAY keeps control tokens short-lived and refreshes them automatically.</p>
+            <button class="btn" id="resetDefaults">Restore defaults</button>
+          </fieldset>
+        </div>
       </div>
     </div>
   </aside>
 
-  <footer class="footer" role="contentinfo">
-    <span>FRIDAY</span>
-    <span class="version">v2.0</span>
-  </footer>
-
-<script type="module">
-// ============================================================
-// FRIDAY - Main Application Entry Point
-// ============================================================
-
-import { FridayCharacter } from './friday_character.js';
-import { FridayVoice } from './voice_system.js';
-import { AgentFleet } from './agent_fleet.js';
-import { WorkflowCanvas } from './workflow_canvas.js';
-import { FridayAPI } from './api_client.js';
-import { SettingsPanel } from './settings_panel.js';
-import { MemoryPanel } from './memory_panel.js';
-import { TaskCards } from './task_card.js';
-import { ConversationHistory } from './conversation_history.js';
-import { PerformancePanel } from './performance_panel.js';
-
-const BASE = (() => {
-  const p = window.location.pathname;
-  if (p === "/friday" || p.startsWith("/friday/")) return "/friday";
-  return "";
-})();
-
-const $ = (id) => document.getElementById(id);
-const $$ = (sel) => document.querySelectorAll(sel);
-
-function escapeHtml(v) {
-  return String(v ?? "").replace(/&/g,"&").replace(/</g,"<").replace(/>/g,">").replace(/"/g,""").replace(/'/g,"'");
-}
-
-function formatTime(ts) {
-  if (!ts) return "—";
-  const d = new Date(typeof ts === "number" && ts < 1e12 ? ts * 1000 : ts);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-// ============================================================
-// Global State
-// ============================================================
-let friday = null;
-let voice = null;
-let fleet = null;
-let workflow = null;
-let api = null;
-let settings = null;
-let memory = null;
-let tasks = null;
-let history = null;
-let performance = null;
-let token = null;
-let ws = null;
-let currentGoalId = null;
-let currentMode = "execute";
-let isProcessing = false;
-
-// ============================================================
-// Token Management
-// ============================================================
-async function getToken() {
-  if (token && Date.now() / 1000 < (token.expires_at || 0) - 30) return token.token;
-  try {
-    const res = await fetch(BASE + "/api/control/session", { cache: "no-store" });
-    if (!res.ok) throw new Error("token " + res.status);
-    const data = await res.json();
-    token = { token: data.token, expires_at: data.expires_at || Date.now()/1000 + 1200 };
-    return token.token;
-  } catch (e) {
-    console.warn("Token fetch failed:", e);
-    return null;
-  }
-}
-
-function authHeaders() {
-  const h = { "Content-Type": "application/json" };
-  if (token) h["X-FRIDAY-Control-Token"] = token.token;
-  return h;
-}
-
-// ============================================================
-// UI Helpers
-// ============================================================
-function toast(msg, type = "info") {
-  const el = document.createElement("div");
-  el.className = `toast toast-${type}`;
-  el.textContent = msg;
-  document.body.appendChild(el);
-  requestAnimationFrame(() => el.classList.add("show"));
-  setTimeout(() => { el.classList.remove("show"); setTimeout(() => el.remove(), 300); }, 4000);
-}
-
-function setStatus(text, state = "info") {
-  const dot = $("#statusDot");
-  const txt = $("#statusText");
-  txt.textContent = text;
-  dot.className = "status-dot " + state;
-}
-
-function showPanel(id) {
-  const panel = $(id);
-  panel.classList.add("open");
-  panel.setAttribute("aria-hidden", "false");
-  document.body.style.overflow = "hidden";
-}
-
-function hidePanel(id) {
-  const panel = $(id);
-  panel.classList.remove("open");
-  panel.setAttribute("aria-hidden", "true");
-  document.body.style.overflow = "";
-}
-
-function togglePanel(id) {
-  const panel = $(id);
-  if (panel.classList.contains("open")) hidePanel(id); else showPanel(id);
-}
-
-// ============================================================
-// Friday Character Integration
-// ============================================================
-let fridayCharacter = null;
-
-async function initFridayCharacter() {
-  const container = $("#fridayCanvas");
-  fridayCharacter = new FridayCharacter();
-  await fridayCharacter.init(container);
-  fridayCharacter.setState("idle");
-  return fridayCharacter;
-}
-
-function setFridayState(state) {
-  if (fridayCharacter) fridayCharacter.setState(state);
-}
-
-// ============================================================
-// Voice System Integration
-// ============================================================
-let voiceSystem = null;
-
-async function initVoiceSystem() {
-  voiceSystem = new FridayVoice();
-  await voiceSystem.init({
-    basePath: BASE,
-    getToken,
-    onResult: handleVoiceResult,
-    onInterim: handleVoiceInterim,
-    onStateChange: handleVoiceStateChange,
-    onError: handleVoiceError,
-    onSpeaking: (speaking) => {
-      if (speaking) {
-        setFridayState("speaking");
-        $("#micBtn").classList.add("speaking");
-      } else {
-        $("#micBtn").classList.remove("speaking");
-        setFridayState("idle");
-      }
-    }
-  });
-  return voiceSystem;
-}
-
-function handleVoiceResult(text) {
-  if (!text.trim()) return;
-  $("#interimText").textContent = "";
-  processUserInput(text);
-}
-
-function handleVoiceInterim(text) {
-  $("#interimText").textContent = text;
-}
-
-function handleVoiceStateChange(state) {
-  const btn = $("#micBtn");
-  const placeholder = $("#voicePlaceholder");
-  const interim = $("#interimText");
-  
-  btn.classList.toggle("listening", state === "listening");
-  
-  if (state === "listening") {
-    placeholder.textContent = "Listening...";
-  } else if (state === "processing") {
-    placeholder.textContent = "Thinking...";
-    setFridayState("thinking");
-  } else if (state === "speaking") {
-    placeholder.textContent = "Friday is speaking...";
-  } else {
-    placeholder.textContent = "Press and hold to talk, or type below";
-    interim.textContent = "";
-    setFridayState("idle");
-  }
-}
-
-function handleVoiceError(err) {
-  console.warn("Voice error:", err);
-  toast("Voice error: " + err.message, "error");
-}
-
-let currentAbortController = null;
-
-async function processUserInput(text) {
-  if (isProcessing) return;
-  isProcessing = true;
-  setFridayState("thinking");
-  setStatus("Processing...", "processing");
-  
-  try {
-    if (currentMode === "execute") {
-      const res = await fetch(BASE + "/api/autonomous/goals", {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({ goal: text, priority: 10 })
-      });
-      const data = await res.json();
-      currentGoalId = data.goal_id;
-      toast("Mission started. I'll let you know when it's done.");
-      pollGoal(currentGoalId);
-    } else {
-      const res = await fetch(BASE + "/api/command", {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({ command: text })
-      });
-      const data = await res.json();
-      const reply = data.reply || "I heard you, but I don't have an answer yet.";
-      addToHistory({ user: text, friday: reply, agents: [], status: "completed" });
-      if (voiceSystem) await voiceSystem.speak(reply);
-    }
-  } catch (e) {
-    console.error("Input processing error:", e);
-    toast("Something went wrong: " + e.message, "error");
-    setFridayState("idle");
-  } finally {
-    isProcessing = false;
-    if (!isProcessing) setStatus("Ready", "ready");
-  }
-}
-
-async function pollGoal(goalId) {
-  let attempts = 0;
-  while (attempts < 60) {
-    await new Promise(r => setTimeout(r, 3000));
-    try {
-      const res = await fetch(BASE + "/api/autonomous/goals/" + goalId, { headers: authHeaders() });
-      const goal = await res.json();
-      if (goal.status === "COMPLETED" || goal.status === "PARTIAL" || goal.status === "FAILED") {
-        currentGoalId = null;
-        const summary = goal.summary || "Done.";
-        addToHistory({ user: "Goal: " + goal.goal, friday: summary, agents: goal.steps?.map(s => s.agent) || [], status: goal.status });
-        if (voiceSystem) await voiceSystem.speak(summary);
-        break;
-      }
-      attempts++;
-    } catch (e) {
-      console.warn("Goal poll error:", e);
-      attempts++;
-    }
-  }
-}
-
-// ============================================================
-// Conversation History
-// ============================================================
-const historyLog = [];
-
-function addToHistory(entry) {
-  entry.timestamp = Date.now();
-  entry.id = "entry_" + Date.now() + "_" + Math.random().toString(36).slice(2);
-  historyLog.unshift(entry);
-  if (history) history.addEntry(entry);
-  renderRecentHistory();
-}
-
-function renderRecentHistory() {
-  const container = $("#historyList");
-  if (!container) return;
-  container.innerHTML = historyLog.slice(0, 10).map(e => `
-    <div class="history-item">
-      <div class="history-meta">
-        <span class="history-time">${formatTime(e.timestamp)}</span>
-        <span class="history-status status-${e.status?.toLowerCase() || "completed"}">${e.status || "completed"}</span>
-      </div>
-      <div class="history-user">${escapeHtml(e.user)}</div>
-      <div class="history-friday">${escapeHtml(e.friday?.slice(0, 120))}${e.friday?.length > 120 ? "..." : ""}</div>
-    </div>
-  `).join("");
-}
-
-// ============================================================
-// Agent Fleet Integration
-// ============================================================
-let agentFleet = null;
-
-async function initAgentFleet() {
-  const container = $("#fleetSidebar .sidebar-content");
-  agentFleet = new AgentFleet({
-    basePath: BASE,
-    wsEndpoint: BASE + "/ws/agents",
-    onAgentFocus: (id, agent) => {
-      if (workflow) workflow.centerOnNode(id);
-      if (workflow) workflow.open();
-    },
-    onStatusChange: (id, status) => {
-      if (workflow) workflow.updateNodeState(id, status);
-    }
-  });
-  await agentFleet.init($("#agentList"));
-  return agentFleet;
-}
-
-// ============================================================
-// Workflow Canvas
-// ============================================================
-let workflowCanvas = null;
-
-async function initWorkflowCanvas() {
-  workflowCanvas = new WorkflowCanvas();
-  await workflowCanvas.init(document.body, {
-    onNodeClick: (agentId) => {
-      if (agentFleet) agentFleet.expandAgent(agentId);
-    },
-    onNodeDetails: (agentId, agent) => {
-      if (agentFleet) agentFleet.expandAgent(agentId);
-    }
-  });
-  return workflowCanvas;
-}
-
-// ============================================================
-// API Client & WebSocket
-// ============================================================
-let apiClient = null;
-
-async function initApiClient() {
-  apiClient = new FridayAPI();
-  await apiClient.init({ basePath: BASE, getToken });
-  return apiClient;
-}
-
-function connectWS() {
-  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
-  getToken().then(token => {
-    if (!token) return;
-    ws = new WebSocket((location.protocol === "https:" ? "wss:" : "ws:") + "//" + location.host + BASE + "/ws/activity?token=" + encodeURIComponent(token));
-    ws.onopen = () => setStatus("Connected", "ready");
-    ws.onmessage = (ev) => {
-      try {
-        const msg = JSON.parse(ev.data);
-        handleWSMessage(msg);
-      } catch (e) { console.warn("WS parse error:", e); }
-    };
-    ws.onclose = () => {
-      setStatus("Disconnected", "error");
-      setTimeout(connectWS, 3000);
-    };
-    ws.onerror = () => ws.close();
-  });
-}
-
-function handleWSMessage(msg) {
-  if (msg.type === "agent_status" && agentFleet) {
-    agentFleet.updateAgent(msg.agent_id, msg);
-    if (workflowCanvas) workflowCanvas.updateNodeState(msg.agent_id, msg.status?.toLowerCase() || "idle");
-  }
-  if (msg.type === "agent_batch" && agentFleet) {
-    Object.entries(msg.agents || {}).forEach(([id, data]) => agentFleet.updateAgent(id, data));
-  }
-  if (msg.type === "task_update" && tasks) {
-    tasks.updateStatus(msg.task_id, msg.status, msg.data);
-  }
-  if (msg.type === "goal_update" && currentGoalId === msg.goal_id) {
-    // Handled by pollGoal
-  }
-}
-
-// ============================================================
-// Sidebar & Panel Toggle
-// ============================================================
-function initSidebarToggles() {
-  $("#fleetToggle").addEventListener("click", () => {
-    $("#fleetSidebar").classList.toggle("collapsed");
-    $("#fleetToggle").setAttribute("aria-expanded", !$("#fleetSidebar").classList.contains("collapsed"));
-  });
-  $("#workflowToggle").addEventListener("click", () => {
-    $("#workflowSidebar").classList.toggle("collapsed");
-    $("#workflowToggle").setAttribute("aria-expanded", !$("#workflowSidebar").classList.contains("collapsed"));
-  });
-  $("#settingsBtn").addEventListener("click", () => showPanel("settingsPanel"));
-  $("#settingsClose").addEventListener("click", () => hidePanel("settingsPanel"));
-  $("#settingsPanel").addEventListener("click", (e) => { if (e.target === $("#settingsPanel")) hidePanel("settingsPanel"); });
-  $("#fleetSidebar").addEventListener("click", (e) => { if (e.target === $("#fleetSidebar")) $("#fleetSidebar").classList.toggle("collapsed"); });
-  $("#workflowSidebar").addEventListener("click", (e) => { if (e.target === $("#workflowSidebar")) $("#workflowSidebar").classList.toggle("collapsed"); });
-}
-
-// ============================================================
-// Settings Panel
-// ============================================================
-function initSettings() {
-  $$("#settingsNav button").forEach(btn => {
-    btn.addEventListener("click", () => {
-      $$("#settingsNav button").forEach(b => b.setAttribute("aria-selected", "false"));
-      btn.setAttribute("aria-selected", "true");
-      $$(".tab-panels > div").forEach(p => p.hidden = true);
-      $("#tab-" + btn.dataset.tab).hidden = false;
-    });
-  });
-  
-  // Load settings from localStorage
-  const saved = JSON.parse(localStorage.getItem("friday_settings") || "{}");
-  
-  // Voice settings
-  $("#sttLang").value = saved.sttLang || "en-IN";
-  $("#autoLangDetect").checked = saved.autoLangDetect !== false;
-  $("#ttsVoice").value = saved.ttsVoice || "en-IN-NeerjaNeural";
-  $("#speakReplies").checked = saved.speakReplies !== false;
-  $("#autoVoiceMatch").checked = saved.autoVoiceMatch !== false;
-  
-  // Theme settings
-  $("#themeMode").value = saved.themeMode || "dark";
-  if (saved.accentColor) {
-    document.documentElement.style.setProperty("--mint", getAccentColor(saved.accentColor));
-  }
-  
-  // Apply theme
-  applyTheme(saved.themeMode || "dark", saved.accentColor || "mint");
-  
-  // Event listeners
-  $("#sttLang").addEventListener("change", () => saveSetting("sttLang", $("#sttLang").value));
-  $("#autoLangDetect").addEventListener("change", () => saveSetting("autoLangDetect", $("#autoLangDetect").checked));
-  $("#ttsVoice").addEventListener("change", () => saveSetting("ttsVoice", $("#ttsVoice").value));
-  $("#speakReplies").addEventListener("change", () => saveSetting("speakReplies", $("#speakReplies").checked));
-  $("#autoVoiceMatch").addEventListener("change", () => saveSetting("autoVoiceMatch", $("#autoVoiceMatch").checked));
-  
-  $("#themeMode").addEventListener("change", () => {
-    saveSetting("themeMode", $("#themeMode").value);
-    applyTheme($("#themeMode").value, getComputedStyle(document.documentElement).getPropertyValue("--mint").trim());
-  });
-  
-  $$(".color-picker button").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const color = btn.dataset.color;
-      saveSetting("accentColor", color);
-      applyTheme($("#themeMode").value, color);
-    });
-  });
-  
-  $("#reducedMotion").checked = saved.reducedMotion || false;
-  $("#reducedMotion").addEventListener("change", () => saveSetting("reducedMotion", $("#reducedMotion").checked));
-  $("#debugMode").checked = saved.debugMode || false;
-  $("#debugMode").addEventListener("change", () => saveSetting("debugMode", $("#debugMode").checked));
-  
-  $("#resetDefaults").addEventListener("click", () => {
-    localStorage.removeItem("friday_settings");
-    location.reload();
-  });
-}
-
-function saveSetting(key, value) {
-  const saved = JSON.parse(localStorage.getItem("friday_settings") || "{}");
-  saved[key] = value;
-  localStorage.setItem("friday_settings", JSON.stringify(saved));
-}
-
-function getAccentColor(name) {
-  const colors = {
-    mint: "#10b981",
-    cyan: "#06b6d4",
-    violet: "#a855f7",
-    amber: "#f59e0b"
-  };
-  return colors[name] || colors.mint;
-}
-
-function applyTheme(mode, accent) {
-  const root = document.documentElement;
-  if (mode === "auto") {
-    mode = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  }
-  root.setProperty("--bg", mode === "dark" ? "#050508" : "#fafafa");
-  root.setProperty("--bg-deep", mode === "dark" ? "#030305" : "#f0f0f0");
-  root.setProperty("--panel", mode === "dark" ? "rgba(20,20,30,0.85)" : "rgba(255,255,255,0.9)");
-  root.setProperty("--panel-strong", mode === "dark" ? "rgba(30,30,45,0.95)" : "rgba(255,255,255,0.95)");
-  root.setProperty("--line", mode === "dark" ? "rgba(100,100,120,0.3)" : "rgba(0,0,0,0.1)");
-  root.setProperty("--line-strong", mode === "dark" ? "rgba(140,140,160,0.5)" : "rgba(0,0,0,0.2)");
-  root.setProperty("--text", mode === "dark" ? "#f0f0f5" : "#101015");
-  root.setProperty("--text-dim", mode === "dark" ? "#a0a0b0" : "#606070");
-  root.setProperty("--text-muted", mode === "dark" ? "#707085" : "#9090a0");
-  root.setProperty("--mint", getAccentColor(accent));
-  
-  document.body.classList.toggle("light", mode === "light");
-  document.body.classList.toggle("dark", mode === "dark");
-}
-
-// ============================================================
-// Agent Toggles
-// ============================================================
-function initAgentToggles() {
-  const agents = ["friday","inference","memora","stratex","intelx","futuris","cortex","forge","sentinel","vyralx"];
-  const container = $("#agentToggles");
-  const saved = JSON.parse(localStorage.getItem("friday_agent_visibility") || "{}");
-  container.innerHTML = agents.map(id => `
-    <label class="agent-toggle">
-      <input type="checkbox" ${saved[id] !== false ? "checked" : ""} data-agent="${id}">
-      <span>${id}</span>
-    </label>
-  `).join("");
-  $$("#agentToggles input").forEach(cb => {
-    cb.addEventListener("change", () => {
-      const saved = JSON.parse(localStorage.getItem("friday_agent_visibility") || "{}");
-      saved[cb.dataset.agent] = cb.checked;
-      localStorage.setItem("friday_agent_visibility", JSON.stringify(saved));
-      if (agentFleet) agentFleet.setAgentVisible(cb.dataset.agent, cb.checked);
-    });
-  });
-}
-
-// ============================================================
-// Mic Button Interaction
-// ============================================================
-function initMicButton() {
-  const btn = $("#micBtn");
-  let isHolding = false;
-  let holdTimer = null;
-  
-  const startListening = () => {
-    if (isProcessing) return;
-    isHolding = true;
-    btn.classList.add("holding");
-    voiceSystem?.startListening();
-    holdTimer = setTimeout(() => {
-      if (isHolding) {
-        // Long press - keep listening until release
-      }
-    }, 300);
-  };
-  
-  const stopListening = () => {
-    if (!isHolding) return;
-    isHolding = false;
-    clearTimeout(holdTimer);
-    btn.classList.remove("holding");
-    voiceSystem?.stopListening();
-  };
-  
-  btn.addEventListener("mousedown", (e) => { e.preventDefault(); startListening(); });
-  btn.addEventListener("mouseup", stopListening);
-  btn.addEventListener("mouseleave", stopListening);
-  btn.addEventListener("touchstart", (e) => { e.preventDefault(); startListening(); }, { passive: true });
-  btn.addEventListener("touchend", stopListening);
-  btn.addEventListener("click", () => {
-    if (!isHolding) voiceSystem?.toggleListening();
-  });
-  
-  // Keyboard
-  document.addEventListener("keydown", (e) => {
-    if (e.code === "Space" && document.activeElement === document.body) {
-      e.preventDefault();
-      if (!isHolding) startListening();
-    }
-  });
-  document.addEventListener("keyup", (e) => {
-    if (e.code === "Space") stopListening();
-  });
-}
-
-// ============================================================
-// Text Input
-// ============================================================
-function initTextInput() {
-  const input = $("#textInput");
-  const sendBtn = $("#sendBtn");
-  
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendText();
-    }
-  });
-  sendBtn.addEventListener("click", sendText);
-  
-  function sendText() {
-    const text = input.value.trim();
-    if (!text) return;
-    input.value = "";
-    processUserInput(text);
-  }
-}
-
-// ============================================================
-// Main Initialization
-// ============================================================
-async function init() {
-  try {
-    // Set initial status
-    setStatus("Initializing...", "processing");
-    
-    // Get token
-    await getToken();
-    
-    // Initialize core components
-    await initFridayCharacter();
-    await initVoiceSystem();
-    await initAgentFleet();
-    await initWorkflowCanvas();
-    await initApiClient();
-    
-    // Initialize UI
-    initSidebarToggles();
-    initSettings();
-    initAgentToggles();
-    initMicButton();
-    initTextInput();
-    
-    // Connect WebSocket
-    connectWS();
-    
-    // Start clock
-    setInterval(() => $("#clock").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), 1000);
-    
-    // Mark ready
-    setStatus("Ready", "ready");
-    toast("Friday is ready. How can I help you?");
-    
-    // Welcome message
-    if (voiceSystem) {
-      setTimeout(() => voiceSystem.speak("Hello. I'm Friday. How can I help you today?"), 500);
-    }
-    
-    console.log("Friday initialized successfully");
-  } catch (e) {
-    console.error("Initialization failed:", e);
-    setStatus("Error", "error");
-    toast("Initialization failed: " + e.message, "error");
-  }
-}
-
-// Start when DOM ready
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", init);
-} else {
-  init();
-}
-</script>
+  <script type="module" src="/static/app.js?v=20261106c"></script>
 </body>
 </html>

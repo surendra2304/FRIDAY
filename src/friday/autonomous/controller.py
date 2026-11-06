@@ -37,6 +37,15 @@ except Exception:  # pragma: no cover - optional dependency
 
 logger = get_logger("autonomous.controller")
 
+_REPLY_TAG_RE = re.compile(r"\[[A-Z][A-Z0-9 _-]{2,}:[^\]]*\]")
+
+
+def _plain_reply(text: Any) -> str:
+    """Strip bracketed machine markers from text the owner will read."""
+    cleaned = _REPLY_TAG_RE.sub(" ", str(text or ""))
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" -–—:;\t\r\n")
+    return cleaned
+
 FLEET_AGENTS = {
     "inference": {
         "name": "INFERENCE",
@@ -50,8 +59,8 @@ FLEET_AGENTS = {
     },
     "intelx": {
         "name": "INTELX",
-        "role": "Macro Evidence & Deep Web Research",
-        "domain": ["research", "investigate", "evidence", "macro", "search", "sources", "news", "trend"],
+        "role": "Threat Intelligence & OSINT Research",
+        "domain": ["research", "investigate", "evidence", "macro", "search", "sources", "news", "trend", "threat intelligence", "osint", "threat intel", "dark web", "breach monitor", "actor profile", "ttp"],
     },
     "futuris": {
         "name": "FUTURIS",
@@ -390,7 +399,7 @@ class AutonomousController:
         return mesh
 
     async def execute_agent_control(self, agent_id: str, directive: str) -> dict[str, Any]:
-        """Dispatch a typed peer task and report only receipt-verified completion."""
+        """Dispatch a typed peer task via Mesh with Inference/Memora routing."""
         self.active_agent = agent_id.upper()
         self.active_directive = directive
         start_time = time.time()
@@ -398,18 +407,12 @@ class AutonomousController:
         agent_meta = FLEET_AGENTS.get(agent_id, {"name": agent_id.upper(), "role": "Specialist Agent"})
         agent_name = agent_meta["name"]
 
-        logger.info("[AUTONOMOUS DISPATCH] Sending typed task to %s: %r", agent_name, directive)
+        logger.info("[AUTONOMOUS DISPATCH] Sending typed task to %s via Mesh routing: %r", agent_name, directive)
 
         try:
             from friday.cognition.mesh import OutcomeState
 
             mesh = self._get_peer_mesh()
-            # Each peer publishes its own action vocabulary, and an action it does
-            # not recognise is not the same thing as refusing the work. Memora's
-            # universal protocol accepts only store/query ("execute" is a 422), and
-            # Stratex correctly rejects "execute" as an attempt to command order
-            # placement -- its supervisory action for a dispatched instruction is
-            # "status". Everything else takes the generic "execute".
             mesh_action = _mesh_action_for(agent_id, directive)
             envelope = mesh.build_envelope(
                 agent_id,
@@ -425,11 +428,14 @@ class AutonomousController:
                 actor="friday",
                 trust_level="operator_confirmed",
             )
-            outcome = await mesh.dispatch(
+            # Use the new routing-aware dispatch
+            outcome = await mesh.dispatch_with_routing(
                 agent_id,
                 action=mesh_action,
                 envelope=envelope,
                 attempts=1,
+                route_llm=agent_id != "inference",  # Don't route Inference through itself
+                route_memory=True,
             )
             duration_ms = int((time.time() - start_time) * 1000)
             peer_result = outcome.result if isinstance(outcome.result, dict) else {}
@@ -438,38 +444,44 @@ class AutonomousController:
             task_state = outcome.state.value
 
             if verified:
-                reply = f"[AGENT TASK VERIFIED: {agent_name}]\n{summary or outcome.detail}"
+                detail = _plain_reply(summary or outcome.detail)
+                reply = f"{agent_name} finished that."
+                if detail:
+                    reply += f" {detail}"
             elif outcome.state is OutcomeState.PENDING:
                 reply = (
-                    f"[AGENT TASK PENDING: {agent_name}]\n{outcome.detail} "
-                    f"Task reference: {outcome.task_id}. Completion remains unverified."
+                    f"I have sent this to {agent_name}. It is still working, so I cannot confirm "
+                    "the result yet. I will record it here when it reports back."
                 )
             else:
-                # The mesh contract did not produce a verifiable receipt. Rather
-                # than tell the owner "not verified" and stop, fall back to the
-                # agent's own live endpoint through the fleet client, which is the
-                # same call `/api/command` uses. The reply is then the peer's real
-                # answer, labelled as a live response rather than a receipt.
+                # Fallback to fleet client for live response
                 fallback = getattr(fleet_client, f"ask_{agent_id}", None)
                 if callable(fallback):
                     try:
                         fallback_result = await fallback(directive)
-                        fallback_reply = str(fallback_result.get("reply") or "").strip()
+                        fallback_reply = _plain_reply(fallback_result.get("reply") or "")
                         if fallback_reply:
                             reply = (
-                                f"[{agent_name} LIVE RESPONSE]\n{fallback_reply}\n"
-                                f"(mesh receipt unavailable: {outcome.detail})"
+                                f"I could not get a verified receipt from {agent_name}, "
+                                f"but it answered directly: {fallback_reply}"
                             )
                             verified = False
                         else:
-                            reply = f"[AGENT TASK NOT VERIFIED: {agent_name}]\n{outcome.detail}"
+                            reply = (
+                                f"I could not confirm that {agent_name} completed that. "
+                                f"{_plain_reply(outcome.detail)}"
+                            )
                     except Exception as exc:
                         reply = (
-                            f"[AGENT TASK NOT VERIFIED: {agent_name}]\n{outcome.detail}\n"
-                            f"Live fallback also failed: {exc}"
+                            f"I could not confirm that {agent_name} completed that, and its live "
+                            f"endpoint did not answer either. {_plain_reply(outcome.detail)}"
                         )
+                        logger.debug("Live fallback for %s failed: %s", agent_id, exc)
                 else:
-                    reply = f"[AGENT TASK NOT VERIFIED: {agent_name}]\n{outcome.detail}"
+                    reply = (
+                        f"I could not confirm that {agent_name} completed that. "
+                        f"{_plain_reply(outcome.detail)}"
+                    )
 
             self._log_action(
                 action_type="AGENT_CONTROL",
@@ -484,6 +496,8 @@ class AutonomousController:
                     "http_status": outcome.http_status,
                     "contract_used": outcome.contract_used,
                     "task_completion_verified": verified,
+                    "routed_through_inference": agent_id != "inference",
+                    "routed_through_memora": True,
                 },
             )
 
@@ -499,6 +513,8 @@ class AutonomousController:
                 "task_id": outcome.task_id,
                 "http_status": outcome.http_status,
                 "contract_used": outcome.contract_used,
+                "routed_through_inference": agent_id != "inference",
+                "routed_through_memora": True,
             }
             receipt = peer_result.get("receipt")
             if receipt is not None:
@@ -515,19 +531,6 @@ class AutonomousController:
 
             self.active_agent = None
             self.active_directive = None
-            # Inter-agent fabric: mirror the outcome into Memora so other agents
-            # (and the dashboard) can recall what happened. Best-effort; never
-            # fail the task because memory persistence failed.
-            try:
-                from friday.memory.memora_client import memora_client
-                memora_client.record_fact(
-                    agent_name="friday",
-                    fact_text=f"{agent_name} executed '{directive[:120]}' -> {task_state} ({reply[:200]})",
-                    category="agent_task",
-                    importance=0.6,
-                )
-            except Exception as mirror_exc:
-                logger.debug("Memora mirror failed (non-fatal): %s", mirror_exc)
             return {"reply": reply, "metadata": metadata}
 
         except Exception as exc:
@@ -544,7 +547,7 @@ class AutonomousController:
             self.active_agent = None
             self.active_directive = None
             return {
-                "reply": f"Autonomous task to {agent_name} could not be verified: {exc}",
+                "reply": f"{agent_name} could not finish that. {_plain_reply(exc) or 'No reason was reported.'}",
                 "metadata": {
                     "autonomous": True,
                     "agent": agent_id,

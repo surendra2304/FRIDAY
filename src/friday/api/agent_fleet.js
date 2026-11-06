@@ -64,6 +64,7 @@ class AgentFleet {
     this.reconnectTimer = null;
     
     // Agent state
+    this.agents = Array.isArray(this.options.agents) ? this.options.agents : [];
     this.agentStates = new Map();
     this.agents.forEach(agent => {
       this.agentStates.set(agent.id, {
@@ -329,8 +330,11 @@ class AgentFleet {
    * @private
    */
   _loadCSS() {
-    const cssPath = `${this.options.basePath || ''}/src/friday/api/agent_fleet.css`;
+    // The host page already links the stylesheet; injecting a second one from
+    // the source tree would 404 behind the /static mount.
+    const cssPath = `${this.options.basePath || ''}/static/agent_fleet.css`;
     if (document.querySelector(`link[href="${cssPath}"]`)) return;
+    if (document.querySelector('link[href="/static/agent_fleet.css"]')) return;
     
     const link = document.createElement('link');
     link.rel = 'stylesheet';
@@ -721,17 +725,25 @@ class AgentFleet {
    * @private
    */
   _animateEntrance() {
+    const isMobile = window.innerWidth <= 900;
+    const startX = isMobile ? '-100%' : 0;
+    const endX = 0;
+    
     if (this.prefersReducedMotion || !this.gsap) {
       this.panel.style.opacity = '1';
-      this.panel.style.transform = 'translateX(0)';
+      this.panel.style.transform = `translateX(${endX})`;
+      this.panel.classList.toggle('closed', isMobile);
       return;
     }
+    
+    this.panel.style.transform = `translateX(${startX})`;
+    this.panel.classList.toggle('closed', isMobile);
     
     this.animationTimeline = this.gsap.timeline();
     
     // Panel slide in
     this.gsap.from(this.panel, {
-      x: -this.options.panelWidth,
+      x: startX,
       opacity: 0,
       duration: this.options.transitionDuration,
       ease: this.options.ease
@@ -754,16 +766,18 @@ class AgentFleet {
    */
   _animatePanelToggle(open) {
     if (this.prefersReducedMotion || !this.gsap) {
-      this.panel.style.transform = open ? 'translateX(0)' : `translateX(-${this.options.panelWidth}px)`;
+      this.panel.classList.toggle('closed', !open);
       this.fleetToggle.setAttribute('aria-expanded', open);
       return;
     }
     
     this.gsap.to(this.panel, {
-      x: open ? 0 : -this.options.panelWidth,
+      x: open ? 0 : '-100%',
       duration: this.options.transitionDuration,
       ease: this.options.ease
     });
+    
+    this.panel.classList.toggle('closed', !open);
     
     // Rotate toggle icon
     this.gsap.to(this.fleetToggle.querySelector('svg'), {

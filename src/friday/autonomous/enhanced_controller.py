@@ -309,8 +309,29 @@ class EnhancedAutonomousController:
                 dependencies=["st_1"],
             ))
 
-        # Check for security goals
-        elif any(kw in lower_goal for kw in ["security", "audit", "vulnerability", "threat", "protect", "scan"]):
+        # Check for threat intelligence goals (IntelX)
+        elif any(kw in lower_goal for kw in ["threat intelligence", "threat intel", "osint", "intelligence x", "dark web", "breach monitor", "actor profile", "ttp", "threat"]):
+            plan.add_subtask(SubTask(
+                id="st_1",
+                description="Gather threat intelligence from OSINT sources",
+                agent="INTELX",
+                dependencies=[],
+            ))
+            plan.add_subtask(SubTask(
+                id="st_2",
+                description="Analyze threat actor profiles and TPPs",
+                agent="INTELX",
+                dependencies=["st_1"],
+            ))
+            plan.add_subtask(SubTask(
+                id="st_3",
+                description="Generate threat intelligence summary",
+                agent="INTELX",
+                dependencies=["st_2"],
+            ))
+
+        # Check for security operations goals (Sentinel)
+        elif any(kw in lower_goal for kw in ["security audit", "vulnerability scan", "compliance audit", "zero trust", "firewall", "incident response", "siem", "soc"]):
             plan.add_subtask(SubTask(
                 id="st_1",
                 description="Scan target for vulnerabilities",

@@ -35,6 +35,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSock
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from friday.core.startup_validator import validate_runtime_environment
@@ -331,6 +332,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Static files for the FRIDAY dashboard (orb, voice, fleet, flow)
+app.mount("/static", StaticFiles(directory="src/friday/api"), name="static")
 
 @app.middleware("http")
 async def _dashboard_cache_headers(request: Request, call_next):
@@ -1099,6 +1103,8 @@ async def submit_autonomous_goal(
     _: None = Depends(_require_control_access),
 ) -> dict[str, Any]:
     """Submit a new goal for autonomous execution."""
+    if not req.goal or not req.goal.strip():
+        raise HTTPException(status_code=400, detail="goal must not be empty")
     goal = autonomous_daemon.submit_goal(req.goal, req.priority, req.metadata)
     # An explicitly submitted goal is the owner asking for work now. If the
     # daemon worker is not alive (fresh restart, autonomy toggled off), start it

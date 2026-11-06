@@ -316,7 +316,7 @@ class AutonomousDaemon:
             steps = list(goal.steps)
 
         summary = goal.summary
-        if not summary and plan is not None:
+        if not summary and plan is not None and goal.status in ("QUEUED", "RUNNING"):
             done = sum(1 for st in plan.subtasks if st.status == "COMPLETED")
             total = len(plan.subtasks)
             summary = f"Working on it — {done} of {total} steps finished so far."
@@ -324,8 +324,8 @@ class AutonomousDaemon:
             summary = "Queued. I will start as soon as a worker slot is free."
         if not summary and goal.status in ("COMPLETED", "PARTIAL", "FAILED"):
             summary = (
-                "That goal finished before I started keeping detailed step reports, "
-                "so there is no breakdown to show."
+                "That finished, but I don't have a readable report for it. "
+                "The flow view shows which agents ran."
             )
 
         duration = 0.0
@@ -456,26 +456,30 @@ class AutonomousDaemon:
     async def _execute_goal(self, goal: AutonomousGoal, plan: ExecutionPlan) -> None:
         """Execute a goal's plan, dispatching real work to each specialist."""
         logger.info("Daemon executing real multi-agent plan for goal %s: %s", goal.id, goal.goal)
+        # Status is only published after the answer exists: flipping to COMPLETED
+        # before synthesis made dashboards read a finished goal with an empty
+        # summary and display a progress line as the final answer.
+        final_status = "FAILED"
+        final_error = ""
         try:
             if not plan.subtasks:
-                goal.status = "FAILED"
-                goal.error = "Planner produced no agent tasks for this goal"
+                final_error = "Planner produced no agent tasks for this goal"
                 logger.error("Goal %s has an empty plan; marking FAILED", goal.id)
                 return
             await self.controller.execute_plan(plan)
             # Carry the plan's real outcome through. A PARTIAL plan is not a
             # completed goal, and calling it FAILED hides the work that did run.
-            goal.status = plan.status if plan.status in ("COMPLETED", "PARTIAL") else "FAILED"
-            if goal.status != "COMPLETED":
-                goal.error = (
+            final_status = plan.status if plan.status in ("COMPLETED", "PARTIAL") else "FAILED"
+            if final_status != "COMPLETED":
+                final_error = (
                     f"Plan ended {plan.status} "
                     f"({plan.completed_subtasks}/{plan.total_subtasks} subtasks completed)"
                 )
             logger.info("Daemon goal %s finished: %s (%d/%d subtasks)",
                         goal.id, plan.status, plan.completed_subtasks, plan.total_subtasks)
         except Exception as exc:
-            goal.status = "FAILED"
-            goal.error = str(exc)
+            final_status = "FAILED"
+            final_error = str(exc)
             logger.error("Goal %s execution failed: %s", goal.id, exc)
         finally:
             goal.completed_at = time.time()
@@ -505,6 +509,8 @@ class AutonomousDaemon:
                 )
                 goal.summary = self._build_summary(goal, plan, duration)
 
+            goal.status = final_status
+            goal.error = final_error
             self._live_plans.pop(goal.id, None)
             await self._finish_goal(goal)
 

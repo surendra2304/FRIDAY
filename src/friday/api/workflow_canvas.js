@@ -715,6 +715,9 @@
     // WebSocket Connection
     // ─────────────────────────────────────────────────────────────
     function connectWebSocket() {
+      // The host page feeds live agent state through its own authenticated
+      // activity socket. Avoid opening a second, unauthenticated one.
+      if (window.FRIDAY_COMPONENT_WS === false) return;
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const wsUrl = `${protocol}//${window.location.host}/friday/ws/workflow`;
 

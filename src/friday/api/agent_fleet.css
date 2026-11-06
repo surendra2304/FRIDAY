@@ -23,13 +23,21 @@
 }
 
 .fleet-panel.closed {
-  transform: translateX(-320px);
+  transform: translateX(-100%);
+  visibility: hidden;
+  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0.5s;
 }
 
 @media (max-width: 900px) {
   .fleet-panel {
     width: 100%;
     max-width: 360px;
+    transform: translateX(-100%);
+    visibility: hidden;
+  }
+  .fleet-panel:not(.closed) {
+    transform: translateX(0);
+    visibility: visible;
   }
 }
 
