@@ -25,7 +25,7 @@ import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any, Literal
 
 import uuid
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -36,7 +36,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from friday.core.startup_validator import validate_runtime_environment
 from friday.core.cache import TTLCache, ttl_cached
@@ -1090,11 +1090,38 @@ async def trigger_autonomous_repair(_: None = Depends(_require_control_access)) 
     return await autonomous_controller.execute_self_repair()
 
 
+class FridayAgentPrivateContext(BaseModel):
+    """Private memories and verified repair lessons for one specialist."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    private_memories: list[Annotated[str, Field(max_length=800)]] = Field(
+        default_factory=list,
+        max_length=8,
+    )
+    verified_repair_lessons: list[Annotated[str, Field(max_length=800)]] = Field(
+        default_factory=list,
+        max_length=3,
+    )
+
+
+class FridayAgentExecutionContext(BaseModel):
+    """Versioned, per-agent context accepted from FRIDAY Universe."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    contract: Literal["friday-agent-context/v1"]
+    by_agent: dict[str, FridayAgentPrivateContext]
+    handoff_policy: Literal["verified_predecessor_result_and_evidence_only"]
+
+
 class AutonomousGoalRequest(BaseModel):
     """Submit a goal for autonomous execution."""
+
     goal: str
     priority: int = 0
     metadata: dict[str, Any] | None = None
+    execution_context: FridayAgentExecutionContext | None = None
 
 
 @app.post("/api/autonomous/goals")
@@ -1105,7 +1132,12 @@ async def submit_autonomous_goal(
     """Submit a new goal for autonomous execution."""
     if not req.goal or not req.goal.strip():
         raise HTTPException(status_code=400, detail="goal must not be empty")
-    goal = autonomous_daemon.submit_goal(req.goal, req.priority, req.metadata)
+    goal = autonomous_daemon.submit_goal(
+        req.goal,
+        req.priority,
+        req.metadata,
+        req.execution_context.model_dump() if req.execution_context is not None else None,
+    )
     # An explicitly submitted goal is the owner asking for work now. If the
     # daemon worker is not alive (fresh restart, autonomy toggled off), start it
     # so the goal cannot sit in the queue forever.

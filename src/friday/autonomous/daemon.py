@@ -138,6 +138,7 @@ class AutonomousGoal:
     summary: str = ""
     steps: list[dict[str, Any]] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+    execution_context: dict[str, Any] = field(default_factory=dict)
 
 
 class AutonomousDaemon:
@@ -227,13 +228,20 @@ class AutonomousDaemon:
         """True while the background worker loop is alive."""
         return self._running
 
-    def submit_goal(self, goal_text: str, priority: int = 0, metadata: dict[str, Any] | None = None) -> AutonomousGoal:
+    def submit_goal(
+        self,
+        goal_text: str,
+        priority: int = 0,
+        metadata: dict[str, Any] | None = None,
+        execution_context: dict[str, Any] | None = None,
+    ) -> AutonomousGoal:
         """Submit a new goal for autonomous execution."""
         goal = AutonomousGoal(
             id=f"goal_{int(time.time() * 1000)}_{os.urandom(4).hex()}",
             goal=goal_text.strip(),
             priority=priority,
             metadata=metadata or {},
+            execution_context=execution_context or {},
         )
         self._goal_queue.append(goal)
         # Sort by priority (highest first), then by creation time
@@ -434,6 +442,15 @@ class AutonomousDaemon:
         # Decompose goal into execution plan
         try:
             plan = self.controller.decompose_goal(goal.goal)
+            context = goal.execution_context
+            if (
+                context.get("contract") == "friday-agent-context/v1"
+                and context.get("handoff_policy") == "verified_predecessor_result_and_evidence_only"
+            ):
+                by_agent = context.get("by_agent")
+                if isinstance(by_agent, dict):
+                    plan.agent_context_by_agent = by_agent
+            plan.shared_context = _extract_shared_context(goal.goal)
             goal.plan_id = getattr(plan, "plan_id", "") or (plan.subtasks[0].id if plan.subtasks else "")
             goal.steps = [self._step_payload(st) for st in plan.subtasks]
             self._live_plans[goal.id] = plan
@@ -516,6 +533,7 @@ class AutonomousDaemon:
 
     async def _finish_goal(self, goal: AutonomousGoal) -> None:
         """Move goal from running to completed."""
+        goal.execution_context = {}
         self._running_goals.pop(goal.id, None)
         self._completed_goals.append(goal)
         if len(self._completed_goals) > 100:
@@ -538,6 +556,20 @@ class AutonomousDaemon:
                 )
                 goal.completed_at = now
                 await self._finish_goal(goal)
+
+
+def _extract_shared_context(goal_text: str) -> str:
+    """Extract only the explicitly shared notes block from a workspace goal."""
+    start_marker = "\nShared context:\n"
+    end_marker = "\nIf the requested work cannot be completed as approved"
+    start = goal_text.find(start_marker)
+    if start < 0:
+        return ""
+    start += len(start_marker)
+    end = goal_text.find(end_marker, start)
+    if end < 0:
+        return ""
+    return goal_text[start:end].strip()
 
 
 # Module-level singleton
