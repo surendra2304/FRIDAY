@@ -25,7 +25,7 @@ import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Any
 
 import uuid
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -36,8 +36,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel
 
+from friday.api.goal_context import FridayAgentExecutionContext
 from friday.core.startup_validator import validate_runtime_environment
 from friday.core.cache import TTLCache, ttl_cached
 from friday.core.resilience import safe_peer_call
@@ -1088,31 +1089,6 @@ async def toggle_autonomous_mode(_: None = Depends(_require_control_access)) -> 
 async def trigger_autonomous_repair(_: None = Depends(_require_control_access)) -> dict[str, Any]:
     """Trigger an immediate autonomous self-healing and diagnostic sweep."""
     return await autonomous_controller.execute_self_repair()
-
-
-class FridayAgentPrivateContext(BaseModel):
-    """Private memories and verified repair lessons for one specialist."""
-
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-
-    private_memories: list[Annotated[str, Field(max_length=800)]] = Field(
-        default_factory=list,
-        max_length=8,
-    )
-    verified_repair_lessons: list[Annotated[str, Field(max_length=800)]] = Field(
-        default_factory=list,
-        max_length=3,
-    )
-
-
-class FridayAgentExecutionContext(BaseModel):
-    """Versioned, per-agent context accepted from FRIDAY Universe."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    contract: Literal["friday-agent-context/v1"]
-    by_agent: dict[str, FridayAgentPrivateContext]
-    handoff_policy: Literal["verified_predecessor_result_and_evidence_only"]
 
 
 class AutonomousGoalRequest(BaseModel):

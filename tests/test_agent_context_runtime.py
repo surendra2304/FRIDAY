@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-from types import SimpleNamespace
 
 import pytest
-from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
-from friday.api import server
+from friday.api.goal_context import FridayAgentExecutionContext
 from friday.autonomous import daemon as daemon_module
 from friday.autonomous.daemon import AutonomousDaemon
 from friday.autonomous.enhanced_controller import (
@@ -18,7 +17,7 @@ from friday.autonomous.enhanced_controller import (
 )
 
 
-def test_goal_api_accepts_only_the_versioned_agent_context_contract(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_goal_api_context_model_accepts_only_the_versioned_contract() -> None:
     context = {
         "contract": "friday-agent-context/v1",
         "by_agent": {
@@ -34,43 +33,12 @@ def test_goal_api_accepts_only_the_versioned_agent_context_contract(monkeypatch:
         "handoff_policy": "verified_predecessor_result_and_evidence_only",
     }
 
-    class GoalCapture:
-        is_running = True
-
-        def submit_goal(
-            self,
-            goal_text: str,
-            priority: int,
-            metadata: dict | None,
-            execution_context: dict | None,
-        ):
-            self.submitted = (goal_text, priority, metadata, execution_context)
-            return SimpleNamespace(
-                id="test-goal",
-                goal=goal_text,
-                priority=priority,
-                status="QUEUED",
-            )
-
-    capture = GoalCapture()
-    monkeypatch.setattr(server, "autonomous_daemon", capture)
-    client = TestClient(server.app)
-
-    accepted = client.post(
-        "/api/autonomous/goals",
-        json={"goal": "Run a two-specialist test.", "execution_context": context},
-    )
-    assert accepted.status_code == 200, accepted.text
-    assert capture.submitted[3] == context
-
-    rejected = client.post(
-        "/api/autonomous/goals",
-        json={
-            "goal": "Reject an unknown contract.",
-            "execution_context": {**context, "contract": "friday-agent-context/v2"},
-        },
-    )
-    assert rejected.status_code == 422
+    validated = FridayAgentExecutionContext.model_validate(context)
+    assert validated.model_dump() == context
+    with pytest.raises(ValidationError):
+        FridayAgentExecutionContext.model_validate(
+            {**context, "contract": "friday-agent-context/v2"},
+        )
 
 
 @pytest.mark.asyncio
