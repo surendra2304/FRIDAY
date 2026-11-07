@@ -129,7 +129,7 @@ class AutonomousGoal:
     id: str
     goal: str
     priority: int = 0  # higher = more urgent
-    status: str = "QUEUED"  # QUEUED, RUNNING, COMPLETED, FAILED, PARTIAL
+    status: str = "QUEUED"  # QUEUED, RUNNING, COMPLETED, FAILED, PARTIAL, CANCELLED
     created_at: float = field(default_factory=time.time)
     started_at: float = 0.0
     completed_at: float = 0.0
@@ -158,6 +158,7 @@ class AutonomousDaemon:
         self._running_goals: dict[str, AutonomousGoal] = {}
         self._completed_goals: list[AutonomousGoal] = []
         self._live_plans: dict[str, ExecutionPlan] = {}
+        self._goal_tasks: dict[str, asyncio.Task[None]] = {}
         self._max_concurrent_goals = 2
         self._running = False
         self._daemon_task: asyncio.Task | None = None
@@ -359,6 +360,64 @@ class AutonomousDaemon:
                 return self._goal_payload(goal)
         return None
 
+    async def cancel_goal(self, goal_id: str) -> dict[str, Any] | None:
+        """Stop one queued or running goal and return its resulting state.
+
+        A running goal is not moved to history until its execution coroutine and
+        any in-flight subtask cleanup have completed. Callers must inspect the
+        returned status and only treat ``CANCELLED`` as a confirmed stop.
+        """
+        queued_goal = next((goal for goal in self._goal_queue if goal.id == goal_id), None)
+        if queued_goal is not None:
+            self._goal_queue.remove(queued_goal)
+            self._mark_goal_cancelled(queued_goal)
+            await self._finish_goal(queued_goal)
+            return self._goal_payload(queued_goal)
+
+        goal = self._running_goals.get(goal_id)
+        if goal is None:
+            # Completed goals are returned as-is so callers can distinguish a
+            # race with normal completion from a confirmed cancellation.
+            return self.get_goal(goal_id)
+
+        execution_task = self._goal_tasks.get(goal_id)
+        if execution_task is None:
+            # A running goal without an execution handle cannot be proven
+            # stopped; leave it active for the status poll to reconcile.
+            return self._goal_payload(goal)
+
+        execution_task.cancel()
+        try:
+            await asyncio.shield(execution_task)
+        except asyncio.CancelledError:
+            if not execution_task.done():
+                # The request itself was cancelled; shielding keeps the goal's
+                # own stop operation alive, but the caller should still unwind.
+                raise
+
+        if goal.status == "RUNNING":
+            # A task can be cancelled before its coroutine starts. In that
+            # case _execute_goal cannot run its finalizer, so finish it here.
+            self._mark_goal_cancelled(goal, self._live_plans.get(goal_id))
+            await self._finish_goal(goal)
+
+        self._goal_tasks.pop(goal_id, None)
+        return self._goal_payload(goal)
+
+    def _mark_goal_cancelled(
+        self,
+        goal: AutonomousGoal,
+        plan: ExecutionPlan | None = None,
+    ) -> None:
+        """Set a consistent terminal cancellation record after execution stops."""
+        goal.status = "CANCELLED"
+        goal.error = ""
+        goal.summary = "This goal was stopped before completion."
+        goal.completed_at = time.time()
+        if plan is not None:
+            goal.steps = [self._step_payload(step) for step in plan.subtasks]
+        self._live_plans.pop(goal.id, None)
+
     def get_status(self) -> dict[str, Any]:
         """Get current daemon status."""
         return {
@@ -440,7 +499,10 @@ class AutonomousDaemon:
             logger.info("Daemon decomposed goal %s into %d subtasks: %s", goal.id, len(plan.subtasks),
                         " -> ".join(st.agent for st in plan.subtasks))
             # Execute plan in background
-            asyncio.create_task(self._execute_goal(goal, plan), name=f"autonomous-goal-{goal.id}")
+            self._goal_tasks[goal.id] = asyncio.create_task(
+                self._execute_goal(goal, plan),
+                name=f"autonomous-goal-{goal.id}",
+            )
             logger.info("Started autonomous goal %s with %d subtasks", goal.id, len(plan.subtasks))
         except Exception as exc:
             goal.status = "FAILED"
@@ -477,42 +539,52 @@ class AutonomousDaemon:
                 )
             logger.info("Daemon goal %s finished: %s (%d/%d subtasks)",
                         goal.id, plan.status, plan.completed_subtasks, plan.total_subtasks)
+            goal.completed_at = time.time()
+            goal.steps = [self._step_payload(st) for st in plan.subtasks]
+
+            duration = goal.completed_at - (goal.started_at or goal.completed_at)
+            try:
+                synthesized = await synthesize_answer(goal.goal, goal.steps)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    "Goal %s: answer synthesis failed (%s); using summary fallback",
+                    goal.id,
+                    exc,
+                )
+                synthesized = ""
+
+            if synthesized:
+                goal.summary = synthesized
+                logger.info("Goal %s: synthesized conversational answer via Inference", goal.id)
+            else:
+                logger.warning(
+                    "Goal %s: synthesis returned an empty answer; using summary fallback",
+                    goal.id,
+                )
+                goal.summary = self._build_summary(goal, plan, duration)
+        except asyncio.CancelledError:
+            final_status = "CANCELLED"
+            final_error = ""
+            logger.info("Cancellation requested for autonomous goal %s", goal.id)
         except Exception as exc:
             final_status = "FAILED"
             final_error = str(exc)
             logger.error("Goal %s execution failed: %s", goal.id, exc)
         finally:
             goal.completed_at = time.time()
-            # The owner reads this, so it has to be prose about real work —
-            # never a status token or a goal reference.
             goal.steps = [self._step_payload(st) for st in plan.subtasks]
-
-            duration = goal.completed_at - (goal.started_at or goal.completed_at)
-
-            # Synthesize a conversational answer via the Inference gateway (primary path).
-            # _build_summary is only a true fallback when synthesis fails or returns nothing,
-            # so the owner never sees a raw status log unless the gateway is unreachable.
-            synthesized = ""
-            try:
-                synthesized = await synthesize_answer(goal.goal, goal.steps)
-                if synthesized:
-                    goal.summary = synthesized
-                    logger.info("Goal %s: synthesized conversational answer via Inference", goal.id)
-                else:
-                    logger.warning(
-                        "Goal %s: synthesis returned an empty answer; using summary fallback", goal.id
-                    )
-                    goal.summary = self._build_summary(goal, plan, duration)
-            except Exception as exc:
-                logger.warning(
-                    "Goal %s: answer synthesis failed (%s); using summary fallback", goal.id, exc
-                )
+            if final_status == "CANCELLED":
+                goal.summary = "This goal was stopped before completion."
+            elif not goal.summary:
+                duration = goal.completed_at - (goal.started_at or goal.completed_at)
                 goal.summary = self._build_summary(goal, plan, duration)
-
             goal.status = final_status
             goal.error = final_error
             self._live_plans.pop(goal.id, None)
             await self._finish_goal(goal)
+            self._goal_tasks.pop(goal.id, None)
 
     async def _finish_goal(self, goal: AutonomousGoal) -> None:
         """Move goal from running to completed."""

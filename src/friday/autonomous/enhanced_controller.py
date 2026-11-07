@@ -681,10 +681,21 @@ class EnhancedAutonomousController:
                 await asyncio.sleep(1)
                 continue
 
-            # Execute ready sub-tasks (can be parallelized)
-            results = await asyncio.gather(
-                *[self.execute_subtask(st, plan) for st in ready_subtasks]
-            )
+            # Execute ready sub-tasks (can be parallelized). Keep explicit task
+            # handles so cancellation waits for every in-flight step to finish
+            # its cleanup before the parent goal can report a stopped state.
+            subtask_tasks = [
+                asyncio.create_task(self.execute_subtask(st, plan))
+                for st in ready_subtasks
+            ]
+            try:
+                results = await asyncio.gather(*subtask_tasks)
+            except asyncio.CancelledError:
+                for task in subtask_tasks:
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(*subtask_tasks, return_exceptions=True)
+                raise
 
             # Update plan progress
             plan.completed_subtasks = len(plan.get_completed_subtasks())

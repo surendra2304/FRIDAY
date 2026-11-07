@@ -1144,6 +1144,24 @@ async def get_autonomous_goal(
     return payload
 
 
+@app.delete("/api/autonomous/goals/{goal_id}")
+async def cancel_autonomous_goal(
+    goal_id: str,
+    _: None = Depends(_require_control_access),
+) -> dict[str, Any]:
+    """Cancel one queued or running goal and confirm only after execution stops."""
+    payload = await autonomous_daemon.cancel_goal(goal_id)
+    if payload is None:
+        raise HTTPException(status_code=404, detail="No goal with that reference is on record.")
+    if payload.get("status") != "CANCELLED":
+        current_status = str(payload.get("status") or "UNKNOWN").upper()
+        raise HTTPException(
+            status_code=409,
+            detail=f"Goal was not stopped; its current status is {current_status}.",
+        )
+    return payload
+
+
 @app.post("/api/autonomous/decompose")
 async def decompose_goal_autonomous(
     goal: str,
