@@ -25,6 +25,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Fetch FRIDAY Universe shared mesh package
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/surendra2304/FRIDAY-Universe.git "$RUNNER_TEMP/friday-universe"
+          git -C "$RUNNER_TEMP/friday-universe" sparse-checkout set mesh
+
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
@@ -47,6 +54,8 @@ jobs:
           bash -n scripts/install_oci_a1_continuous.sh
 
       - name: Run pytest test suite
+        env:
+          PYTHONPATH: ${{ runner.temp }}/friday-universe
         run: python -m pytest -m "not live and not hardware and not windows"
 
       - name: Set up Docker Buildx
