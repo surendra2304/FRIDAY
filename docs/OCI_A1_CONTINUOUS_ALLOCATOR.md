@@ -12,7 +12,7 @@ The persistent systemd allocator is the preferred always-on search mechanism onc
 - The OCI dynamic group and policy must permit the instance principal to inspect the necessary compute/network resources, request capacity, and launch an instance in the configured compartment. An authorization failure is logged as a sanitized diagnostic and retried with a slower interval; it is not misreported as unavailable capacity.
 - Region defaults to `ap-hyderabad-1`; availability domain, subnet, image, and SSH public key default to the existing allocator configuration and may be overridden by `/etc/friday-arm-sniper.env`. Keep that optional file root-owned and mode `0600`; it must not contain private keys or secret material.
 - The allocator checks inventory before each launch, treats provisioning instances as already present, uses a stable idempotency token per target/fault-domain request, and never launches a second A1 instance if one already exists.
-- A pre-existing A1 instance below target size is a manual-review condition, not permission to launch a duplicate.
+- A pre-existing A1 instance below target size is a manual-review condition, not permission to launch a duplicate. Explicit no-capacity reports do not trigger speculative launch attempts; workers wait for the next capacity report instead.
 - The service exits successfully only when the requested instance is observed in the `RUNNING` lifecycle state. Instance request acceptance alone is not success.
 
 ## IAM bootstrap — required before installation
@@ -60,7 +60,7 @@ References:
 
 ## Retry and observability
 
-No-capacity retries occur every 60 seconds. A provisioning instance is rechecked every 20 seconds. Transient API errors retry after 120 seconds, rate limits after 180 seconds, and authorization/configuration faults after 300 seconds. The process retries indefinitely unless the target is running or an operator stops it.
+No-capacity retries occur every 60 seconds. A provisioning instance is rechecked every 20 seconds. Transient API errors retry after 120 seconds, rate limits after 240 seconds, and authorization/configuration faults after 300 seconds. The process retries indefinitely unless the target is running or an operator stops it.
 
 Logs go to the system journal; the latest non-secret status is atomically written to `/var/lib/friday-arm-sniper/state.json`. The service uses `Restart=on-failure`, so systemd restarts it after crashes/reboots without creating a restart loop after successful allocation.
 
