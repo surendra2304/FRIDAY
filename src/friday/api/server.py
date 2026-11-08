@@ -1112,7 +1112,6 @@ async def submit_autonomous_goal(
     if not autonomous_daemon.is_running:
         await autonomous_daemon.start()
     return {
-        "status": "ok",
         "goal_id": goal.id,
         "goal": goal.goal,
         "priority": goal.priority,
@@ -2319,7 +2318,6 @@ start_proactive_monitoring()
 # =========================================================================
 
 from collections import deque
-from datetime import datetime, timezone
 import uuid as _uuid
 
 # In-memory conversation history store (max 10000 entries)
@@ -2910,32 +2908,6 @@ async def voice_speak(
         media_type="audio/mpeg",
         headers={"Cache-Control": "no-store", "X-FRIDAY-Voice": voice},
     )
-
-
-# --- Enhanced Autonomous Controller Integration ---
-
-@app.post("/api/autonomous/decompose")
-async def decompose_goal_autonomous(goal: str):
-    """Decompose a complex goal into executable sub-tasks."""
-    from friday.autonomous.enhanced_controller import enhanced_controller
-    try:
-        plan = enhanced_controller.decompose_goal(goal)
-        return {
-            "plan_id": list(enhanced_controller.plans.keys())[-1] if enhanced_controller.plans else "",
-            "goal": plan.goal,
-            "subtasks": [
-                {
-                    "id": st.id,
-                    "description": st.description,
-                    "agent": st.agent,
-                    "dependencies": st.dependencies,
-                }
-                for st in plan.subtasks
-            ],
-            "total_subtasks": plan.total_subtasks,
-        }
-    except Exception as exc:
-        raise HTTPException(500, f"Goal decomposition failed: {exc}")
 
 
 @app.post("/api/autonomous/execute")
