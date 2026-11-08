@@ -37,7 +37,7 @@ from scripts.oci_a1_common import (
 NO_CAPACITY_SECONDS = 60
 PENDING_INSTANCE_SECONDS = 20
 TRANSIENT_ERROR_SECONDS = 120
-RATE_LIMIT_SECONDS = 180
+RATE_LIMIT_SECONDS = 240
 AUTH_OR_CONFIG_ERROR_SECONDS = 300
 LOGGER = logging.getLogger("friday.oci_a1_allocator")
 _STOP = threading.Event()
@@ -112,6 +112,40 @@ def persist_state(outcome: str, details: dict[str, Any] | None = None) -> None:
     temporary.replace(target)
 
 
+def build_oci_signer(oci_module: Any, env: dict[str, str] | None = None) -> Any:
+    """Build an OCI API-key signer for CI, or Instance Principals on the AMD host.
+
+    The API private key is passed directly to the SDK from the process environment;
+    it is never written to disk or included in diagnostics.
+    """
+    values = os.environ if env is None else env
+    keys = {
+        "OCI_TENANCY_OCID": str(values.get("OCI_TENANCY_OCID", "") or "").strip(),
+        "OCI_USER_OCID": str(values.get("OCI_USER_OCID", "") or "").strip(),
+        "OCI_FINGERPRINT": str(values.get("OCI_FINGERPRINT", "") or "").strip(),
+        "OCI_KEY_CONTENT": str(values.get("OCI_KEY_CONTENT", "") or "").strip(),
+    }
+    configured = [bool(value) for value in keys.values()]
+    if any(configured) and not all(configured):
+        raise ValueError("incomplete_oci_api_key_configuration")
+
+    if not any(configured):
+        return oci_module.auth.signers.InstancePrincipalsSecurityTokenSigner()
+
+    private_key = keys["OCI_KEY_CONTENT"].replace("\\n", "\n")
+    if "-----BEGIN " not in private_key or "PRIVATE KEY-----" not in private_key:
+        raise ValueError("invalid_oci_private_key_format")
+
+    return oci_module.signer.Signer(
+        tenancy=keys["OCI_TENANCY_OCID"],
+        user=keys["OCI_USER_OCID"],
+        fingerprint=keys["OCI_FINGERPRINT"],
+        private_key_file_location=None,
+        pass_phrase=str(values.get("OCI_KEY_PASSPHRASE", "") or "").strip() or None,
+        private_key_content=private_key,
+    )
+
+
 class ContinuousAllocator:
     """One API attempt per cycle, with persistent retries managed by run_forever."""
 
@@ -148,7 +182,7 @@ class ContinuousAllocator:
         import oci
 
         self.oci = oci
-        self.signer = self.signer or oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
+        self.signer = self.signer or build_oci_signer(oci)
         config = {"region": self.region}
         no_retry = oci.retry.NoneRetryStrategy()
         self.compute = oci.core.ComputeClient(
@@ -265,12 +299,12 @@ class ContinuousAllocator:
             capacity_entries = list(getattr(report, "shape_availabilities", []) or [])
             candidates = available_capacity(capacity_entries, "primary")
             if not candidates:
-                # Only classify a shortage when OCI returned a non-empty,
-                # recognized capacity result. Empty payloads and unsupported /
-                # unknown statuses indicate a report/configuration problem;
-                # don't hide them as no_capacity.
+                # Do not send speculative launch requests after OCI has explicitly
+                # reported no capacity. Those blind retries create 429 pressure and
+                # can race the second worker. Retry the report instead.
                 if not capacity_entries:
                     diagnostic = "empty_shape_availabilities"
+                    statuses: set[str] = set()
                 else:
                     statuses = {
                         str(getattr(entry, "availability_status", "UNKNOWN")).upper()
@@ -282,86 +316,17 @@ class ContinuousAllocator:
                         diagnostic = "unknown_availability_status"
                     else:
                         diagnostic = ""
+
                 if diagnostic:
                     self._record(
                         "capacity_report_unusable",
                         diagnostic=diagnostic,
+                        capacity_statuses=sorted(statuses),
                         retry_seconds=AUTH_OR_CONFIG_ERROR_SECONDS,
                     )
                     return AttemptResult(
                         "capacity_report_unusable", AUTH_OR_CONFIG_ERROR_SECONDS
                     )
-                if hasattr(self.compute, "launch_instance"):
-                    candidate_domains = [None, "FAULT-DOMAIN-1", "FAULT-DOMAIN-2", "FAULT-DOMAIN-3"]
-                    capacity_exhausted = False
-                    for fault_domain in candidate_domains:
-                        launch_details = self.oci.core.models.LaunchInstanceDetails(
-                            display_name=TARGET_DISPLAY_NAME,
-                            compartment_id=compartment_id,
-                            availability_domain=self.availability_domain,
-                            shape=SHAPE,
-                            shape_config=self.oci.core.models.LaunchInstanceShapeConfigDetails(
-                                ocpus=self.target_ocpus,
-                                memory_in_gbs=self.target_memory_gb,
-                            ),
-                            source_details=self.oci.core.models.InstanceSourceViaImageDetails(
-                                image_id=self.image_id,
-                                boot_volume_size_in_gbs=BOOT_VOLUME_GB,
-                                boot_volume_vpus_per_gb=10,
-                            ),
-                            create_vnic_details=self.oci.core.models.CreateVnicDetails(
-                                assign_public_ip=True,
-                                display_name="FRIDAY Universe ARM VNIC",
-                                subnet_id=self.subnet_id,
-                            ),
-                            metadata={"ssh_authorized_keys": self.ssh_public_key},
-                            is_pv_encryption_in_transit_enabled=True,
-                        )
-                        if fault_domain:
-                            launch_details.fault_domain = fault_domain
-
-                        ssh_key_fingerprint = hashlib.sha256(
-                            self.ssh_public_key.encode("utf-8")
-                        ).hexdigest()
-                        token_input = (
-                            f"friday-a1|{tenancy_id}|{compartment_id}|{self.region}|"
-                            f"{self.availability_domain}|{fault_domain}|{self.target_ocpus}|"
-                            f"{self.target_memory_gb}|{BOOT_VOLUME_GB}|{self.subnet_id}|"
-                            f"{self.image_id}|{ssh_key_fingerprint}|{int(time.time() // 60)}"
-                        )
-                        retry_token = hashlib.sha256(token_input.encode("utf-8")).hexdigest()
-                        try:
-                            response = self.compute.launch_instance(
-                                launch_details, opc_retry_token=retry_token
-                            )
-                            instance = response.data
-                            instance_id = str(getattr(instance, "id", ""))
-                            state = str(getattr(instance, "lifecycle_state", "PROVISIONING")).upper()
-                            persist_state(
-                                "launch_accepted",
-                                {
-                                    "instance_id": instance_id,
-                                    "lifecycle_state": state,
-                                    "fault_domain": fault_domain or "unspecified",
-                                },
-                            )
-                            LOGGER.info(
-                                "OCI accepted allocation request; instance_id=%s lifecycle_state=%s fault_domain=%s",
-                                instance_id or "unknown",
-                                state,
-                                fault_domain or "unspecified",
-                            )
-                            return AttemptResult("launch_accepted", PENDING_INSTANCE_SECONDS)
-                        except Exception as exc:
-                            if is_capacity_error(exc):
-                                LOGGER.info(
-                                    "Candidate %s out of capacity (%s); checking next candidate...",
-                                    fault_domain or "unspecified",
-                                    str(getattr(exc, "message", exc))[:80],
-                                )
-                                capacity_exhausted = True
-                                continue
-                            raise
 
                 self._record(
                     "no_capacity",
@@ -467,24 +432,56 @@ def run_forever(
     *,
     stop_event: Any = _STOP,
     wait: Callable[[float], Any] = time.sleep,
+    max_runtime_seconds: int | None = None,
+    monotonic: Callable[[], float] = time.monotonic,
 ) -> int:
-    """Retry until the VM is running or a stop signal is received."""
+    """Retry until RUNNING, stop signal, or an optional CI runner timebox."""
+    started_at = monotonic()
     while not stop_event.is_set():
+        if max_runtime_seconds is not None and monotonic() - started_at >= max_runtime_seconds:
+            persist_state(
+                "runner_timebox_complete",
+                {"max_runtime_seconds": max_runtime_seconds},
+            )
+            LOGGER.info("Runner timebox reached; allocator will be picked up by the next scheduled worker.")
+            return 0
+
         result = allocator.attempt_once()
         if result.complete:
             return 0
+
+        delay_seconds = max(1, int(result.delay_seconds))
+        if max_runtime_seconds is not None:
+            remaining = max_runtime_seconds - (monotonic() - started_at)
+            if remaining <= 0:
+                persist_state(
+                    "runner_timebox_complete",
+                    {"max_runtime_seconds": max_runtime_seconds},
+                )
+                return 0
+            delay_seconds = min(delay_seconds, max(1, int(remaining)))
+
         LOGGER.info(
             "Search remains active; next attempt in %d seconds (outcome=%s).",
-            result.delay_seconds,
+            delay_seconds,
             result.outcome,
         )
         if hasattr(stop_event, "wait"):
-            stopped = stop_event.wait(result.delay_seconds)
+            stopped = stop_event.wait(delay_seconds)
         else:
-            wait(result.delay_seconds)
+            wait(delay_seconds)
             stopped = False
         if stopped:
             break
+
+        if max_runtime_seconds is not None and monotonic() - started_at >= max_runtime_seconds:
+            persist_state(
+                "runner_timebox_complete",
+                {"max_runtime_seconds": max_runtime_seconds},
+            )
+            LOGGER.info("Runner timebox reached; allocator will be picked up by the next scheduled worker.")
+            return 0
+
     LOGGER.info("Allocator stopped by a termination signal.")
     return 0
 
@@ -505,7 +502,9 @@ def main() -> int:
         BOOT_VOLUME_GB,
         NO_CAPACITY_SECONDS,
     )
-    return run_forever(ContinuousAllocator())
+    runtime_minutes = int(os.environ.get("OCI_RUN_DURATION_MINUTES", "0") or "0")
+    max_runtime = runtime_minutes * 60 if runtime_minutes > 0 else None
+    return run_forever(ContinuousAllocator(), max_runtime_seconds=max_runtime)
 
 
 if __name__ == "__main__":
