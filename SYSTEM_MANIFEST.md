@@ -11,19 +11,19 @@
 
 | Attribute | Repository configuration |
 | :--- | :--- |
-| **Configured Cloud URL** | https://friday-universe.duckdns.org (deployment state not verified here) |
+| **Production public ingress** | https://friday-universe.duckdns.org/friday (Oracle Cloud systemd service behind Caddy) |
 | **Configured Health Route** | `/health` (response is not proof of supervision or readiness) |
 | **Authentication Variable** | `FRIDAY_API_KEY` (configure as a secret; never use a checked-in example) |
 | **Configured database topology (runtime unverified)** | Local state plus Memora integration; durability and current cloud connectivity require runtime verification |
 | **Memory Namespace** | `memora://friday/private` (configured intent; access not verified here) |
-| **Hosting** | Render is configured in the repository; current deployment revision is not verified here |
+| **Hosting** | Oracle Cloud: Server 1, systemd-managed FRIDAY service on port 10000, routed through Caddy |
 
 ---
 
 ## 🎯 2. Purpose & Responsibilities
 
 ### Intended role
-* FRIDAY is intended to provide a multimodal local assistant and coordinate the eight specialist services. The complete capability set and live connectivity are not established by this manifest.
+* FRIDAY is the central multimodal orchestrator and coordinates the nine specialist agents: Inference, Memora, Stratex, Forge, Cortex, Sentinel, IntelX, Futuris, and VyralX. Health and integration claims must still be verified against live endpoints.
 
 ### What FRIDAY is intended to do
 * Operate as the central voice assistant and orchestrator for the FRIDAY Universe.
@@ -73,8 +73,12 @@ FORGE_API_KEY=<configure in secret environment>
 SENTINEL_URL=http://sentinel:8000
 SENTINEL_API_KEY=<configure in secret environment>
 
-# 9. 🤖 FRIDAY Central Desktop Operating System
-FRIDAY_URL=https://friday-universe.duckdns.org
+# 9. 🎬 VyralX Video Content Agent
+VYRALX_URL=http://vyralx:8000
+VYRALX_API_KEY=<configure in secret environment>
+
+# 10. 🤖 FRIDAY Central Desktop Operating System
+FRIDAY_URL=https://friday-universe.duckdns.org/friday
 FRIDAY_API_KEY=<configure in secret environment>
 ```
 
