@@ -37,7 +37,7 @@ from scripts.oci_a1_common import (
 NO_CAPACITY_SECONDS = 60
 PENDING_INSTANCE_SECONDS = 20
 TRANSIENT_ERROR_SECONDS = 120
-RATE_LIMIT_SECONDS = 240
+RATE_LIMIT_SECONDS = 60
 AUTH_OR_CONFIG_ERROR_SECONDS = 300
 LOGGER = logging.getLogger("friday.oci_a1_allocator")
 _STOP = threading.Event()
