@@ -60,7 +60,7 @@ References:
 
 ## Retry and observability
 
-No-capacity retries occur every 60 seconds. A provisioning instance is rechecked every 20 seconds. Transient API errors retry after 120 seconds, rate limits after 240 seconds, and authorization/configuration faults after 300 seconds. The process retries indefinitely unless the target is running or an operator stops it.
+No-capacity retries occur every 60 seconds. A provisioning instance is rechecked every 20 seconds. Transient API errors retry after 120 seconds, rate limits after 60 seconds, and authorization/configuration faults after 300 seconds. The process retries indefinitely unless the target is running or an operator stops it.
 
 Logs go to the system journal; the latest non-secret status is atomically written to `/var/lib/friday-arm-sniper/state.json`. The service uses `Restart=on-failure`, so systemd restarts it after crashes/reboots without creating a restart loop after successful allocation.
 
