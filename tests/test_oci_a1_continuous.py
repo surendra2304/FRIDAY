@@ -69,7 +69,7 @@ def test_build_oci_signer_uses_pem_content_without_writing_a_key_file():
     assert signer.kind == "api_key"
     assert captured["private_key_file_location"] is None
     assert captured["private_key_content"] == (
-        "-----BEGIN PRIVATE KEY-----\\nTEST\\n-----END PRIVATE KEY-----".replace("\\\\n", "\\n")
+        "-----BEGIN PRIVATE KEY-----\\nTEST\\n-----END PRIVATE KEY-----".replace("\\n", "\n")
     )
     assert captured["pass_phrase"] == "passphrase"
 
@@ -452,6 +452,10 @@ def test_is_capacity_error_identifies_500_internalerror_and_capacity_messages():
 
     exc3 = SimpleNamespace(status=401, code='NotAuthorized', message='Bad key')
     assert is_capacity_error(exc3) is False
+
+    exc4 = SimpleNamespace(status=404, code="NotAuthorizedOrNotFound", message="not authorized or not found")
+    assert is_capacity_error(exc4) is False
+    assert error_delay(404, "NotAuthorizedOrNotFound") == AUTH_OR_CONFIG_ERROR_SECONDS
 
 
 def test_allocator_does_not_launch_when_capacity_report_says_out_of_host_capacity(tmp_path, monkeypatch):
