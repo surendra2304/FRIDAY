@@ -66,23 +66,23 @@ def safe_error(exc: Exception) -> tuple[int | None, str]:
 
 
 def is_capacity_error(exc: Exception) -> bool:
-    """Identify whether an exception represents temporary OCI host capacity exhaustion."""
+    """Identify only explicit OCI capacity responses, never authorization failures."""
     status = getattr(exc, "status", None)
-    code = str(getattr(exc, "code", ""))
+    code = str(getattr(exc, "code", "")).lower()
     msg = str(getattr(exc, "message", exc)).lower()
-    if status in (500, 503, 409, 404):
-        if any(term in msg for term in ("out of host capacity", "capacity", "not authorized or not found")):
-            return True
-        if any(term in code.lower() for term in ("outofhostcapacity", "outofcapacity", "internalerror", "serviceerror")):
-            return True
-    return False
+    return status in (409, 500, 503) and (
+        "out of host capacity" in msg
+        or "capacity" in msg
+        or "outofhostcapacity" in code
+        or "outofcapacity" in code
+    )
 
 
 def error_delay(status: int | None, code: str) -> int:
     """Back off for throttling/auth faults without abandoning the search."""
     if status == 429 or "TooManyRequests" in code:
         return RATE_LIMIT_SECONDS
-    if status in (400, 401, 403) or "NotAuthorized" in code or "InvalidParameter" in code:
+    if status in (400, 401, 403, 404) or "NotAuthorized" in code or "InvalidParameter" in code or code in {"ValueError", "InvalidPrivateKey", "MissingPrivateKeyPassphrase"}:
         return AUTH_OR_CONFIG_ERROR_SECONDS
     return TRANSIENT_ERROR_SECONDS
 
@@ -289,8 +289,8 @@ class ContinuousAllocator:
                     self.oci.core.models.CreateCapacityReportShapeAvailabilityDetails(
                         instance_shape=SHAPE,
                         instance_shape_config=self.oci.core.models.CapacityReportInstanceShapeConfig(
-                            ocpus=TARGET_OCPUS,
-                            memory_in_gbs=TARGET_MEMORY_GB,
+                            ocpus=self.target_ocpus,
+                            memory_in_gbs=self.target_memory_gb,
                         ),
                     )
                 ],
@@ -400,10 +400,9 @@ class ContinuousAllocator:
                     )
                     return AttemptResult("launch_accepted", PENDING_INSTANCE_SECONDS)
                 except Exception as exc:
-                    status, code = safe_error(exc)
-                    if status == 409 or "OutOfHostCapacity" in code or "OutOfCapacity" in code:
-                        LOGGER.warning(
-                            "Fault domain %s rejected allocation for capacity/conflict; checking the next reported domain.",
+                    if is_capacity_error(exc):
+                        LOGGER.info(
+                            "Fault domain %s reported a capacity race; checking the next reported domain.",
                             fault_domain or "unspecified",
                         )
                         continue
