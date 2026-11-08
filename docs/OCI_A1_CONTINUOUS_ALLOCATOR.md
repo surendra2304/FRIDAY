@@ -4,7 +4,7 @@
 
 The production search mechanism is a persistent `systemd` service on the always-on FRIDAY Universe AMD VM. It checks for an existing `VM.Standard.A1.Flex` instance, requests capacity for 2 OCPUs / 12 GB RAM / 50 GB boot, and retries until the target instance is `RUNNING`. A GitHub Actions run is not the allocator's uptime mechanism.
 
-The former primary and fallback workflow schedules are removed to prevent duplicate allocation attempts. There is one persistent service rather than two staggered short-lived workers.
+The persistent systemd allocator is the preferred always-on search mechanism once the AMD host has its required Instance Principal IAM policy. During bootstrap, two staggered GitHub Actions workers can run the same allocator using the existing OCI API-key secrets. Each worker runs for at most 350 minutes, preserves in-progress runs when another dispatch arrives, and uses the allocator's inventory checks and stable per-fault-domain retry token to avoid duplicate creation. The Actions workers are a bootstrap/continuity mechanism, not a substitute for the persistent systemd service after the AMD host is authorized.
 
 ## Authentication and safety
 
