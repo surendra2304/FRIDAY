@@ -2,24 +2,22 @@ name: Oracle Ampere Capacity Sniper (Worker 2)
 
 on:
   schedule:
-    # Autonomous hourly heartbeat trigger to guarantee non-stop 24/7 presence
-    - cron: '30 * * * *'
-  workflow_dispatch: # Allows manual trigger anytime
+    # Offset by three hours from Worker 1; keep a second independent runner active.
+    - cron: '0 3,9,15,21 * * *'
+  workflow_dispatch:
 
 permissions:
-  actions: write
   contents: read
-  issues: write
 
 concurrency:
   group: oracle-sniper-worker2
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   snipe-capacity-worker2:
     name: Claim Oracle Ampere A1 (Worker 2)
     runs-on: ubuntu-latest
-    timeout-minutes: 360 # Run up to 6 hours per job
+    timeout-minutes: 360
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -28,29 +26,44 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
 
-      - name: Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install oci
+      - name: Install OCI SDK
+        run: python -m pip install --disable-pip-version-check 'oci==2.188.0'
 
-      - name: Staggered Delay (20s Offset)
-        run: |
-          echo "Staggering Worker 2 execution by 20s to perfectly interleave with Worker 1..."
-          sleep 20
+      - name: Stagger Worker 2 startup
+        run: sleep 30
 
-      - name: Run Infinite 24/7 Sniper (Worker 2)
+      - name: Run continuous OCI A1 allocator (Worker 2)
         env:
           OCI_USER_OCID: ${{ secrets.OCI_USER_OCID_2 }}
           OCI_KEY_CONTENT: ${{ secrets.OCI_KEY_CONTENT_2 }}
+          OCI_KEY_PASSPHRASE: ${{ secrets.OCI_KEY_PASSPHRASE_2 }}
           OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT_2 }}
           OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
           OCI_REGION: ${{ secrets.OCI_REGION || 'ap-hyderabad-1' }}
-          BOOT_VOLUME_GB: 50
-          RUN_DURATION_MINUTES: 320
-          CYCLE_DELAY: 40
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WORKFLOW_NAME: "oracle-capacity-sniper-worker2.yml"
+          OCI_COMPARTMENT_OCID: ${{ vars.OCI_COMPARTMENT_OCID }}
+          OCI_SUBNET_ID: ${{ vars.OCI_SUBNET_ID }}
+          OCI_IMAGE_ID: ${{ vars.OCI_IMAGE_ID }}
+          OCI_AVAILABILITY_DOMAIN: ${{ vars.OCI_AVAILABILITY_DOMAIN }}
+          OCI_SSH_PUBLIC_KEY: ${{ vars.OCI_SSH_PUBLIC_KEY }}
+          OCI_RETRY_INTERVAL: '60'
+          OCI_RUN_DURATION_MINUTES: '350'
+          STATE_DIRECTORY: ${{ runner.temp }}/friday-arm-sniper-state
+          PYTHONUNBUFFERED: '1'
+        run: python -m scripts.oci_a1_continuous
+
+      - name: Publish non-secret allocator state
+        if: always()
+        shell: bash
         run: |
-          python scripts/oracle_retry.py
+          state="$RUNNER_TEMP/friday-arm-sniper-state/state.json"
+          if [[ -s "$state" ]]; then
+            {
+              echo '### OCI A1 allocator state'
+              echo '```json'
+              cat "$state"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'No allocator state snapshot was produced by this run.' >> "$GITHUB_STEP_SUMMARY"
+          fi
