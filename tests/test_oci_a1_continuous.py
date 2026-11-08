@@ -8,6 +8,7 @@ from scripts.oci_a1_continuous import (
     RATE_LIMIT_SECONDS,
     TRANSIENT_ERROR_SECONDS,
     AttemptResult,
+    build_oci_signer,
     error_delay,
     persist_state,
     run_forever,
@@ -26,6 +27,67 @@ class FakeStopEvent:
     def wait(self, seconds):
         self.delays.append(seconds)
         return self.stopped
+
+
+
+
+
+def test_build_oci_signer_uses_instance_principal_when_no_api_credentials():
+    principal = object()
+    oci = SimpleNamespace(
+        auth=SimpleNamespace(
+            signers=SimpleNamespace(
+                InstancePrincipalsSecurityTokenSigner=lambda: principal
+            )
+        )
+    )
+
+    assert build_oci_signer(oci, env={}) is principal
+
+
+def test_build_oci_signer_uses_pem_content_without_writing_a_key_file():
+    captured = {}
+
+    def make_signer(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(kind="api_key")
+
+    oci = SimpleNamespace(
+        signer=SimpleNamespace(Signer=make_signer),
+        auth=SimpleNamespace(signers=SimpleNamespace()),
+    )
+    env = {
+        "OCI_TENANCY_OCID": "tenancy-id",
+        "OCI_USER_OCID": "user-id",
+        "OCI_FINGERPRINT": "fingerprint",
+        "OCI_KEY_CONTENT": "-----BEGIN PRIVATE KEY-----\\nTEST\\n-----END PRIVATE KEY-----",
+        "OCI_KEY_PASSPHRASE": "passphrase",
+    }
+
+    signer = build_oci_signer(oci, env=env)
+
+    assert signer.kind == "api_key"
+    assert captured["private_key_file_location"] is None
+    assert captured["private_key_content"] == (
+        "-----BEGIN PRIVATE KEY-----\\nTEST\\n-----END PRIVATE KEY-----".replace("\\\\n", "\\n")
+    )
+    assert captured["pass_phrase"] == "passphrase"
+
+
+def test_build_oci_signer_rejects_partial_api_credentials():
+    oci = SimpleNamespace(
+        auth=SimpleNamespace(
+            signers=SimpleNamespace(
+                InstancePrincipalsSecurityTokenSigner=lambda: object()
+            )
+        )
+    )
+    try:
+        build_oci_signer(oci, env={"OCI_USER_OCID": "user-id"})
+    except ValueError as exc:
+        assert str(exc) == "incomplete_oci_api_key_configuration"
+    else:
+        raise AssertionError("Partial OCI API-key configuration must fail closed")
 
 
 class FakeAllocator:
@@ -101,6 +163,34 @@ def test_state_persistence_is_atomic_and_contains_no_credentials(tmp_path, monke
     assert state["details"]["diagnostic"] == "capacity unavailable"
     assert "OCI_KEY_CONTENT" not in json.dumps(state)
     assert not (Path(tmp_path) / "state.json.tmp").exists()
+
+
+
+
+
+def test_retry_loop_stops_cleanly_at_runner_timebox():
+    class FakeClock:
+        now = 0.0
+
+        def monotonic(self):
+            return self.now
+
+        def wait(self, seconds):
+            self.now += seconds
+
+    clock = FakeClock()
+    allocator = FakeAllocator([AttemptResult("no_capacity", NO_CAPACITY_SECONDS)])
+    stop_event = SimpleNamespace(is_set=lambda: False)
+
+    assert run_forever(
+        allocator,
+        stop_event=stop_event,
+        wait=clock.wait,
+        monotonic=clock.monotonic,
+        max_runtime_seconds=10,
+    ) == 0
+    assert allocator.calls == 1
+    assert clock.now == 10
 
 
 def _fake_oci_with_no_capacity():
@@ -364,29 +454,16 @@ def test_is_capacity_error_identifies_500_internalerror_and_capacity_messages():
     assert is_capacity_error(exc3) is False
 
 
-def test_allocator_attempts_direct_launch_when_capacity_report_is_empty(tmp_path, monkeypatch):
+def test_allocator_does_not_launch_when_capacity_report_says_out_of_host_capacity(tmp_path, monkeypatch):
     from scripts.oci_a1_continuous import ContinuousAllocator
-    from scripts.oci_a1_common import SHAPE
 
     oci, signer, compute, network = _fake_oci_with_no_capacity()
-    # Report says OUT_OF_HOST_CAPACITY (standard free tier state)
-    compute.create_compute_capacity_report = lambda *_args, **_kwargs: SimpleNamespace(
-        data=SimpleNamespace(shape_availabilities=[SimpleNamespace(availability_status="OUT_OF_HOST_CAPACITY", available_count=0)])
-    )
-    monkeypatch.setenv('STATE_DIRECTORY', str(tmp_path))
-    monkeypatch.setenv('OCI_RETRY_INTERVAL', '25')
-
-    class MockServiceError(Exception):
-        def __init__(self, status, code, message):
-            self.status = status
-            self.code = code
-            self.message = message
-            super().__init__(message)
-
+    monkeypatch.setenv("STATE_DIRECTORY", str(tmp_path))
     launch_calls = []
-    def mock_launch(details, opc_retry_token=None):
-        launch_calls.append((details, opc_retry_token))
-        raise MockServiceError(500, 'InternalError', 'Out of host capacity.')
+
+    def mock_launch(*_args, **_kwargs):
+        launch_calls.append(True)
+        raise AssertionError("No speculative launch is allowed after an explicit no-capacity report")
 
     compute.launch_instance = mock_launch
     allocator = ContinuousAllocator(
@@ -394,6 +471,9 @@ def test_allocator_attempts_direct_launch_when_capacity_report_is_empty(tmp_path
     )
 
     result = allocator.attempt_once()
-    assert result.outcome == 'no_capacity'
-    assert result.delay_seconds == 25
-    assert len(launch_calls) > 0
+
+    assert result.outcome == "no_capacity"
+    assert result.delay_seconds == NO_CAPACITY_SECONDS
+    assert launch_calls == []
+    state = json.loads((Path(tmp_path) / "state.json").read_text())
+    assert state["outcome"] == "no_capacity"
