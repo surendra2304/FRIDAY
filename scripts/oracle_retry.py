@@ -241,8 +241,8 @@ def main():
                 return 0
             except oci.exceptions.ServiceError as e:
                 if e.status == 429:
-                    print(f"⚠️ Rate limit (429). Sleeping 90s for full token bucket refill...")
-                    time.sleep(90)
+                    print(f"⚠️ Rate limit (429). Sleeping 45s for full token bucket refill...")
+                    time.sleep(45)
                     continue
                 elif "Out of host capacity" in str(e.message) or e.status in [500]:
                     print(f"[Attempt #{attempt} | {elapsed_min}m] Full 2 OCPUs / 12 GB not yet released in Hyderabad. Active on {current_ocpus} OCPU / {current_ram} GB. Retrying in {cycle_delay}s...")
@@ -284,8 +284,8 @@ def main():
 
             except oci.exceptions.ServiceError as e:
                 if e.status == 429:
-                    print(f"\n⚠️ Rate limit (429). Backing off 90s to refill OCI token bucket...")
-                    time.sleep(90)
+                    print(f"\n⚠️ Rate limit (429). Backing off 45s to refill OCI token bucket...")
+                    time.sleep(45)
                     continue
                 elif "Out of host capacity" in str(e.message) or e.status in [500]:
                     print("Capacity full.")
@@ -310,7 +310,7 @@ def main():
 
         # Jittered delay to prevent harmonic pattern detection and avoid 429 rate limit
         jittered_sleep = cycle_delay + random.uniform(1.0, 5.0)
-        time.sleep(max(42, jittered_sleep))
+        time.sleep(max(15, jittered_sleep))
 
 if __name__ == "__main__":
     sys.exit(main())
