@@ -1,5 +1,6 @@
 """Universe Orchestrator linking FRIDAY Agent loop to Universe API SDK (AI Universe Integration)."""
 
+import asyncio
 import re
 from typing import Any
 
@@ -31,6 +32,87 @@ class UniverseOrchestrator:
         self.fleet = fleet_client
         self.memory = memory
         self.planner = planner
+
+    def _live_path_without_universe_api(self, goal: str, decomposition_plan: Any) -> dict[str, Any]:
+        """No Universe API is configured, so the goal is not executed.
+
+        A real fleet health probe is attempted so the caller sees who answered.
+        The result is never reported as dispatched, and peer counts are never invented.
+        """
+        logger.info("No Universe API configured; probing fleet and refusing a fabricated dispatch")
+        probe = self._probe_live_fleet()
+        if not probe.get("ok"):
+            error = str(probe.get("error") or "fleet probe failed")
+            return {
+                "world_id": None,
+                "agent_count": 0,
+                "total_steps": 0,
+                "metrics": {},
+                "synthesis": (
+                    "No Universe API is configured, so this goal was not executed. "
+                    f"The live fleet probe failed: {error}"
+                ),
+                "raw_result": {
+                    "status": "not_executed",
+                    "reason": "no_universe_api",
+                    "goal": goal,
+                    "error": error,
+                },
+                "decomposition": decomposition_plan,
+            }
+
+        meta = probe["metadata"]
+        online = int(meta.get("online_count") or 0)
+        total = int(meta.get("total_count") or 0)
+        return {
+            "world_id": None,
+            "agent_count": online,
+            "total_steps": 0,
+            "metrics": {
+                "online_count": online,
+                "total_count": total,
+                "real_agents": online,
+            },
+            "synthesis": (
+                "No Universe API is configured, so this goal was not executed. "
+                f"Live fleet probe: {online} of {total} peers answered."
+            ),
+            "raw_result": {
+                "status": "not_executed",
+                "reason": "no_universe_api",
+                "goal": goal,
+                "fleet": {
+                    "online_count": online,
+                    "total_count": total,
+                },
+            },
+            "decomposition": decomposition_plan,
+        }
+
+    def _probe_live_fleet(self) -> dict[str, Any]:
+        """Call FleetClient.get_fleet_summary. Never invent a successful dispatch."""
+
+        async def _call() -> Any:
+            return await self.fleet.get_fleet_summary()
+
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            try:
+                summary = asyncio.run(_call())
+            except Exception as ex:
+                logger.warning(f"Live fleet probe failed: {ex}")
+                return {"ok": False, "error": str(ex)}
+        else:
+            return {
+                "ok": False,
+                "error": "event loop already running; refusing a fake dispatch",
+            }
+
+        meta = summary.get("metadata") if isinstance(summary, dict) else None
+        if not isinstance(meta, dict):
+            return {"ok": False, "error": "fleet summary missing metadata"}
+        return {"ok": True, "summary": summary, "metadata": meta}
 
     def can_handle(self, user_prompt: str) -> bool:
         """Detect whether prompt requires AI Universe orchestration."""
@@ -68,25 +150,9 @@ class UniverseOrchestrator:
             except Exception as ex:
                 logger.debug(f"Decomposition fallback: {ex}")
 
-        # 3. Create World or Dispatch across live fleet
+        # 3. Create World, or refuse to pretend a live dispatch happened.
         if self.api is None:
-            # Live Multi-Agent Universe Execution via FleetClient
-            logger.info(f"Dispatching Universe goal '{goal}' to live fleet agents")
-            synthesis = (
-                f"🪐 **FRIDAY Universe Live Dispatch**\n\n"
-                f"- **Goal**: {goal}\n"
-                f"- **Master Fleet**: 8 Specialist Microservices Online\n"
-                f"- **Execution Engine**: Dynamic Mesh Telemetry\n"
-            )
-            return {
-                "world_id": "live-friday-universe",
-                "agent_count": 8,
-                "total_steps": 1,
-                "metrics": {"fleet_sync": 1.0, "real_agents": 8},
-                "synthesis": synthesis,
-                "raw_result": {"status": "dispatched", "goal": goal},
-                "decomposition": decomposition_plan,
-            }
+            return self._live_path_without_universe_api(goal, decomposition_plan)
 
         world_cfg = WorldConfig(name=f"Universe: {goal[:30]}")
         world_state: WorldState = self.api.create_world(world_cfg)
